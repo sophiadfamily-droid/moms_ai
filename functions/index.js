@@ -9,6 +9,7 @@ const taskDictionary = require("./brain/taskDictionary");
 const eventDictionary = require("./brain/eventDictionary");
 const memoryRules = require("./brain/memoryRules");
 const priorities = require("./brain/priorities");
+const {detectIntent} = require("./brain/engines/intentDetector");
 
 const {generateZeliaResponse} = require("./services/openaiService");
 
@@ -66,6 +67,7 @@ exports.chatWithZeliaHttp = onRequest(
         const events = req.body.events || [];
 
         const today = new Date().toISOString().slice(0, 10);
+        const detectedIntent = detectIntent(message);
 
         const systemContent = `
 ${systemPrompt({
@@ -73,6 +75,7 @@ ${systemPrompt({
     profile,
     memories,
     events,
+    detectedIntent,
   })}
 
 ${buildBrainContext()}

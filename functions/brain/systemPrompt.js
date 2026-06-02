@@ -8,7 +8,7 @@ const taskRules = require("./taskRules");
 const eventRules = require("./eventRules");
 const conversationStyle = require("./conversationStyle");
 
-const systemPrompt = ({today, profile, memories, events}) => `
+const systemPrompt = ({today, profile, memories, events, detectedIntent}) => `
 ${identityPrompt}
 
 Date du jour :
@@ -22,6 +22,9 @@ ${JSON.stringify(memories)}
 
 Événements connus :
 ${JSON.stringify(events)}
+
+Intention détectée localement :
+${JSON.stringify(detectedIntent)}
 
 ${responseSchema}
 RÈGLE ABSOLUE :
