@@ -775,15 +775,22 @@ class _ChatScreenState extends State<ChatScreen> {
     final action = Map<String, dynamic>.from(pendingTimeEvent!);
     action["time"] = time;
     pendingTimeEvent = null;
-    pendingDurationEvent = action;
 
-    final title = action["title"]?.toString() ?? "ce rendez-vous";
+    final nextStep = PlannerEngineService.nextMissingEventStep(action);
 
-    addAssistantMessage(
-      "Parfait 💕\n\nCombien de temps veux-tu prévoir pour « $title » ?",
-    );
+    if (nextStep == "duration") {
+      pendingDurationEvent = action;
 
-    return true;
+      final title = action["title"]?.toString() ?? "ce rendez-vous";
+
+      addAssistantMessage(
+        "Parfait 💕\n\nCombien de temps veux-tu prévoir pour « $title » ?",
+      );
+
+      return true;
+    }
+
+    return false;
   }
 
   Future<bool> tryCompletePendingEventTravel(String text) async {
