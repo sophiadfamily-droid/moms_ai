@@ -12,6 +12,7 @@ import '../services/notification_service.dart';
 import '../services/voice_service.dart';
 import '../services/memory_service.dart';
 import '../services/smart_planning_service.dart';
+import '../services/planner_engine_service.dart';
 import '../services/zelia_response_builder.dart';
 import '../services/action_handler_service.dart';
 
@@ -696,20 +697,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<bool> tryCompletePendingConflictResolution(String text) async {
     if (pendingConflictResolutionEvent == null) return false;
 
-    final lower = text.trim().toLowerCase();
-
-    final isNegativeAnswer = lower == "non" ||
-        lower == "non merci" ||
-        lower == "annule" ||
-        lower == "annuler" ||
-        lower == "laisse tomber" ||
-        lower == "pas maintenant" ||
-        lower.contains("n'ajoute pas") ||
-        lower.contains("ne l'ajoute pas") ||
-        lower.contains("n’enregistre pas") ||
-        lower.contains("ne l’enregistre pas");
-
-    if (isNegativeAnswer) {
+    if (PlannerEngineService.isNegativeAnswer(text)) {
       final action = Map<String, dynamic>.from(pendingConflictResolutionEvent!);
       final title = action["title"]?.toString() ?? "ce rendez-vous";
 
