@@ -1,4 +1,18 @@
 class ZeliaResponseBuilder {
+  static String formatDateForUser(String date) {
+    final cleanDate = date.trim();
+    final parts = cleanDate.split("-");
+
+    if (parts.length == 3 &&
+        parts[0].length == 4 &&
+        parts[1].length == 2 &&
+        parts[2].length == 2) {
+      return "${parts[2]}/${parts[1]}/${parts[0]}";
+    }
+
+    return cleanDate;
+  }
+
   static String joinTitles(List<String> titles) {
     final cleanTitles = titles
         .map((title) => title.trim())
@@ -126,7 +140,9 @@ class ZeliaResponseBuilder {
       lines.add("C’est ajouté à ton agenda 💕");
     }
 
-    lines.add("« $title » est prévu le $date à $time.");
+    final displayDate = formatDateForUser(date);
+
+    lines.add("« $title » est prévu le $displayDate à $time.");
 
     if (durationMinutes > 0) {
       lines.add("J’ai bloqué $durationMinutes minutes pour ce créneau.");
