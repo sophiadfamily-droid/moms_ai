@@ -1,0 +1,49 @@
+name: moms_ai
+description: ZELIA - Votre assistante IA
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+  google_fonts: ^6.3.3
+  shared_preferences: ^2.5.5
+  firebase_core: ^4.9.0
+  cloud_functions: ^6.3.1
+  http: ^1.6.0
+  flutter_local_notifications: ^21.0.0
+  speech_to_text: ^7.3.0
+  permission_handler: ^12.0.1
+  cloud_firestore: ^6.4.1
+  image_picker: ^1.2.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.14.3
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/zelia_robot.png
+    - assets/images/desk_planner.png
+    - assets/images/app_icon.png
+    - assets/images/splash.png
+    - assets/images/welcome_bg.png
+    - assets/images/zelia_logo.png
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/images/app_icon.png"
+  remove_alpha_ios: true
+  

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "664245687438",
+    "project_id": "zelia-ai-app",
+    "storage_bucket": "zelia-ai-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:664245687438:android:219545494c7d82e7ca65df",
+        "android_client_info": {
+          "package_name": "com.example.moms_ai"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB2TXp_o-ijZiw5zObZTk54kO4NVOHnATI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

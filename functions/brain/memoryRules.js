@@ -1,0 +1,153 @@
+const memoryRules = {
+  shouldRemember: {
+    identity: [
+      "je m'appelle",
+      "mon prénom est",
+      "mon prenom est",
+      "je suis",
+    ],
+
+    family: [
+      "mon fils",
+      "ma fille",
+      "mon enfant",
+      "mes enfants",
+      "mon mari",
+      "ma femme",
+      "mon conjoint",
+      "ma conjointe",
+      "mon compagnon",
+      "ma compagne",
+    ],
+
+    work: [
+      "je travaille",
+      "je suis freelance",
+      "je suis entrepreneur",
+      "je suis salarié",
+      "je suis salarie",
+      "je suis étudiant",
+      "je suis etudiant",
+      "je suis infirmier",
+      "je suis infirmière",
+      "je suis avocat",
+      "je suis développeur",
+      "je suis developpeur",
+    ],
+
+    routine: [
+      "tous les jours",
+      "chaque jour",
+      "tous les lundis",
+      "tous les mardis",
+      "tous les mercredis",
+      "tous les jeudis",
+      "tous les vendredis",
+      "tous les samedis",
+      "tous les dimanches",
+      "chaque semaine",
+      "toutes les semaines",
+      "habituellement",
+      "souvent",
+      "toujours",
+    ],
+
+    preferences: [
+      "je préfère",
+      "je prefere",
+      "j'aime mieux",
+      "je déteste",
+      "je deteste",
+      "je n'aime pas",
+      "je veux être prévenue",
+      "je veux etre prevenue",
+    ],
+
+    constraints: [
+      "je suis disponible",
+      "je ne suis pas disponible",
+      "je travaille de nuit",
+      "je travaille le soir",
+      "je garde les enfants",
+      "je n'ai pas de voiture",
+      "je nai pas de voiture",
+    ],
+
+    projects: [
+      "je développe",
+      "je developpe",
+      "je lance",
+      "je crée",
+      "je cree",
+      "je construis",
+      "je prépare",
+      "je prepare",
+      "mon projet",
+      "mon entreprise",
+      "ma société",
+      "ma societe",
+    ],
+  },
+
+  shouldNeverRemember: [
+    "acheter",
+    "payer",
+    "appeler",
+    "envoyer",
+    "rendez-vous",
+    "rdv",
+    "demain",
+    "aujourd'hui",
+    "ce soir",
+    "cette semaine",
+    "restaurant",
+    "courses",
+    "plus de",
+    "il manque",
+  ],
+
+  categories: {
+    identity: "personal",
+    family: "family",
+    work: "work",
+    routine: "routine",
+    preferences: "preference",
+    constraints: "constraint",
+    projects: "project",
+  },
+
+  relationshipAliases: {
+    child: [
+      "mon fils",
+      "ma fille",
+      "mon enfant",
+      "le petit",
+      "la petite",
+      "mon garçon",
+      "mon garcon",
+    ],
+
+    partner: [
+      "mon mari",
+      "ma femme",
+      "mon conjoint",
+      "ma conjointe",
+      "mon compagnon",
+      "ma compagne",
+    ],
+  },
+
+  memoryPriority: [
+    "family",
+    "children",
+    "health",
+    "constraints",
+    "work",
+    "routine",
+    "preferences",
+    "projects",
+    "personal",
+  ],
+};
+
+module.exports = memoryRules;
