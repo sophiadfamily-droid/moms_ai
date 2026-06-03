@@ -14,6 +14,15 @@ class PlannerEngineService {
         lower.contains("ne l’enregistre pas");
   }
 
+  static bool isNoTravelAnswer(String text) {
+    final lower = text.trim().toLowerCase();
+
+    return lower == "non" ||
+        lower == "non merci" ||
+        lower.contains("pas de trajet") ||
+        lower.contains("aucun trajet");
+  }
+
   static String nextMissingEventStep(
     Map<String, dynamic> action, {
     bool needsTravel = false,

@@ -796,15 +796,9 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<bool> tryCompletePendingEventTravel(String text) async {
     if (pendingTravelEvent == null) return false;
 
-    final lower = text.trim().toLowerCase();
     final action = Map<String, dynamic>.from(pendingTravelEvent!);
 
-    final noTravel = lower == "non" ||
-        lower == "non merci" ||
-        lower.contains("pas de trajet") ||
-        lower.contains("aucun trajet");
-
-    if (noTravel) {
+    if (PlannerEngineService.isNoTravelAnswer(text)) {
       action["travelMinutes"] = 0;
       pendingTravelEvent = null;
 
