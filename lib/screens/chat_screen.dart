@@ -578,7 +578,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
     int selectedMinutes = 0;
 
-    if (SmartPlanningService.isPositiveAnswer(text)) {
+    if (PlannerEngineService.isPositiveAnswer(text)) {
       selectedMinutes = estimatedMinutes;
     } else {
       selectedMinutes = parseDurationMinutes(text);
