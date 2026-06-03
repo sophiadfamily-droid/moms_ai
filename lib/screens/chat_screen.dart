@@ -11,6 +11,7 @@ import '../services/event_service.dart';
 import '../services/notification_service.dart';
 import '../services/voice_service.dart';
 import '../services/memory_service.dart';
+import '../services/memory_engine_service.dart';
 import '../services/smart_planning_service.dart';
 import '../services/smart_planning_response_builder.dart';
 import '../services/planning_proposal_service.dart';
@@ -1037,11 +1038,15 @@ class _ChatScreenState extends State<ChatScreen> {
     if (memory is! Map) return;
 
     final text = memory["text"]?.toString() ?? "";
-    final category = memory["category"]?.toString() ?? "personal";
 
     if (text.trim().isEmpty) return;
 
-    await MemoryService.saveMemory(text: text, category: category);
+    final category = MemoryEngineService.categorizeMemory(text);
+
+    await MemoryService.saveMemory(
+      text: text,
+      category: category,
+    );
   }
 
   Future<void> startListening() async {
