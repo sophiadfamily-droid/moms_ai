@@ -25,38 +25,84 @@ class MemoryEngineService {
     final lower = text.trim().toLowerCase();
 
     if (_containsAny(lower, [
-      "famille",
+      "bébé",
+      "bebe",
       "enfant",
-      "mari",
-      "femme",
-      "conjoint",
-      "conjointe",
+      "enfants",
       "fils",
       "fille",
-      "parent",
-      "parents",
       "école",
       "ecole",
       "crèche",
       "creche",
       "nounou",
+      "devoirs",
+      "cantine",
+      "garderie",
+    ])) {
+      return "children";
+    }
+
+    if (_containsAny(lower, [
+      "mari",
+      "femme",
+      "conjoint",
+      "conjointe",
+      "époux",
+      "epoux",
+      "épouse",
+      "epouse",
+      "partenaire",
+    ])) {
+      return "partner";
+    }
+
+    if (_containsAny(lower, [
+      "famille",
+      "parent",
+      "parents",
+      "frère",
+      "frere",
+      "soeur",
+      "sœur",
+      "grand-mère",
+      "grand-mere",
+      "grand-père",
+      "grand-pere",
     ])) {
       return "family";
     }
 
     if (_containsAny(lower, [
       "travail",
+      "poste",
+      "emploi",
+      "collègue",
+      "collegue",
+      "manager",
+      "bureau",
+      "rdv pro",
+      "réunion",
+      "reunion",
+      "formation",
+    ])) {
+      return "work";
+    }
+
+    if (_containsAny(lower, [
       "business",
+      "entreprise",
+      "société",
+      "societe",
       "projet",
       "client",
       "cliente",
-      "rdv pro",
-      "entreprise",
-      "formation",
-      "réunion",
-      "reunion",
+      "devis",
+      "facture",
+      "marque",
+      "startup",
     ])) {
-      return "work";
+      return "business";
     }
 
     if (_containsAny(lower, [
@@ -64,33 +110,59 @@ class MemoryEngineService {
       "sante",
       "médecin",
       "medecin",
+      "dentiste",
       "kiné",
       "kine",
-      "dentiste",
-      "sport",
-      "entraînement",
-      "entrainement",
-      "activité physique",
-      "activite physique",
+      "pharmacie",
+      "traitement",
+      "médicament",
+      "medicament",
+      "allergie",
     ])) {
       return "health";
     }
 
     if (_containsAny(lower, [
-      "maison",
-      "ménage",
-      "menage",
-      "linge",
-      "courses",
-      "repas",
-      "rangement",
-      "administratif",
+      "sport",
+      "entraînement",
+      "entrainement",
+      "fitness",
+      "musculation",
+      "foot",
+      "football",
+      "paddle",
+      "pilates",
+      "activité physique",
+      "activite physique",
     ])) {
-      return "home";
+      return "sport";
     }
 
-    if (_hasPreferenceTrigger(lower)) {
-      return "preferences";
+    if (_containsAny(lower, [
+      "cours",
+      "formation",
+      "apprendre",
+      "étude",
+      "etude",
+      "examen",
+      "école",
+      "ecole",
+      "université",
+      "universite",
+    ])) {
+      return "education";
+    }
+
+    if (_containsAny(lower, [
+      "courses",
+      "acheter",
+      "racheter",
+      "liste de courses",
+      "supermarché",
+      "supermarche",
+      "alimentaire",
+    ])) {
+      return "shopping";
     }
 
     if (_containsAny(lower, [
@@ -100,10 +172,65 @@ class MemoryEngineService {
       "hotel",
       "vol",
       "train",
+      "aéroport",
+      "aeroport",
       "déplacement",
       "deplacement",
+      "séjour",
+      "sejour",
     ])) {
       return "travel";
+    }
+
+    if (_containsAny(lower, [
+      "banque",
+      "argent",
+      "budget",
+      "loyer",
+      "facture",
+      "crédit",
+      "credit",
+      "impôt",
+      "impot",
+      "salaire",
+      "paiement",
+      "dette",
+    ])) {
+      return "finance";
+    }
+
+    if (_containsAny(lower, [
+      "maison",
+      "appartement",
+      "logement",
+      "déménagement",
+      "demenagement",
+      "ménage",
+      "menage",
+      "linge",
+      "rangement",
+      "travaux",
+    ])) {
+      return "housing";
+    }
+
+    if (_hasRoutineTrigger(lower)) {
+      return "routine";
+    }
+
+    if (_hasPreferenceTrigger(lower)) {
+      return "preferences";
+    }
+
+    if (_containsAny(lower, [
+      "anniversaire",
+      "date importante",
+      "rappel important",
+      "échéance",
+      "echeance",
+      "deadline",
+    ])) {
+      return "important_date";
     }
 
     return "personal";
