@@ -12,6 +12,7 @@ import '../services/notification_service.dart';
 import '../services/voice_service.dart';
 import '../services/memory_service.dart';
 import '../services/smart_planning_service.dart';
+import '../services/smart_planning_response_builder.dart';
 import '../services/planner_engine_service.dart';
 import '../services/conflict_engine_service.dart';
 import '../services/zelia_response_builder.dart';
@@ -488,8 +489,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (PlannerEngineService.isNegativeAnswer(text)) {
       pendingSmartPlanningTask = null;
 
-      final reply =
-          "D’accord 💕 Je garde « ${task.title} » seulement dans ta to-do list.";
+      final reply = SmartPlanningResponseBuilder.keepOnlyTodo(task.title);
 
       addAssistantMessage(reply);
       return true;
@@ -501,8 +501,8 @@ class _ChatScreenState extends State<ChatScreen> {
         return false;
       }
 
-      final reply = "Dis-moi simplement oui pour que je cherche un créneau "
-          "pour « ${task.title} », ou non pour garder seulement la to-do 💕";
+      final reply =
+          SmartPlanningResponseBuilder.askPlanningConfirmation(task.title);
 
       addAssistantMessage(reply);
       return true;

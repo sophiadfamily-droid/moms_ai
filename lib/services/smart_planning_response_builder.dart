@@ -1,0 +1,33 @@
+import '../models/task_model.dart';
+import 'smart_planning_service.dart';
+
+class SmartPlanningResponseBuilder {
+  static String keepOnlyTodo(String title) {
+    return "D’accord 💕 Je garde « $title » seulement dans ta to-do list.";
+  }
+
+  static String askPlanningConfirmation(String title) {
+    return "Dis-moi simplement oui pour que je cherche un créneau "
+        "pour « $title », ou non pour garder seulement la to-do 💕";
+  }
+
+  static String askDurationValidation({
+    required List<TaskModel> relatedTasks,
+    required bool hasGroupedTasks,
+    required String taskTitle,
+    required int estimatedMinutes,
+  }) {
+    final intro = hasGroupedTasks
+        ? "J’ai trouvé ${relatedTasks.length} to-do qui peuvent être "
+            "regroupées dans un même déplacement.\n\n"
+            "Je les ai classées par priorité :\n\n"
+            "${SmartPlanningService.priorityBulletList(relatedTasks)}\n\n"
+        : "";
+
+    final taskLabel = hasGroupedTasks ? "cette sortie" : "« $taskTitle »";
+
+    return "${intro}Pour $taskLabel, je pense qu’il faut prévoir "
+        "${SmartPlanningService.durationLabel(estimatedMinutes)}.\n\n"
+        "Tu valides ce temps ou tu veux le modifier ?";
+  }
+}
