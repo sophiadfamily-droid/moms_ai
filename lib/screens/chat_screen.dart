@@ -13,6 +13,7 @@ import '../services/voice_service.dart';
 import '../services/memory_service.dart';
 import '../services/smart_planning_service.dart';
 import '../services/planner_engine_service.dart';
+import '../services/conflict_engine_service.dart';
 import '../services/zelia_response_builder.dart';
 import '../services/action_handler_service.dart';
 
@@ -706,7 +707,7 @@ class _ChatScreenState extends State<ChatScreen> {
       pendingTravelEvent = null;
 
       addAssistantMessage(
-        "D’accord 💕 Je n’ajoute pas « $title » dans ton agenda.",
+        ConflictEngineService.cancellationMessage(title),
       );
 
       return true;
@@ -716,7 +717,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
     if (time.isEmpty) {
       addAssistantMessage(
-        "Dis-moi simplement le nouvel horaire, par exemple 11h, 15h ou 16h30 💕\n\nTu peux aussi répondre non si tu ne veux plus ajouter ce rendez-vous.",
+        ConflictEngineService.askNewTimeMessage(),
       );
       return true;
     }
@@ -730,7 +731,9 @@ class _ChatScreenState extends State<ChatScreen> {
     pendingDurationEvent = action;
 
     addAssistantMessage(
-      "Parfait 💕\n\nCombien de temps veux-tu prévoir pour « ${action["title"]} » ?",
+      ConflictEngineService.askDurationMessage(
+        action["title"]?.toString() ?? "ce rendez-vous",
+      ),
     );
 
     return true;
