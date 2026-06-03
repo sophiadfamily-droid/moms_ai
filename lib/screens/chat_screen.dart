@@ -927,6 +927,15 @@ class _ChatScreenState extends State<ChatScreen> {
       final completedPending = await tryCompletePendingDuration(text);
       if (completedPending) return;
 
+      if (MemoryEngineService.shouldSaveMemory(text)) {
+        final memory = MemoryEngineService.buildMemory(text);
+
+        await MemoryService.saveMemory(
+          text: memory["text"]?.toString() ?? text,
+          category: memory["category"]?.toString() ?? "personal",
+        );
+      }
+
       final rawMemories = await MemoryService.getMemories();
       final savedMemories = rawMemories.map((memory) {
         return {
