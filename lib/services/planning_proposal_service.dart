@@ -2,6 +2,18 @@ import '../models/task_model.dart';
 import 'smart_planning_service.dart';
 
 class PlanningProposalService {
+  static Future<dynamic> buildFromDurationPlanning({
+    required TaskModel task,
+    required String originalMessage,
+    required int actionMinutes,
+  }) async {
+    return SmartPlanningService.buildProposal(
+      task: task,
+      originalMessage: originalMessage,
+      actionMinutesOverride: actionMinutes,
+    );
+  }
+
   static Future<dynamic> buildFromTravelPlanning({
     required TaskModel task,
     required String originalMessage,

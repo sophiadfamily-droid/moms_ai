@@ -614,10 +614,10 @@ class _ChatScreenState extends State<ChatScreen> {
       return true;
     }
 
-    final proposal = await SmartPlanningService.buildProposal(
+    final proposal = await PlanningProposalService.buildFromDurationPlanning(
       task: task,
       originalMessage: originalMessage,
-      actionMinutesOverride: selectedMinutes,
+      actionMinutes: selectedMinutes,
     );
 
     if (!proposal.canPropose) {
