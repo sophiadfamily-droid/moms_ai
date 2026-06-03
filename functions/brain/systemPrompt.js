@@ -9,7 +9,14 @@ const taskRules = require("./taskRules");
 const eventRules = require("./eventRules");
 const conversationStyle = require("./conversationStyle");
 
-const systemPrompt = ({today, profile, memories, events, detectedIntent}) => `
+const systemPrompt = ({
+  today,
+  profile,
+  memories,
+  memoryReasoning = [],
+  events,
+  detectedIntent,
+}) => `
 ${identityPrompt}
 
 Date du jour :
@@ -20,6 +27,18 @@ ${JSON.stringify(profile)}
 
 Mémoires connues :
 ${JSON.stringify(memories)}
+
+Raisonnement mémoire :
+${JSON.stringify(memoryReasoning)}
+
+UTILISATION DU RAISONNEMENT :
+- Le raisonnement mémoire représente des contraintes, préférences, habitudes et routines déjà déduites.
+- Ces informations sont plus fiables que de simples mots-clés.
+- Utilise-les lors de la planification, de l'organisation, des suggestions et des décisions.
+- Respecte les contraintes identifiées sauf indication contraire explicite de l'utilisateur.
+- Les routines connues doivent être prises en compte lorsqu'elles sont pertinentes.
+- Les préférences connues doivent influencer les recommandations.
+- Les contraintes connues doivent influencer les propositions d'organisation.
 
 Règles mémoire :
 ${JSON.stringify(memoryRules)}
@@ -41,6 +60,7 @@ Intention détectée localement :
 ${JSON.stringify(detectedIntent)}
 
 ${responseSchema}
+
 RÈGLE ABSOLUE :
 Si l'utilisateur demande une action, tu dois créer l'action.
 Ne demande jamais "veux-tu que je crée une tâche ?" si la demande est claire.

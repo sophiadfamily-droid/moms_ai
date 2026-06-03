@@ -39,6 +39,44 @@ class PlannerEngineService {
         lower.contains("aucun trajet");
   }
 
+  static bool saysUnknownTime(String text) {
+    final lower = text.trim().toLowerCase();
+
+    return lower.contains("je sais pas") ||
+        lower.contains("je ne sais pas") ||
+        lower.contains("jsp") ||
+        lower.contains("pas d'heure") ||
+        lower.contains("pas dheure") ||
+        lower.contains("sans heure") ||
+        lower.contains("je connais pas l'heure") ||
+        lower.contains("je ne connais pas l'heure");
+  }
+
+  static String extractDateFromText(String text) {
+    final lower = text.trim().toLowerCase();
+
+    const days = [
+      "lundi",
+      "mardi",
+      "mercredi",
+      "jeudi",
+      "vendredi",
+      "samedi",
+      "dimanche",
+    ];
+
+    for (final day in days) {
+      if (lower.contains(day)) return day;
+    }
+
+    if (lower.contains("demain")) return "demain";
+    if (lower.contains("aujourd'hui") || lower.contains("aujourd’hui")) {
+      return "aujourd'hui";
+    }
+
+    return text.trim();
+  }
+
   static String nextMissingEventStep(
     Map<String, dynamic> action, {
     bool needsTravel = false,

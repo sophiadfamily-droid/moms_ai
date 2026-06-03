@@ -13,6 +13,7 @@ import '../services/voice_service.dart';
 import '../services/memory_service.dart';
 import '../services/memory_pipeline_service.dart';
 import '../services/memory_context_builder_service.dart';
+import '../services/memory_reasoning_service.dart';
 import '../services/smart_planning_service.dart';
 import '../services/smart_planning_response_builder.dart';
 import '../services/planning_proposal_service.dart';
@@ -558,6 +559,27 @@ class _ChatScreenState extends State<ChatScreen> {
     return true;
   }
 
+  Future<List<Map<String, dynamic>>> buildCurrentMemoryReasoning() async {
+    final rawMemories = await MemoryService.getMemories();
+
+    final savedMemories = rawMemories.map((memory) {
+      return {
+        "text": memory["text"]?.toString() ?? "",
+        "category": memory["category"]?.toString() ?? "personal",
+        "importance":
+            int.tryParse(memory["importance"]?.toString() ?? "0") ?? 0,
+      };
+    }).toList();
+
+    final relevantMemories =
+        MemoryContextBuilderService.buildRelevantMemoryPayload(
+      memories: savedMemories,
+      limit: 12,
+    );
+
+    return MemoryReasoningService.buildReasoning(relevantMemories);
+  }
+
   Future<bool> tryCompletePendingDurationPlanning(String text) async {
     final pending = pendingDurationPlanningTask;
 
@@ -620,6 +642,7 @@ class _ChatScreenState extends State<ChatScreen> {
       task: task,
       originalMessage: originalMessage,
       actionMinutes: selectedMinutes,
+      memoryReasoning: await buildCurrentMemoryReasoning(),
     );
 
     if (!proposal.canPropose) {
@@ -669,6 +692,7 @@ class _ChatScreenState extends State<ChatScreen> {
       actionMinutes: actionMinutes,
       travelGoMinutes: travelGoMinutes,
       groupedTasks: groupedTasks,
+      memoryReasoning: await buildCurrentMemoryReasoning(),
     );
 
     if (!proposal.canPropose) {
@@ -729,8 +753,19 @@ class _ChatScreenState extends State<ChatScreen> {
     if (pendingDateEvent == null) return false;
 
     final action = Map<String, dynamic>.from(pendingDateEvent!);
-    action["date"] = text.trim();
+    action["date"] = PlannerEngineService.extractDateFromText(text);
     pendingDateEvent = null;
+
+    if (PlannerEngineService.saysUnknownTime(text)) {
+      final title = action["title"]?.toString() ?? "ce rendez-vous";
+
+      addAssistantMessage(
+        "C’est noté pour « $title » 💕\n\n"
+        "Je peux te proposer un créneau disponible si tu veux.",
+      );
+
+      return true;
+    }
 
     final nextStep = PlannerEngineService.nextMissingEventStep(action);
 
@@ -953,6 +988,9 @@ class _ChatScreenState extends State<ChatScreen> {
         limit: 12,
       );
 
+      final memoryReasoning =
+          MemoryReasoningService.buildReasoning(relevantMemories);
+
       final savedEvents = await EventService.getEvents();
       final existingEvents = savedEvents.map((event) {
         return {
@@ -975,6 +1013,7 @@ class _ChatScreenState extends State<ChatScreen> {
           "message": text,
           "profile": widget.profile.toJson(),
           "memories": relevantMemories,
+          "memoryReasoning": memoryReasoning,
           "events": existingEvents,
         }),
       );

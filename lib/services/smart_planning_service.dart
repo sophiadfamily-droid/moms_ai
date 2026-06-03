@@ -429,16 +429,41 @@ class SmartPlanningService {
     return false;
   }
 
+  static bool shouldAvoidMorning(
+    List<Map<String, dynamic>> memoryReasoning,
+  ) {
+    return memoryReasoning.any((reasoning) {
+      return reasoning["type"] == "schedule_constraint" &&
+          reasoning["avoidMorning"] == true;
+    });
+  }
+
+  static bool prefersAfternoon(
+    List<Map<String, dynamic>> memoryReasoning,
+  ) {
+    return memoryReasoning.any((reasoning) {
+      return reasoning["type"] == "schedule_preference" &&
+          reasoning["preferredPeriod"] == "afternoon";
+    });
+  }
+
   static DateTime? findBestSlot({
     required DateTime targetDate,
     required int totalMinutes,
     required List<EventModel> events,
+    int? preferredStartHour,
+    int? preferredEndHour,
+    bool avoidMorning = false,
   }) {
+    final effectiveStartHour =
+        preferredStartHour ?? (avoidMorning ? 12 : dayStartHour);
+    final effectiveEndHour = preferredEndHour ?? dayEndHour;
+
     final start = DateTime(
       targetDate.year,
       targetDate.month,
       targetDate.day,
-      dayStartHour,
+      effectiveStartHour,
       0,
     );
 
@@ -446,7 +471,7 @@ class SmartPlanningService {
       targetDate.year,
       targetDate.month,
       targetDate.day,
-      dayEndHour,
+      effectiveEndHour,
       0,
     );
 
@@ -753,6 +778,7 @@ class SmartPlanningService {
     int travelGoMinutes = 0,
     int travelBackMinutes = 0,
     int? actionMinutesOverride,
+    List<Map<String, dynamic>> memoryReasoning = const [],
   }) async {
     final events = await EventService.getEvents();
     final safeTasks = groupedTasks.isEmpty ? [mainTask] : groupedTasks;
@@ -770,6 +796,9 @@ class SmartPlanningService {
       targetDate: targetDate,
       totalMinutes: totalMinutes,
       events: events,
+      avoidMorning: shouldAvoidMorning(memoryReasoning),
+      preferredStartHour: prefersAfternoon(memoryReasoning) ? 13 : null,
+      preferredEndHour: prefersAfternoon(memoryReasoning) ? 17 : null,
     );
 
     final title = groupedTasksLabel(safeTasks);
@@ -830,6 +859,7 @@ class SmartPlanningService {
     int travelGoMinutes = 0,
     int travelBackMinutes = 0,
     int? actionMinutesOverride,
+    List<Map<String, dynamic>> memoryReasoning = const [],
   }) async {
     final events = await EventService.getEvents();
 

@@ -6,11 +6,13 @@ class PlanningProposalService {
     required TaskModel task,
     required String originalMessage,
     required int actionMinutes,
+    List<Map<String, dynamic>> memoryReasoning = const [],
   }) async {
     return SmartPlanningService.buildProposal(
       task: task,
       originalMessage: originalMessage,
       actionMinutesOverride: actionMinutes,
+      memoryReasoning: memoryReasoning,
     );
   }
 
@@ -20,6 +22,7 @@ class PlanningProposalService {
     required int actionMinutes,
     required int travelGoMinutes,
     required List<TaskModel> groupedTasks,
+    List<Map<String, dynamic>> memoryReasoning = const [],
   }) async {
     if (groupedTasks.length > 1) {
       return SmartPlanningService.buildGroupedProposal(
@@ -29,6 +32,7 @@ class PlanningProposalService {
         travelGoMinutes: travelGoMinutes,
         travelBackMinutes: travelGoMinutes,
         actionMinutesOverride: actionMinutes > 0 ? actionMinutes : null,
+        memoryReasoning: memoryReasoning,
       );
     }
 
@@ -38,6 +42,7 @@ class PlanningProposalService {
       travelGoMinutes: travelGoMinutes,
       travelBackMinutes: travelGoMinutes,
       actionMinutesOverride: actionMinutes > 0 ? actionMinutes : null,
+      memoryReasoning: memoryReasoning,
     );
   }
 }
