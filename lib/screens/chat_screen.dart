@@ -11,7 +11,7 @@ import '../services/event_service.dart';
 import '../services/notification_service.dart';
 import '../services/voice_service.dart';
 import '../services/memory_service.dart';
-import '../services/memory_engine_service.dart';
+import '../services/memory_pipeline_service.dart';
 import '../services/memory_context_builder_service.dart';
 import '../services/smart_planning_service.dart';
 import '../services/smart_planning_response_builder.dart';
@@ -928,8 +928,8 @@ class _ChatScreenState extends State<ChatScreen> {
       final completedPending = await tryCompletePendingDuration(text);
       if (completedPending) return;
 
-      if (MemoryEngineService.shouldSaveMemory(text)) {
-        final memory = MemoryEngineService.buildMemory(text);
+      if (MemoryPipelineService.shouldProcessMemory(text)) {
+        final memory = MemoryPipelineService.buildMemory(text);
 
         await MemoryService.saveMemory(
           text: memory["text"]?.toString() ?? text,
@@ -1058,9 +1058,9 @@ class _ChatScreenState extends State<ChatScreen> {
     final text = memory["text"]?.toString() ?? "";
 
     if (text.trim().isEmpty) return;
-    if (!MemoryEngineService.shouldSaveMemory(text)) return;
+    if (!MemoryPipelineService.shouldProcessMemory(text)) return;
 
-    final builtMemory = MemoryEngineService.buildMemory(text);
+    final builtMemory = MemoryPipelineService.buildMemory(text);
 
     await MemoryService.saveMemory(
       text: builtMemory["text"]?.toString() ?? text,
