@@ -13,6 +13,7 @@ import '../services/voice_service.dart';
 import '../services/memory_service.dart';
 import '../services/smart_planning_service.dart';
 import '../services/smart_planning_response_builder.dart';
+import '../services/planning_proposal_service.dart';
 import '../services/planner_engine_service.dart';
 import '../services/conflict_engine_service.dart';
 import '../services/zelia_response_builder.dart';
@@ -660,22 +661,13 @@ class _ChatScreenState extends State<ChatScreen> {
 
     pendingTravelPlanningTask = null;
 
-    final proposal = groupedTasks.length > 1
-        ? await SmartPlanningService.buildGroupedProposal(
-            mainTask: task,
-            originalMessage: originalMessage,
-            groupedTasks: groupedTasks,
-            travelGoMinutes: travelGoMinutes,
-            travelBackMinutes: travelGoMinutes,
-            actionMinutesOverride: actionMinutes > 0 ? actionMinutes : null,
-          )
-        : await SmartPlanningService.buildProposal(
-            task: task,
-            originalMessage: originalMessage,
-            travelGoMinutes: travelGoMinutes,
-            travelBackMinutes: travelGoMinutes,
-            actionMinutesOverride: actionMinutes > 0 ? actionMinutes : null,
-          );
+    final proposal = await PlanningProposalService.buildFromTravelPlanning(
+      task: task,
+      originalMessage: originalMessage,
+      actionMinutes: actionMinutes,
+      travelGoMinutes: travelGoMinutes,
+      groupedTasks: groupedTasks,
+    );
 
     if (!proposal.canPropose) {
       addAssistantMessage(proposal.confirmationMessage);
