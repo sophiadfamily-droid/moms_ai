@@ -544,18 +544,12 @@ class _ChatScreenState extends State<ChatScreen> {
       "groupedTasks": relatedTasks,
     };
 
-    final intro = hasGroupedTasks
-        ? "J’ai trouvé ${relatedTasks.length} to-do qui peuvent être "
-            "regroupées dans un même déplacement.\n\n"
-            "Je les ai classées par priorité :\n\n"
-            "${SmartPlanningService.priorityBulletList(relatedTasks)}\n\n"
-        : "";
-
-    final taskLabel = hasGroupedTasks ? "cette sortie" : "« ${task.title} »";
-
-    final reply = "${intro}Pour $taskLabel, je pense qu’il faut prévoir "
-        "${SmartPlanningService.durationLabel(estimatedMinutes)}.\n\n"
-        "Tu valides ce temps ou tu veux le modifier ?";
+    final reply = SmartPlanningResponseBuilder.askDurationValidation(
+      relatedTasks: relatedTasks,
+      hasGroupedTasks: hasGroupedTasks,
+      taskTitle: task.title,
+      estimatedMinutes: estimatedMinutes,
+    );
 
     addAssistantMessage(reply);
     return true;
