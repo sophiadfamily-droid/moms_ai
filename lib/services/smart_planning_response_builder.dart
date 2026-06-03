@@ -11,6 +11,10 @@ class SmartPlanningResponseBuilder {
         "pour « $title », ou non pour garder seulement la to-do 💕";
   }
 
+  static String askTravelDurationExample() {
+    return "Dis-moi juste le temps du trajet aller, par exemple 10 min, 15 min ou 25 min 💕";
+  }
+
   static String askDurationExample() {
     return "Dis-moi par exemple : oui, 30 min, 1h ou 1h30 💕";
   }

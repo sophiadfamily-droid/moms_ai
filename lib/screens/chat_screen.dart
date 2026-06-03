@@ -637,8 +637,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final travelGoMinutes = SmartPlanningService.parseTravelMinutes(text);
 
     if (travelGoMinutes <= 0) {
-      const reply =
-          "Dis-moi juste le temps du trajet aller, par exemple 10 min, 15 min ou 25 min 💕";
+      final reply = SmartPlanningResponseBuilder.askTravelDurationExample();
 
       addAssistantMessage(reply);
       return true;
