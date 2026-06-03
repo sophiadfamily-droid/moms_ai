@@ -409,7 +409,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
     if (proposal == null) return false;
 
-    if (SmartPlanningService.isNegativeAnswer(text)) {
+    if (PlannerEngineService.isNegativeAnswer(text)) {
       pendingSmartPlanningProposal = null;
 
       const reply =
@@ -419,7 +419,7 @@ class _ChatScreenState extends State<ChatScreen> {
       return true;
     }
 
-    if (!SmartPlanningService.isPositiveAnswer(text)) {
+    if (!PlannerEngineService.isPositiveAnswer(text)) {
       const reply =
           "Dis-moi simplement oui pour réserver ce créneau, ou non pour ne rien ajouter à l’agenda 💕";
 
@@ -485,7 +485,7 @@ class _ChatScreenState extends State<ChatScreen> {
       return false;
     }
 
-    if (SmartPlanningService.isNegativeAnswer(text)) {
+    if (PlannerEngineService.isNegativeAnswer(text)) {
       pendingSmartPlanningTask = null;
 
       final reply =
@@ -495,7 +495,7 @@ class _ChatScreenState extends State<ChatScreen> {
       return true;
     }
 
-    if (!SmartPlanningService.isPositiveAnswer(text)) {
+    if (!PlannerEngineService.isPositiveAnswer(text)) {
       if (looksLikeNewActionRequest(text)) {
         pendingSmartPlanningTask = null;
         return false;

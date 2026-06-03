@@ -14,6 +14,22 @@ class PlannerEngineService {
         lower.contains("ne l’enregistre pas");
   }
 
+  static bool isPositiveAnswer(String text) {
+    final lower = text.trim().toLowerCase();
+
+    return lower == "oui" ||
+        lower == "yes" ||
+        lower == "ok" ||
+        lower == "d’accord" ||
+        lower == "daccord" ||
+        lower == "vas-y" ||
+        lower == "vasy" ||
+        lower == "réserve" ||
+        lower == "reserve" ||
+        lower.contains("oui vas") ||
+        lower.contains("tu peux");
+  }
+
   static bool isNoTravelAnswer(String text) {
     final lower = text.trim().toLowerCase();
 
