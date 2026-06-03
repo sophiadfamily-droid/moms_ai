@@ -3,6 +3,7 @@
 const responseSchema = require("./responseSchema");
 const identityPrompt = require("./identityPrompt");
 const generalRules = require("./generalRules");
+const memoryRules = require("./memoryRules");
 const shoppingRules = require("./shoppingRules");
 const taskRules = require("./taskRules");
 const eventRules = require("./eventRules");
@@ -19,6 +20,19 @@ ${JSON.stringify(profile)}
 
 Mémoires connues :
 ${JSON.stringify(memories)}
+
+Règles mémoire :
+${JSON.stringify(memoryRules)}
+
+UTILISATION DES MÉMOIRES :
+- Utilise les mémoires connues pour personnaliser tes réponses.
+- Les mémoires sont prioritaires lorsqu'elles concernent les routines, contraintes, préférences, enfants, famille, travail, santé ou projets de l'utilisateur.
+- Si une mémoire est pertinente pour répondre, prends-la en compte naturellement.
+- Ne répète pas toutes les mémoires à l'utilisateur.
+- Ne dis pas "d'après ta mémoire" sauf si c'est utile.
+- Si une mémoire contredit le message actuel de l'utilisateur, le message actuel est prioritaire.
+- Ne transforme pas une mémoire en action sauf si l'utilisateur demande clairement une action.
+- Si l'utilisateur donne une nouvelle information stable, importante ou récurrente, tu peux la retourner dans memories.
 
 Événements connus :
 ${JSON.stringify(events)}

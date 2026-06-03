@@ -12,6 +12,7 @@ import '../services/notification_service.dart';
 import '../services/voice_service.dart';
 import '../services/memory_service.dart';
 import '../services/memory_engine_service.dart';
+import '../services/memory_context_builder_service.dart';
 import '../services/smart_planning_service.dart';
 import '../services/smart_planning_response_builder.dart';
 import '../services/planning_proposal_service.dart';
@@ -941,8 +942,16 @@ class _ChatScreenState extends State<ChatScreen> {
         return {
           "text": memory["text"]?.toString() ?? "",
           "category": memory["category"]?.toString() ?? "personal",
+          "importance":
+              int.tryParse(memory["importance"]?.toString() ?? "0") ?? 0,
         };
       }).toList();
+
+      final relevantMemories =
+          MemoryContextBuilderService.buildRelevantMemoryPayload(
+        memories: savedMemories,
+        limit: 12,
+      );
 
       final savedEvents = await EventService.getEvents();
       final existingEvents = savedEvents.map((event) {
@@ -965,7 +974,7 @@ class _ChatScreenState extends State<ChatScreen> {
         body: jsonEncode({
           "message": text,
           "profile": widget.profile.toJson(),
-          "memories": savedMemories,
+          "memories": relevantMemories,
           "events": existingEvents,
         }),
       );
@@ -1049,12 +1058,13 @@ class _ChatScreenState extends State<ChatScreen> {
     final text = memory["text"]?.toString() ?? "";
 
     if (text.trim().isEmpty) return;
+    if (!MemoryEngineService.shouldSaveMemory(text)) return;
 
-    final category = MemoryEngineService.categorizeMemory(text);
+    final builtMemory = MemoryEngineService.buildMemory(text);
 
     await MemoryService.saveMemory(
-      text: text,
-      category: category,
+      text: builtMemory["text"]?.toString() ?? text,
+      category: builtMemory["category"]?.toString() ?? "personal",
     );
   }
 
