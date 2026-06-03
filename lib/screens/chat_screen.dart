@@ -589,7 +589,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     if (selectedMinutes <= 0) {
-      const reply = "Dis-moi par exemple : oui, 30 min, 1h ou 1h30 💕";
+      final reply = SmartPlanningResponseBuilder.askDurationExample();
 
       addAssistantMessage(reply);
       return true;
@@ -605,10 +605,9 @@ class _ChatScreenState extends State<ChatScreen> {
         "groupedTasks": groupedTasks,
       };
 
-      final reply =
-          "Pour « ${task.title} », il faut prévoir un déplacement.\n\n"
-          "Combien de minutes faut-il compter pour le trajet aller ? "
-          "Je compterai le même temps pour le retour.";
+      final reply = SmartPlanningResponseBuilder.askTravelForOutsideTask(
+        task.title,
+      );
 
       addAssistantMessage(reply);
       return true;

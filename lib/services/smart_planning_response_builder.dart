@@ -11,6 +11,16 @@ class SmartPlanningResponseBuilder {
         "pour « $title », ou non pour garder seulement la to-do 💕";
   }
 
+  static String askDurationExample() {
+    return "Dis-moi par exemple : oui, 30 min, 1h ou 1h30 💕";
+  }
+
+  static String askTravelForOutsideTask(String title) {
+    return "Pour « $title », il faut prévoir un déplacement.\n\n"
+        "Combien de minutes faut-il compter pour le trajet aller ? "
+        "Je compterai le même temps pour le retour.";
+  }
+
   static String askDurationValidation({
     required List<TaskModel> relatedTasks,
     required bool hasGroupedTasks,
