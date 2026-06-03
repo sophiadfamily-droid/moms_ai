@@ -14,7 +14,10 @@ class PlannerEngineService {
         lower.contains("ne l’enregistre pas");
   }
 
-  static String nextMissingEventStep(Map<String, dynamic> action) {
+  static String nextMissingEventStep(
+    Map<String, dynamic> action, {
+    bool needsTravel = false,
+  }) {
     final date = action["date"]?.toString().trim() ?? "";
     final time = action["time"]?.toString().trim() ?? "";
     final durationMinutes = int.tryParse(
@@ -25,6 +28,7 @@ class PlannerEngineService {
     if (date.isEmpty) return "date";
     if (time.isEmpty) return "time";
     if (durationMinutes <= 0) return "duration";
+    if (needsTravel) return "travel";
 
     return "ready";
   }

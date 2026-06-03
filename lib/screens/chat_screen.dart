@@ -860,7 +860,12 @@ class _ChatScreenState extends State<ChatScreen> {
     action["needsDuration"] = false;
     pendingDurationEvent = null;
 
-    if (eventNeedsTravel(action)) {
+    final nextStep = PlannerEngineService.nextMissingEventStep(
+      action,
+      needsTravel: eventNeedsTravel(action),
+    );
+
+    if (nextStep == "travel") {
       pendingTravelEvent = action;
 
       final title = action["title"]?.toString() ?? "ce rendez-vous";
@@ -874,14 +879,18 @@ class _ChatScreenState extends State<ChatScreen> {
       return true;
     }
 
-    final conflictText = await handleAction(action);
+    if (nextStep == "ready") {
+      final conflictText = await handleAction(action);
 
-    final reply = conflictText.isNotEmpty
-        ? conflictText
-        : "C’est noté 💕 J’ai bloqué ce créneau dans l’agenda.";
+      final reply = conflictText.isNotEmpty
+          ? conflictText
+          : "C’est noté 💕 J’ai bloqué ce créneau dans l’agenda.";
 
-    addAssistantMessage(reply);
-    return true;
+      addAssistantMessage(reply);
+      return true;
+    }
+
+    return false;
   }
 
   Future<void> sendMessage() async {
