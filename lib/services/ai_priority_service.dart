@@ -1,47 +1,41 @@
 import '../models/task_model.dart';
+import 'priority_engine_service.dart';
+import 'time_priority_service.dart';
 
 class AiPriorityService {
   static int calculatePriority(TaskModel task) {
     int score = 40;
 
-    final title = task.title.toLowerCase();
-    final notes = task.notes.toLowerCase();
-    final dueDate = task.dueDate.toLowerCase();
     final planning = task.planning.toLowerCase();
     final priority = task.priority.toLowerCase();
 
-    final text = '$title $notes $dueDate';
+    final text = '${task.title} ${task.notes} ${task.dueDate}'.toLowerCase();
 
-    if (task.isImportant || priority == 'haute') score += 25;
-    if (dueDate.trim().isNotEmpty) score += 15;
+    final analysis = PriorityEngineService.analyze(text);
 
-    if (text.contains('urgent') ||
-        text.contains('aujourd') ||
-        text.contains('demain') ||
-        text.contains('deadline') ||
-        text.contains('avant') ||
-        text.contains('important')) {
-      score += 20;
+    if (task.isImportant || priority == 'haute') {
+      score += 25;
     }
 
-    if (text.contains('appeler') ||
-        text.contains('payer') ||
-        text.contains('envoyer') ||
-        text.contains('répondre') ||
-        text.contains('repondre') ||
-        text.contains('rdv') ||
-        text.contains('rendez-vous') ||
-        text.contains('banque') ||
-        text.contains('edf') ||
-        text.contains('facture') ||
-        text.contains('administratif') ||
-        text.contains('dossier')) {
-      score += 10;
+    if (task.dueDate.trim().isNotEmpty) {
+      score += 15;
     }
 
-    if (planning == 'aujourd’hui' || planning == "aujourd'hui") score += 15;
-    if (planning == 'cette semaine') score += 8;
-    if (planning == 'plus tard') score -= 15;
+    score += (analysis['score'] as int) * 3;
+
+    score += TimePriorityService.urgencyScore(text) * 4;
+
+    if (planning == 'aujourd’hui' || planning == "aujourd'hui") {
+      score += 15;
+    }
+
+    if (planning == 'cette semaine') {
+      score += 8;
+    }
+
+    if (planning == 'plus tard') {
+      score -= 15;
+    }
 
     return score.clamp(0, 100);
   }
