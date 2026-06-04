@@ -1,6 +1,7 @@
 import '../models/event_model.dart';
 import '../models/task_model.dart';
 import 'event_service.dart';
+import 'planning_score_service.dart';
 import 'task_service.dart';
 
 class SmartPlanningProposal {
@@ -518,6 +519,9 @@ class SmartPlanningService {
       0,
     );
 
+    DateTime? bestSlot;
+    var bestScore = -1;
+
     var cursor = start;
 
     while (cursor.add(Duration(minutes: totalMinutes)).isBefore(endLimit) ||
@@ -541,13 +545,25 @@ class SmartPlanningService {
       );
 
       if (!hasEventConflict && !hasFamilyConflict && !hasReasoningConflict) {
-        return cursor;
+        final score = PlanningScoreService.scoreSlot(
+          start: cursor,
+          end: slotEnd,
+          events: events,
+          reasoning: reasoning,
+          preferredStartHour: preferredStartHour,
+          preferredEndHour: preferredEndHour,
+        );
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestSlot = cursor;
+        }
       }
 
       cursor = cursor.add(const Duration(minutes: 15));
     }
 
-    return null;
+    return bestSlot;
   }
 
   static String durationLabel(int minutes) {
