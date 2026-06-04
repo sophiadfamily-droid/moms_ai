@@ -797,6 +797,37 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<bool> tryCompletePendingTimeEvent(String text) async {
     if (pendingTimeEvent == null) return false;
 
+    final action = Map<String, dynamic>.from(pendingTimeEvent!);
+
+    if (PlannerEngineService.saysUnknownTime(text)) {
+      pendingTimeEvent = null;
+
+      final title = action["title"]?.toString() ?? "ce rendez-vous";
+      final date = action["date"]?.toString() ?? "";
+
+      pendingDurationPlanningTask = {
+        "task": TaskModel(
+          title: title,
+          category: action["category"]?.toString() ?? "Personnel",
+          isDone: false,
+          createdAt: DateTime.now(),
+          planning: date.isNotEmpty ? date : "Cette semaine",
+        ),
+        "originalMessage": "$title $date",
+        "type": action["type"]?.toString() ?? "rendez-vous",
+        "outside": true,
+        "estimatedMinutes": 60,
+        "groupedTasks": <TaskModel>[],
+      };
+
+      addAssistantMessage(
+        "D’accord 💕 Je vais te proposer un créneau disponible pour « $title ».\n\n"
+        "Combien de temps veux-tu prévoir pour ce rendez-vous ?",
+      );
+
+      return true;
+    }
+
     final time = normalizeTime(text);
 
     if (time.isEmpty) {
@@ -806,7 +837,6 @@ class _ChatScreenState extends State<ChatScreen> {
       return true;
     }
 
-    final action = Map<String, dynamic>.from(pendingTimeEvent!);
     action["time"] = time;
     pendingTimeEvent = null;
 
