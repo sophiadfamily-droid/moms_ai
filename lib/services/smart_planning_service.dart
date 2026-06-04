@@ -881,6 +881,9 @@ class SmartPlanningService {
       targetDate: targetDate,
       totalMinutes: totalMinutes,
       events: events,
+      avoidMorning: shouldAvoidMorning(memoryReasoning),
+      preferredStartHour: prefersAfternoon(memoryReasoning) ? 13 : null,
+      preferredEndHour: prefersAfternoon(memoryReasoning) ? 17 : null,
     );
 
     if (slot == null) {

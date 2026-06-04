@@ -156,19 +156,29 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   String normalizeTime(String value) {
-    final clean = value.trim().toLowerCase().replaceAll("h", ":");
+    final lower = value.trim().toLowerCase();
 
-    if (clean.isEmpty) return "";
+    if (lower.isEmpty) return "";
+    if (PlannerEngineService.saysUnknownTime(lower)) return "";
+
+    final clean = lower.replaceAll("h", ":");
+
+    if (!RegExp(r'^\\d{1,2}(:\\d{1,2})?\$').hasMatch(clean)) {
+      return "";
+    }
 
     if (!clean.contains(":")) {
       return "${clean.padLeft(2, "0")}:00";
     }
 
     final parts = clean.split(":");
-    final hour = parts.isNotEmpty ? parts[0].padLeft(2, "0") : "00";
-    final minute = parts.length > 1 ? parts[1].padLeft(2, "0") : "00";
+    final hour = int.tryParse(parts[0]) ?? -1;
+    final minute = parts.length > 1 ? int.tryParse(parts[1]) ?? -1 : 0;
 
-    return "$hour:$minute";
+    if (hour < 0 || hour > 23) return "";
+    if (minute < 0 || minute > 59) return "";
+
+    return "${hour.toString().padLeft(2, "0")}:${minute.toString().padLeft(2, "0")}";
   }
 
   String buildStartDateTimeIso({
