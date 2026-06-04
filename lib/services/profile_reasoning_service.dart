@@ -1,4 +1,5 @@
 import '../models/user_profile.dart';
+import 'travel_context_service.dart';
 
 class ProfileReasoningService {
   static List<Map<String, dynamic>> buildReasoning(UserProfile profile) {
@@ -17,42 +18,39 @@ class ProfileReasoningService {
     final reasoning = <Map<String, dynamic>>[];
 
     for (final range in profile.workTimeRanges) {
-      if (range.startTime.trim().isEmpty || range.endTime.trim().isEmpty) {
-        continue;
-      }
+      if (!_hasValidTimeRange(range)) continue;
 
-      reasoning.add({
-        "type": "blocked_period",
-        "sourceType": "work",
-        "label": range.label.isNotEmpty ? range.label : "Travail",
-        "days": profile.workDays,
-        "startTime": range.startTime,
-        "endTime": range.endTime,
-        "travelMinutes": range.travelMinutes,
-        "notes": range.notes,
-      });
+      reasoning.add(_blockedPeriod(
+        sourceType: "work",
+        label: range.label.isNotEmpty ? range.label : "Travail",
+        days: profile.workDays,
+        startTime: range.startTime,
+        endTime: range.endTime,
+        travelMinutes: range.travelMinutes,
+        notes: range.notes,
+      ));
     }
 
     if (profile.morningStart.isNotEmpty && profile.morningEnd.isNotEmpty) {
-      reasoning.add({
-        "type": "blocked_period",
-        "sourceType": "work",
-        "label": "Travail matin",
-        "days": profile.workDays,
-        "startTime": profile.morningStart,
-        "endTime": profile.morningEnd,
-      });
+      reasoning.add(_blockedPeriod(
+        sourceType: "work",
+        label: "Travail matin",
+        days: profile.workDays,
+        startTime: profile.morningStart,
+        endTime: profile.morningEnd,
+        travelMinutes: profile.transportInfo,
+      ));
     }
 
     if (profile.afternoonStart.isNotEmpty && profile.afternoonEnd.isNotEmpty) {
-      reasoning.add({
-        "type": "blocked_period",
-        "sourceType": "work",
-        "label": "Travail après-midi",
-        "days": profile.workDays,
-        "startTime": profile.afternoonStart,
-        "endTime": profile.afternoonEnd,
-      });
+      reasoning.add(_blockedPeriod(
+        sourceType: "work",
+        label: "Travail après-midi",
+        days: profile.workDays,
+        startTime: profile.afternoonStart,
+        endTime: profile.afternoonEnd,
+        travelMinutes: profile.transportInfo,
+      ));
     }
 
     if (_containsAny(profile.workHours, [
@@ -79,21 +77,18 @@ class ProfileReasoningService {
 
     for (final child in profile.children) {
       for (final range in child.schoolTimeRanges) {
-        if (range.startTime.trim().isEmpty || range.endTime.trim().isEmpty) {
-          continue;
-        }
+        if (!_hasValidTimeRange(range)) continue;
 
-        reasoning.add({
-          "type": "blocked_period",
-          "sourceType": "child_school",
-          "label": child.school.isNotEmpty
+        reasoning.add(_blockedPeriod(
+          sourceType: "child_school",
+          label: child.school.isNotEmpty
               ? "École ${child.firstName} - ${child.school}"
               : "École ${child.firstName}",
-          "startTime": range.startTime,
-          "endTime": range.endTime,
-          "travelMinutes": range.travelMinutes,
-          "notes": range.notes,
-        });
+          startTime: range.startTime,
+          endTime: range.endTime,
+          travelMinutes: range.travelMinutes,
+          notes: range.notes,
+        ));
       }
     }
 
@@ -108,23 +103,22 @@ class ProfileReasoningService {
     for (final child in profile.children) {
       for (final activity in child.activities) {
         for (final range in activity.timeRanges) {
-          if (range.startTime.trim().isEmpty || range.endTime.trim().isEmpty) {
-            continue;
-          }
+          if (!_hasValidTimeRange(range)) continue;
 
-          reasoning.add({
-            "type": "blocked_period",
-            "sourceType": "child_activity",
-            "label": "${activity.title} - ${child.firstName}",
-            "days": activity.days,
-            "startTime": range.startTime,
-            "endTime": range.endTime,
-            "travelMinutes": activity.travelMinutes.isNotEmpty
-                ? activity.travelMinutes
-                : range.travelMinutes,
-            "location": activity.location,
-            "notes": activity.notes,
-          });
+          final travelMinutes = activity.travelMinutes.isNotEmpty
+              ? activity.travelMinutes
+              : range.travelMinutes;
+
+          reasoning.add(_blockedPeriod(
+            sourceType: "child_activity",
+            label: "${activity.title} - ${child.firstName}",
+            days: activity.days,
+            startTime: range.startTime,
+            endTime: range.endTime,
+            travelMinutes: travelMinutes,
+            location: activity.location,
+            notes: activity.notes,
+          ));
         }
       }
     }
@@ -139,23 +133,22 @@ class ProfileReasoningService {
 
     for (final activity in profile.personalActivities) {
       for (final range in activity.timeRanges) {
-        if (range.startTime.trim().isEmpty || range.endTime.trim().isEmpty) {
-          continue;
-        }
+        if (!_hasValidTimeRange(range)) continue;
 
-        reasoning.add({
-          "type": "blocked_period",
-          "sourceType": "personal_activity",
-          "label": activity.title,
-          "days": activity.days,
-          "startTime": range.startTime,
-          "endTime": range.endTime,
-          "travelMinutes": activity.travelMinutes.isNotEmpty
-              ? activity.travelMinutes
-              : range.travelMinutes,
-          "location": activity.location,
-          "notes": activity.notes,
-        });
+        final travelMinutes = activity.travelMinutes.isNotEmpty
+            ? activity.travelMinutes
+            : range.travelMinutes;
+
+        reasoning.add(_blockedPeriod(
+          sourceType: "personal_activity",
+          label: activity.title,
+          days: activity.days,
+          startTime: range.startTime,
+          endTime: range.endTime,
+          travelMinutes: travelMinutes,
+          location: activity.location,
+          notes: activity.notes,
+        ));
       }
     }
 
@@ -206,6 +199,41 @@ class ProfileReasoningService {
     }
 
     return reasoning;
+  }
+
+  static Map<String, dynamic> _blockedPeriod({
+    required String sourceType,
+    required String label,
+    required String startTime,
+    required String endTime,
+    List<String> days = const [],
+    dynamic travelMinutes,
+    String location = "",
+    String notes = "",
+  }) {
+    final travel = TravelContextService.buildTravelMetadata(
+      travelMinutes: travelMinutes,
+      origin: "",
+      destination: location,
+      mode: "unknown",
+      provider: "manual_profile",
+    );
+
+    return {
+      "type": "blocked_period",
+      "sourceType": sourceType,
+      "label": label,
+      "days": days,
+      "startTime": startTime,
+      "endTime": endTime,
+      "location": location,
+      "notes": notes,
+      ...travel,
+    };
+  }
+
+  static bool _hasValidTimeRange(TimeRangeModel range) {
+    return range.startTime.trim().isNotEmpty && range.endTime.trim().isNotEmpty;
   }
 
   static bool _containsAny(String text, List<String> values) {

@@ -443,10 +443,28 @@ class SmartPlanningService {
 
       if (startTime.trim().isEmpty || endTime.trim().isEmpty) continue;
 
-      final blockedStart = _dateTimeFromTime(start, startTime);
-      final blockedEnd = _dateTimeFromTime(start, endTime);
+      final rawBlockedStart = _dateTimeFromTime(start, startTime);
+      final rawBlockedEnd = _dateTimeFromTime(start, endTime);
 
-      if (blockedStart == null || blockedEnd == null) continue;
+      if (rawBlockedStart == null || rawBlockedEnd == null) continue;
+
+      final travelBeforeMinutes = int.tryParse(
+            item["travelBeforeMinutes"]?.toString() ?? "0",
+          ) ??
+          0;
+
+      final travelAfterMinutes = int.tryParse(
+            item["travelAfterMinutes"]?.toString() ?? "0",
+          ) ??
+          0;
+
+      final blockedStart = rawBlockedStart.subtract(
+        Duration(minutes: travelBeforeMinutes),
+      );
+
+      final blockedEnd = rawBlockedEnd.add(
+        Duration(minutes: travelAfterMinutes),
+      );
 
       final overlaps = start.isBefore(blockedEnd) && blockedStart.isBefore(end);
       if (overlaps) return true;
