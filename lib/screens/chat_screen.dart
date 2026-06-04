@@ -17,6 +17,7 @@ import '../services/memory_reasoning_service.dart';
 import '../services/smart_planning_service.dart';
 import '../services/smart_planning_response_builder.dart';
 import '../services/planning_proposal_service.dart';
+import '../services/profile_reasoning_service.dart';
 import '../services/planner_engine_service.dart';
 import '../services/conflict_engine_service.dart';
 import '../services/zelia_response_builder.dart';
@@ -569,7 +570,7 @@ class _ChatScreenState extends State<ChatScreen> {
     return true;
   }
 
-  Future<List<Map<String, dynamic>>> buildCurrentMemoryReasoning() async {
+  Future<List<Map<String, dynamic>>> buildCurrentPlanningReasoning() async {
     final rawMemories = await MemoryService.getMemories();
 
     final savedMemories = rawMemories.map((memory) {
@@ -587,7 +588,20 @@ class _ChatScreenState extends State<ChatScreen> {
       limit: 12,
     );
 
-    return MemoryReasoningService.buildReasoning(relevantMemories);
+    final memoryReasoning =
+        MemoryReasoningService.buildReasoning(relevantMemories);
+
+    final profileReasoning =
+        ProfileReasoningService.buildReasoning(widget.profile);
+
+    return [
+      ...profileReasoning,
+      ...memoryReasoning,
+    ];
+  }
+
+  Future<List<Map<String, dynamic>>> buildCurrentMemoryReasoning() async {
+    return buildCurrentPlanningReasoning();
   }
 
   Future<bool> tryCompletePendingDurationPlanning(String text) async {

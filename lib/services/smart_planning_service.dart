@@ -429,6 +429,48 @@ class SmartPlanningService {
     return false;
   }
 
+  static bool overlapsBlockedReasoning({
+    required DateTime start,
+    required DateTime end,
+    required List<Map<String, dynamic>> reasoning,
+  }) {
+    for (final item in reasoning) {
+      if (item["type"] != "blocked_period") continue;
+
+      final startTime = item["startTime"]?.toString() ?? "";
+      final endTime = item["endTime"]?.toString() ?? "";
+
+      if (startTime.trim().isEmpty || endTime.trim().isEmpty) continue;
+
+      final blockedStart = _dateTimeFromTime(start, startTime);
+      final blockedEnd = _dateTimeFromTime(start, endTime);
+
+      if (blockedStart == null || blockedEnd == null) continue;
+
+      final overlaps = start.isBefore(blockedEnd) && blockedStart.isBefore(end);
+      if (overlaps) return true;
+    }
+
+    return false;
+  }
+
+  static DateTime? _dateTimeFromTime(DateTime date, String time) {
+    final clean = time.trim().toLowerCase().replaceAll("h", ":");
+
+    if (!RegExp(r'^\d{1,2}(:\d{1,2})?$').hasMatch(clean)) {
+      return null;
+    }
+
+    final parts = clean.split(":");
+    final hour = int.tryParse(parts[0]) ?? -1;
+    final minute = parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0;
+
+    if (hour < 0 || hour > 23) return null;
+    if (minute < 0 || minute > 59) return null;
+
+    return DateTime(date.year, date.month, date.day, hour, minute);
+  }
+
   static bool shouldAvoidMorning(
     List<Map<String, dynamic>> memoryReasoning,
   ) {
@@ -454,6 +496,7 @@ class SmartPlanningService {
     int? preferredStartHour,
     int? preferredEndHour,
     bool avoidMorning = false,
+    List<Map<String, dynamic>> reasoning = const [],
   }) {
     final effectiveStartHour =
         preferredStartHour ?? (avoidMorning ? 12 : dayStartHour);
@@ -491,7 +534,13 @@ class SmartPlanningService {
 
       final hasFamilyConflict = isBusyBecauseFamilyRoutine(cursor, slotEnd);
 
-      if (!hasEventConflict && !hasFamilyConflict) {
+      final hasReasoningConflict = overlapsBlockedReasoning(
+        start: cursor,
+        end: slotEnd,
+        reasoning: reasoning,
+      );
+
+      if (!hasEventConflict && !hasFamilyConflict && !hasReasoningConflict) {
         return cursor;
       }
 
@@ -799,6 +848,7 @@ class SmartPlanningService {
       avoidMorning: shouldAvoidMorning(memoryReasoning),
       preferredStartHour: prefersAfternoon(memoryReasoning) ? 13 : null,
       preferredEndHour: prefersAfternoon(memoryReasoning) ? 17 : null,
+      reasoning: memoryReasoning,
     );
 
     final title = groupedTasksLabel(safeTasks);
@@ -884,6 +934,7 @@ class SmartPlanningService {
       avoidMorning: shouldAvoidMorning(memoryReasoning),
       preferredStartHour: prefersAfternoon(memoryReasoning) ? 13 : null,
       preferredEndHour: prefersAfternoon(memoryReasoning) ? 17 : null,
+      reasoning: memoryReasoning,
     );
 
     if (slot == null) {
