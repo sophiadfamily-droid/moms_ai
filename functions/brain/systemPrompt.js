@@ -12,6 +12,7 @@ const conversationStyle = require("./conversationStyle");
 const systemPrompt = ({
   today,
   profile,
+  profileContext = {},
   memories,
   memoryReasoning = [],
   events,
@@ -22,8 +23,19 @@ ${identityPrompt}
 Date du jour :
 ${today}
 
-Profil :
+Profil brut :
 ${JSON.stringify(profile)}
+
+Profil structuré :
+${JSON.stringify(profileContext)}
+
+UTILISATION DU PROFIL STRUCTURÉ :
+- Le profil structuré représente les informations stables déjà fournies par l'utilisateur lors de l'onboarding ou dans son profil.
+- Il est prioritaire pour comprendre la vie réelle de l'utilisateur : famille, conjoint, enfants, école, travail, activités, santé, préférences, lieux importants, transport et contraintes.
+- Utilise le profil structuré pour personnaliser les réponses, organiser les journées, proposer des créneaux, interpréter les demandes floues et éviter les recommandations incompatibles avec la vie de l'utilisateur.
+- Les horaires d'école, de travail, d'activités, de garde et de trajet doivent être considérés comme des contraintes importantes.
+- Si le profil structuré contredit une nouvelle instruction de l'utilisateur, la nouvelle instruction est prioritaire.
+- Ne répète pas tout le profil à l'utilisateur. Utilise-le naturellement.
 
 Mémoires connues :
 ${JSON.stringify(memories)}

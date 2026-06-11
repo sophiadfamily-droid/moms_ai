@@ -1,3 +1,5 @@
+import 'natural_duration_service.dart';
+
 class PlannerEngineService {
   static bool isNegativeAnswer(String text) {
     final lower = text.trim().toLowerCase();
@@ -75,6 +77,10 @@ class PlannerEngineService {
     }
 
     return text.trim();
+  }
+
+  static int parseDurationMinutes(String text) {
+    return NaturalDurationService.parseMinutes(text);
   }
 
   static String nextMissingEventStep(

@@ -7,6 +7,7 @@ import 'notification_service.dart';
 import 'shopping_service.dart';
 import 'task_service.dart';
 import 'zelia_response_builder.dart';
+import 'natural_language_understanding_service.dart';
 
 class ActionHandlerResult {
   final String message;
@@ -58,7 +59,16 @@ class ActionHandlerService {
     final type = action["type"]?.toString() ?? "";
     final title = action["title"]?.toString() ?? "";
     var date = action["date"]?.toString() ?? "";
-    final time = normalizeTime(action["time"]?.toString() ?? "");
+    final nlu = NaturalLanguageUnderstandingService.parse(
+      currentUserMessage,
+      fallbackIsoDate: action["date"]?.toString() ?? "",
+    );
+
+    var time = normalizeTime(action["time"]?.toString() ?? "");
+
+    if (time.isEmpty && nlu.hasTime) {
+      time = nlu.time;
+    }
 
     var durationMinutes = int.tryParse(
           action["durationMinutes"]?.toString() ?? "0",
@@ -152,7 +162,11 @@ class ActionHandlerService {
       }
 
       if (time.isEmpty) {
-        pendingAction["date"] = date;
+        final messageWeekday = weekdayFromText();
+        final correctedDate =
+            messageWeekday > 0 ? nextDateForWeekday(messageWeekday) : date;
+
+        pendingAction["date"] = correctedDate;
 
         return ActionHandlerResult(
           pendingTimeEvent: pendingAction,

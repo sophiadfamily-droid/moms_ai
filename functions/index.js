@@ -63,6 +63,7 @@ exports.chatWithZeliaHttp = onRequest(
       try {
         const message = req.body.message || "";
         const profile = req.body.profile || {};
+        const profileContext = req.body.profileContext || {};
         const memories = req.body.memories || [];
         const memoryReasoning = req.body.memoryReasoning || [];
         const events = req.body.events || [];
@@ -74,6 +75,7 @@ exports.chatWithZeliaHttp = onRequest(
 ${systemPrompt({
     today,
     profile,
+    profileContext,
     memories,
     memoryReasoning,
     events,

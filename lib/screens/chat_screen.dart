@@ -17,8 +17,11 @@ import '../services/memory_reasoning_service.dart';
 import '../services/smart_planning_service.dart';
 import '../services/smart_planning_response_builder.dart';
 import '../services/planning_proposal_service.dart';
+import '../services/planning_draft_service.dart';
 import '../services/profile_reasoning_service.dart';
+import '../services/profile_context_builder_service.dart';
 import '../services/planner_engine_service.dart';
+import '../services/natural_language_understanding_service.dart';
 import '../services/conflict_engine_service.dart';
 import '../services/zelia_response_builder.dart';
 import '../services/action_handler_service.dart';
@@ -54,6 +57,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Map<String, dynamic>? pendingSmartPlanningTask;
   Map<String, dynamic>? pendingDurationPlanningTask;
   Map<String, dynamic>? pendingTravelPlanningTask;
+  Map<String, dynamic>? pendingAlternativePlanningTask;
 
   String currentUserMessage = "";
   String currentConversationId = "";
@@ -157,29 +161,8 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   String normalizeTime(String value) {
-    final lower = value.trim().toLowerCase();
-
-    if (lower.isEmpty) return "";
-    if (PlannerEngineService.saysUnknownTime(lower)) return "";
-
-    final clean = lower.replaceAll("h", ":");
-
-    if (!RegExp(r'^\\d{1,2}(:\\d{1,2})?\$').hasMatch(clean)) {
-      return "";
-    }
-
-    if (!clean.contains(":")) {
-      return "${clean.padLeft(2, "0")}:00";
-    }
-
-    final parts = clean.split(":");
-    final hour = int.tryParse(parts[0]) ?? -1;
-    final minute = parts.length > 1 ? int.tryParse(parts[1]) ?? -1 : 0;
-
-    if (hour < 0 || hour > 23) return "";
-    if (minute < 0 || minute > 59) return "";
-
-    return "${hour.toString().padLeft(2, "0")}:${minute.toString().padLeft(2, "0")}";
+    final result = NaturalLanguageUnderstandingService.parse(value);
+    return result.time;
   }
 
   String buildStartDateTimeIso({
@@ -244,48 +227,8 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   int parseDurationMinutes(String text) {
-    final lower = text.toLowerCase().trim();
-
-    final onlyNumberForDuration = RegExp(r"^\s*\d+\s*$").hasMatch(lower);
-
-    final onlyDuration =
-        RegExp(r"^\s*\d+\s*(h|h\d+|min|minutes?)\s*$").hasMatch(lower) ||
-            RegExp(r"^\s*\d+h\d+\s*$").hasMatch(lower) ||
-            onlyNumberForDuration;
-
-    if (!onlyDuration && !durationContextIsClear(lower)) return 0;
-
-    final hourMinuteMatch = RegExp(r"(\d+)\s*h\s*(\d+)").firstMatch(lower);
-
-    if (hourMinuteMatch != null) {
-      final hours = int.tryParse(hourMinuteMatch.group(1) ?? "0") ?? 0;
-      final minutes = int.tryParse(hourMinuteMatch.group(2) ?? "0") ?? 0;
-
-      return (hours * 60) + minutes;
-    }
-
-    final hourMatch = RegExp(r"(\d+)\s*h").firstMatch(lower);
-
-    if (hourMatch != null) {
-      final hours = int.tryParse(hourMatch.group(1) ?? "0") ?? 0;
-      return hours * 60;
-    }
-
-    final minuteMatch = RegExp(r"(\d+)\s*(min|minutes)").firstMatch(lower);
-
-    if (minuteMatch != null) {
-      return int.tryParse(minuteMatch.group(1) ?? "0") ?? 0;
-    }
-
-    final onlyNumber = RegExp(r"^\s*(\d+)\s*$").firstMatch(lower);
-
-    if (onlyNumber != null) {
-      final value = int.tryParse(onlyNumber.group(1) ?? "0") ?? 0;
-      if (value <= 12) return value * 60;
-      return value;
-    }
-
-    return 0;
+    final result = NaturalLanguageUnderstandingService.parse(text);
+    return result.durationMinutes;
   }
 
   bool looksLikeNewActionRequest(String text) {
@@ -416,6 +359,97 @@ class _ChatScreenState extends State<ChatScreen> {
         value.contains("appel");
 
     if (noTravel) return false;
+
+    return true;
+  }
+
+  Future<bool> tryCompletePendingAlternativePlanning(String text) async {
+    final pending = pendingAlternativePlanningTask;
+
+    if (pending == null) return false;
+
+    if (PlannerEngineService.isNegativeAnswer(text)) {
+      pendingAlternativePlanningTask = null;
+      addAssistantMessage(
+        "D’accord 💕 Je ne cherche pas d’autre jour pour le moment.",
+      );
+      return true;
+    }
+
+    if (!PlannerEngineService.isPositiveAnswer(text)) {
+      addAssistantMessage(
+        "Dis-moi simplement oui si tu veux que je cherche un autre jour, "
+        "ou non si tu préfères arrêter ici 💕",
+      );
+      return true;
+    }
+
+    final task = pending["task"];
+
+    if (task is! TaskModel) {
+      pendingAlternativePlanningTask = null;
+      return false;
+    }
+
+    final failedDateText = pending["failedDate"]?.toString() ?? "";
+    final failedDate = DateTime.tryParse(failedDateText) ?? DateTime.now();
+
+    final actionMinutes =
+        int.tryParse(pending["actionMinutes"]?.toString() ?? "0") ?? 0;
+    final travelGoMinutes =
+        int.tryParse(pending["travelGoMinutes"]?.toString() ?? "0") ?? 0;
+
+    final rawGroupedTasks = pending["groupedTasks"];
+    final groupedTasks = rawGroupedTasks is List<TaskModel>
+        ? rawGroupedTasks
+        : <TaskModel>[task];
+
+    SmartPlanningProposal? foundProposal;
+    DateTime lastTriedDate = failedDate;
+
+    for (var dayOffset = 1; dayOffset <= 14; dayOffset++) {
+      final nextDate = failedDate.add(Duration(days: dayOffset));
+      lastTriedDate = nextDate;
+      final nextDateIso = nextDate.toIso8601String().substring(0, 10);
+
+      final proposal = await PlanningProposalService.buildFromTravelPlanning(
+        task: task.copyWith(
+          planning: nextDateIso,
+          dueDate: nextDateIso,
+        ),
+        originalMessage: "${task.title} $nextDateIso",
+        actionMinutes: actionMinutes,
+        travelGoMinutes: travelGoMinutes,
+        groupedTasks: groupedTasks,
+        memoryReasoning: await buildCurrentMemoryReasoning(),
+      );
+
+      if (proposal.canPropose) {
+        foundProposal = proposal;
+        break;
+      }
+    }
+
+    if (foundProposal == null) {
+      pendingAlternativePlanningTask = {
+        ...pending,
+        "failedDate": lastTriedDate.toIso8601String().substring(0, 10),
+      };
+
+      addAssistantMessage(
+        "Je n’ai pas trouvé de créneau réaliste sur les 14 prochains jours 💕\n\n"
+        "On peut soit chercher plus loin, soit réduire la durée ou le temps de trajet.",
+      );
+      return true;
+    }
+
+    pendingAlternativePlanningTask = null;
+    pendingSmartPlanningProposal = foundProposal;
+
+    addAssistantMessage(
+      "J’ai trouvé une autre possibilité 💕\n\n"
+      "${foundProposal.confirmationMessage}",
+    );
 
     return true;
   }
@@ -630,7 +664,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (PlannerEngineService.isPositiveAnswer(text)) {
       selectedMinutes = estimatedMinutes;
     } else {
-      selectedMinutes = parseDurationMinutes(text);
+      selectedMinutes = PlannerEngineService.parseDurationMinutes(text);
 
       if (selectedMinutes <= 0) {
         selectedMinutes = SmartPlanningService.parseTravelMinutes(text);
@@ -670,6 +704,15 @@ class _ChatScreenState extends State<ChatScreen> {
     );
 
     if (!proposal.canPropose) {
+      pendingAlternativePlanningTask = {
+        "task": task,
+        "originalMessage": originalMessage,
+        "actionMinutes": selectedMinutes,
+        "travelGoMinutes": 0,
+        "groupedTasks": groupedTasks,
+        "failedDate": proposal.date,
+      };
+
       addAssistantMessage(proposal.confirmationMessage);
       return true;
     }
@@ -720,6 +763,15 @@ class _ChatScreenState extends State<ChatScreen> {
     );
 
     if (!proposal.canPropose) {
+      pendingAlternativePlanningTask = {
+        "task": task,
+        "originalMessage": originalMessage,
+        "actionMinutes": actionMinutes,
+        "travelGoMinutes": travelGoMinutes,
+        "groupedTasks": groupedTasks,
+        "failedDate": proposal.date,
+      };
+
       addAssistantMessage(proposal.confirmationMessage);
       return true;
     }
@@ -816,26 +868,13 @@ class _ChatScreenState extends State<ChatScreen> {
     if (PlannerEngineService.saysUnknownTime(text)) {
       pendingTimeEvent = null;
 
-      final title = action["title"]?.toString() ?? "ce rendez-vous";
-      final date = action["date"]?.toString() ?? "";
+      pendingDurationPlanningTask =
+          PlanningDraftService.buildDurationPlanningTask(action: action);
 
-      pendingDurationPlanningTask = {
-        "task": TaskModel(
-          title: title,
-          category: action["category"]?.toString() ?? "Personnel",
-          isDone: false,
-          createdAt: DateTime.now(),
-          planning: date.isNotEmpty ? date : "Cette semaine",
-        ),
-        "originalMessage": "$title $date",
-        "type": action["type"]?.toString() ?? "rendez-vous",
-        "outside": true,
-        "estimatedMinutes": 60,
-        "groupedTasks": <TaskModel>[],
-      };
+      final title = action["title"]?.toString() ?? "ce rendez-vous";
 
       addAssistantMessage(
-        "D’accord 💕 Je vais te proposer un créneau disponible pour « $title ».\n\n"
+        "D’accord, je vais te proposer un créneau disponible pour « $title ».\n\n"
         "Combien de temps veux-tu prévoir pour ce rendez-vous ?",
       );
 
@@ -918,7 +957,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<bool> tryCompletePendingDuration(String text) async {
     if (pendingDurationEvent == null) return false;
 
-    final duration = parseDurationMinutes(text);
+    final duration = PlannerEngineService.parseDurationMinutes(text);
 
     if (duration <= 0) {
       const reply = "Dis-moi juste la durée, par exemple 30 min, 1h ou 1h30 💕";
@@ -991,6 +1030,11 @@ class _ChatScreenState extends State<ChatScreen> {
       final completedTimeEvent = await tryCompletePendingTimeEvent(text);
       if (completedTimeEvent) return;
 
+      final completedAlternativePlanning =
+          await tryCompletePendingAlternativePlanning(text);
+
+      if (completedAlternativePlanning) return;
+
       final completedSmartPlanning =
           await tryCompletePendingSmartPlanning(text);
 
@@ -1045,6 +1089,9 @@ class _ChatScreenState extends State<ChatScreen> {
       final memoryReasoning =
           MemoryReasoningService.buildReasoning(relevantMemories);
 
+      final profileContext =
+          ProfileContextBuilderService.buildStructuredContext(widget.profile);
+
       final savedEvents = await EventService.getEvents();
       final existingEvents = savedEvents.map((event) {
         return {
@@ -1066,6 +1113,7 @@ class _ChatScreenState extends State<ChatScreen> {
         body: jsonEncode({
           "message": text,
           "profile": widget.profile.toJson(),
+          "profileContext": profileContext,
           "memories": relevantMemories,
           "memoryReasoning": memoryReasoning,
           "events": existingEvents,
@@ -1208,7 +1256,10 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     if (result.pendingTimeEvent != null) {
-      pendingTimeEvent = result.pendingTimeEvent;
+      pendingTimeEvent = PlanningDraftService.buildPendingTimeEvent(
+        action: Map<String, dynamic>.from(result.pendingTimeEvent!),
+        originalUserMessage: currentUserMessage,
+      );
     }
 
     if (result.pendingDurationEvent != null) {

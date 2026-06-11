@@ -1,7 +1,9 @@
 import '../models/event_model.dart';
 import '../models/task_model.dart';
 import 'event_service.dart';
+import 'natural_date_service.dart';
 import 'planning_score_service.dart';
+import 'planning_window_service.dart';
 import 'task_service.dart';
 
 class SmartPlanningProposal {
@@ -162,30 +164,22 @@ class SmartPlanningService {
   }
 
   static DateTime targetDateFromText(String text, TaskModel task) {
-    final lower = "${text.toLowerCase()} ${task.dueDate.toLowerCase()}";
+    final fallbackDate = task.dueDate.trim().isNotEmpty
+        ? task.dueDate.trim()
+        : task.planning.trim();
+
+    final resolvedIsoDate = NaturalDateService.resolveDateFromText(
+      "$text ${task.dueDate} ${task.planning}",
+      fallbackIsoDate: fallbackDate,
+    );
+
+    final parsedDate = DateTime.tryParse(resolvedIsoDate);
+
+    if (parsedDate != null) {
+      return DateTime(parsedDate.year, parsedDate.month, parsedDate.day);
+    }
+
     final today = startOfToday();
-
-    if (lower.contains("après-demain") || lower.contains("apres demain")) {
-      return today.add(const Duration(days: 2));
-    }
-
-    if (lower.contains("demain")) {
-      return today.add(const Duration(days: 1));
-    }
-
-    if (lower.contains("aujourd")) {
-      return today;
-    }
-
-    final weekday = weekdayFromText(lower);
-    if (weekday > 0) {
-      return nextDateForWeekday(weekday);
-    }
-
-    if (task.planning == "Aujourd’hui") {
-      return today;
-    }
-
     return today.add(const Duration(days: 1));
   }
 
@@ -204,7 +198,7 @@ class SmartPlanningService {
     final today = startOfToday();
     var daysToAdd = weekday - today.weekday;
 
-    if (daysToAdd < 0) {
+    if (daysToAdd <= 0) {
       daysToAdd += 7;
     }
 
@@ -438,6 +432,8 @@ class SmartPlanningService {
     for (final item in reasoning) {
       if (item["type"] != "blocked_period") continue;
 
+      if (!_blockedPeriodAppliesToDate(item, start)) continue;
+
       final startTime = item["startTime"]?.toString() ?? "";
       final endTime = item["endTime"]?.toString() ?? "";
 
@@ -471,6 +467,53 @@ class SmartPlanningService {
     }
 
     return false;
+  }
+
+  static bool _blockedPeriodAppliesToDate(
+    Map<String, dynamic> item,
+    DateTime date,
+  ) {
+    final rawDays = item["days"];
+
+    if (rawDays is! List || rawDays.isEmpty) {
+      return true;
+    }
+
+    final normalizedDays = rawDays
+        .map((day) => day.toString().trim().toLowerCase())
+        .where((day) => day.isNotEmpty)
+        .toList();
+
+    if (normalizedDays.isEmpty) return true;
+
+    final currentDayNames = _dayNamesForWeekday(date.weekday);
+
+    return normalizedDays.any((day) {
+      return currentDayNames.contains(day) ||
+          currentDayNames.any((name) => day.contains(name)) ||
+          day == date.weekday.toString();
+    });
+  }
+
+  static List<String> _dayNamesForWeekday(int weekday) {
+    switch (weekday) {
+      case DateTime.monday:
+        return ["lundi", "monday", "mon", "1"];
+      case DateTime.tuesday:
+        return ["mardi", "tuesday", "tue", "2"];
+      case DateTime.wednesday:
+        return ["mercredi", "wednesday", "wed", "3"];
+      case DateTime.thursday:
+        return ["jeudi", "thursday", "thu", "4"];
+      case DateTime.friday:
+        return ["vendredi", "friday", "fri", "5"];
+      case DateTime.saturday:
+        return ["samedi", "saturday", "sat", "6"];
+      case DateTime.sunday:
+        return ["dimanche", "sunday", "sun", "7"];
+      default:
+        return [];
+    }
   }
 
   static DateTime? _dateTimeFromTime(DateTime date, String time) {
@@ -514,12 +557,14 @@ class SmartPlanningService {
     required List<EventModel> events,
     int? preferredStartHour,
     int? preferredEndHour,
+    int? startHour,
+    int? endHour,
     bool avoidMorning = false,
     List<Map<String, dynamic>> reasoning = const [],
   }) {
     final effectiveStartHour =
-        preferredStartHour ?? (avoidMorning ? 12 : dayStartHour);
-    final effectiveEndHour = preferredEndHour ?? dayEndHour;
+        startHour ?? preferredStartHour ?? (avoidMorning ? 12 : dayStartHour);
+    final effectiveEndHour = endHour ?? preferredEndHour ?? dayEndHour;
 
     final start = DateTime(
       targetDate.year,
@@ -875,13 +920,19 @@ class SmartPlanningService {
     final totalMinutes =
         actionMinutes + travelGoMinutes + travelBackMinutes + marginMinutes;
 
+    final planningWindow = PlanningWindowService.build(
+      reasoning: memoryReasoning,
+    );
+
     final slot = findBestSlot(
       targetDate: targetDate,
       totalMinutes: totalMinutes,
       events: events,
-      avoidMorning: shouldAvoidMorning(memoryReasoning),
-      preferredStartHour: prefersAfternoon(memoryReasoning) ? 13 : null,
-      preferredEndHour: prefersAfternoon(memoryReasoning) ? 17 : null,
+      avoidMorning: planningWindow.avoidMorning,
+      preferredStartHour: planningWindow.preferredStartHour,
+      preferredEndHour: planningWindow.preferredEndHour,
+      startHour: planningWindow.startHour,
+      endHour: planningWindow.endHour,
       reasoning: memoryReasoning,
     );
 
@@ -961,13 +1012,19 @@ class SmartPlanningService {
     final totalMinutes =
         actionMinutes + travelGoMinutes + travelBackMinutes + marginMinutes;
 
+    final planningWindow = PlanningWindowService.build(
+      reasoning: memoryReasoning,
+    );
+
     final slot = findBestSlot(
       targetDate: targetDate,
       totalMinutes: totalMinutes,
       events: events,
-      avoidMorning: shouldAvoidMorning(memoryReasoning),
-      preferredStartHour: prefersAfternoon(memoryReasoning) ? 13 : null,
-      preferredEndHour: prefersAfternoon(memoryReasoning) ? 17 : null,
+      avoidMorning: planningWindow.avoidMorning,
+      preferredStartHour: planningWindow.preferredStartHour,
+      preferredEndHour: planningWindow.preferredEndHour,
+      startHour: planningWindow.startHour,
+      endHour: planningWindow.endHour,
       reasoning: memoryReasoning,
     );
 
