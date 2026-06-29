@@ -1399,15 +1399,15 @@ class _ChatScreenState extends State<ChatScreen> {
     final result = await ActionHandlerService.handleAction(
       action: action,
       currentUserMessage: currentUserMessage,
-      normalizeTime: normalizeTime,
-      parseDurationMinutes: parseDurationMinutes,
+      normalizeTime: ChatPlanningHelperService.normalizeTime,
+      parseDurationMinutes: ChatPlanningHelperService.parseDurationMinutes,
       weekdayFromText: weekdayFromText,
       messageLooksRecurringWeekly: messageLooksRecurringWeekly,
       nextDateForWeekday: nextDateForWeekday,
       eventNeedsTravel: eventNeedsTravel,
-      buildStartDateTimeIso: buildStartDateTimeIso,
-      buildEndDateTimeIso: buildEndDateTimeIso,
-      endTimeFromDuration: endTimeFromDuration,
+      buildStartDateTimeIso: ChatPlanningHelperService.buildStartDateTimeIso,
+      buildEndDateTimeIso: ChatPlanningHelperService.buildEndDateTimeIso,
+      endTimeFromDuration: ChatPlanningHelperService.endTimeFromDuration,
     );
 
     if (result.pendingDateEvent != null) {
