@@ -1,6 +1,8 @@
 import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+
+import '../services/auth_service.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
@@ -126,7 +128,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (text.trim().isEmpty) return;
 
     try {
-      final userRef = firestore.collection("users").doc("demo_user");
+      final userRef = firestore.collection("users").doc(AuthService.requireUserId());
       final conversationRef =
           userRef.collection("conversations").doc(currentConversationId);
 

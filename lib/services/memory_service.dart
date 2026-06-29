@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'auth_service.dart';
+
 class MemoryService {
   static final FirebaseFirestore firestore = FirebaseFirestore.instance;
 
@@ -12,7 +14,7 @@ class MemoryService {
 
     final snapshot = await firestore
         .collection("users")
-        .doc("demo_user")
+        .doc(AuthService.requireUserId())
         .collection("memories")
         .get();
 
@@ -40,7 +42,7 @@ class MemoryService {
 
     await firestore
         .collection("users")
-        .doc("demo_user")
+        .doc(AuthService.requireUserId())
         .collection("memories")
         .add({
       "text": cleanText,
@@ -53,7 +55,7 @@ class MemoryService {
   static Future<List<Map<String, dynamic>>> getMemories() async {
     final snapshot = await firestore
         .collection("users")
-        .doc("demo_user")
+        .doc(AuthService.requireUserId())
         .collection("memories")
         .get();
 
