@@ -1,8 +1,7 @@
 import 'dart:convert';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 import '../services/auth_service.dart';
+import '../services/chat_service.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
@@ -49,7 +48,6 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController controller = TextEditingController();
   final VoiceService voiceService = VoiceService();
-  final FirebaseFirestore firestore = FirebaseFirestore.instance;
 
   bool loading = false;
   bool isListening = false;
@@ -125,23 +123,12 @@ class _ChatScreenState extends State<ChatScreen> {
     required String role,
     required String text,
   }) async {
-    if (text.trim().isEmpty) return;
-
     try {
-      final userRef = firestore.collection("users").doc(AuthService.requireUserId());
-      final conversationRef =
-          userRef.collection("conversations").doc(currentConversationId);
-
-      await conversationRef.collection("messages").add({
-        "role": role,
-        "text": text,
-        "createdAt": Timestamp.now(),
-      });
-
-      await conversationRef.set({
-        "updatedAt": Timestamp.now(),
-        "lastMessage": text,
-      }, SetOptions(merge: true));
+      await ChatService.saveMessage(
+        conversationId: currentConversationId,
+        role: role,
+        text: text,
+      );
     } catch (_) {}
   }
 
