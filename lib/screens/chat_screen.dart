@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../services/chat_service.dart';
+import '../services/chat_planning_helper_service.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
@@ -154,76 +155,11 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  String normalizeTime(String value) {
-    final result = NaturalLanguageUnderstandingService.parse(value);
-    return result.time;
-  }
 
-  String buildStartDateTimeIso({
-    required String date,
-    required String time,
-  }) {
-    final cleanTime = normalizeTime(time);
 
-    if (date.trim().isEmpty || cleanTime.isEmpty) return "";
 
-    return "${date}T$cleanTime:00";
-  }
 
-  String buildEndDateTimeIso({
-    required String date,
-    required String time,
-    required int durationMinutes,
-  }) {
-    final startIso = buildStartDateTimeIso(
-      date: date,
-      time: time,
-    );
 
-    if (startIso.isEmpty || durationMinutes <= 0) return "";
-
-    final start = DateTime.tryParse(startIso);
-    if (start == null) return "";
-
-    final end = start.add(Duration(minutes: durationMinutes));
-    final endDate = end.toIso8601String().substring(0, 10);
-    final endTime = end.toIso8601String().substring(11, 16);
-
-    return "${endDate}T$endTime:00";
-  }
-
-  String endTimeFromDuration({
-    required String date,
-    required String time,
-    required int durationMinutes,
-  }) {
-    final endIso = buildEndDateTimeIso(
-      date: date,
-      time: time,
-      durationMinutes: durationMinutes,
-    );
-
-    if (endIso.isEmpty) return "";
-
-    return endIso.substring(11, 16);
-  }
-
-  bool durationContextIsClear(String text) {
-    final lower = text.toLowerCase();
-
-    return lower.contains("pendant") ||
-        lower.contains("durée") ||
-        lower.contains("duree") ||
-        lower.contains("bloque") ||
-        lower.contains("bloquer") ||
-        lower.contains("pour ") ||
-        (lower.contains("de ") && lower.contains(" à "));
-  }
-
-  int parseDurationMinutes(String text) {
-    final result = NaturalLanguageUnderstandingService.parse(text);
-    return result.durationMinutes;
-  }
 
   bool looksLikeNewActionRequest(String text) {
     final lower = text.toLowerCase();
@@ -810,7 +746,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (PlannerEngineService.isPositiveAnswer(text)) {
       selectedMinutes = estimatedMinutes;
     } else {
-      selectedMinutes = PlannerEngineService.parseDurationMinutes(text);
+      selectedMinutes = PlannerEngineService.ChatPlanningHelperService.parseDurationMinutes(text);
 
       if (selectedMinutes <= 0) {
         selectedMinutes = SmartPlanningService.parseTravelMinutes(text);
@@ -969,7 +905,7 @@ class _ChatScreenState extends State<ChatScreen> {
       return true;
     }
 
-    final time = normalizeTime(text);
+    final time = ChatPlanningHelperService.normalizeTime(text);
 
     if (time.isEmpty) {
       addAssistantMessage(
@@ -1100,7 +1036,7 @@ class _ChatScreenState extends State<ChatScreen> {
       return true;
     }
 
-    final time = normalizeTime(text);
+    final time = ChatPlanningHelperService.normalizeTime(text);
 
     if (time.isEmpty) {
       addAssistantMessage(
@@ -1176,7 +1112,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<bool> tryCompletePendingDuration(String text) async {
     if (pendingDurationEvent == null) return false;
 
-    final duration = PlannerEngineService.parseDurationMinutes(text);
+    final duration = PlannerEngineService.ChatPlanningHelperService.parseDurationMinutes(text);
 
     if (duration <= 0) {
       const reply = "Dis-moi juste la durée, par exemple 30 min, 1h ou 1h30 💕";
