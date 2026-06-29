@@ -104,10 +104,7 @@ class PlanningProposalEngine {
     }
 
     final uniqueOptions = _deduplicate(allOptions);
-    final diversifiedOptions = _diversifyByDay(
-      uniqueOptions,
-      maxOptions,
-    );
+    final diversifiedOptions = _diversifyByDay(uniqueOptions, maxOptions);
 
     if (diversifiedOptions.isEmpty) {
       return PlanningProposalEngineResult(
@@ -131,16 +128,13 @@ class PlanningProposalEngine {
     required List<EventModel> events,
     required List<Map<String, dynamic>> reasoning,
   }) {
-    final planningWindow = PlanningWindowService.build(
-      reasoning: reasoning,
-    );
+    final planningWindow = PlanningWindowService.build(reasoning: reasoning);
 
     final start = DateTime(
       targetDate.year,
       targetDate.month,
       targetDate.day,
       planningWindow.startHour,
-      0,
     );
 
     final endLimit = DateTime(
@@ -148,7 +142,6 @@ class PlanningProposalEngine {
       targetDate.month,
       targetDate.day,
       planningWindow.endHour,
-      0,
     );
 
     final options = <PlanningProposalOption>[];
@@ -168,8 +161,7 @@ class PlanningProposalEngine {
         slotEnd,
       );
 
-      final hasReasoningConflict =
-          SmartPlanningService.overlapsBlockedReasoning(
+      final hasReasoningConflict = SmartPlanningService.overlapsBlockedReasoning(
         start: cursor,
         end: slotEnd,
         reasoning: reasoning,
@@ -218,7 +210,6 @@ class PlanningProposalEngine {
 
     for (final option in options) {
       final key = "${option.dateIso}-${option.startTime}-${option.endTime}";
-
       if (seen.contains(key)) continue;
 
       seen.add(key);
