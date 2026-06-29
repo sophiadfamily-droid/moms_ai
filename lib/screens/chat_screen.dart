@@ -6,6 +6,8 @@ import 'package:http/http.dart' as http;
 
 import '../models/user_profile.dart';
 import '../models/task_model.dart';
+import '../models/event_model.dart';
+import '../models/planning_draft_model.dart';
 
 import '../services/event_service.dart';
 import '../services/notification_service.dart';
@@ -17,6 +19,8 @@ import '../services/memory_reasoning_service.dart';
 import '../services/smart_planning_service.dart';
 import '../services/smart_planning_response_builder.dart';
 import '../services/planning_proposal_service.dart';
+import '../services/planning_proposal_engine.dart';
+import '../services/planning_proposal_selection_service.dart';
 import '../services/planning_draft_service.dart';
 import '../services/profile_reasoning_service.dart';
 import '../services/profile_context_builder_service.dart';
@@ -57,6 +61,8 @@ class _ChatScreenState extends State<ChatScreen> {
   Map<String, dynamic>? pendingSmartPlanningTask;
   Map<String, dynamic>? pendingDurationPlanningTask;
   Map<String, dynamic>? pendingTravelPlanningTask;
+  List<PlanningProposalOption> pendingPlanningProposalOptions = [];
+  Map<String, dynamic>? pendingPlanningProposalContext;
   Map<String, dynamic>? pendingAlternativePlanningTask;
 
   String currentUserMessage = "";
@@ -359,6 +365,158 @@ class _ChatScreenState extends State<ChatScreen> {
         value.contains("appel");
 
     if (noTravel) return false;
+
+    return true;
+  }
+
+  Future<bool> tryShowMultiSlotProposal({
+    required TaskModel task,
+    required String originalMessage,
+    required int actionMinutes,
+    required int travelGoMinutes,
+    required List<TaskModel> groupedTasks,
+  }) async {
+    final targetDate = SmartPlanningService.targetDateFromText(
+      originalMessage,
+      task,
+    );
+
+    final type = SmartPlanningService.detectTaskType(
+      originalMessage,
+      task,
+    );
+
+    final marginMinutes = SmartPlanningService.defaultMarginMinutes(type);
+    final totalMinutes =
+        actionMinutes + travelGoMinutes + travelGoMinutes + marginMinutes;
+
+    final result = await PlanningProposalEngine.findBestOptions(
+      startDate: targetDate,
+      totalMinutes: totalMinutes,
+      reasoning: await buildCurrentMemoryReasoning(),
+      searchDays: 21,
+      maxOptions: 3,
+    );
+
+    if (!result.hasOptions || result.options.isEmpty) {
+      return false;
+    }
+
+    pendingPlanningProposalOptions = result.options;
+    pendingPlanningProposalContext = {
+      "task": task,
+      "originalMessage": originalMessage,
+      "actionMinutes": actionMinutes,
+      "travelGoMinutes": travelGoMinutes,
+      "groupedTasks": groupedTasks,
+    };
+
+    final lines = <String>[
+      result.options.length > 1
+          ? "J’ai trouvé plusieurs créneaux possibles :"
+          : "J’ai trouvé ce créneau possible :",
+      "",
+    ];
+
+    for (var index = 0; index < result.options.length; index++) {
+      final option = result.options[index];
+      lines.add("${index + 1}. ${option.label}");
+    }
+
+    lines.add("");
+    lines.add("Lequel tu préfères ?");
+
+    addAssistantMessage(lines.join("\n"));
+    return true;
+  }
+
+  Future<bool> tryCompletePlanningProposalSelection(String text) async {
+    if (pendingPlanningProposalOptions.isEmpty ||
+        pendingPlanningProposalContext == null) {
+      return false;
+    }
+
+    final index = PlanningProposalSelectionService.extractIndex(
+      text,
+      pendingPlanningProposalOptions,
+    );
+
+    if (index == null) {
+      return false;
+    }
+
+    if (index >= pendingPlanningProposalOptions.length) {
+      return false;
+    }
+
+    final selectedOption = pendingPlanningProposalOptions[index];
+    final context = Map<String, dynamic>.from(
+      pendingPlanningProposalContext ?? {},
+    );
+
+    final task = context["task"];
+
+    if (task is! TaskModel) {
+      pendingPlanningProposalOptions = [];
+      pendingPlanningProposalContext = null;
+
+      addAssistantMessage(
+        "Je n’ai pas pu finaliser ce créneau, il me manque le rendez-vous à créer.",
+      );
+
+      return true;
+    }
+
+    final actionMinutes = int.tryParse(
+          context["actionMinutes"]?.toString() ?? "0",
+        ) ??
+        0;
+
+    final travelGoMinutes = int.tryParse(
+          context["travelGoMinutes"]?.toString() ?? "0",
+        ) ??
+        0;
+
+    final totalTravelMinutes = travelGoMinutes * 2;
+    final totalReservedMinutes =
+        selectedOption.end.difference(selectedOption.start).inMinutes;
+
+    final event = EventModel(
+      title: task.title,
+      date: selectedOption.dateIso,
+      time: selectedOption.startTime,
+      endTime: selectedOption.endTime,
+      durationMinutes: totalReservedMinutes,
+      travelMinutes: totalTravelMinutes,
+      startDateTimeIso:
+          "${selectedOption.dateIso}T${selectedOption.startTime}:00",
+      endDateTimeIso: "${selectedOption.dateIso}T${selectedOption.endTime}:00",
+      category: task.category,
+      notes: "Planifié par Zelia depuis une proposition multi-créneaux.\n"
+          "Durée du rendez-vous : $actionMinutes min\n"
+          "Trajet aller estimé : $travelGoMinutes min\n"
+          "Trajet retour estimé : $travelGoMinutes min",
+      createdAt: DateTime.now(),
+      isRecurring: false,
+      recurringType: "",
+      recurringWeekday: 0,
+      recurringUntil: "",
+      parentRecurringId: "",
+    );
+
+    await EventService.addEvent(event);
+
+    await NotificationService.showNotification(
+      title: "Créneau réservé 📅",
+      body: task.title,
+    );
+
+    pendingPlanningProposalOptions = [];
+    pendingPlanningProposalContext = null;
+
+    addAssistantMessage(
+      "C’est fait. J’ai réservé « ${task.title} » ${selectedOption.label} dans ton agenda.",
+    );
 
     return true;
   }
@@ -696,6 +854,18 @@ class _ChatScreenState extends State<ChatScreen> {
       return true;
     }
 
+    final showedMultiSlotProposal = await tryShowMultiSlotProposal(
+      task: task,
+      originalMessage: originalMessage,
+      actionMinutes: selectedMinutes,
+      travelGoMinutes: 0,
+      groupedTasks: groupedTasks,
+    );
+
+    if (showedMultiSlotProposal) {
+      return true;
+    }
+
     final proposal = await PlanningProposalService.buildFromDurationPlanning(
       task: task,
       originalMessage: originalMessage,
@@ -752,6 +922,18 @@ class _ChatScreenState extends State<ChatScreen> {
         : <TaskModel>[task];
 
     pendingTravelPlanningTask = null;
+
+    final showedMultiSlotProposal = await tryShowMultiSlotProposal(
+      task: task,
+      originalMessage: originalMessage,
+      actionMinutes: actionMinutes,
+      travelGoMinutes: travelGoMinutes,
+      groupedTasks: groupedTasks,
+    );
+
+    if (showedMultiSlotProposal) {
+      return true;
+    }
 
     final proposal = await PlanningProposalService.buildFromTravelPlanning(
       task: task,
@@ -833,11 +1015,49 @@ class _ChatScreenState extends State<ChatScreen> {
     pendingDateEvent = null;
 
     if (PlannerEngineService.saysUnknownTime(text)) {
-      final title = action["title"]?.toString() ?? "ce rendez-vous";
+      pendingDateEvent = null;
+
+      final title = action["title"]?.toString() ?? "Rendez-vous";
+      final category = action["category"]?.toString() ?? "Personnel";
+
+      final task = TaskModel(
+        title: title,
+        category: category.trim().isNotEmpty ? category : "Personnel",
+        isDone: false,
+        createdAt: DateTime.now(),
+        dueDate: "",
+        planning: "Cette semaine",
+      );
+
+      pendingDurationPlanningTask = {
+        "task": task,
+        "originalMessage": "$title cette semaine",
+        "type": action["type"]?.toString() ?? "rendez-vous",
+        "outside": true,
+        "estimatedMinutes": 60,
+        "groupedTasks": <TaskModel>[],
+        "planningDraft": {
+          "sourceMessage": "$title cette semaine",
+          "title": title,
+          "type": action["type"]?.toString() ?? "event",
+          "category": category,
+          "dateIso": "",
+          "periodLabel": "Cette semaine",
+          "time": "",
+          "durationMinutes": 0,
+          "needsDate": false,
+          "needsTime": true,
+          "needsDuration": true,
+          "needsTravel": true,
+          "needsConfirmation": true,
+          "status": "draft",
+          "source": "unknown_date_external_event_flow",
+        },
+      };
 
       addAssistantMessage(
-        "C’est noté pour « $title » 💕\n\n"
-        "Je peux te proposer un créneau disponible si tu veux.",
+        "D’accord, je garde ce rendez-vous à organiser cette semaine.\n\n"
+        "Combien de temps veux-tu prévoir pour ce rendez-vous ?",
       );
 
       return true;
@@ -868,10 +1088,21 @@ class _ChatScreenState extends State<ChatScreen> {
     if (PlannerEngineService.saysUnknownTime(text)) {
       pendingTimeEvent = null;
 
-      pendingDurationPlanningTask =
-          PlanningDraftService.buildDurationPlanningTask(action: action);
+      final rawDraft = action["planningDraft"];
 
-      final title = action["title"]?.toString() ?? "ce rendez-vous";
+      final draft = rawDraft is Map<String, dynamic>
+          ? PlanningDraftModel.fromJson(rawDraft)
+          : PlanningDraftService.buildFromAction(
+              action: action,
+              sourceMessage: action["originalUserMessage"]?.toString() ??
+                  currentUserMessage,
+              needsTravel: eventNeedsTravel(action),
+            );
+
+      pendingDurationPlanningTask =
+          PlanningDraftService.toPendingDurationPlanningTask(draft);
+
+      final title = draft.title.isNotEmpty ? draft.title : "ce rendez-vous";
 
       addAssistantMessage(
         "D’accord, je vais te proposer un créneau disponible pour « $title ».\n\n"
@@ -1023,6 +1254,10 @@ class _ChatScreenState extends State<ChatScreen> {
       final completedConflictResolution =
           await tryCompletePendingConflictResolution(text);
       if (completedConflictResolution) return;
+
+      final completedPlanningSelection =
+          await tryCompletePlanningProposalSelection(text);
+      if (completedPlanningSelection) return;
 
       final completedDateEvent = await tryCompletePendingDateEvent(text);
       if (completedDateEvent) return;
@@ -1256,10 +1491,17 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     if (result.pendingTimeEvent != null) {
-      pendingTimeEvent = PlanningDraftService.buildPendingTimeEvent(
-        action: Map<String, dynamic>.from(result.pendingTimeEvent!),
-        originalUserMessage: currentUserMessage,
+      final pendingAction = Map<String, dynamic>.from(
+        result.pendingTimeEvent!,
       );
+
+      final draft = PlanningDraftService.buildFromAction(
+        action: pendingAction,
+        sourceMessage: currentUserMessage,
+        needsTravel: eventNeedsTravel(pendingAction),
+      );
+
+      pendingTimeEvent = PlanningDraftService.toPendingTimeEvent(draft);
     }
 
     if (result.pendingDurationEvent != null) {
