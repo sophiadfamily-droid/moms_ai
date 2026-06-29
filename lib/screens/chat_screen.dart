@@ -746,7 +746,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (PlannerEngineService.isPositiveAnswer(text)) {
       selectedMinutes = estimatedMinutes;
     } else {
-      selectedMinutes = PlannerEngineService.ChatPlanningHelperService.parseDurationMinutes(text);
+      selectedMinutes = ChatPlanningHelperService.parseDurationMinutes(text);
 
       if (selectedMinutes <= 0) {
         selectedMinutes = SmartPlanningService.parseTravelMinutes(text);
@@ -1112,7 +1112,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<bool> tryCompletePendingDuration(String text) async {
     if (pendingDurationEvent == null) return false;
 
-    final duration = PlannerEngineService.ChatPlanningHelperService.parseDurationMinutes(text);
+    final duration = ChatPlanningHelperService.parseDurationMinutes(text);
 
     if (duration <= 0) {
       const reply = "Dis-moi juste la durée, par exemple 30 min, 1h ou 1h30 💕";
