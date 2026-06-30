@@ -11,7 +11,7 @@ class ChatPlanningHelperService {
     final digits = trimmed.replaceAll(RegExp(r'[^0-9]'), '');
 
     if (digits.length == 1 || digits.length == 2) {
-      return digits.padLeft(2, "0") + ":00";
+      return "${digits.padLeft(2, "0")}:00";
     }
 
     if (digits.length == 3) {
