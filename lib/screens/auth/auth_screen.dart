@@ -44,7 +44,8 @@ class _AuthScreenState extends State<AuthScreen> {
       }
     } catch (error) {
       setState(() {
-        errorMessage = "Connexion impossible. Vérifie ton e-mail et ton mot de passe.";
+        errorMessage =
+            "Connexion impossible. Vérifie ton e-mail et ton mot de passe.";
       });
     }
 
