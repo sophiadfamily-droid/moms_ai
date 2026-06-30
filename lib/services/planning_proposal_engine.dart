@@ -161,7 +161,8 @@ class PlanningProposalEngine {
         slotEnd,
       );
 
-      final hasReasoningConflict = SmartPlanningService.overlapsBlockedReasoning(
+      final hasReasoningConflict =
+          SmartPlanningService.overlapsBlockedReasoning(
         start: cursor,
         end: slotEnd,
         reasoning: reasoning,
