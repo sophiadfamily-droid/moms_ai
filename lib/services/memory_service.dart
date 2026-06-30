@@ -9,16 +9,27 @@ class MemoryService {
     return text.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
   }
 
-  static Future<bool> memoryAlreadyExists(String text) async {
-    final normalizedText = normalizeMemoryText(text);
-
-    final snapshot = await firestore
+  static CollectionReference<Map<String, dynamic>> _memoriesRef() {
+    return firestore
         .collection("users")
         .doc(AuthService.requireUserId())
-        .collection("memories")
+        .collection("memories");
+  }
+
+  static Future<bool> memoryAlreadyExists(String text) async {
+    final normalizedText = normalizeMemoryText(text);
+    if (normalizedText.isEmpty) return true;
+
+    final indexedSnapshot = await _memoriesRef()
+        .where("normalizedText", isEqualTo: normalizedText)
+        .limit(1)
         .get();
 
-    for (final doc in snapshot.docs) {
+    if (indexedSnapshot.docs.isNotEmpty) return true;
+
+    final legacySnapshot = await _memoriesRef().get();
+
+    for (final doc in legacySnapshot.docs) {
       final existingText = doc.data()["text"]?.toString() ?? "";
       if (normalizeMemoryText(existingText) == normalizedText) {
         return true;
@@ -34,31 +45,37 @@ class MemoryService {
     int importance = 0,
   }) async {
     final cleanText = text.trim();
+    final normalizedText = normalizeMemoryText(cleanText);
 
-    if (cleanText.isEmpty) return;
+    if (cleanText.isEmpty || normalizedText.isEmpty) return;
 
     final exists = await memoryAlreadyExists(cleanText);
     if (exists) return;
 
-    await firestore
-        .collection("users")
-        .doc(AuthService.requireUserId())
-        .collection("memories")
-        .add({
+    final now = Timestamp.now();
+
+    await _memoriesRef().add({
       "text": cleanText,
-      "category": category,
+      "normalizedText": normalizedText,
+      "category": category.trim().isEmpty ? "personal" : category.trim(),
       "importance": importance,
-      "createdAt": Timestamp.now(),
+      "createdAt": now,
+      "updatedAt": now,
+      "source": "chat",
     });
   }
 
   static Future<List<Map<String, dynamic>>> getMemories() async {
-    final snapshot = await firestore
-        .collection("users")
-        .doc(AuthService.requireUserId())
-        .collection("memories")
-        .get();
+    final snapshot =
+        await _memoriesRef().orderBy("createdAt", descending: true).get();
 
-    return snapshot.docs.map((doc) => doc.data()).toList();
+    return snapshot.docs.map((doc) {
+      final data = doc.data();
+
+      return {
+        ...data,
+        "id": doc.id,
+      };
+    }).toList();
   }
 }
