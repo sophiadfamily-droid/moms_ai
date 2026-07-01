@@ -1,11 +1,14 @@
 import 'dart:io';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../models/user_profile.dart';
 import '../services/storage_service.dart';
+import '../services/auth_service.dart';
+import 'auth/auth_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final UserProfile profile;
@@ -3428,6 +3431,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget buildPremiumSectionsCard() {
     return buildPremiumCard(
       children: [
+        buildAccountRow(),
+        buildDivider(),
         if (hasStructuredSchedule()) ...[
           buildProfileRow(
             icon: Icons.access_time,
@@ -3531,6 +3536,110 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       ],
     );
+  }
+
+  Widget buildAccountRow() {
+    final user = FirebaseAuth.instance.currentUser;
+    final email = user?.email;
+
+    return buildProfileRow(
+      icon: user == null ? Icons.lock_outline : Icons.verified_user_outlined,
+      label: "Compte Zélia",
+      value: user == null ? "Créer ou connecter" : email ?? "Connecté",
+      iconColor: user == null ? textSoft : accent,
+      onTap: showAccountSheet,
+      showChevron: true,
+    );
+  }
+
+  Future<void> showAccountSheet() async {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      await showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: const Color(0xFFFFF7F3),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(34)),
+        ),
+        builder: (_) {
+          return SizedBox(
+            height: MediaQuery.of(context).size.height * 0.82,
+            child: AuthScreen(
+              onAuthenticated: () async {
+                await saveProfile(showSnack: false);
+                if (!mounted) return;
+                setState(() {});
+              },
+            ),
+          );
+        },
+      );
+
+      if (!mounted) return;
+      setState(() {});
+      return;
+    }
+
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFFFFF7F3),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(34)),
+      ),
+      builder: (_) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 34),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  "Compte Zélia",
+                  style: TextStyle(
+                    color: textDark,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  user.email ?? "Compte connecté",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: textSoft,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 22),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      await AuthService.signOut();
+                      if (!mounted) return;
+                      Navigator.pop(context);
+                      setState(() {});
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: accent,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 15),
+                    ),
+                    child: const Text("Me déconnecter"),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (!mounted) return;
+    setState(() {});
   }
 
   Widget buildChildrenMiniAvatars() {

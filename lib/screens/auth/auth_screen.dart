@@ -1,9 +1,15 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../services/auth_service.dart';
 
 class AuthScreen extends StatefulWidget {
-  const AuthScreen({super.key});
+  final VoidCallback? onAuthenticated;
+
+  const AuthScreen({
+    super.key,
+    this.onAuthenticated,
+  });
 
   @override
   State<AuthScreen> createState() => _AuthScreenState();
@@ -13,7 +19,7 @@ class _AuthScreenState extends State<AuthScreen> {
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
 
-  bool isSignUp = false;
+  bool isSignUp = true;
   bool loading = false;
   String errorMessage = "";
 
@@ -22,6 +28,31 @@ class _AuthScreenState extends State<AuthScreen> {
     emailController.dispose();
     passwordController.dispose();
     super.dispose();
+  }
+
+  String readableAuthError(Object error) {
+    if (error is! FirebaseAuthException) {
+      return "Connexion impossible. Réessaie dans quelques instants.";
+    }
+
+    switch (error.code) {
+      case "email-already-in-use":
+        return "Un compte existe déjà avec cet e-mail. Connecte-toi plutôt.";
+      case "invalid-email":
+        return "L’adresse e-mail n’est pas valide.";
+      case "weak-password":
+        return "Le mot de passe est trop faible. Utilise au moins 6 caractères.";
+      case "user-not-found":
+      case "wrong-password":
+      case "invalid-credential":
+        return "E-mail ou mot de passe incorrect.";
+      case "network-request-failed":
+        return "Connexion internet indisponible.";
+      case "operation-not-allowed":
+        return "La connexion par e-mail n’est pas activée dans Firebase.";
+      default:
+        return "Erreur Firebase : ${error.code}";
+    }
   }
 
   Future<void> submit() async {
@@ -42,10 +73,16 @@ class _AuthScreenState extends State<AuthScreen> {
           password: passwordController.text,
         );
       }
+
+      widget.onAuthenticated?.call();
+
+      if (mounted && Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
     } catch (error) {
+      if (!mounted) return;
       setState(() {
-        errorMessage =
-            "Connexion impossible. Vérifie ton e-mail et ton mot de passe.";
+        errorMessage = readableAuthError(error);
       });
     }
 
@@ -64,15 +101,22 @@ class _AuthScreenState extends State<AuthScreen> {
       return;
     }
 
-    await AuthService.sendPasswordResetEmail(
-      email: emailController.text,
-    );
+    try {
+      await AuthService.sendPasswordResetEmail(
+        email: emailController.text,
+      );
 
-    if (!mounted) return;
+      if (!mounted) return;
 
-    setState(() {
-      errorMessage = "Un e-mail de réinitialisation a été envoyé.";
-    });
+      setState(() {
+        errorMessage = "Un e-mail de réinitialisation a été envoyé.";
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        errorMessage = readableAuthError(error);
+      });
+    }
   }
 
   @override
@@ -89,10 +133,10 @@ class _AuthScreenState extends State<AuthScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const Text(
-                    "Zélia",
+                    "Compte Zélia",
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      fontSize: 42,
+                      fontSize: 36,
                       fontWeight: FontWeight.w800,
                       color: Color(0xFF2F2523),
                     ),

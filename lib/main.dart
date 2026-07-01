@@ -11,7 +11,6 @@ import 'screens/work_status_screen.dart';
 import 'screens/partner_screen.dart';
 import 'screens/children_screen.dart';
 import 'screens/main_navigation.dart';
-import 'screens/auth/auth_gate.dart';
 
 import 'models/user_profile.dart';
 
@@ -320,9 +319,7 @@ class _ZeliaAppState extends State<ZeliaApp> {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
-      home: AuthGate(
-        builder: (_) => currentScreen,
-      ),
+      home: currentScreen,
     );
   }
 }
