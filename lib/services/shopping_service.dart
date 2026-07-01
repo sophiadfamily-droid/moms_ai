@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/shopping_item_model.dart';
+import 'cloud_shopping_service.dart';
 
 class ShoppingService {
   static const String shoppingKey = "shopping_items";
@@ -30,6 +31,12 @@ class ShoppingService {
       encoded,
     );
 
+    try {
+      await CloudShoppingService.saveItems(items);
+    } catch (_) {
+      // Les courses restent disponibles hors ligne ou sans compte connecté.
+    }
+
     notifyUpdate();
   }
 
@@ -38,17 +45,42 @@ class ShoppingService {
 
     final data = prefs.getStringList(shoppingKey);
 
-    if (data == null) {
-      return [];
+    final localItems = data == null
+        ? <ShoppingItemModel>[]
+        : data
+            .map(
+              (item) => ShoppingItemModel.fromJson(
+                jsonDecode(item),
+              ),
+            )
+            .toList();
+
+    try {
+      final cloudItems = await CloudShoppingService.getItems();
+
+      if (cloudItems.isNotEmpty) {
+        final encoded = cloudItems
+            .map(
+              (item) => jsonEncode(item.toJson()),
+            )
+            .toList();
+
+        await prefs.setStringList(
+          shoppingKey,
+          encoded,
+        );
+
+        return cloudItems;
+      }
+
+      if (localItems.isNotEmpty) {
+        await CloudShoppingService.saveItems(localItems);
+      }
+    } catch (_) {
+      // Si Firestore est indisponible, on utilise les courses locales.
     }
 
-    return data
-        .map(
-          (item) => ShoppingItemModel.fromJson(
-            jsonDecode(item),
-          ),
-        )
-        .toList();
+    return localItems;
   }
 
   static Future<void> addItem(
