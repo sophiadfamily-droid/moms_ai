@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/event_model.dart';
+import 'cloud_event_service.dart';
 
 class EventService {
   static const String eventsKey = "zelia_events";
@@ -30,6 +31,12 @@ class EventService {
       encoded,
     );
 
+    try {
+      await CloudEventService.saveEvents(events);
+    } catch (_) {
+      // L'agenda reste disponible hors ligne ou sans compte connecté.
+    }
+
     notifyEventsChanged();
   }
 
@@ -38,17 +45,42 @@ class EventService {
 
     final data = prefs.getStringList(eventsKey);
 
-    if (data == null) {
-      return [];
+    final localEvents = data == null
+        ? <EventModel>[]
+        : data
+            .map(
+              (event) => EventModel.fromJson(
+                jsonDecode(event),
+              ),
+            )
+            .toList();
+
+    try {
+      final cloudEvents = await CloudEventService.getEvents();
+
+      if (cloudEvents.isNotEmpty) {
+        final encoded = cloudEvents
+            .map(
+              (event) => jsonEncode(event.toJson()),
+            )
+            .toList();
+
+        await prefs.setStringList(
+          eventsKey,
+          encoded,
+        );
+
+        return cloudEvents;
+      }
+
+      if (localEvents.isNotEmpty) {
+        await CloudEventService.saveEvents(localEvents);
+      }
+    } catch (_) {
+      // Si Firestore est indisponible, on utilise l'agenda local.
     }
 
-    return data
-        .map(
-          (event) => EventModel.fromJson(
-            jsonDecode(event),
-          ),
-        )
-        .toList();
+    return localEvents;
   }
 
   static Future<void> addEvent(
@@ -102,8 +134,7 @@ class EventService {
       return null;
     }
 
-    final minutes =
-        event.durationMinutes > 0 ? event.durationMinutes : 60;
+    final minutes = event.durationMinutes > 0 ? event.durationMinutes : 60;
 
     return start.add(
       Duration(minutes: minutes),
@@ -126,8 +157,7 @@ class EventService {
       return false;
     }
 
-    return firstStart.isBefore(secondEnd) &&
-        secondStart.isBefore(firstEnd);
+    return firstStart.isBefore(secondEnd) && secondStart.isBefore(firstEnd);
   }
 
   static Future<bool> hasConflict({
@@ -201,8 +231,7 @@ class EventService {
 
     final safeCount = count <= 0 ? 52 : count;
 
-    final parentId =
-        DateTime.now().microsecondsSinceEpoch.toString();
+    final parentId = DateTime.now().microsecondsSinceEpoch.toString();
 
     for (var index = 0; index < safeCount; index++) {
       final occurrenceStart = start.add(
