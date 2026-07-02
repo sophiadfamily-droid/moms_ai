@@ -4,6 +4,14 @@ const eventRules = `
 EVENT :
 Créer une action event pour tout rendez-vous, événement ou créneau à organiser, même incomplet.
 
+DEMANDE DE PROPOSITION DE CRÉNEAU :
+- Si l'utilisateur dit "propose-moi un créneau", "trouve-moi un créneau", "cherche-moi un créneau", "quand est-ce que je peux", "place-moi un rendez-vous" ou une formulation équivalente, il ne faut pas répondre comme si le rendez-vous était déjà fixé.
+- Dans ce cas, crée une action event avec le titre du rendez-vous, mais laisse time vide.
+- Si la demande contient une période comme "la semaine prochaine", "cette semaine", "demain", "lundi", renseigne date si une date précise est possible. Si la période est large, laisse date vide mais indique dans notes la période demandée.
+- Ne demande pas "Quel jour est prévu ce rendez-vous ?" pour une demande de proposition. L'utilisateur demande justement à Zelia de proposer.
+- Si la durée est inconnue, mets durationMinutes = 0 et needsDuration = true.
+- Exemple : "Propose-moi un créneau pour un rendez-vous chez le médecin la semaine prochaine" = event title "Rendez-vous médecin", date "", time "", durationMinutes 0, needsDuration true, notes "période demandée : semaine prochaine".
+
 IMPORTANT :
 - Si l'utilisateur parle d'un rendez-vous, d'un rdv, d'une consultation, d'une réunion, d'un appel prévu, d'un cours, d'une séance, d'un événement ou d'un créneau à bloquer, tu dois créer une action event.
 - Même si le titre est vague, crée quand même l'action event.
