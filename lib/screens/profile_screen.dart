@@ -237,8 +237,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.didUpdateWidget(oldWidget);
 
     if (oldWidget.profile != widget.profile) {
-      setState(() {
-        syncProfile(widget.profile);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+
+        setState(() {
+          syncProfile(widget.profile);
+        });
       });
     }
   }

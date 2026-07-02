@@ -33,8 +33,9 @@ class ShoppingService {
 
     try {
       await CloudShoppingService.saveItems(items);
-    } catch (_) {
-      // Les courses restent disponibles hors ligne ou sans compte connecté.
+    } catch (error, stackTrace) {
+      debugPrint('Cloud shopping sync failed: $error');
+      debugPrint('$stackTrace');
     }
 
     notifyUpdate();
@@ -76,8 +77,9 @@ class ShoppingService {
       if (localItems.isNotEmpty) {
         await CloudShoppingService.saveItems(localItems);
       }
-    } catch (_) {
-      // Si Firestore est indisponible, on utilise les courses locales.
+    } catch (error, stackTrace) {
+      debugPrint('Cloud shopping load failed: $error');
+      debugPrint('$stackTrace');
     }
 
     return localItems;

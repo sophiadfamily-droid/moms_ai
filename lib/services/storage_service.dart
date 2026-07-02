@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/user_profile.dart';
@@ -29,8 +30,9 @@ class StorageService {
 
     try {
       await CloudProfileService.saveProfile(profile);
-    } catch (_) {
-      // Zélia reste utilisable hors ligne ou sans compte connecté.
+    } catch (error, stackTrace) {
+      debugPrint('Cloud profile sync failed: $error');
+      debugPrint('$stackTrace');
     }
   }
 
@@ -53,8 +55,9 @@ class StorageService {
 
         return cloudProfile;
       }
-    } catch (_) {
-      // Si Firestore est indisponible, on retombe sur le profil local.
+    } catch (error, stackTrace) {
+      debugPrint('Cloud profile load failed: $error');
+      debugPrint('$stackTrace');
     }
 
     final profileData = prefs.getString(userProfileKey);

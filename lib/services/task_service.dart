@@ -25,8 +25,9 @@ class TaskService {
 
     try {
       await CloudTaskService.saveTasks(tasks);
-    } catch (_) {
-      // Les tâches restent disponibles hors ligne ou sans compte connecté.
+    } catch (error, stackTrace) {
+      debugPrint('Cloud tasks sync failed: $error');
+      debugPrint('$stackTrace');
     }
 
     notifyTasksChanged();
@@ -58,8 +59,9 @@ class TaskService {
       if (localTasks.isNotEmpty) {
         await CloudTaskService.saveTasks(localTasks);
       }
-    } catch (_) {
-      // Si Firestore est indisponible, on utilise les tâches locales.
+    } catch (error, stackTrace) {
+      debugPrint('Cloud tasks load failed: $error');
+      debugPrint('$stackTrace');
     }
 
     return localTasks;
@@ -81,8 +83,9 @@ class TaskService {
 
     try {
       await CloudTaskService.clearTasks();
-    } catch (_) {
-      // Suppression cloud ignorée si hors ligne.
+    } catch (error, stackTrace) {
+      debugPrint('Cloud tasks clear failed: $error');
+      debugPrint('$stackTrace');
     }
 
     notifyTasksChanged();
