@@ -63,6 +63,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Map<String, dynamic>? pendingTravelPlanningTask;
   List<PlanningProposalOption> pendingPlanningProposalOptions = [];
   Map<String, dynamic>? pendingPlanningProposalContext;
+  Map<String, dynamic>? pendingSelectedSlotEvent;
   Map<String, dynamic>? pendingAlternativePlanningTask;
 
   String currentUserMessage = "";
@@ -385,58 +386,218 @@ class _ChatScreenState extends State<ChatScreen> {
       return true;
     }
 
-    final actionMinutes = int.tryParse(
-          context["actionMinutes"]?.toString() ?? "0",
-        ) ??
-        0;
-
-    final travelGoMinutes = int.tryParse(
-          context["travelGoMinutes"]?.toString() ?? "0",
-        ) ??
-        0;
-
-    final totalTravelMinutes = travelGoMinutes * 2;
-    final totalReservedMinutes =
-        selectedOption.end.difference(selectedOption.start).inMinutes;
-
-    final event = EventModel(
-      title: task.title,
-      date: selectedOption.dateIso,
-      time: selectedOption.startTime,
-      endTime: selectedOption.endTime,
-      durationMinutes: totalReservedMinutes,
-      travelMinutes: totalTravelMinutes,
-      startDateTimeIso:
-          "${selectedOption.dateIso}T${selectedOption.startTime}:00",
-      endDateTimeIso: "${selectedOption.dateIso}T${selectedOption.endTime}:00",
-      category: task.category,
-      notes: "Planifié par Zelia depuis une proposition multi-créneaux.\n"
-          "Durée du rendez-vous : $actionMinutes min\n"
-          "Trajet aller estimé : $travelGoMinutes min\n"
-          "Trajet retour estimé : $travelGoMinutes min",
-      createdAt: DateTime.now(),
-      isRecurring: false,
-      recurringType: "",
-      recurringWeekday: 0,
-      recurringUntil: "",
-      parentRecurringId: "",
-    );
-
-    await EventService.addEvent(event);
-
-    await NotificationService.showNotification(
-      title: "Créneau réservé 📅",
-      body: task.title,
-    );
+    pendingSelectedSlotEvent = {
+      "step": "duration",
+      "task": task,
+      "option": selectedOption.toJson(),
+      "originalMessage": context["originalMessage"]?.toString() ?? "",
+    };
 
     pendingPlanningProposalOptions = [];
     pendingPlanningProposalContext = null;
 
     addAssistantMessage(
-      "C’est fait. J’ai réservé « ${task.title} » ${selectedOption.label} dans ton agenda.",
+      "Parfait, je garde le créneau « ${selectedOption.label} » pour « ${task.title} » 💕\n\n"
+      "Combien de temps veux-tu prévoir pour ce rendez-vous ?",
     );
 
     return true;
+  }
+
+  Future<bool> tryCompletePendingSelectedSlotEvent(String text) async {
+    final pending = pendingSelectedSlotEvent;
+
+    if (pending == null) return false;
+
+    final task = pending["task"];
+    final optionRaw = pending["option"];
+
+    if (task is! TaskModel || optionRaw is! Map) {
+      pendingSelectedSlotEvent = null;
+      return false;
+    }
+
+    final option = Map<String, dynamic>.from(optionRaw);
+    final step = pending["step"]?.toString() ?? "duration";
+
+    if (step == "duration") {
+      var durationMinutes =
+          ChatPlanningHelperService.parseDurationMinutes(text);
+
+      if (durationMinutes <= 0) {
+        durationMinutes = SmartPlanningService.parseTravelMinutes(text);
+      }
+
+      if (durationMinutes <= 0) {
+        addAssistantMessage(
+          "Dis-moi simplement la durée du rendez-vous, par exemple 30 min, 45 min ou 1 heure 💕",
+        );
+        return true;
+      }
+
+      pendingSelectedSlotEvent = {
+        ...pending,
+        "step": "travel",
+        "durationMinutes": durationMinutes,
+      };
+
+      addAssistantMessage(
+        "Très bien 💕\n\nCombien de temps faut-il prévoir pour le trajet aller ? "
+        "Tu peux répondre par exemple 10 min, 20 min, ou 0 si aucun trajet.",
+      );
+
+      return true;
+    }
+
+    if (step == "travel") {
+      final lower = text.trim().toLowerCase();
+
+      var travelGoMinutes = 0;
+
+      if (PlannerEngineService.isNoTravelAnswer(lower) ||
+          lower == "0" ||
+          lower == "aucun" ||
+          lower == "pas de trajet") {
+        travelGoMinutes = 0;
+      } else {
+        travelGoMinutes = SmartPlanningService.parseTravelMinutes(text);
+      }
+
+      if (travelGoMinutes < 0) {
+        travelGoMinutes = 0;
+      }
+
+      final durationMinutes =
+          int.tryParse(pending["durationMinutes"]?.toString() ?? "0") ?? 0;
+
+      if (durationMinutes <= 0) {
+        pendingSelectedSlotEvent = {
+          ...pending,
+          "step": "duration",
+        };
+
+        addAssistantMessage(
+          "Il me manque encore la durée du rendez-vous. Combien de temps veux-tu prévoir ?",
+        );
+        return true;
+      }
+
+      pendingSelectedSlotEvent = {
+        ...pending,
+        "step": "confirmation",
+        "travelGoMinutes": travelGoMinutes,
+      };
+
+      final totalTravel = travelGoMinutes * 2;
+      final totalMinutes = durationMinutes + totalTravel;
+      final start = DateTime.tryParse(option["start"]?.toString() ?? "");
+      final end = start?.add(Duration(minutes: totalMinutes));
+      final endTime = end == null
+          ? option["endTime"]?.toString() ?? ""
+          : SmartPlanningService.formatIsoTime(end);
+
+      addAssistantMessage(
+        "Je récapitule avant de réserver 💕\n\n"
+        "• Rendez-vous : ${task.title}\n"
+        "• Date : ${option["dateIso"]}\n"
+        "• Début : ${option["startTime"]}\n"
+        "• Durée du rendez-vous : ${SmartPlanningService.durationLabel(durationMinutes)}\n"
+        "• Trajet aller : ${SmartPlanningService.durationLabel(travelGoMinutes)}\n"
+        "• Trajet retour : ${SmartPlanningService.durationLabel(travelGoMinutes)}\n"
+        "• Fin estimée : $endTime\n\n"
+        "Tu confirmes que je réserve ce créneau ?",
+      );
+
+      return true;
+    }
+
+    if (step == "confirmation") {
+      if (PlannerEngineService.isNegativeAnswer(text)) {
+        pendingSelectedSlotEvent = null;
+
+        addAssistantMessage(
+          "D’accord 💕 Je ne réserve pas ce rendez-vous.",
+        );
+        return true;
+      }
+
+      if (!PlannerEngineService.isPositiveAnswer(text)) {
+        addAssistantMessage(
+          "Réponds simplement oui pour réserver, ou non pour annuler 💕",
+        );
+        return true;
+      }
+
+      final durationMinutes =
+          int.tryParse(pending["durationMinutes"]?.toString() ?? "0") ?? 0;
+      final travelGoMinutes =
+          int.tryParse(pending["travelGoMinutes"]?.toString() ?? "0") ?? 0;
+
+      final start = DateTime.tryParse(option["start"]?.toString() ?? "");
+
+      if (start == null || durationMinutes <= 0) {
+        pendingSelectedSlotEvent = null;
+
+        addAssistantMessage(
+          "Je n’ai pas pu finaliser ce rendez-vous, il me manque une information essentielle.",
+        );
+        return true;
+      }
+
+      final totalTravel = travelGoMinutes * 2;
+      final totalMinutes = durationMinutes + totalTravel;
+      final end = start.add(Duration(minutes: totalMinutes));
+
+      final dateIso = SmartPlanningService.formatIsoDate(start);
+      final startTime = SmartPlanningService.formatIsoTime(start);
+      final endTime = SmartPlanningService.formatIsoTime(end);
+
+      final event = EventModel(
+        title: task.title,
+        date: dateIso,
+        time: startTime,
+        endTime: endTime,
+        durationMinutes: durationMinutes,
+        travelMinutes: totalTravel,
+        startDateTimeIso: "${dateIso}T$startTime:00",
+        endDateTimeIso: "${dateIso}T$endTime:00",
+        category: task.category,
+        notes: "Planifié par Zelia depuis une proposition multi-créneaux.\n"
+            "Durée du rendez-vous : $durationMinutes min\n"
+            "Trajet aller estimé : $travelGoMinutes min\n"
+            "Trajet retour estimé : $travelGoMinutes min",
+        createdAt: DateTime.now(),
+      );
+
+      final conflict = await EventService.getOverlapConflict(candidate: event);
+
+      if (conflict != null) {
+        pendingSelectedSlotEvent = null;
+
+        addAssistantMessage(
+          "Je n’ai pas réservé ce créneau, car il chevauche déjà « ${conflict.title} » 💕\n\n"
+          "Tu peux me demander un autre créneau.",
+        );
+        return true;
+      }
+
+      await EventService.addEvent(event);
+
+      await NotificationService.showNotification(
+        title: "Créneau réservé 📅",
+        body: task.title,
+      );
+
+      pendingSelectedSlotEvent = null;
+
+      addAssistantMessage(
+        "C’est fait 💕 J’ai réservé « ${task.title} » le $dateIso de $startTime à $endTime dans ton agenda.",
+      );
+
+      return true;
+    }
+
+    return false;
   }
 
   Future<bool> tryCompletePendingAlternativePlanning(String text) async {
@@ -706,7 +867,15 @@ class _ChatScreenState extends State<ChatScreen> {
         lower.contains("dentiste") ||
         lower.contains("consultation") ||
         lower.contains("réunion") ||
-        lower.contains("reunion");
+        lower.contains("reunion") ||
+        lower.contains("coiffeur") ||
+        lower.contains("coiffeuse") ||
+        lower.contains("esthéticienne") ||
+        lower.contains("estheticienne") ||
+        lower.contains("ongles") ||
+        lower.contains("garage") ||
+        lower.contains("contrôle technique") ||
+        lower.contains("controle technique");
 
     return hasProposalIntent && hasAppointmentIntent;
   }
@@ -715,19 +884,40 @@ class _ChatScreenState extends State<ChatScreen> {
     final lower = text.toLowerCase();
 
     if (lower.contains("médecin") || lower.contains("medecin")) {
-      return "Rendez-vous médecin";
+      return "Médecin";
     }
 
     if (lower.contains("dentiste")) {
-      return "Rendez-vous dentiste";
+      return "Dentiste";
     }
 
     if (lower.contains("pédiatre") || lower.contains("pediatre")) {
-      return "Rendez-vous pédiatre";
+      return "Pédiatre";
     }
 
     if (lower.contains("réunion") || lower.contains("reunion")) {
       return "Réunion";
+    }
+
+    if (lower.contains("coiffeur") || lower.contains("coiffeuse")) {
+      return "Coiffeur";
+    }
+
+    if (lower.contains("esthéticienne") || lower.contains("estheticienne")) {
+      return "Esthéticienne";
+    }
+
+    if (lower.contains("ongles")) {
+      return "Ongles";
+    }
+
+    if (lower.contains("garage")) {
+      return "Garage";
+    }
+
+    if (lower.contains("contrôle technique") ||
+        lower.contains("controle technique")) {
+      return "Contrôle technique";
     }
 
     return "Rendez-vous";
@@ -805,15 +995,39 @@ class _ChatScreenState extends State<ChatScreen> {
       return true;
     }
 
-    final lines = result.options.map((option) {
-      return "• ${option.label}";
-    }).join("\n");
-
-    addAssistantMessage(
-      "Voici les créneaux que je peux te proposer pour « $title » 💕\n\n"
-      "$lines\n\n"
-      "Lequel tu préfères ?",
+    final task = TaskModel(
+      title: title,
+      category: "Agenda",
+      isDone: false,
+      createdAt: DateTime.now(),
+      dueDate: SmartPlanningService.formatIsoDate(startDate),
+      planning: SmartPlanningService.formatIsoDate(startDate),
+      notes: text,
     );
+
+    pendingPlanningProposalOptions = result.options;
+    pendingPlanningProposalContext = {
+      "task": task,
+      "originalMessage": text,
+      "actionMinutes": durationMinutes,
+      "travelGoMinutes": 0,
+      "groupedTasks": <TaskModel>[task],
+    };
+
+    final lines = <String>[
+      "Voici les créneaux que je peux te proposer pour « $title » 💕",
+      "",
+    ];
+
+    for (var index = 0; index < result.options.length; index++) {
+      final option = result.options[index];
+      lines.add("${index + 1}. ${option.label}");
+    }
+
+    lines.add("");
+    lines.add("Réponds 1, 2 ou 3 pour choisir le créneau.");
+
+    addAssistantMessage(lines.join("\n"));
 
     return true;
   }
@@ -1310,6 +1524,10 @@ class _ChatScreenState extends State<ChatScreen> {
       final completedConflictResolution =
           await tryCompletePendingConflictResolution(text);
       if (completedConflictResolution) return;
+
+      final completedSelectedSlotEvent =
+          await tryCompletePendingSelectedSlotEvent(text);
+      if (completedSelectedSlotEvent) return;
 
       final completedPlanningSelection =
           await tryCompletePlanningProposalSelection(text);
