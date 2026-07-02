@@ -29,6 +29,7 @@ import '../services/planner_engine_service.dart';
 import '../services/conflict_engine_service.dart';
 import '../services/zelia_response_builder.dart';
 import '../services/action_handler_service.dart';
+import '../services/natural_date_service.dart';
 
 class ChatScreen extends StatefulWidget {
   final UserProfile profile;
@@ -153,12 +154,6 @@ class _ChatScreenState extends State<ChatScreen> {
       text: text,
     );
   }
-
-
-
-
-
-
 
   bool looksLikeNewActionRequest(String text) {
     final lower = text.toLowerCase();
@@ -682,6 +677,144 @@ class _ChatScreenState extends State<ChatScreen> {
     );
 
     addAssistantMessage(reply);
+    return true;
+  }
+
+  bool looksLikeSlotProposalRequest(String text) {
+    final lower = text.toLowerCase();
+
+    final hasProposalIntent = lower.contains("propose-moi un créneau") ||
+        lower.contains("propose moi un créneau") ||
+        lower.contains("propose-moi un creneau") ||
+        lower.contains("propose moi un creneau") ||
+        lower.contains("trouve-moi un créneau") ||
+        lower.contains("trouve moi un créneau") ||
+        lower.contains("trouve-moi un creneau") ||
+        lower.contains("trouve moi un creneau") ||
+        lower.contains("cherche-moi un créneau") ||
+        lower.contains("cherche moi un créneau") ||
+        lower.contains("place-moi un rendez-vous") ||
+        lower.contains("place moi un rendez-vous") ||
+        lower.contains("quand est-ce que je peux") ||
+        lower.contains("quand est ce que je peux");
+
+    final hasAppointmentIntent = lower.contains("rendez-vous") ||
+        lower.contains("rendez vous") ||
+        lower.contains("rdv") ||
+        lower.contains("médecin") ||
+        lower.contains("medecin") ||
+        lower.contains("dentiste") ||
+        lower.contains("consultation") ||
+        lower.contains("réunion") ||
+        lower.contains("reunion");
+
+    return hasProposalIntent && hasAppointmentIntent;
+  }
+
+  String titleFromSlotProposalRequest(String text) {
+    final lower = text.toLowerCase();
+
+    if (lower.contains("médecin") || lower.contains("medecin")) {
+      return "Rendez-vous médecin";
+    }
+
+    if (lower.contains("dentiste")) {
+      return "Rendez-vous dentiste";
+    }
+
+    if (lower.contains("pédiatre") || lower.contains("pediatre")) {
+      return "Rendez-vous pédiatre";
+    }
+
+    if (lower.contains("réunion") || lower.contains("reunion")) {
+      return "Réunion";
+    }
+
+    return "Rendez-vous";
+  }
+
+  DateTime startDateForSlotProposalRequest(String text) {
+    final lower = text.toLowerCase();
+    final today = DateTime.now();
+    final startToday = DateTime(today.year, today.month, today.day);
+
+    if (lower.contains("semaine prochaine")) {
+      final daysUntilNextMonday = (8 - startToday.weekday) % 7;
+      final safeDays = daysUntilNextMonday == 0 ? 7 : daysUntilNextMonday;
+      return startToday.add(Duration(days: safeDays));
+    }
+
+    final resolvedIsoDate = NaturalDateService.resolveDateFromText(text);
+    final parsed = DateTime.tryParse(resolvedIsoDate);
+
+    if (parsed != null) {
+      return DateTime(parsed.year, parsed.month, parsed.day);
+    }
+
+    return startToday;
+  }
+
+  int defaultDurationForSlotProposalRequest(String text) {
+    final parsed = ChatPlanningHelperService.parseDurationMinutes(text);
+
+    if (parsed > 0) {
+      return parsed;
+    }
+
+    final lower = text.toLowerCase();
+
+    if (lower.contains("médecin") ||
+        lower.contains("medecin") ||
+        lower.contains("dentiste") ||
+        lower.contains("pédiatre") ||
+        lower.contains("pediatre") ||
+        lower.contains("consultation")) {
+      return 60;
+    }
+
+    if (lower.contains("réunion") || lower.contains("reunion")) {
+      return 60;
+    }
+
+    return 60;
+  }
+
+  Future<bool> tryStartSlotProposalRequest(String text) async {
+    if (!looksLikeSlotProposalRequest(text)) {
+      return false;
+    }
+
+    final reasoning = await buildCurrentPlanningReasoning();
+    final startDate = startDateForSlotProposalRequest(text);
+    final durationMinutes = defaultDurationForSlotProposalRequest(text);
+    final title = titleFromSlotProposalRequest(text);
+
+    final result = await PlanningProposalEngine.findBestOptions(
+      startDate: startDate,
+      totalMinutes: durationMinutes,
+      reasoning: reasoning,
+      searchDays: text.toLowerCase().contains("semaine prochaine") ? 7 : 21,
+      maxOptions: 3,
+    );
+
+    if (!result.hasOptions) {
+      addAssistantMessage(
+        "Je n’ai pas trouvé de créneau disponible réaliste pour « $title » sur cette période 💕\n\n"
+        "Tu veux que je cherche plus loin ?",
+      );
+      return true;
+    }
+
+    final lines = result.options.map((option) {
+      return "• ${option.label}";
+    }).join("\n");
+
+    addAssistantMessage(
+      "Voici les créneaux que je peux te proposer pour « $title » 💕\n\n"
+      "$lines\n\n"
+      "Lequel tu préfères ?",
+    );
+
     return true;
   }
 
@@ -1218,6 +1351,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
       final completedPending = await tryCompletePendingDuration(text);
       if (completedPending) return;
+
+      final startedSlotProposal = await tryStartSlotProposalRequest(text);
+      if (startedSlotProposal) return;
 
       if (MemoryPipelineService.shouldProcessMemory(text)) {
         final memory = MemoryPipelineService.buildMemory(text);
