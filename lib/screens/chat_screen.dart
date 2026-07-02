@@ -979,11 +979,27 @@ class _ChatScreenState extends State<ChatScreen> {
     final durationMinutes = defaultDurationForSlotProposalRequest(text);
     final title = titleFromSlotProposalRequest(text);
 
+    final lower = text.toLowerCase();
+
+    final isExactDateRequest = lower.contains("demain") ||
+        lower.contains("aujourd'hui") ||
+        lower.contains("aujourd’hui") ||
+        lower.contains("ce soir") ||
+        lower.contains("cet après-midi") ||
+        lower.contains("cet apres-midi") ||
+        lower.contains("ce matin");
+
+    final searchDays = isExactDateRequest
+        ? 1
+        : lower.contains("semaine prochaine")
+            ? 7
+            : 21;
+
     final result = await PlanningProposalEngine.findBestOptions(
       startDate: startDate,
       totalMinutes: durationMinutes,
       reasoning: reasoning,
-      searchDays: text.toLowerCase().contains("semaine prochaine") ? 7 : 21,
+      searchDays: searchDays,
       maxOptions: 3,
     );
 
