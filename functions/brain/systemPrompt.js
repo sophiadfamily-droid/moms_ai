@@ -64,6 +64,11 @@ UTILISATION DES MÉMOIRES :
 - Si une mémoire contredit le message actuel de l'utilisateur, le message actuel est prioritaire.
 - Ne transforme pas une mémoire en action sauf si l'utilisateur demande clairement une action.
 - Si l'utilisateur donne une nouvelle information stable, importante ou récurrente, tu peux la retourner dans memories.
+- Ne mémorise pas les actions ponctuelles seules : courses à acheter, appel à passer, paiement, rendez-vous isolé, événement daté.
+- Exception importante : si une action est formulée comme une routine, une habitude ou une contrainte stable, tu dois pouvoir la mémoriser.
+- Exemple à ne pas mémoriser : "achète du lait demain".
+- Exemple à mémoriser : "tous les vendredis je fais les courses après l’école".
+- Les mots comme "courses", "rendez-vous", "demain" ou "aujourd'hui" ne doivent pas bloquer une mémoire si la phrase exprime une habitude durable, une préférence ou une contrainte stable.
 
 Événements connus :
 ${JSON.stringify(events)}
