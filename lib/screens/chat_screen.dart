@@ -64,6 +64,7 @@ class _ChatScreenState extends State<ChatScreen> {
   List<PlanningProposalOption> pendingPlanningProposalOptions = [];
   Map<String, dynamic>? pendingPlanningProposalContext;
   Map<String, dynamic>? pendingSelectedSlotEvent;
+  Map<String, dynamic>? pendingSlotProposalRequest;
   Map<String, dynamic>? pendingAlternativePlanningTask;
 
   String currentUserMessage = "";
@@ -387,18 +388,39 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     pendingSelectedSlotEvent = {
-      "step": "duration",
+      "step": "confirmation",
       "task": task,
       "option": selectedOption.toJson(),
       "originalMessage": context["originalMessage"]?.toString() ?? "",
+      "durationMinutes": context["actionMinutes"] ?? 0,
+      "travelGoMinutes": context["travelGoMinutes"] ?? 0,
     };
 
     pendingPlanningProposalOptions = [];
     pendingPlanningProposalContext = null;
 
+    final durationMinutes =
+        int.tryParse(context["actionMinutes"]?.toString() ?? "0") ?? 0;
+    final travelGoMinutes =
+        int.tryParse(context["travelGoMinutes"]?.toString() ?? "0") ?? 0;
+    final totalMinutes = durationMinutes + (travelGoMinutes * 2);
+    final end = selectedOption.start.add(Duration(minutes: totalMinutes));
+    final endTime = SmartPlanningService.formatIsoTime(end);
+
     addAssistantMessage(
-      "Parfait, je garde le créneau « ${selectedOption.label} » pour « ${task.title} » 💕\n\n"
-      "Combien de temps veux-tu prévoir pour ce rendez-vous ?",
+      [
+        "Je récapitule avant de réserver 💕",
+        "",
+        "• Rendez-vous : ${task.title}",
+        "• Date : ${selectedOption.dateIso}",
+        "• Début : ${selectedOption.startTime}",
+        "• Durée du rendez-vous : ${SmartPlanningService.durationLabel(durationMinutes)}",
+        "• Trajet aller : ${SmartPlanningService.durationLabel(travelGoMinutes)}",
+        "• Trajet retour : ${SmartPlanningService.durationLabel(travelGoMinutes)}",
+        "• Fin estimée : $endTime",
+        "",
+        "Tu confirmes que je réserve ce créneau ?",
+      ].join("\n"),
     );
 
     return true;
@@ -974,78 +996,176 @@ class _ChatScreenState extends State<ChatScreen> {
       return false;
     }
 
-    final reasoning = await buildCurrentPlanningReasoning();
     final startDate = startDateForSlotProposalRequest(text);
-    final durationMinutes = defaultDurationForSlotProposalRequest(text);
     final title = titleFromSlotProposalRequest(text);
 
-    final lower = text.toLowerCase();
+    pendingSlotProposalRequest = {
+      "step": "duration",
+      "title": title,
+      "originalMessage": text,
+      "startDate": SmartPlanningService.formatIsoDate(startDate),
+    };
 
-    final isExactDateRequest = lower.contains("demain") ||
-        lower.contains("aujourd'hui") ||
-        lower.contains("aujourd’hui") ||
-        lower.contains("ce soir") ||
-        lower.contains("cet après-midi") ||
-        lower.contains("cet apres-midi") ||
-        lower.contains("ce matin");
-
-    final searchDays = isExactDateRequest
-        ? 1
-        : lower.contains("semaine prochaine")
-            ? 7
-            : 21;
-
-    final result = await PlanningProposalEngine.findBestOptions(
-      startDate: startDate,
-      totalMinutes: durationMinutes,
-      reasoning: reasoning,
-      searchDays: searchDays,
-      maxOptions: 3,
+    addAssistantMessage(
+      [
+        "D’accord 💕 Pour te proposer un vrai créneau disponible pour « $title », j’ai d’abord besoin de la durée du rendez-vous.",
+        "",
+        "Combien de temps veux-tu prévoir ?",
+      ].join("\n"),
     );
 
-    if (!result.hasOptions) {
+    return true;
+  }
+
+  Future<bool> tryCompletePendingSlotProposalRequest(String text) async {
+    final pending = pendingSlotProposalRequest;
+
+    if (pending == null) return false;
+
+    final step = pending["step"]?.toString() ?? "duration";
+    final title = pending["title"]?.toString() ?? "Rendez-vous";
+    final originalMessage = pending["originalMessage"]?.toString() ?? "";
+    final startDateIso = pending["startDate"]?.toString() ?? "";
+    final startDate = DateTime.tryParse(startDateIso) ?? DateTime.now();
+
+    if (step == "duration") {
+      var durationMinutes =
+          ChatPlanningHelperService.parseDurationMinutes(text);
+
+      if (durationMinutes <= 0) {
+        durationMinutes = SmartPlanningService.parseTravelMinutes(text);
+      }
+
+      if (durationMinutes <= 0) {
+        addAssistantMessage(
+          "Dis-moi simplement la durée du rendez-vous, par exemple 30 min, 1h ou 1h30 💕",
+        );
+        return true;
+      }
+
+      pendingSlotProposalRequest = {
+        ...pending,
+        "step": "travel",
+        "durationMinutes": durationMinutes,
+      };
+
       addAssistantMessage(
-        "Je n’ai pas trouvé de créneau disponible réaliste pour « $title » sur cette période 💕\n\n"
-        "Tu veux que je cherche plus loin ?",
+        [
+          "Très bien 💕",
+          "",
+          "Combien de temps faut-il prévoir pour le trajet aller ?",
+          "Tu peux répondre 0 si aucun trajet.",
+        ].join("\n"),
       );
+
       return true;
     }
 
-    final task = TaskModel(
-      title: title,
-      category: "Agenda",
-      isDone: false,
-      createdAt: DateTime.now(),
-      dueDate: SmartPlanningService.formatIsoDate(startDate),
-      planning: SmartPlanningService.formatIsoDate(startDate),
-      notes: text,
-    );
+    if (step == "travel") {
+      final lower = text.trim().toLowerCase();
 
-    pendingPlanningProposalOptions = result.options;
-    pendingPlanningProposalContext = {
-      "task": task,
-      "originalMessage": text,
-      "actionMinutes": durationMinutes,
-      "travelGoMinutes": 0,
-      "groupedTasks": <TaskModel>[task],
-    };
+      var travelGoMinutes = 0;
 
-    final lines = <String>[
-      "Voici les créneaux que je peux te proposer pour « $title » 💕",
-      "",
-    ];
+      if (PlannerEngineService.isNoTravelAnswer(lower) ||
+          lower == "0" ||
+          lower == "aucun" ||
+          lower == "pas de trajet") {
+        travelGoMinutes = 0;
+      } else {
+        travelGoMinutes = SmartPlanningService.parseTravelMinutes(text);
+      }
 
-    for (var index = 0; index < result.options.length; index++) {
-      final option = result.options[index];
-      lines.add("${index + 1}. ${option.label}");
+      final durationMinutes =
+          int.tryParse(pending["durationMinutes"]?.toString() ?? "0") ?? 0;
+
+      if (durationMinutes <= 0) {
+        pendingSlotProposalRequest = {
+          ...pending,
+          "step": "duration",
+        };
+
+        addAssistantMessage(
+          "Il me manque la durée du rendez-vous. Combien de temps veux-tu prévoir ?",
+        );
+        return true;
+      }
+
+      final lowerOriginal = originalMessage.toLowerCase();
+
+      final isExactDateRequest = lowerOriginal.contains("demain") ||
+          lowerOriginal.contains("aujourd'hui") ||
+          lowerOriginal.contains("aujourd’hui") ||
+          lowerOriginal.contains("ce soir") ||
+          lowerOriginal.contains("cet après-midi") ||
+          lowerOriginal.contains("cet apres-midi") ||
+          lowerOriginal.contains("ce matin");
+
+      final searchDays = isExactDateRequest
+          ? 1
+          : lowerOriginal.contains("semaine prochaine")
+              ? 7
+              : 21;
+
+      final totalMinutes = durationMinutes + (travelGoMinutes * 2);
+
+      final result = await PlanningProposalEngine.findBestOptions(
+        startDate: startDate,
+        totalMinutes: totalMinutes,
+        reasoning: await buildCurrentPlanningReasoning(),
+        searchDays: searchDays,
+        maxOptions: 3,
+      );
+
+      pendingSlotProposalRequest = null;
+
+      if (!result.hasOptions || result.options.isEmpty) {
+        addAssistantMessage(
+          [
+            "Je n’ai pas trouvé de créneau disponible réaliste pour « $title » sur cette période 💕",
+            "",
+            "Tu veux que je cherche plus loin ?",
+          ].join("\n"),
+        );
+        return true;
+      }
+
+      final task = TaskModel(
+        title: title,
+        category: "Agenda",
+        isDone: false,
+        createdAt: DateTime.now(),
+        dueDate: SmartPlanningService.formatIsoDate(startDate),
+        planning: SmartPlanningService.formatIsoDate(startDate),
+        notes: originalMessage,
+      );
+
+      pendingPlanningProposalOptions = result.options;
+      pendingPlanningProposalContext = {
+        "task": task,
+        "originalMessage": originalMessage,
+        "actionMinutes": durationMinutes,
+        "travelGoMinutes": travelGoMinutes,
+        "groupedTasks": <TaskModel>[task],
+      };
+
+      final lines = <String>[
+        "Voici les créneaux disponibles que je peux te proposer pour « $title » 💕",
+        "",
+      ];
+
+      for (var index = 0; index < result.options.length; index++) {
+        final option = result.options[index];
+        lines.add("${index + 1}. ${option.label}");
+      }
+
+      lines.add("");
+      lines.add("Réponds 1, 2 ou 3 pour choisir le créneau.");
+
+      addAssistantMessage(lines.join("\n"));
+      return true;
     }
 
-    lines.add("");
-    lines.add("Réponds 1, 2 ou 3 pour choisir le créneau.");
-
-    addAssistantMessage(lines.join("\n"));
-
-    return true;
+    return false;
   }
 
   Future<List<Map<String, dynamic>>> buildCurrentPlanningReasoning() async {
@@ -1541,6 +1661,10 @@ class _ChatScreenState extends State<ChatScreen> {
           await tryCompletePendingConflictResolution(text);
       if (completedConflictResolution) return;
 
+      final completedSlotProposalRequest =
+          await tryCompletePendingSlotProposalRequest(text);
+      if (completedSlotProposalRequest) return;
+
       final completedSelectedSlotEvent =
           await tryCompletePendingSelectedSlotEvent(text);
       if (completedSelectedSlotEvent) return;
@@ -1565,6 +1689,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
       if (completedSmartPlanning) return;
 
+      final startedSlotProposal = await tryStartSlotProposalRequest(text);
+      if (startedSlotProposal) return;
+
       final completedPlanningRequest =
           await tryCompletePendingPlanningRequest(text);
 
@@ -1585,9 +1712,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
       final completedPending = await tryCompletePendingDuration(text);
       if (completedPending) return;
-
-      final startedSlotProposal = await tryStartSlotProposalRequest(text);
-      if (startedSlotProposal) return;
 
       if (MemoryPipelineService.shouldProcessMemory(text)) {
         final memory = MemoryPipelineService.buildMemory(text);
