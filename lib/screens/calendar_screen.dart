@@ -131,6 +131,33 @@ class _CalendarScreenState extends State<CalendarScreen> {
     return '${hours}h${rest.toString().padLeft(2, '0')}';
   }
 
+  String cleanEventTitle(String title) {
+    var clean = title.trim();
+
+    if (clean.toLowerCase().startsWith('rendez-vous ')) {
+      clean = clean.substring('rendez-vous '.length).trim();
+    }
+
+    if (clean.toLowerCase().startsWith('rendez vous ')) {
+      clean = clean.substring('rendez vous '.length).trim();
+    }
+
+    if (clean.isEmpty) return title.trim();
+
+    return clean[0].toUpperCase() + clean.substring(1);
+  }
+
+  bool isTechnicalPlanningNote(String note) {
+    final lower = note.toLowerCase();
+
+    return lower.contains('planifié par zelia') ||
+        lower.contains('planifie par zelia') ||
+        lower.contains('durée du rendez-vous') ||
+        lower.contains('duree du rendez-vous') ||
+        lower.contains('trajet aller estimé') ||
+        lower.contains('trajet aller estime');
+  }
+
   String monthName(int month) {
     const months = [
       'Janvier',
@@ -1229,11 +1256,82 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
+  List<EventModel> eventsForSelectedDate() {
+    final selectedIsoDate = formatIsoDate(selectedDate);
+
+    final result = events.where((event) {
+      return event.date == selectedIsoDate;
+    }).toList();
+
+    result.sort((a, b) {
+      final aValue = a.startDateTimeIso.isEmpty
+          ? '${a.date}T${a.time}:00'
+          : a.startDateTimeIso;
+      final bValue = b.startDateTimeIso.isEmpty
+          ? '${b.date}T${b.time}:00'
+          : b.startDateTimeIso;
+
+      return aValue.compareTo(bValue);
+    });
+
+    return result;
+  }
+
+  Widget buildEventsList() {
+    final events = eventsForSelectedDate();
+
+    if (events.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.72),
+            borderRadius: BorderRadius.circular(22),
+          ),
+          child: Column(
+            children: [
+              Icon(Icons.event_available_outlined, color: accent, size: 30),
+              const SizedBox(height: 10),
+              Text(
+                'Aucun événement prévu',
+                style: TextStyle(
+                  color: textDark,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Profite de ce moment pour toi.',
+                style: TextStyle(color: textSoft, fontSize: 13),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
+      child: Column(
+        children: events.map(buildEventCard).toList(),
+      ),
+    );
+  }
+
   Widget buildEventCard(EventModel event) {
     final color = categoryColor(categoryOf(event));
+    final displayTitle = cleanEventTitle(event.title);
+
     final details = <String>[
-      if (event.notes.trim().isNotEmpty) event.notes.trim(),
-      if (event.travelMinutes > 0) 'Trajet ${event.travelMinutes} min',
+      if (event.durationMinutes > 0)
+        'Durée ${durationLabel(event.durationMinutes)}',
+      if (event.travelMinutes > 0) 'Trajet ${travelLabel(event.travelMinutes)}',
+      if (event.notes.trim().isNotEmpty &&
+          !isTechnicalPlanningNote(event.notes.trim()))
+        event.notes.trim(),
     ];
 
     return GestureDetector(
@@ -1242,69 +1340,67 @@ class _CalendarScreenState extends State<CalendarScreen> {
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.92),
-            borderRadius: BorderRadius.circular(22)),
+          color: Colors.white.withOpacity(0.92),
+          borderRadius: BorderRadius.circular(22),
+        ),
         child: Row(
           children: [
             Container(
-                width: 4,
-                height: 44,
-                decoration: BoxDecoration(
-                    color: color, borderRadius: BorderRadius.circular(10))),
+              width: 4,
+              height: 44,
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
             const SizedBox(width: 18),
             SizedBox(
-              width: 70,
+              width: 86,
               child: Text(
-                  event.time.isEmpty
-                      ? '--:--'
-                      : event.endTime.isEmpty
-                          ? event.time
-                          : '${event.time} - ${event.endTime}',
-                  style: TextStyle(
-                      color: color, fontSize: 18, fontWeight: FontWeight.w700)),
+                event.time.isEmpty
+                    ? '--:--'
+                    : event.endTime.isEmpty
+                        ? event.time
+                        : '${event.time} - ${event.endTime}',
+                style: TextStyle(
+                  color: color,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ),
+            const SizedBox(width: 8),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(event.title,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          color: textDark,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w500)),
+                  Text(
+                    displayTitle,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: textDark,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                   if (details.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 4),
-                      child: Text(details.join(' • '),
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(color: textSoft, fontSize: 13)),
+                      child: Text(
+                        details.join(' • '),
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: textSoft,
+                          fontSize: 13,
+                        ),
+                      ),
                     ),
                 ],
               ),
             ),
-            IconButton(
-                onPressed: () => showDeleteChoices(event),
-                icon: Icon(Icons.delete_outline, color: textSoft)),
           ],
         ),
       ),
-    );
-  }
-
-  Widget buildEventsList() {
-    final filtered = eventsForDay(selectedDate);
-    if (filtered.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.all(28),
-        child: Text('Aucun événement 💕',
-            style: TextStyle(color: textSoft, fontSize: 16)),
-      );
-    }
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 20, 24, 120),
-      child: Column(
-          children: filtered.map((event) => buildEventCard(event)).toList()),
     );
   }
 
