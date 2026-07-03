@@ -148,10 +148,8 @@ class EventService {
       return null;
     }
 
-    final travel = event.travelMinutes > 0 ? event.travelMinutes : 0;
-
     return start.subtract(
-      Duration(minutes: travel),
+      Duration(minutes: event.resolvedTravelGoMinutes),
     );
   }
 
@@ -162,10 +160,8 @@ class EventService {
       return null;
     }
 
-    final travel = event.travelMinutes > 0 ? event.travelMinutes : 0;
-
     return end.add(
-      Duration(minutes: travel),
+      Duration(minutes: event.resolvedTravelBackMinutes),
     );
   }
 
