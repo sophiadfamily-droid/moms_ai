@@ -425,7 +425,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         continue;
       }
 
-      if (EventService.eventsOverlap(existingEvent, candidate)) {
+      if (EventService.eventsProtectedOverlap(existingEvent, candidate)) {
         return existingEvent;
       }
     }

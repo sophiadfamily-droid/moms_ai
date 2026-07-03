@@ -141,6 +141,34 @@ class EventService {
     );
   }
 
+  static DateTime? parseProtectedStart(EventModel event) {
+    final start = parseStart(event);
+
+    if (start == null) {
+      return null;
+    }
+
+    final travel = event.travelMinutes > 0 ? event.travelMinutes : 0;
+
+    return start.subtract(
+      Duration(minutes: travel),
+    );
+  }
+
+  static DateTime? parseProtectedEnd(EventModel event) {
+    final end = parseEnd(event);
+
+    if (end == null) {
+      return null;
+    }
+
+    final travel = event.travelMinutes > 0 ? event.travelMinutes : 0;
+
+    return end.add(
+      Duration(minutes: travel),
+    );
+  }
+
   static bool eventsOverlap(
     EventModel first,
     EventModel second,
@@ -149,6 +177,25 @@ class EventService {
     final firstEnd = parseEnd(first);
     final secondStart = parseStart(second);
     final secondEnd = parseEnd(second);
+
+    if (firstStart == null ||
+        firstEnd == null ||
+        secondStart == null ||
+        secondEnd == null) {
+      return false;
+    }
+
+    return firstStart.isBefore(secondEnd) && secondStart.isBefore(firstEnd);
+  }
+
+  static bool eventsProtectedOverlap(
+    EventModel first,
+    EventModel second,
+  ) {
+    final firstStart = parseProtectedStart(first);
+    final firstEnd = parseProtectedEnd(first);
+    final secondStart = parseProtectedStart(second);
+    final secondEnd = parseProtectedEnd(second);
 
     if (firstStart == null ||
         firstEnd == null ||

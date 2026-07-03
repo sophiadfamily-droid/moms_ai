@@ -150,10 +150,24 @@ class PlanningProposalEngine {
     while (!cursor.add(Duration(minutes: totalMinutes)).isAfter(endLimit)) {
       final slotEnd = cursor.add(Duration(minutes: totalMinutes));
 
-      final hasEventConflict = SmartPlanningService.overlapsExistingEvent(
-        start: cursor,
-        end: slotEnd,
-        events: events,
+      final slotCandidate = EventModel(
+        title: "Créneau proposé",
+        date: SmartPlanningService.formatIsoDate(cursor),
+        time: SmartPlanningService.formatIsoTime(cursor),
+        notes: "",
+        category: "Planning",
+        createdAt: DateTime.now(),
+        startDateTimeIso:
+            "${SmartPlanningService.formatIsoDate(cursor)}T${SmartPlanningService.formatIsoTime(cursor)}:00",
+        endTime: SmartPlanningService.formatIsoTime(slotEnd),
+        endDateTimeIso:
+            "${SmartPlanningService.formatIsoDate(slotEnd)}T${SmartPlanningService.formatIsoTime(slotEnd)}:00",
+        durationMinutes: totalMinutes,
+        travelMinutes: 0,
+      );
+
+      final hasEventConflict = events.any(
+        (event) => EventService.eventsProtectedOverlap(event, slotCandidate),
       );
 
       final hasFamilyConflict = SmartPlanningService.isBusyBecauseFamilyRoutine(
