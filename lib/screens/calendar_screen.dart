@@ -416,6 +416,52 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
+  EventModel? findManualOverlapConflict({
+    required EventModel candidate,
+    EventModel? ignoredEvent,
+  }) {
+    for (final existingEvent in events) {
+      if (ignoredEvent != null && sameEvent(existingEvent, ignoredEvent)) {
+        continue;
+      }
+
+      if (EventService.eventsOverlap(existingEvent, candidate)) {
+        return existingEvent;
+      }
+    }
+
+    return null;
+  }
+
+  Future<bool> confirmManualOverlap({
+    required EventModel conflict,
+  }) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text("Créneau déjà occupé"),
+          content: Text(
+            "Ce rendez-vous chevauche déjà « ${conflict.title} ».\n\n"
+            "Tu veux quand même enregistrer cette modification ?",
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text("Annuler"),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text("Enregistrer quand même"),
+            ),
+          ],
+        );
+      },
+    );
+
+    return confirmed == true;
+  }
+
   Future<void> showEventDialog({EventModel? event}) async {
     final isEdit = event != null;
     DateTime selectedEventDate =
@@ -924,6 +970,19 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                   parentRecurringId:
                                       event?.parentRecurringId ?? '',
                                 );
+
+                                final conflict = findManualOverlapConflict(
+                                  candidate: updatedEvent,
+                                  ignoredEvent: event,
+                                );
+
+                                if (conflict != null) {
+                                  final shouldSave = await confirmManualOverlap(
+                                    conflict: conflict,
+                                  );
+
+                                  if (!shouldSave) return;
+                                }
 
                                 if (isEdit) {
                                   final index = events.indexWhere(
