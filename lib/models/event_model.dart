@@ -22,6 +22,13 @@ class EventModel {
   /// Temps de trajet après le rendez-vous.
   final int travelBackMinutes;
 
+  /// Indique que les temps aller et retour sont enregistrés séparément.
+  /// Permet de conserver correctement une valeur explicite de 0 minute.
+  final bool usesSeparateTravelTimes;
+
+  /// Marge de sécurité appliquée après le trajet retour.
+  final int marginMinutes;
+
   /// Contexte de départ estimé ou choisi par Zelia.
   /// Exemples : home, work, school, previous_event, unknown.
   final String departureContext;
@@ -50,6 +57,8 @@ class EventModel {
     this.travelMinutes = 0,
     this.travelGoMinutes = 0,
     this.travelBackMinutes = 0,
+    this.usesSeparateTravelTimes = false,
+    this.marginMinutes = 0,
     this.departureContext = "unknown",
     this.arrivalContext = "unknown",
     this.isRecurring = false,
@@ -60,17 +69,24 @@ class EventModel {
   });
 
   int get resolvedTravelGoMinutes {
-    if (travelGoMinutes > 0) return travelGoMinutes;
+    if (usesSeparateTravelTimes) return travelGoMinutes;
     return travelMinutes;
   }
 
   int get resolvedTravelBackMinutes {
-    if (travelBackMinutes > 0) return travelBackMinutes;
+    if (usesSeparateTravelTimes) return travelBackMinutes;
     return travelMinutes;
   }
 
   int get totalTravelMinutes {
     return resolvedTravelGoMinutes + resolvedTravelBackMinutes;
+  }
+
+  int get totalProtectedMinutes {
+    return resolvedTravelGoMinutes +
+        durationMinutes +
+        resolvedTravelBackMinutes +
+        marginMinutes;
   }
 
   EventModel copyWith({
@@ -87,6 +103,8 @@ class EventModel {
     int? travelMinutes,
     int? travelGoMinutes,
     int? travelBackMinutes,
+    bool? usesSeparateTravelTimes,
+    int? marginMinutes,
     String? departureContext,
     String? arrivalContext,
     bool? isRecurring,
@@ -109,6 +127,9 @@ class EventModel {
       travelMinutes: travelMinutes ?? this.travelMinutes,
       travelGoMinutes: travelGoMinutes ?? this.travelGoMinutes,
       travelBackMinutes: travelBackMinutes ?? this.travelBackMinutes,
+      usesSeparateTravelTimes:
+          usesSeparateTravelTimes ?? this.usesSeparateTravelTimes,
+      marginMinutes: marginMinutes ?? this.marginMinutes,
       departureContext: departureContext ?? this.departureContext,
       arrivalContext: arrivalContext ?? this.arrivalContext,
       isRecurring: isRecurring ?? this.isRecurring,
@@ -134,6 +155,8 @@ class EventModel {
       "travelMinutes": travelMinutes,
       "travelGoMinutes": travelGoMinutes,
       "travelBackMinutes": travelBackMinutes,
+      "usesSeparateTravelTimes": usesSeparateTravelTimes,
+      "marginMinutes": marginMinutes,
       "departureContext": departureContext,
       "arrivalContext": arrivalContext,
       "isRecurring": isRecurring,
@@ -147,6 +170,12 @@ class EventModel {
   factory EventModel.fromJson(Map<String, dynamic> json) {
     final legacyTravel =
         int.tryParse(json["travelMinutes"]?.toString() ?? "0") ?? 0;
+
+    final hasSeparateTravelFields = json.containsKey("travelGoMinutes") ||
+        json.containsKey("travelBackMinutes");
+
+    final usesSeparateTravelTimes =
+        json["usesSeparateTravelTimes"] == true || hasSeparateTravelFields;
 
     return EventModel(
       title: json["title"] ?? "",
@@ -162,11 +191,12 @@ class EventModel {
           int.tryParse(json["durationMinutes"]?.toString() ?? "0") ?? 0,
       travelMinutes: legacyTravel,
       travelGoMinutes:
-          int.tryParse(json["travelGoMinutes"]?.toString() ?? "0") ??
-              legacyTravel,
+          int.tryParse(json["travelGoMinutes"]?.toString() ?? "0") ?? 0,
       travelBackMinutes:
-          int.tryParse(json["travelBackMinutes"]?.toString() ?? "0") ??
-              legacyTravel,
+          int.tryParse(json["travelBackMinutes"]?.toString() ?? "0") ?? 0,
+      usesSeparateTravelTimes: usesSeparateTravelTimes,
+      marginMinutes:
+          int.tryParse(json["marginMinutes"]?.toString() ?? "0") ?? 0,
       departureContext: json["departureContext"] ?? "unknown",
       arrivalContext: json["arrivalContext"] ?? "unknown",
       isRecurring: json["isRecurring"] ?? false,

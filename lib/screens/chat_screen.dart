@@ -625,12 +625,18 @@ class _ChatScreenState extends State<ChatScreen> {
       final marginMinutes =
           int.tryParse(pending["marginMinutes"]?.toString() ?? "0") ?? 0;
       final totalTravel = travelGoMinutes + travelBackMinutes;
-      final totalMinutes = durationMinutes + totalTravel + marginMinutes;
-      final end = start.add(Duration(minutes: totalMinutes));
 
-      final dateIso = SmartPlanningService.formatIsoDate(start);
-      final startTime = SmartPlanningService.formatIsoTime(start);
-      final endTime = SmartPlanningService.formatIsoTime(end);
+      final appointmentStart = start.add(
+        Duration(minutes: travelGoMinutes),
+      );
+
+      final appointmentEnd = appointmentStart.add(
+        Duration(minutes: durationMinutes),
+      );
+
+      final dateIso = SmartPlanningService.formatIsoDate(appointmentStart);
+      final startTime = SmartPlanningService.formatIsoTime(appointmentStart);
+      final endTime = SmartPlanningService.formatIsoTime(appointmentEnd);
 
       final event = EventModel(
         title: task.title,
@@ -641,6 +647,8 @@ class _ChatScreenState extends State<ChatScreen> {
         travelMinutes: totalTravel,
         travelGoMinutes: travelGoMinutes,
         travelBackMinutes: travelBackMinutes,
+        usesSeparateTravelTimes: true,
+        marginMinutes: marginMinutes,
         departureContext: "previous_event",
         arrivalContext: "next_event",
         startDateTimeIso: "${dateIso}T$startTime:00",

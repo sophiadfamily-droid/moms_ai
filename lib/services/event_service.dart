@@ -161,7 +161,9 @@ class EventService {
     }
 
     return end.add(
-      Duration(minutes: event.resolvedTravelBackMinutes),
+      Duration(
+        minutes: event.resolvedTravelBackMinutes + event.marginMinutes,
+      ),
     );
   }
 

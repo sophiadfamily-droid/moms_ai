@@ -1080,13 +1080,36 @@ class SmartPlanningService {
   }
 
   static EventModel eventFromProposal(SmartPlanningProposal proposal) {
-    final startIso = "${proposal.date}T${proposal.startTime}:00";
-    final endIso = "${proposal.date}T${proposal.endTime}:00";
+    final protectedStart =
+        DateTime.tryParse("${proposal.date}T${proposal.startTime}:00");
+
+    final appointmentStart = protectedStart?.add(
+      Duration(minutes: proposal.travelGoMinutes),
+    );
+
+    final appointmentEnd = appointmentStart?.add(
+      Duration(minutes: proposal.actionMinutes),
+    );
+
+    final date = appointmentStart == null
+        ? proposal.date
+        : formatIsoDate(appointmentStart);
+
+    final startTime = appointmentStart == null
+        ? proposal.startTime
+        : formatIsoTime(appointmentStart);
+
+    final endTime = appointmentEnd == null
+        ? proposal.endTime
+        : formatIsoTime(appointmentEnd);
+
+    final startIso = "${date}T$startTime:00";
+    final endIso = "${date}T$endTime:00";
 
     return EventModel(
       title: proposal.taskTitle,
-      date: proposal.date,
-      time: proposal.startTime,
+      date: date,
+      time: startTime,
       notes: "Planifié par Zelia depuis une tâche.\n"
           "Type : ${proposal.taskType}\n"
           "Durée action : ${durationLabel(proposal.actionMinutes)}\n"
@@ -1096,10 +1119,14 @@ class SmartPlanningService {
       category: "Personnel",
       createdAt: DateTime.now(),
       startDateTimeIso: startIso,
-      endTime: proposal.endTime,
+      endTime: endTime,
       endDateTimeIso: endIso,
-      durationMinutes: proposal.totalMinutes,
+      durationMinutes: proposal.actionMinutes,
       travelMinutes: proposal.travelGoMinutes + proposal.travelBackMinutes,
+      travelGoMinutes: proposal.travelGoMinutes,
+      travelBackMinutes: proposal.travelBackMinutes,
+      usesSeparateTravelTimes: true,
+      marginMinutes: proposal.marginMinutes,
       isRecurring: false,
       recurringType: "",
       recurringWeekday: 0,
