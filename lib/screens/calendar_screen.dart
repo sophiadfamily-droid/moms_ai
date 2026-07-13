@@ -314,7 +314,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             borderRadius: BorderRadius.circular(30),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.12),
+                color: Colors.black.withValues(alpha: 0.12),
                 blurRadius: 28,
                 offset: const Offset(0, 14),
               ),
@@ -328,7 +328,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   width: 46,
                   height: 5,
                   decoration: BoxDecoration(
-                    color: textSoft.withOpacity(0.25),
+                    color: textSoft.withValues(alpha: 0.25),
                     borderRadius: BorderRadius.circular(100),
                   ),
                 ),
@@ -394,9 +394,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.9),
+        color: Colors.white.withValues(alpha: 0.9),
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: accent.withOpacity(0.10)),
+        border: Border.all(color: accent.withValues(alpha: 0.10)),
       ),
       child: TextField(
         controller: controller,
@@ -422,10 +422,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
       duration: const Duration(milliseconds: 180),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color:
-            selected ? color.withOpacity(0.18) : Colors.white.withOpacity(0.9),
+        color: selected
+            ? color.withValues(alpha: 0.18)
+            : Colors.white.withValues(alpha: 0.9),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: selected ? color : accent.withOpacity(0.10)),
+        border: Border.all(
+            color: selected ? color : accent.withValues(alpha: 0.10)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -715,7 +717,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   borderRadius: BorderRadius.circular(34),
                   boxShadow: [
                     BoxShadow(
-                        color: Colors.black.withOpacity(0.12),
+                        color: Colors.black.withValues(alpha: 0.12),
                         blurRadius: 28,
                         offset: const Offset(0, 14))
                   ],
@@ -730,7 +732,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                             width: 46,
                             height: 5,
                             decoration: BoxDecoration(
-                                color: textSoft.withOpacity(0.25),
+                                color: textSoft.withValues(alpha: 0.25),
                                 borderRadius: BorderRadius.circular(100))),
                       ),
                       const SizedBox(height: 18),
@@ -740,7 +742,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                             width: 48,
                             height: 48,
                             decoration: BoxDecoration(
-                                color: accent.withOpacity(0.12),
+                                color: accent.withValues(alpha: 0.12),
                                 borderRadius: BorderRadius.circular(18)),
                             child: Icon(
                                 isEdit
@@ -783,10 +785,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
                               child: Container(
                                 padding: const EdgeInsets.all(16),
                                 decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.9),
+                                    color: Colors.white.withValues(alpha: 0.9),
                                     borderRadius: BorderRadius.circular(22),
                                     border: Border.all(
-                                        color: accent.withOpacity(0.10))),
+                                        color: accent.withValues(alpha: 0.10))),
                                 child: Row(
                                   children: [
                                     Icon(Icons.calendar_month_outlined,
@@ -811,10 +813,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
                               child: Container(
                                 padding: const EdgeInsets.all(16),
                                 decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.9),
+                                    color: Colors.white.withValues(alpha: 0.9),
                                     borderRadius: BorderRadius.circular(22),
                                     border: Border.all(
-                                        color: accent.withOpacity(0.10))),
+                                        color: accent.withValues(alpha: 0.10))),
                                 child: Row(
                                   children: [
                                     Icon(Icons.access_time, color: accent),
@@ -1218,7 +1220,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           const Spacer(),
           CircleAvatar(
             radius: 26,
-            backgroundColor: accent.withOpacity(0.12),
+            backgroundColor: accent.withValues(alpha: 0.12),
             child: IconButton(
                 onPressed: () => showEventDialog(),
                 icon: Icon(Icons.add, color: accent, size: 30)),
@@ -1234,9 +1236,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.65),
+          color: Colors.white.withValues(alpha: 0.65),
           borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: accent.withOpacity(0.12))),
+          border: Border.all(color: accent.withValues(alpha: 0.12))),
       child: Row(
         children: items.map((item) {
           final selected = selectedView == item;
@@ -1250,7 +1252,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     color: selected ? Colors.white : Colors.transparent,
                     borderRadius: BorderRadius.circular(24),
                     border: selected
-                        ? Border.all(color: accent.withOpacity(0.5))
+                        ? Border.all(color: accent.withValues(alpha: 0.5))
                         : null),
                 child: Center(
                   child: Text(item,
@@ -1373,7 +1375,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                     ? Colors.white
                                     : isCurrentMonth
                                         ? textDark
-                                        : textSoft.withOpacity(0.35),
+                                        : textSoft.withValues(alpha: 0.35),
                                 fontSize: 18,
                                 fontWeight: FontWeight.w600)),
                       ),
@@ -1409,7 +1411,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         width: double.infinity,
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.8),
+            color: Colors.white.withValues(alpha: 0.8),
             borderRadius: BorderRadius.circular(28)),
         child: Row(
           children: [
@@ -1461,7 +1463,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 margin: const EdgeInsets.symmetric(horizontal: 3),
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 decoration: BoxDecoration(
-                    color: selected ? accent : Colors.white.withOpacity(0.8),
+                    color:
+                        selected ? accent : Colors.white.withValues(alpha: 0.8),
                     borderRadius: BorderRadius.circular(20)),
                 child: Column(
                   children: [
@@ -1525,7 +1528,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           width: double.infinity,
           padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.72),
+            color: Colors.white.withValues(alpha: 0.72),
             borderRadius: BorderRadius.circular(22),
           ),
           child: Column(
@@ -1584,7 +1587,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.92),
+          color: Colors.white.withValues(alpha: 0.92),
           borderRadius: BorderRadius.circular(22),
         ),
         child: Row(
