@@ -375,7 +375,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
         borderRadius: BorderRadius.circular(34),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.12),
+            color: Colors.black.withValues(alpha: 0.12),
             blurRadius: 28,
             offset: const Offset(0, 14),
           ),
@@ -391,7 +391,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
         width: 46,
         height: 5,
         decoration: BoxDecoration(
-          color: textSoft.withOpacity(0.25),
+          color: textSoft.withValues(alpha: 0.25),
           borderRadius: BorderRadius.circular(100),
         ),
       ),
@@ -457,9 +457,9 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.9),
+        color: Colors.white.withValues(alpha: 0.9),
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: accent.withOpacity(0.10)),
+        border: Border.all(color: accent.withValues(alpha: 0.10)),
       ),
       child: TextField(
         controller: controller,
@@ -501,11 +501,12 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
                     const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
                   color: isSelected
-                      ? accent.withOpacity(0.16)
-                      : Colors.white.withOpacity(0.88),
+                      ? accent.withValues(alpha: 0.16)
+                      : Colors.white.withValues(alpha: 0.88),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                      color: isSelected ? accent : accent.withOpacity(0.10)),
+                      color:
+                          isSelected ? accent : accent.withValues(alpha: 0.10)),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -540,12 +541,14 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color:
-            active ? accent.withOpacity(0.12) : Colors.white.withOpacity(0.88),
+        color: active
+            ? accent.withValues(alpha: 0.12)
+            : Colors.white.withValues(alpha: 0.88),
         borderRadius: BorderRadius.circular(22),
         border: Border.all(
-            color:
-                active ? accent.withOpacity(0.55) : accent.withOpacity(0.08)),
+            color: active
+                ? accent.withValues(alpha: 0.55)
+                : accent.withValues(alpha: 0.08)),
       ),
       child: Row(
         children: [
@@ -580,7 +583,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
           ),
           CircleAvatar(
             radius: 28,
-            backgroundColor: accent.withOpacity(0.12),
+            backgroundColor: accent.withValues(alpha: 0.12),
             child: IconButton(
               onPressed: () => showShoppingSheet(),
               icon: Icon(Icons.add, color: accent, size: 31),
@@ -601,11 +604,11 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
       margin: const EdgeInsets.fromLTRB(24, 18, 24, 8),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.82),
+        color: Colors.white.withValues(alpha: 0.82),
         borderRadius: BorderRadius.circular(32),
         boxShadow: [
           BoxShadow(
-            color: accent.withOpacity(0.06),
+            color: accent.withValues(alpha: 0.06),
             blurRadius: 22,
             offset: const Offset(0, 12),
           ),
@@ -617,7 +620,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
             width: 68,
             height: 68,
             decoration: BoxDecoration(
-                color: accent.withOpacity(0.12), shape: BoxShape.circle),
+                color: accent.withValues(alpha: 0.12), shape: BoxShape.circle),
             child: Center(
               child: Text(
                 "$toBuy",
@@ -654,7 +657,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
                   child: LinearProgressIndicator(
                     value: progress().clamp(0, 1),
                     minHeight: 8,
-                    backgroundColor: accent.withOpacity(0.10),
+                    backgroundColor: accent.withValues(alpha: 0.10),
                     color: accent,
                   ),
                 ),
@@ -681,10 +684,13 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [Colors.white.withOpacity(0.90), accent.withOpacity(0.08)],
+          colors: [
+            Colors.white.withValues(alpha: 0.90),
+            accent.withValues(alpha: 0.08)
+          ],
         ),
         borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: Colors.white.withOpacity(0.65)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.65)),
       ),
       child: Row(
         children: [
@@ -692,7 +698,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
             width: 46,
             height: 46,
             decoration: BoxDecoration(
-                color: accent.withOpacity(0.12), shape: BoxShape.circle),
+                color: accent.withValues(alpha: 0.12), shape: BoxShape.circle),
             child: Icon(Icons.auto_awesome, color: accent, size: 23),
           ),
           const SizedBox(width: 14),
@@ -742,13 +748,13 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
               decoration: BoxDecoration(
                 color: selected
-                    ? accent.withOpacity(0.86)
-                    : Colors.white.withOpacity(0.72),
+                    ? accent.withValues(alpha: 0.86)
+                    : Colors.white.withValues(alpha: 0.72),
                 borderRadius: BorderRadius.circular(28),
                 boxShadow: selected
                     ? [
                         BoxShadow(
-                          color: accent.withOpacity(0.22),
+                          color: accent.withValues(alpha: 0.22),
                           blurRadius: 16,
                           offset: const Offset(0, 8),
                         ),
@@ -789,7 +795,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
             width: 8,
             height: 8,
             decoration: BoxDecoration(
-                color: accent.withOpacity(0.85), shape: BoxShape.circle),
+                color: accent.withValues(alpha: 0.85), shape: BoxShape.circle),
           ),
         ],
       ),
@@ -804,7 +810,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
       margin: const EdgeInsets.fromLTRB(24, 0, 24, 10),
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.82),
+        color: Colors.white.withValues(alpha: 0.82),
         borderRadius: BorderRadius.circular(34),
       ),
       child: Column(
@@ -841,7 +847,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
                   child: buildShoppingRow(item),
                 ),
                 if (!isLast)
-                  Divider(height: 1, color: accent.withOpacity(0.08)),
+                  Divider(height: 1, color: accent.withValues(alpha: 0.08)),
               ],
             );
           }),
@@ -861,7 +867,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
       padding:
           EdgeInsets.only(left: alignLeft ? 18 : 0, right: alignLeft ? 0 : 18),
       decoration: BoxDecoration(
-        color: accent.withOpacity(0.12),
+        color: accent.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(22),
       ),
       child: Row(
@@ -890,7 +896,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
             borderRadius: BorderRadius.circular(30),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.12),
+                color: Colors.black.withValues(alpha: 0.12),
                 blurRadius: 28,
                 offset: const Offset(0, 14),
               ),
@@ -960,9 +966,9 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
             const SizedBox(width: 16),
             CircleAvatar(
               radius: 24,
-              backgroundColor: accent.withOpacity(0.08),
+              backgroundColor: accent.withValues(alpha: 0.08),
               child: Icon(iconForCategory(item.category),
-                  color: accent.withOpacity(0.78), size: 22),
+                  color: accent.withValues(alpha: 0.78), size: 22),
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -979,7 +985,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               color: item.isBought
-                                  ? textSoft.withOpacity(0.65)
+                                  ? textSoft.withValues(alpha: 0.65)
                                   : textDark,
                               fontSize: 18,
                               fontWeight: FontWeight.w800,
@@ -1027,7 +1033,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
-        color: accent.withOpacity(0.08),
+        color: accent.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(100),
       ),
       child: Text(
@@ -1053,7 +1059,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
           children: [
             CircleAvatar(
               radius: 24,
-              backgroundColor: accent.withOpacity(0.08),
+              backgroundColor: accent.withValues(alpha: 0.08),
               child: Icon(Icons.delete_outline, color: accent, size: 27),
             ),
             const SizedBox(width: 18),
@@ -1085,7 +1091,8 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
           color: checked ? accent : Colors.transparent,
           shape: BoxShape.circle,
           border: Border.all(
-              color: checked ? accent : accent.withOpacity(0.62), width: 1.8),
+              color: checked ? accent : accent.withValues(alpha: 0.62),
+              width: 1.8),
         ),
         child: checked
             ? const Icon(Icons.check, color: Colors.white, size: 17)
@@ -1101,7 +1108,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(Icons.shopping_bag_outlined,
-              color: accent.withOpacity(0.45), size: 54),
+              color: accent.withValues(alpha: 0.45), size: 54),
           const SizedBox(height: 16),
           Text(
             "Ta liste de courses est vide 💕",

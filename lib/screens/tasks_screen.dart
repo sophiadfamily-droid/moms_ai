@@ -396,7 +396,7 @@ class _TasksScreenState extends State<TasksScreen> {
         borderRadius: BorderRadius.circular(34),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.12),
+            color: Colors.black.withValues(alpha: 0.12),
             blurRadius: 28,
             offset: const Offset(0, 14),
           ),
@@ -412,7 +412,7 @@ class _TasksScreenState extends State<TasksScreen> {
         width: 46,
         height: 5,
         decoration: BoxDecoration(
-          color: textSoft.withOpacity(0.25),
+          color: textSoft.withValues(alpha: 0.25),
           borderRadius: BorderRadius.circular(100),
         ),
       ),
@@ -481,9 +481,9 @@ class _TasksScreenState extends State<TasksScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.9),
+        color: Colors.white.withValues(alpha: 0.9),
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: accent.withOpacity(0.10)),
+        border: Border.all(color: accent.withValues(alpha: 0.10)),
       ),
       child: TextField(
         controller: controller,
@@ -531,11 +531,11 @@ class _TasksScreenState extends State<TasksScreen> {
                 ),
                 decoration: BoxDecoration(
                   color: isSelected
-                      ? accent.withOpacity(0.16)
-                      : Colors.white.withOpacity(0.88),
+                      ? accent.withValues(alpha: 0.16)
+                      : Colors.white.withValues(alpha: 0.88),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: isSelected ? accent : accent.withOpacity(0.10),
+                    color: isSelected ? accent : accent.withValues(alpha: 0.10),
                   ),
                 ),
                 child: Text(
@@ -561,11 +561,14 @@ class _TasksScreenState extends State<TasksScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color:
-            active ? accent.withOpacity(0.12) : Colors.white.withOpacity(0.88),
+        color: active
+            ? accent.withValues(alpha: 0.12)
+            : Colors.white.withValues(alpha: 0.88),
         borderRadius: BorderRadius.circular(22),
         border: Border.all(
-          color: active ? accent.withOpacity(0.55) : accent.withOpacity(0.08),
+          color: active
+              ? accent.withValues(alpha: 0.55)
+              : accent.withValues(alpha: 0.08),
         ),
       ),
       child: Row(
@@ -607,7 +610,7 @@ class _TasksScreenState extends State<TasksScreen> {
           ),
           CircleAvatar(
             radius: 28,
-            backgroundColor: accent.withOpacity(0.12),
+            backgroundColor: accent.withValues(alpha: 0.12),
             child: IconButton(
               onPressed: () => showTaskSheet(),
               icon: Icon(
@@ -632,11 +635,11 @@ class _TasksScreenState extends State<TasksScreen> {
       margin: const EdgeInsets.fromLTRB(24, 18, 24, 8),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.82),
+        color: Colors.white.withValues(alpha: 0.82),
         borderRadius: BorderRadius.circular(32),
         boxShadow: [
           BoxShadow(
-            color: accent.withOpacity(0.06),
+            color: accent.withValues(alpha: 0.06),
             blurRadius: 22,
             offset: const Offset(0, 12),
           ),
@@ -648,7 +651,7 @@ class _TasksScreenState extends State<TasksScreen> {
             width: 68,
             height: 68,
             decoration: BoxDecoration(
-              color: accent.withOpacity(0.12),
+              color: accent.withValues(alpha: 0.12),
               shape: BoxShape.circle,
             ),
             child: Center(
@@ -692,7 +695,7 @@ class _TasksScreenState extends State<TasksScreen> {
                   child: LinearProgressIndicator(
                     value: value.clamp(0, 1),
                     minHeight: 8,
-                    backgroundColor: accent.withOpacity(0.10),
+                    backgroundColor: accent.withValues(alpha: 0.10),
                     color: accent,
                   ),
                 ),
@@ -718,12 +721,12 @@ class _TasksScreenState extends State<TasksScreen> {
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [
-              Colors.white.withOpacity(0.90),
-              accent.withOpacity(0.08),
+              Colors.white.withValues(alpha: 0.90),
+              accent.withValues(alpha: 0.08),
             ],
           ),
           borderRadius: BorderRadius.circular(30),
-          border: Border.all(color: Colors.white.withOpacity(0.65)),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.65)),
         ),
         child: Row(
           children: [
@@ -731,7 +734,7 @@ class _TasksScreenState extends State<TasksScreen> {
               width: 46,
               height: 46,
               decoration: BoxDecoration(
-                color: accent.withOpacity(0.12),
+                color: accent.withValues(alpha: 0.12),
                 shape: BoxShape.circle,
               ),
               child: Icon(
@@ -804,8 +807,8 @@ class _TasksScreenState extends State<TasksScreen> {
               ),
               decoration: BoxDecoration(
                 color: selected
-                    ? accent.withOpacity(0.86)
-                    : Colors.white.withOpacity(0.72),
+                    ? accent.withValues(alpha: 0.86)
+                    : Colors.white.withValues(alpha: 0.72),
                 borderRadius: BorderRadius.circular(28),
               ),
               child: Center(
@@ -845,7 +848,7 @@ class _TasksScreenState extends State<TasksScreen> {
             width: 8,
             height: 8,
             decoration: BoxDecoration(
-              color: accent.withOpacity(0.85),
+              color: accent.withValues(alpha: 0.85),
               shape: BoxShape.circle,
             ),
           ),
@@ -861,7 +864,7 @@ class _TasksScreenState extends State<TasksScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.10),
+        color: color.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(100),
       ),
       child: Text(
@@ -880,7 +883,7 @@ class _TasksScreenState extends State<TasksScreen> {
       margin: const EdgeInsets.fromLTRB(24, 0, 24, 10),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.82),
+        color: Colors.white.withValues(alpha: 0.82),
         borderRadius: BorderRadius.circular(34),
       ),
       child: Column(
@@ -921,7 +924,7 @@ class _TasksScreenState extends State<TasksScreen> {
               if (!isLast)
                 Divider(
                   height: 1,
-                  color: accent.withOpacity(0.08),
+                  color: accent.withValues(alpha: 0.08),
                 ),
             ],
           );
@@ -942,7 +945,7 @@ class _TasksScreenState extends State<TasksScreen> {
         right: alignLeft ? 0 : 18,
       ),
       decoration: BoxDecoration(
-        color: accent.withOpacity(0.12),
+        color: accent.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(22),
       ),
       child: Row(
@@ -1050,8 +1053,9 @@ class _TasksScreenState extends State<TasksScreen> {
                       task.title,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color:
-                            task.isDone ? textSoft.withOpacity(0.65) : textDark,
+                        color: task.isDone
+                            ? textSoft.withValues(alpha: 0.65)
+                            : textDark,
                         fontSize: 17,
                         fontWeight: FontWeight.w800,
                         decoration:
@@ -1115,7 +1119,7 @@ class _TasksScreenState extends State<TasksScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
-        color: accent.withOpacity(0.08),
+        color: accent.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(100),
       ),
       child: Text(
@@ -1143,7 +1147,7 @@ class _TasksScreenState extends State<TasksScreen> {
           color: checked ? accent : Colors.transparent,
           shape: BoxShape.circle,
           border: Border.all(
-            color: checked ? accent : accent.withOpacity(0.62),
+            color: checked ? accent : accent.withValues(alpha: 0.62),
             width: 1.8,
           ),
         ),
@@ -1167,14 +1171,14 @@ class _TasksScreenState extends State<TasksScreen> {
         margin: const EdgeInsets.fromLTRB(24, 16, 24, 34),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.82),
+          color: Colors.white.withValues(alpha: 0.82),
           borderRadius: BorderRadius.circular(28),
         ),
         child: Row(
           children: [
             CircleAvatar(
               radius: 24,
-              backgroundColor: accent.withOpacity(0.10),
+              backgroundColor: accent.withValues(alpha: 0.10),
               child: Icon(Icons.delete_outline, color: accent),
             ),
             const SizedBox(width: 18),
@@ -1203,7 +1207,7 @@ class _TasksScreenState extends State<TasksScreen> {
         children: [
           Icon(
             Icons.check_circle_outline_rounded,
-            color: accent.withOpacity(0.45),
+            color: accent.withValues(alpha: 0.45),
             size: 54,
           ),
           const SizedBox(height: 16),
