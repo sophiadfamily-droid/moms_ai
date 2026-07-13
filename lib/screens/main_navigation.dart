@@ -13,11 +13,18 @@ import 'profile_screen.dart';
 class MainNavigation extends StatefulWidget {
   final UserProfile profile;
   final ValueChanged<UserProfile>? onProfileUpdated;
+  final Widget Function(
+    UserProfile profile,
+    ValueChanged<UserProfile> onSave,
+  )? profileScreenBuilder;
+  final List<Widget>? testScreens;
 
   const MainNavigation({
     super.key,
     required this.profile,
     this.onProfileUpdated,
+    this.profileScreenBuilder,
+    this.testScreens,
   });
 
   @override
@@ -71,25 +78,35 @@ class _MainNavigationState extends State<MainNavigation> {
 
   @override
   Widget build(BuildContext context) {
-    final List<Widget> screens = [
-      HomeScreen(
-        profile: currentProfile,
-        onNavigate: changeTab,
-      ),
-      ChatScreen(
-        profile: currentProfile,
-        initialAssistantMessage: zeliaSuggestionMessage,
-      ),
-      const CalendarScreen(),
-      TasksScreen(
-        onOpenZeliaSuggestion: openChatWithSuggestion,
-      ),
-      const ShoppingScreen(),
-      ProfileScreen(
-        profile: currentProfile,
-        onSave: updateProfile,
-      ),
-    ];
+    final List<Widget> screens = widget.testScreens ??
+        [
+          HomeScreen(
+            profile: currentProfile,
+            onNavigate: changeTab,
+          ),
+          ChatScreen(
+            profile: currentProfile,
+            initialAssistantMessage: zeliaSuggestionMessage,
+          ),
+          const CalendarScreen(),
+          TasksScreen(
+            onOpenZeliaSuggestion: openChatWithSuggestion,
+          ),
+          const ShoppingScreen(),
+          widget.profileScreenBuilder?.call(
+                currentProfile,
+                updateProfile,
+              ) ??
+              ProfileScreen(
+                profile: currentProfile,
+                onSave: updateProfile,
+              ),
+        ];
+
+    assert(
+      screens.length == 6,
+      'MainNavigation requires exactly 6 screens.',
+    );
 
     return Scaffold(
       body: IndexedStack(
