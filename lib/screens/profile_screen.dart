@@ -740,7 +740,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               surface: bg,
               onSurface: textDark,
             ),
-            dialogBackgroundColor: bg,
+            dialogTheme: DialogThemeData(backgroundColor: bg),
             textButtonTheme: TextButtonThemeData(
               style: TextButton.styleFrom(
                 foregroundColor: accent,
@@ -785,7 +785,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               surface: bg,
               onSurface: textDark,
             ),
-            dialogBackgroundColor: bg,
+            dialogTheme: DialogThemeData(backgroundColor: bg),
             textButtonTheme: TextButtonThemeData(
               style: TextButton.styleFrom(
                 foregroundColor: accent,
@@ -2266,7 +2266,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         const SizedBox(height: 14),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
-          activeColor: accent,
+          activeThumbColor: accent,
           title: Text(
             "Notifications principales",
             style: TextStyle(
@@ -3066,7 +3066,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
       child: DropdownButtonFormField<String>(
         isExpanded: true,
-        value: items.contains(value) ? value : items.first,
+        initialValue: items.contains(value) ? value : items.first,
         decoration: InputDecoration(
           border: InputBorder.none,
           labelText: label,

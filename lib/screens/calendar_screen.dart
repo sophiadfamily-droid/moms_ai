@@ -99,7 +99,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   String normalizeTime(String value) {
     final clean = value.trim().toLowerCase().replaceAll('h', ':');
     if (clean.isEmpty) return '';
-    if (!clean.contains(':')) return clean.padLeft(2, '0') + ':00';
+    if (!clean.contains(':')) return '${clean.padLeft(2, '0')}:00';
     final parts = clean.split(':');
     final hour = parts.isNotEmpty ? parts[0].padLeft(2, '0') : '00';
     final minute = parts.length > 1 ? parts[1].padLeft(2, '0') : '00';
@@ -522,7 +522,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 surface: bg,
                 onSurface: textDark,
               ),
-              dialogBackgroundColor: bg,
+              dialogTheme: DialogThemeData(backgroundColor: bg),
               textButtonTheme: TextButtonThemeData(
                 style: TextButton.styleFrom(foregroundColor: accent),
               ),
@@ -553,7 +553,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 surface: bg,
                 onSurface: textDark,
               ),
-              dialogBackgroundColor: bg,
+              dialogTheme: DialogThemeData(backgroundColor: bg),
               textButtonTheme: TextButtonThemeData(
                 style: TextButton.styleFrom(foregroundColor: accent),
               ),
