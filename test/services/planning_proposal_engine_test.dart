@@ -23,6 +23,43 @@ void main() {
       expect(uniqueDays.length, greaterThan(1));
     });
 
+    test(
+      'reserves exactly 90 minutes for 45 min appointment plus separate travel',
+      () {
+        const appointmentMinutes = 45;
+        const travelGoMinutes = 15;
+        const travelBackMinutes = 30;
+        const totalMinutes =
+            appointmentMinutes + travelGoMinutes + travelBackMinutes;
+
+        final requestedDate = DateTime(2026, 7, 14);
+
+        final result = PlanningProposalEngine.findBestOptionsFromEvents(
+          startDate: requestedDate,
+          totalMinutes: totalMinutes,
+          events: <EventModel>[],
+          reasoning: const [],
+          searchDays: 1,
+          maxOptions: 3,
+        );
+
+        expect(totalMinutes, 90);
+        expect(result.hasOptions, true);
+        expect(result.options.length, 3);
+
+        final uniqueSlots = result.options
+            .map((option) => '${option.dateIso}-${option.startTime}')
+            .toSet();
+
+        expect(uniqueSlots.length, result.options.length);
+
+        for (final option in result.options) {
+          expect(option.dateIso, '2026-07-14');
+          expect(option.end.difference(option.start).inMinutes, totalMinutes);
+        }
+      },
+    );
+
     test('returns no options for invalid duration', () {
       final result = PlanningProposalEngine.findBestOptionsFromEvents(
         startDate: DateTime(2026, 7, 1),
