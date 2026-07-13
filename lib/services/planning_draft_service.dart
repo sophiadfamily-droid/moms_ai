@@ -141,12 +141,13 @@ class PlanningDraftService {
   static PlanningDraftModel withTravelFromPending({
     required Map<String, dynamic> pending,
     required int travelGoMinutes,
+    required int travelBackMinutes,
   }) {
     final draft = fromPendingDurationPlanningTask(pending);
 
     return draft.withTravel(
       goMinutes: travelGoMinutes,
-      backMinutes: travelGoMinutes,
+      backMinutes: travelBackMinutes,
     );
   }
 

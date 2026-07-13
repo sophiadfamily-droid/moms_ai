@@ -244,11 +244,11 @@ class PlanningDraftModel {
 
   PlanningDraftModel withTravel({
     required int goMinutes,
-    int? backMinutes,
+    required int backMinutes,
   }) {
     return copyWith(
       travelGoMinutes: goMinutes,
-      travelBackMinutes: backMinutes ?? goMinutes,
+      travelBackMinutes: backMinutes,
       needsTravel: false,
       updatedAt: DateTime.now(),
     );
