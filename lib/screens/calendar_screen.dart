@@ -470,7 +470,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
     String selectedCategory = event == null ? 'Personnel' : categoryOf(event);
     int selectedDuration =
         event?.durationMinutes == 0 ? 60 : event?.durationMinutes ?? 60;
-    int selectedTravelMinutes = event?.travelMinutes ?? 0;
+
+    int selectedTravelGoMinutes = event?.resolvedTravelGoMinutes ?? 0;
+    int selectedTravelBackMinutes = event?.resolvedTravelBackMinutes ?? 0;
+    int selectedMarginMinutes = event?.marginMinutes ?? 0;
 
     final titleController = TextEditingController(text: event?.title ?? '');
     final notesController = TextEditingController(text: event?.notes ?? '');
@@ -599,42 +602,55 @@ class _CalendarScreenState extends State<CalendarScreen> {
       setModalState(() => selectedDuration = picked);
     }
 
-    Future<void> pickCustomTravel(StateSetter setModalState) async {
+    Future<int?> pickCustomMinutes({
+      required String title,
+      required int currentValue,
+      required String zeroLabel,
+    }) async {
       final controller = TextEditingController(
-          text: selectedTravelMinutes == 0
-              ? ''
-              : selectedTravelMinutes.toString());
-      final picked = await showDialog<int>(
+        text: currentValue == 0 ? '' : currentValue.toString(),
+      );
+
+      return showDialog<int>(
         context: context,
         builder: (context) {
           return AlertDialog(
             backgroundColor: bg,
             shape:
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-            title: Text('Temps de trajet',
-                style: TextStyle(color: textDark, fontWeight: FontWeight.w900)),
+            title: Text(
+              title,
+              style: TextStyle(color: textDark, fontWeight: FontWeight.w900),
+            ),
             content: TextField(
               controller: controller,
               keyboardType: TextInputType.number,
               decoration: InputDecoration(
-                  labelText: 'Minutes',
-                  hintText: 'Ex : 20',
-                  labelStyle: TextStyle(color: textSoft)),
+                labelText: 'Minutes',
+                hintText: 'Ex : 20',
+                labelStyle: TextStyle(color: textSoft),
+              ),
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context, 0),
-                child: Text('Aucun trajet',
-                    style: TextStyle(
-                        color: textSoft, fontWeight: FontWeight.w800)),
+                child: Text(
+                  zeroLabel,
+                  style: TextStyle(
+                    color: textSoft,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
               ),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                    backgroundColor: accent,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20))),
+                  backgroundColor: accent,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                ),
                 onPressed: () {
                   final value = int.tryParse(controller.text.trim()) ?? 0;
                   Navigator.pop(context, value < 0 ? 0 : value);
@@ -645,8 +661,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
           );
         },
       );
-      if (picked == null) return;
-      setModalState(() => selectedTravelMinutes = picked);
     }
 
     await showModalBottomSheet(
@@ -838,21 +852,25 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         ],
                       ),
                       const SizedBox(height: 18),
-                      Text('Temps de trajet',
-                          style: TextStyle(
-                              color: textDark,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w800)),
+                      Text(
+                        'Trajet aller',
+                        style: TextStyle(
+                          color: textDark,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
                       const SizedBox(height: 10),
                       Wrap(
                         spacing: 8,
                         runSpacing: 8,
                         children: [
                           ...[0, 10, 20, 30].map((minutes) {
-                            final selected = selectedTravelMinutes == minutes;
+                            final selected = selectedTravelGoMinutes == minutes;
                             return GestureDetector(
                               onTap: () => setModalState(
-                                  () => selectedTravelMinutes = minutes),
+                                () => selectedTravelGoMinutes = minutes,
+                              ),
                               child: buildChoiceChip(
                                 icon: minutes == 0
                                     ? Icons.do_not_disturb_alt_outlined
@@ -864,19 +882,136 @@ class _CalendarScreenState extends State<CalendarScreen> {
                             );
                           }),
                           GestureDetector(
-                            onTap: () => pickCustomTravel(setModalState),
+                            onTap: () async {
+                              final picked = await pickCustomMinutes(
+                                title: 'Trajet aller',
+                                currentValue: selectedTravelGoMinutes,
+                                zeroLabel: 'Aucun trajet',
+                              );
+                              if (picked == null) return;
+                              setModalState(
+                                () => selectedTravelGoMinutes = picked,
+                              );
+                            },
                             child: buildChoiceChip(
                               icon: Icons.add_rounded,
-                              label: selectedTravelMinutes != 0 &&
-                                      selectedTravelMinutes != 10 &&
-                                      selectedTravelMinutes != 20 &&
-                                      selectedTravelMinutes != 30
-                                  ? travelLabel(selectedTravelMinutes)
+                              label: ![0, 10, 20, 30]
+                                      .contains(selectedTravelGoMinutes)
+                                  ? travelLabel(selectedTravelGoMinutes)
                                   : 'Autre trajet',
-                              selected: selectedTravelMinutes != 0 &&
-                                  selectedTravelMinutes != 10 &&
-                                  selectedTravelMinutes != 20 &&
-                                  selectedTravelMinutes != 30,
+                              selected: ![0, 10, 20, 30]
+                                  .contains(selectedTravelGoMinutes),
+                              color: accent,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 18),
+                      Text(
+                        'Trajet retour',
+                        style: TextStyle(
+                          color: textDark,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          ...[0, 10, 20, 30].map((minutes) {
+                            final selected =
+                                selectedTravelBackMinutes == minutes;
+                            return GestureDetector(
+                              onTap: () => setModalState(
+                                () => selectedTravelBackMinutes = minutes,
+                              ),
+                              child: buildChoiceChip(
+                                icon: minutes == 0
+                                    ? Icons.do_not_disturb_alt_outlined
+                                    : Icons.directions_car_outlined,
+                                label: minutes == 0 ? 'Aucun' : '$minutes min',
+                                selected: selected,
+                                color: accent,
+                              ),
+                            );
+                          }),
+                          GestureDetector(
+                            onTap: () async {
+                              final picked = await pickCustomMinutes(
+                                title: 'Trajet retour',
+                                currentValue: selectedTravelBackMinutes,
+                                zeroLabel: 'Aucun trajet',
+                              );
+                              if (picked == null) return;
+                              setModalState(
+                                () => selectedTravelBackMinutes = picked,
+                              );
+                            },
+                            child: buildChoiceChip(
+                              icon: Icons.add_rounded,
+                              label: ![0, 10, 20, 30]
+                                      .contains(selectedTravelBackMinutes)
+                                  ? travelLabel(selectedTravelBackMinutes)
+                                  : 'Autre trajet',
+                              selected: ![0, 10, 20, 30]
+                                  .contains(selectedTravelBackMinutes),
+                              color: accent,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 18),
+                      Text(
+                        'Marge de sécurité',
+                        style: TextStyle(
+                          color: textDark,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          ...[0, 5, 10, 15].map((minutes) {
+                            final selected = selectedMarginMinutes == minutes;
+                            return GestureDetector(
+                              onTap: () => setModalState(
+                                () => selectedMarginMinutes = minutes,
+                              ),
+                              child: buildChoiceChip(
+                                icon: minutes == 0
+                                    ? Icons.do_not_disturb_alt_outlined
+                                    : Icons.shield_outlined,
+                                label: minutes == 0 ? 'Aucune' : '$minutes min',
+                                selected: selected,
+                                color: accent,
+                              ),
+                            );
+                          }),
+                          GestureDetector(
+                            onTap: () async {
+                              final picked = await pickCustomMinutes(
+                                title: 'Marge de sécurité',
+                                currentValue: selectedMarginMinutes,
+                                zeroLabel: 'Aucune marge',
+                              );
+                              if (picked == null) return;
+                              setModalState(
+                                () => selectedMarginMinutes = picked,
+                              );
+                            },
+                            child: buildChoiceChip(
+                              icon: Icons.add_rounded,
+                              label: ![0, 5, 10, 15]
+                                      .contains(selectedMarginMinutes)
+                                  ? travelLabel(selectedMarginMinutes)
+                                  : 'Autre marge',
+                              selected: ![0, 5, 10, 15]
+                                  .contains(selectedMarginMinutes),
                               color: accent,
                             ),
                           ),
@@ -946,6 +1081,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                     durationMinutes: selectedDuration);
                                 if (title.isEmpty) return;
 
+                                final totalTravelMinutes =
+                                    selectedTravelGoMinutes +
+                                        selectedTravelBackMinutes;
+
                                 final updatedEvent = EventModel(
                                   title: title,
                                   date: date,
@@ -954,14 +1093,25 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                   category: selectedCategory,
                                   createdAt: event?.createdAt ?? DateTime.now(),
                                   startDateTimeIso: buildStartDateTimeIso(
-                                      date: date, time: time),
+                                    date: date,
+                                    time: time,
+                                  ),
                                   endTime: endTime,
                                   endDateTimeIso: buildEndDateTimeIso(
-                                      date: date,
-                                      time: time,
-                                      durationMinutes: selectedDuration),
+                                    date: date,
+                                    time: time,
+                                    durationMinutes: selectedDuration,
+                                  ),
                                   durationMinutes: selectedDuration,
-                                  travelMinutes: selectedTravelMinutes,
+                                  travelMinutes: totalTravelMinutes,
+                                  travelGoMinutes: selectedTravelGoMinutes,
+                                  travelBackMinutes: selectedTravelBackMinutes,
+                                  usesSeparateTravelTimes: true,
+                                  marginMinutes: selectedMarginMinutes,
+                                  departureContext:
+                                      event?.departureContext ?? 'unknown',
+                                  arrivalContext:
+                                      event?.arrivalContext ?? 'unknown',
                                   isRecurring: event?.isRecurring ?? false,
                                   recurringType: event?.recurringType ?? '',
                                   recurringWeekday:
@@ -1387,7 +1537,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final details = <String>[
       if (event.durationMinutes > 0)
         'Durée ${durationLabel(event.durationMinutes)}',
-      if (event.travelMinutes > 0) 'Trajet ${travelLabel(event.travelMinutes)}',
+      if (event.usesSeparateTravelTimes) ...[
+        'Aller ${travelLabel(event.travelGoMinutes)}',
+        'Retour ${travelLabel(event.travelBackMinutes)}',
+        if (event.marginMinutes > 0)
+          'Marge ${travelLabel(event.marginMinutes)}',
+      ] else if (event.travelMinutes > 0)
+        'Trajet ${travelLabel(event.travelMinutes)}',
       if (event.notes.trim().isNotEmpty &&
           !isTechnicalPlanningNote(event.notes.trim()))
         event.notes.trim(),
