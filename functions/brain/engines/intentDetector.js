@@ -1,13 +1,55 @@
 /* eslint-disable max-len */
 
 /**
+ * Normalise le texte avant détection.
+ *
+ * @param {string} value texte source
+ * @return {string}
+ */
+function normalizeText(value) {
+  return String(value || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[’']/g, " ")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+}
+
+/**
+ * Vérifie une expression complète sans confondre des sous-chaînes.
+ *
+ * Exemple : "cours" ne doit pas correspondre à "courses".
+ *
+ * @param {string} text texte déjà normalisé
+ * @param {string} phrase expression recherchée
+ * @return {boolean}
+ */
+function containsPhrase(text, phrase) {
+  const normalizedPhrase = normalizeText(phrase);
+
+  if (!text || !normalizedPhrase) {
+    return false;
+  }
+
+  return (` ${text} `).includes(` ${normalizedPhrase} `);
+}
+
+/**
  * Détecte une intention probable à partir du message utilisateur.
- * Cette première version est volontairement simple, lisible et stable.
+ *
+ * Cette détection reste déterministe, rapide et sans coût OpenAI.
+ *
  * @param {string} message message utilisateur
- * @return {Object}
+ * @return {{
+ *   primaryIntent: string,
+ *   confidence: number,
+ *   reasons: string[]
+ * }}
  */
 function detectIntent(message) {
-  const text = (message || "").toLowerCase().trim();
+  const text = normalizeText(message);
 
   if (!text) {
     return {
@@ -20,16 +62,20 @@ function detectIntent(message) {
   const shoppingKeywords = [
     "plus de",
     "plus d",
-    "j'ai plus",
+    "j ai plus",
     "il manque",
     "manque",
-    "on n'a plus",
-    "terminé",
+    "on n a plus",
+    "termine",
     "fini",
-    "épuisé",
+    "epuise",
     "besoin de",
     "ajoute aux courses",
+    "ajoute a la liste de courses",
     "mets dans les courses",
+    "mets sur la liste de courses",
+    "aux courses",
+    "liste de courses",
     "racheter",
     "reprendre",
   ];
@@ -38,48 +84,68 @@ function detectIntent(message) {
     "je dois",
     "il faut",
     "faut que",
-    "penser à",
-    "rappelle-moi",
-    "fais-moi penser",
+    "penser a",
+    "rappelle moi",
+    "fais moi penser",
     "ne pas oublier",
     "appeler",
     "envoyer",
     "payer",
-    "répondre",
+    "repondre",
     "relancer",
-    "réserver",
-    "organiser",
-    "préparer",
+    "reserver",
+    "preparer",
     "chercher",
-    "récupérer",
-    "déposer",
+    "recuperer",
+    "deposer",
     "comparer",
-    "vérifier",
+    "verifier",
   ];
 
   const eventKeywords = [
     "rdv",
-    "rendez-vous",
-    "j'ai rendez-vous",
-    "réunion",
+    "rendez vous",
+    "j ai rendez vous",
+    "reunion",
     "consultation",
     "cours",
-    "séance",
-    "entraînement",
+    "seance",
+    "entrainement",
     "anniversaire",
     "vol",
     "train",
     "restaurant",
-    "dîner",
-    "déjeuner",
-    "appel prévu",
+    "diner",
+    "dejeuner",
+    "appel prevu",
+    "dentiste",
+    "medecin",
+    "docteur",
+    "pediatre",
+    "kine",
+    "osteopathe",
+    "hopital",
+    "clinique",
+    "creneau",
+    "trouve moi un creneau",
+    "propose moi un creneau",
+    "cherche moi un creneau",
+    "place moi un rendez vous",
   ];
 
   const reasons = [];
 
-  const hasShopping = shoppingKeywords.some((keyword) => text.includes(keyword));
-  const hasTask = taskKeywords.some((keyword) => text.includes(keyword));
-  const hasEvent = eventKeywords.some((keyword) => text.includes(keyword));
+  const hasShopping = shoppingKeywords.some(
+      (keyword) => containsPhrase(text, keyword),
+  );
+
+  const hasTask = taskKeywords.some(
+      (keyword) => containsPhrase(text, keyword),
+  );
+
+  const hasEvent = eventKeywords.some(
+      (keyword) => containsPhrase(text, keyword),
+  );
 
   if (hasShopping) reasons.push("shopping_keyword");
   if (hasTask) reasons.push("task_keyword");
@@ -117,5 +183,7 @@ function detectIntent(message) {
 }
 
 module.exports = {
+  normalizeText,
+  containsPhrase,
   detectIntent,
 };
