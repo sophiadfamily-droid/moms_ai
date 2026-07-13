@@ -4,7 +4,18 @@ import '../models/event_model.dart';
 import '../services/event_service.dart';
 
 class CalendarScreen extends StatefulWidget {
-  const CalendarScreen({super.key});
+  const CalendarScreen({
+    super.key,
+    this.loadEventsForTest,
+    this.addEventForTest,
+    this.updateEventsForTest,
+    this.eventsVersionForTest,
+  });
+
+  final Future<List<EventModel>> Function()? loadEventsForTest;
+  final Future<void> Function(EventModel event)? addEventForTest;
+  final Future<void> Function(List<EventModel> events)? updateEventsForTest;
+  final ValueNotifier<int>? eventsVersionForTest;
 
   @override
   State<CalendarScreen> createState() => _CalendarScreenState();
@@ -28,21 +39,37 @@ class _CalendarScreenState extends State<CalendarScreen> {
   final Color textDark = const Color(0xFF1F1A18);
   final Color textSoft = const Color(0xFF8B6F67);
 
+  ValueNotifier<int> get eventsVersion =>
+      widget.eventsVersionForTest ?? EventService.eventsVersion;
+
+  Future<List<EventModel>> getEvents() {
+    return widget.loadEventsForTest?.call() ?? EventService.getEvents();
+  }
+
+  Future<void> addEvent(EventModel event) {
+    return widget.addEventForTest?.call(event) ?? EventService.addEvent(event);
+  }
+
+  Future<void> updateEvents(List<EventModel> updatedEvents) {
+    return widget.updateEventsForTest?.call(updatedEvents) ??
+        EventService.updateEvents(updatedEvents);
+  }
+
   @override
   void initState() {
     super.initState();
-    EventService.eventsVersion.addListener(loadEvents);
+    eventsVersion.addListener(loadEvents);
     loadEvents();
   }
 
   @override
   void dispose() {
-    EventService.eventsVersion.removeListener(loadEvents);
+    eventsVersion.removeListener(loadEvents);
     super.dispose();
   }
 
   Future<void> loadEvents() async {
-    final loaded = await EventService.getEvents();
+    final loaded = await getEvents();
 
     loaded.sort((a, b) {
       final aValue = a.startDateTimeIso.isEmpty
@@ -346,7 +373,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       events.removeWhere((item) => sameEvent(item, event));
     }
 
-    await EventService.updateEvents(events);
+    await updateEvents(events);
 
     if (closeSheetAfterDelete && context.mounted) {
       Navigator.pop(context);
@@ -1139,10 +1166,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                       (item) => sameEvent(item, event));
                                   if (index != -1) {
                                     events[index] = updatedEvent;
-                                    await EventService.updateEvents(events);
+                                    await updateEvents(events);
                                   }
                                 } else {
-                                  await EventService.addEvent(updatedEvent);
+                                  await addEvent(updatedEvent);
                                 }
 
                                 selectedDate = selectedEventDate;
