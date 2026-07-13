@@ -24,12 +24,11 @@ function buildZeliaResponseRequest({
   userMessage,
   model = DEFAULT_MODEL,
 }) {
-  return {
+  const request = {
     model,
     instructions: systemContent,
     input: userMessage,
     store: false,
-    temperature: 0.03,
     max_output_tokens: 2600,
     text: {
       format: {
@@ -40,6 +39,12 @@ function buildZeliaResponseRequest({
       },
     },
   };
+
+  if (!model.startsWith("gpt-5.6-")) {
+    request.temperature = 0.03;
+  }
+
+  return request;
 }
 
 /**

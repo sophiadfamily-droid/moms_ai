@@ -26,6 +26,19 @@ test("builds a stateless Responses API request", () => {
   assert.equal(request.max_output_tokens, 2600);
 });
 
+test("omits temperature for GPT-5.6 models", () => {
+  const request = buildZeliaResponseRequest({
+    systemContent: "SYSTEM",
+    userMessage: "USER",
+    model: "gpt-5.6-luna",
+  });
+
+  assert.equal(
+      Object.prototype.hasOwnProperty.call(request, "temperature"),
+      false,
+  );
+});
+
 test("uses the strict Zelia response schema", () => {
   const request = buildZeliaResponseRequest({
     systemContent: "SYSTEM",
