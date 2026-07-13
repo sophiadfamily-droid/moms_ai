@@ -12,6 +12,7 @@ const priorities = require("./brain/priorities");
 const {detectIntent} = require("./brain/engines/intentDetector");
 
 const {generateZeliaResponse} = require("./services/openaiService");
+const {routeModel} = require("./services/modelRouterService");
 
 const openaiApiKey = defineSecret("OPENAI_API_KEY");
 
@@ -85,10 +86,21 @@ ${systemPrompt({
 ${buildBrainContext()}
 `;
 
+        const modelDecision = routeModel({
+          primaryIntent: detectedIntent.primaryIntent,
+        });
+
+        console.info("ZELIA MODEL ROUTING", {
+          intent: detectedIntent.primaryIntent,
+          tier: modelDecision.tier,
+          model: modelDecision.model,
+        });
+
         const parsed = await generateZeliaResponse({
           apiKey: openaiApiKey.value(),
           systemContent,
           userMessage: message,
+          model: modelDecision.model,
         });
 
         res.json({

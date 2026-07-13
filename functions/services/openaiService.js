@@ -9,13 +9,14 @@ async function generateZeliaResponse({
   apiKey,
   systemContent,
   userMessage,
+  model = "gpt-4.1-mini",
 }) {
   const openai = new OpenAI({
     apiKey,
   });
 
   const completion = await openai.chat.completions.create({
-    model: "gpt-4.1-mini",
+    model,
 
     response_format: {
       type: "json_object",
