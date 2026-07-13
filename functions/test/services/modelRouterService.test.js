@@ -45,17 +45,17 @@ test("routes complex planning to the reasoning tier", () => {
 test("uses safe default models when no configuration exists", () => {
   assert.equal(
       resolveModel(MODEL_TIERS.FAST, {}),
-      "gpt-4.1-mini",
+      "gpt-5.6-luna",
   );
 
   assert.equal(
       resolveModel(MODEL_TIERS.BALANCED, {}),
-      "gpt-4.1-mini",
+      "gpt-5.6-terra",
   );
 
   assert.equal(
       resolveModel(MODEL_TIERS.REASONING, {}),
-      "gpt-4.1-mini",
+      "gpt-5.6-sol",
   );
 });
 

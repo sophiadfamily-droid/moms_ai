@@ -95,3 +95,124 @@ test("rejects a response outside the Zelia contract", () => {
       /OPENAI_INVALID_RESPONSE_CONTRACT/,
   );
 });
+
+test("allows fallback for temporary model errors", () => {
+  const {
+    shouldFallbackToDefaultModel,
+  } = require("../../services/openaiService");
+
+  assert.equal(
+      shouldFallbackToDefaultModel(
+          {status: 503, message: "Service unavailable"},
+          "gpt-5.6-terra",
+      ),
+      true,
+  );
+
+  assert.equal(
+      shouldFallbackToDefaultModel(
+          {status: 400, message: "Invalid request"},
+          "gpt-5.6-terra",
+      ),
+      false,
+  );
+});
+
+test("never falls back recursively from the default model", () => {
+  const {
+    shouldFallbackToDefaultModel,
+  } = require("../../services/openaiService");
+
+  assert.equal(
+      shouldFallbackToDefaultModel(
+          {status: 503, message: "Service unavailable"},
+          DEFAULT_MODEL,
+      ),
+      false,
+  );
+});
+
+test(
+    "retries once with the default model after a temporary failure",
+    async () => {
+      const {
+        generateZeliaResponse,
+      } = require("../../services/openaiService");
+
+      const calls = [];
+
+      const client = {
+        responses: {
+          async create(request) {
+            calls.push(request);
+
+            if (calls.length === 1) {
+              const error = new Error("Service unavailable");
+              error.status = 503;
+              throw error;
+            }
+
+            return {
+              output_text: JSON.stringify({
+                reply: "Réponse de secours",
+                actions: [],
+                memories: [],
+              }),
+            };
+          },
+        },
+      };
+
+      const result = await generateZeliaResponse({
+        apiKey: "test-key",
+        systemContent: "SYSTEM",
+        userMessage: "USER",
+        model: "gpt-5.6-terra",
+        client,
+      });
+
+      assert.equal(calls.length, 2);
+      assert.equal(calls[0].model, "gpt-5.6-terra");
+      assert.equal(calls[1].model, DEFAULT_MODEL);
+      assert.equal(calls[1].temperature, 0.03);
+
+      assert.deepEqual(result, {
+        reply: "Réponse de secours",
+        actions: [],
+        memories: [],
+      });
+    },
+);
+
+test("does not hide a non-retryable request error", async () => {
+  const {
+    generateZeliaResponse,
+  } = require("../../services/openaiService");
+
+  const calls = [];
+
+  const client = {
+    responses: {
+      async create(request) {
+        calls.push(request);
+
+        const error = new Error("Unsupported parameter");
+        error.status = 400;
+        throw error;
+      },
+    },
+  };
+
+  await assert.rejects(
+      () => generateZeliaResponse({
+        apiKey: "test-key",
+        systemContent: "SYSTEM",
+        userMessage: "USER",
+        model: "gpt-5.6-sol",
+        client,
+      }),
+      /Unsupported parameter/,
+  );
+
+  assert.equal(calls.length, 1);
+});

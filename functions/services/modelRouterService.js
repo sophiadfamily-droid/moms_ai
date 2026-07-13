@@ -5,9 +5,9 @@ const MODEL_TIERS = Object.freeze({
 });
 
 const DEFAULT_MODELS = Object.freeze({
-  [MODEL_TIERS.FAST]: "gpt-4.1-mini",
-  [MODEL_TIERS.BALANCED]: "gpt-4.1-mini",
-  [MODEL_TIERS.REASONING]: "gpt-4.1-mini",
+  [MODEL_TIERS.FAST]: "gpt-5.6-luna",
+  [MODEL_TIERS.BALANCED]: "gpt-5.6-terra",
+  [MODEL_TIERS.REASONING]: "gpt-5.6-sol",
 });
 
 /**
