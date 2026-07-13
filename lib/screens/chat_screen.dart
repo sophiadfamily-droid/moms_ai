@@ -294,6 +294,7 @@ class _ChatScreenState extends State<ChatScreen> {
     required String originalMessage,
     required int actionMinutes,
     required int travelGoMinutes,
+    required int travelBackMinutes,
     required List<TaskModel> groupedTasks,
   }) async {
     final targetDate = SmartPlanningService.targetDateFromText(
@@ -308,7 +309,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
     final marginMinutes = SmartPlanningService.defaultMarginMinutes(type);
     final totalMinutes =
-        actionMinutes + travelGoMinutes + travelGoMinutes + marginMinutes;
+        actionMinutes + travelGoMinutes + travelBackMinutes + marginMinutes;
 
     final result = await PlanningProposalEngine.findBestOptions(
       startDate: targetDate,
@@ -328,6 +329,8 @@ class _ChatScreenState extends State<ChatScreen> {
       "originalMessage": originalMessage,
       "actionMinutes": actionMinutes,
       "travelGoMinutes": travelGoMinutes,
+      "travelBackMinutes": travelBackMinutes,
+      "marginMinutes": marginMinutes,
       "groupedTasks": groupedTasks,
     };
 
@@ -361,11 +364,7 @@ class _ChatScreenState extends State<ChatScreen> {
       pendingPlanningProposalOptions,
     );
 
-    if (index == null) {
-      return false;
-    }
-
-    if (index >= pendingPlanningProposalOptions.length) {
+    if (index == null || index >= pendingPlanningProposalOptions.length) {
       return false;
     }
 
@@ -383,7 +382,25 @@ class _ChatScreenState extends State<ChatScreen> {
       addAssistantMessage(
         "Je n’ai pas pu finaliser ce créneau, il me manque le rendez-vous à créer.",
       );
+      return true;
+    }
 
+    final durationMinutes =
+        int.tryParse(context["actionMinutes"]?.toString() ?? "0") ?? 0;
+    final travelGoMinutes =
+        int.tryParse(context["travelGoMinutes"]?.toString() ?? "0") ?? 0;
+    final travelBackMinutes =
+        int.tryParse(context["travelBackMinutes"]?.toString() ?? "0") ?? 0;
+    final marginMinutes =
+        int.tryParse(context["marginMinutes"]?.toString() ?? "0") ?? 0;
+
+    if (durationMinutes <= 0) {
+      pendingPlanningProposalOptions = [];
+      pendingPlanningProposalContext = null;
+
+      addAssistantMessage(
+        "Je n’ai pas pu finaliser ce créneau, car la durée du rendez-vous est invalide.",
+      );
       return true;
     }
 
@@ -392,20 +409,14 @@ class _ChatScreenState extends State<ChatScreen> {
       "task": task,
       "option": selectedOption.toJson(),
       "originalMessage": context["originalMessage"]?.toString() ?? "",
-      "durationMinutes": context["actionMinutes"] ?? 0,
-      "travelGoMinutes": context["travelGoMinutes"] ?? 0,
+      "durationMinutes": durationMinutes,
+      "travelGoMinutes": travelGoMinutes,
+      "travelBackMinutes": travelBackMinutes,
+      "marginMinutes": marginMinutes,
     };
 
     pendingPlanningProposalOptions = [];
     pendingPlanningProposalContext = null;
-
-    final durationMinutes =
-        int.tryParse(context["actionMinutes"]?.toString() ?? "0") ?? 0;
-    final travelGoMinutes =
-        int.tryParse(context["travelGoMinutes"]?.toString() ?? "0") ?? 0;
-    final totalMinutes = durationMinutes + (travelGoMinutes * 2);
-    final end = selectedOption.start.add(Duration(minutes: totalMinutes));
-    final endTime = SmartPlanningService.formatIsoTime(end);
 
     addAssistantMessage(
       [
@@ -413,11 +424,12 @@ class _ChatScreenState extends State<ChatScreen> {
         "",
         "• Rendez-vous : ${task.title}",
         "• Date : ${selectedOption.dateIso}",
-        "• Début : ${selectedOption.startTime}",
+        "• Plage réservée : ${selectedOption.startTime} à ${selectedOption.endTime}",
         "• Durée du rendez-vous : ${SmartPlanningService.durationLabel(durationMinutes)}",
         "• Trajet aller : ${SmartPlanningService.durationLabel(travelGoMinutes)}",
-        "• Trajet retour : ${SmartPlanningService.durationLabel(travelGoMinutes)}",
-        "• Fin estimée : $endTime",
+        "• Trajet retour : ${SmartPlanningService.durationLabel(travelBackMinutes)}",
+        if (marginMinutes > 0)
+          "• Marge : ${SmartPlanningService.durationLabel(marginMinutes)}",
         "",
         "Tu confirmes que je réserve ce créneau ?",
       ].join("\n"),
@@ -506,17 +518,58 @@ class _ChatScreenState extends State<ChatScreen> {
 
       pendingSelectedSlotEvent = {
         ...pending,
-        "step": "confirmation",
+        "step": "travelBack",
         "travelGoMinutes": travelGoMinutes,
       };
 
-      final totalTravel = travelGoMinutes * 2;
-      final totalMinutes = durationMinutes + totalTravel;
+      addAssistantMessage(
+        "Et pour le trajet retour, combien de temps faut-il prévoir ? "
+        "Tu peux répondre pareil, 0, 15 min, 30 min, etc. 💕",
+      );
+
+      return true;
+    }
+
+    if (step == "travelBack") {
+      final lower = text.trim().toLowerCase();
+      final travelGoMinutes =
+          int.tryParse(pending["travelGoMinutes"]?.toString() ?? "0") ?? 0;
+
+      var travelBackMinutes = 0;
+
+      if (lower.contains("pareil") ||
+          lower.contains("même") ||
+          lower.contains("meme") ||
+          lower.contains("identique")) {
+        travelBackMinutes = travelGoMinutes;
+      } else if (PlannerEngineService.isNoTravelAnswer(lower) ||
+          lower == "0" ||
+          lower == "aucun" ||
+          lower == "pas de trajet") {
+        travelBackMinutes = 0;
+      } else {
+        travelBackMinutes = SmartPlanningService.parseTravelMinutes(text);
+      }
+
+      final durationMinutes =
+          int.tryParse(pending["durationMinutes"]?.toString() ?? "0") ?? 0;
+
+      final marginMinutes =
+          int.tryParse(pending["marginMinutes"]?.toString() ?? "0") ?? 0;
+      final totalTravel = travelGoMinutes + travelBackMinutes;
+      final totalMinutes = durationMinutes + totalTravel + marginMinutes;
       final start = DateTime.tryParse(option["start"]?.toString() ?? "");
       final end = start?.add(Duration(minutes: totalMinutes));
       final endTime = end == null
           ? option["endTime"]?.toString() ?? ""
           : SmartPlanningService.formatIsoTime(end);
+
+      pendingSelectedSlotEvent = {
+        ...pending,
+        "step": "confirmation",
+        "travelGoMinutes": travelGoMinutes,
+        "travelBackMinutes": travelBackMinutes,
+      };
 
       addAssistantMessage(
         "Je récapitule avant de réserver 💕\n\n"
@@ -525,7 +578,7 @@ class _ChatScreenState extends State<ChatScreen> {
         "• Début : ${option["startTime"]}\n"
         "• Durée du rendez-vous : ${SmartPlanningService.durationLabel(durationMinutes)}\n"
         "• Trajet aller : ${SmartPlanningService.durationLabel(travelGoMinutes)}\n"
-        "• Trajet retour : ${SmartPlanningService.durationLabel(travelGoMinutes)}\n"
+        "• Trajet retour : ${SmartPlanningService.durationLabel(travelBackMinutes)}\n"
         "• Fin estimée : $endTime\n\n"
         "Tu confirmes que je réserve ce créneau ?",
       );
@@ -566,8 +619,13 @@ class _ChatScreenState extends State<ChatScreen> {
         return true;
       }
 
-      final totalTravel = travelGoMinutes * 2;
-      final totalMinutes = durationMinutes + totalTravel;
+      final travelBackMinutes =
+          int.tryParse(pending["travelBackMinutes"]?.toString() ?? "0") ?? 0;
+
+      final marginMinutes =
+          int.tryParse(pending["marginMinutes"]?.toString() ?? "0") ?? 0;
+      final totalTravel = travelGoMinutes + travelBackMinutes;
+      final totalMinutes = durationMinutes + totalTravel + marginMinutes;
       final end = start.add(Duration(minutes: totalMinutes));
 
       final dateIso = SmartPlanningService.formatIsoDate(start);
@@ -581,13 +639,17 @@ class _ChatScreenState extends State<ChatScreen> {
         endTime: endTime,
         durationMinutes: durationMinutes,
         travelMinutes: totalTravel,
+        travelGoMinutes: travelGoMinutes,
+        travelBackMinutes: travelBackMinutes,
+        departureContext: "previous_event",
+        arrivalContext: "next_event",
         startDateTimeIso: "${dateIso}T$startTime:00",
         endDateTimeIso: "${dateIso}T$endTime:00",
         category: task.category,
         notes: "Planifié par Zelia depuis une proposition multi-créneaux.\n"
             "Durée du rendez-vous : $durationMinutes min\n"
             "Trajet aller estimé : $travelGoMinutes min\n"
-            "Trajet retour estimé : $travelGoMinutes min",
+            "Trajet retour estimé : $travelBackMinutes min",
         createdAt: DateTime.now(),
       );
 
@@ -657,6 +719,8 @@ class _ChatScreenState extends State<ChatScreen> {
         int.tryParse(pending["actionMinutes"]?.toString() ?? "0") ?? 0;
     final travelGoMinutes =
         int.tryParse(pending["travelGoMinutes"]?.toString() ?? "0") ?? 0;
+    final travelBackMinutes =
+        int.tryParse(pending["travelBackMinutes"]?.toString() ?? "0") ?? 0;
 
     final rawGroupedTasks = pending["groupedTasks"];
     final groupedTasks = rawGroupedTasks is List<TaskModel>
@@ -679,6 +743,7 @@ class _ChatScreenState extends State<ChatScreen> {
         originalMessage: "${task.title} $nextDateIso",
         actionMinutes: actionMinutes,
         travelGoMinutes: travelGoMinutes,
+        travelBackMinutes: travelBackMinutes,
         groupedTasks: groupedTasks,
         memoryReasoning: await buildCurrentMemoryReasoning(),
       );
@@ -1045,7 +1110,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
       pendingSlotProposalRequest = {
         ...pending,
-        "step": "travel",
+        "step": "travelGo",
         "durationMinutes": durationMinutes,
       };
 
@@ -1061,22 +1126,46 @@ class _ChatScreenState extends State<ChatScreen> {
       return true;
     }
 
-    if (step == "travel") {
+    if (step == "travel" || step == "travelGo") {
       final lower = text.trim().toLowerCase();
 
-      var travelGoMinutes = 0;
-
-      if (PlannerEngineService.isNoTravelAnswer(lower) ||
+      final isExplicitNoTravel = PlannerEngineService.isNoTravelAnswer(lower) ||
           lower == "0" ||
           lower == "aucun" ||
-          lower == "pas de trajet") {
-        travelGoMinutes = 0;
-      } else {
-        travelGoMinutes = SmartPlanningService.parseTravelMinutes(text);
+          lower == "pas de trajet";
+
+      final travelGoMinutes = isExplicitNoTravel
+          ? 0
+          : SmartPlanningService.parseTravelMinutes(text);
+
+      if (!isExplicitNoTravel && travelGoMinutes <= 0) {
+        addAssistantMessage(
+          "Dis-moi simplement le trajet aller, par exemple 15 min, 30 min ou 0 si aucun trajet 💕",
+        );
+        return true;
       }
+
+      pendingSlotProposalRequest = {
+        ...pending,
+        "step": "travelBack",
+        "travelGoMinutes": travelGoMinutes,
+      };
+
+      addAssistantMessage(
+        "Et combien de temps faut-il prévoir pour le trajet retour ? "
+        "Tu peux répondre pareil, 0, 15 min, 30 min, etc. 💕",
+      );
+
+      return true;
+    }
+
+    if (step == "travelBack") {
+      final lower = text.trim().toLowerCase();
 
       final durationMinutes =
           int.tryParse(pending["durationMinutes"]?.toString() ?? "0") ?? 0;
+      final travelGoMinutes =
+          int.tryParse(pending["travelGoMinutes"]?.toString() ?? "0") ?? 0;
 
       if (durationMinutes <= 0) {
         pendingSlotProposalRequest = {
@@ -1086,6 +1175,29 @@ class _ChatScreenState extends State<ChatScreen> {
 
         addAssistantMessage(
           "Il me manque la durée du rendez-vous. Combien de temps veux-tu prévoir ?",
+        );
+        return true;
+      }
+
+      final isSameTravel = lower.contains("pareil") ||
+          lower.contains("même") ||
+          lower.contains("meme") ||
+          lower.contains("identique");
+
+      final isExplicitNoTravel = PlannerEngineService.isNoTravelAnswer(lower) ||
+          lower == "0" ||
+          lower == "aucun" ||
+          lower == "pas de trajet";
+
+      final travelBackMinutes = isSameTravel
+          ? travelGoMinutes
+          : isExplicitNoTravel
+              ? 0
+              : SmartPlanningService.parseTravelMinutes(text);
+
+      if (!isSameTravel && !isExplicitNoTravel && travelBackMinutes <= 0) {
+        addAssistantMessage(
+          "Dis-moi simplement le trajet retour, par exemple 15 min, 30 min, pareil ou 0 si aucun trajet 💕",
         );
         return true;
       }
@@ -1106,7 +1218,8 @@ class _ChatScreenState extends State<ChatScreen> {
               ? 7
               : 21;
 
-      final totalMinutes = durationMinutes + (travelGoMinutes * 2);
+      final totalMinutes =
+          durationMinutes + travelGoMinutes + travelBackMinutes;
 
       final result = await PlanningProposalEngine.findBestOptions(
         startDate: startDate,
@@ -1145,6 +1258,8 @@ class _ChatScreenState extends State<ChatScreen> {
         "originalMessage": originalMessage,
         "actionMinutes": durationMinutes,
         "travelGoMinutes": travelGoMinutes,
+        "travelBackMinutes": travelBackMinutes,
+        "marginMinutes": 0,
         "groupedTasks": <TaskModel>[task],
       };
 
@@ -1265,6 +1380,7 @@ class _ChatScreenState extends State<ChatScreen> {
       originalMessage: originalMessage,
       actionMinutes: selectedMinutes,
       travelGoMinutes: 0,
+      travelBackMinutes: 0,
       groupedTasks: groupedTasks,
     );
 
@@ -1303,12 +1419,67 @@ class _ChatScreenState extends State<ChatScreen> {
 
     if (pending == null) return false;
 
-    final travelGoMinutes = SmartPlanningService.parseTravelMinutes(text);
+    final step = pending["step"]?.toString() ?? "travelGo";
+    final lower = text.trim().toLowerCase();
 
-    if (travelGoMinutes <= 0) {
-      final reply = SmartPlanningResponseBuilder.askTravelDurationExample();
+    if (step == "travelGo") {
+      final isExplicitNoTravel = PlannerEngineService.isNoTravelAnswer(lower) ||
+          lower == "0" ||
+          lower == "aucun" ||
+          lower == "pas de trajet";
 
-      addAssistantMessage(reply);
+      final travelGoMinutes = isExplicitNoTravel
+          ? 0
+          : SmartPlanningService.parseTravelMinutes(text);
+
+      if (!isExplicitNoTravel && travelGoMinutes <= 0) {
+        addAssistantMessage(
+          SmartPlanningResponseBuilder.askTravelDurationExample(),
+        );
+        return true;
+      }
+
+      pendingTravelPlanningTask = {
+        ...pending,
+        "step": "travelBack",
+        "travelGoMinutes": travelGoMinutes,
+      };
+
+      addAssistantMessage(
+        SmartPlanningResponseBuilder.askTravelBackForOutsideTask(),
+      );
+
+      return true;
+    }
+
+    if (step != "travelBack") {
+      pendingTravelPlanningTask = null;
+      return false;
+    }
+
+    final travelGoMinutes =
+        int.tryParse(pending["travelGoMinutes"]?.toString() ?? "0") ?? 0;
+
+    final isSameTravel = lower.contains("pareil") ||
+        lower.contains("même") ||
+        lower.contains("meme") ||
+        lower.contains("identique");
+
+    final isExplicitNoTravel = PlannerEngineService.isNoTravelAnswer(lower) ||
+        lower == "0" ||
+        lower == "aucun" ||
+        lower == "pas de trajet";
+
+    final travelBackMinutes = isSameTravel
+        ? travelGoMinutes
+        : isExplicitNoTravel
+            ? 0
+            : SmartPlanningService.parseTravelMinutes(text);
+
+    if (!isSameTravel && !isExplicitNoTravel && travelBackMinutes <= 0) {
+      addAssistantMessage(
+        SmartPlanningResponseBuilder.askTravelBackDurationExample(),
+      );
       return true;
     }
 
@@ -1334,6 +1505,7 @@ class _ChatScreenState extends State<ChatScreen> {
       originalMessage: originalMessage,
       actionMinutes: actionMinutes,
       travelGoMinutes: travelGoMinutes,
+      travelBackMinutes: travelBackMinutes,
       groupedTasks: groupedTasks,
     );
 
@@ -1346,6 +1518,7 @@ class _ChatScreenState extends State<ChatScreen> {
       originalMessage: originalMessage,
       actionMinutes: actionMinutes,
       travelGoMinutes: travelGoMinutes,
+      travelBackMinutes: travelBackMinutes,
       groupedTasks: groupedTasks,
       memoryReasoning: await buildCurrentMemoryReasoning(),
     );
@@ -1356,6 +1529,7 @@ class _ChatScreenState extends State<ChatScreen> {
         "originalMessage": originalMessage,
         "actionMinutes": actionMinutes,
         "travelGoMinutes": travelGoMinutes,
+        "travelBackMinutes": travelBackMinutes,
         "groupedTasks": groupedTasks,
         "failedDate": proposal.date,
       };
@@ -1548,34 +1722,81 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<bool> tryCompletePendingEventTravel(String text) async {
-    if (pendingTravelEvent == null) return false;
+    final pending = pendingTravelEvent;
 
-    final action = Map<String, dynamic>.from(pendingTravelEvent!);
+    if (pending == null) return false;
 
-    if (PlannerEngineService.isNoTravelAnswer(text)) {
-      action["travelMinutes"] = 0;
-      pendingTravelEvent = null;
+    final action = Map<String, dynamic>.from(pending);
+    final step = action["travelStep"]?.toString() ?? "travelGo";
+    final lower = text.trim().toLowerCase();
 
-      final conflictText = await handleAction(action);
-      final reply = conflictText.isNotEmpty
-          ? conflictText
-          : "C’est noté 💕 J’ai bloqué « ${action["title"]} » dans ton agenda.";
+    if (step == "travelGo") {
+      final isExplicitNoTravel = PlannerEngineService.isNoTravelAnswer(lower) ||
+          lower == "0" ||
+          lower == "aucun" ||
+          lower == "pas de trajet";
 
-      addAssistantMessage(reply);
+      final travelGoMinutes = isExplicitNoTravel
+          ? 0
+          : SmartPlanningService.parseTravelMinutes(text);
+
+      if (!isExplicitNoTravel && travelGoMinutes <= 0) {
+        addAssistantMessage(
+          "Dis-moi juste le temps du trajet aller, par exemple 10 min, "
+          "15 min, 25 min ou 0 si aucun trajet 💕",
+        );
+        return true;
+      }
+
+      action["travelStep"] = "travelBack";
+      action["travelGoMinutes"] = travelGoMinutes;
+      pendingTravelEvent = action;
+
+      addAssistantMessage(
+        "Et combien de temps faut-il prévoir pour le trajet retour ? "
+        "Tu peux répondre pareil, 0, 15 min, 30 min, etc. 💕",
+      );
+
       return true;
     }
 
-    final travelGoMinutes = SmartPlanningService.parseTravelMinutes(text);
+    if (step != "travelBack") {
+      pendingTravelEvent = null;
+      return false;
+    }
 
-    if (travelGoMinutes <= 0) {
+    final travelGoMinutes =
+        int.tryParse(action["travelGoMinutes"]?.toString() ?? "0") ?? 0;
+
+    final isSameTravel = lower.contains("pareil") ||
+        lower.contains("même") ||
+        lower.contains("meme") ||
+        lower.contains("identique");
+
+    final isExplicitNoTravel = PlannerEngineService.isNoTravelAnswer(lower) ||
+        lower == "0" ||
+        lower == "aucun" ||
+        lower == "pas de trajet";
+
+    final travelBackMinutes = isSameTravel
+        ? travelGoMinutes
+        : isExplicitNoTravel
+            ? 0
+            : SmartPlanningService.parseTravelMinutes(text);
+
+    if (!isSameTravel && !isExplicitNoTravel && travelBackMinutes <= 0) {
       addAssistantMessage(
-        "Dis-moi juste le temps du trajet aller, par exemple 10 min, "
-        "15 min ou 25 min. Tu peux aussi répondre non 💕",
+        "Dis-moi juste le temps du trajet retour, par exemple 10 min, "
+        "15 min, pareil ou 0 si aucun trajet 💕",
       );
       return true;
     }
 
-    action["travelMinutes"] = travelGoMinutes * 2;
+    action.remove("travelStep");
+    action["travelGoMinutes"] = travelGoMinutes;
+    action["travelBackMinutes"] = travelBackMinutes;
+    action["travelMinutes"] = travelGoMinutes + travelBackMinutes;
+
     pendingTravelEvent = null;
 
     final conflictText = await handleAction(action);
@@ -1585,7 +1806,7 @@ class _ChatScreenState extends State<ChatScreen> {
         ? conflictText
         : "C’est noté 💕 J’ai bloqué « $title » dans ton agenda, "
             "avec $travelGoMinutes min de trajet aller et "
-            "$travelGoMinutes min de trajet retour.";
+            "$travelBackMinutes min de trajet retour.";
 
     addAssistantMessage(reply);
     return true;

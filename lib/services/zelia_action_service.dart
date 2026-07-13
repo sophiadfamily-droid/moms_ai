@@ -185,6 +185,12 @@ class ZeliaActionService {
         durationMinutes: durationMinutes,
         travelMinutes:
             int.tryParse(action["travelMinutes"]?.toString() ?? "0") ?? 0,
+        travelGoMinutes:
+            int.tryParse(action["travelGoMinutes"]?.toString() ?? "0") ?? 0,
+        travelBackMinutes:
+            int.tryParse(action["travelBackMinutes"]?.toString() ?? "0") ?? 0,
+        departureContext: action["departureContext"]?.toString() ?? "unknown",
+        arrivalContext: action["arrivalContext"]?.toString() ?? "unknown",
       );
 
       final conflict = await EventService.getOverlapConflict(

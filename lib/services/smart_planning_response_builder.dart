@@ -12,7 +12,11 @@ class SmartPlanningResponseBuilder {
   }
 
   static String askTravelDurationExample() {
-    return "Dis-moi juste le temps du trajet aller, par exemple 10 min, 15 min ou 25 min 💕";
+    return "Dis-moi juste le temps du trajet aller, par exemple 10 min, 15 min, 25 min ou 0 si aucun trajet 💕";
+  }
+
+  static String askTravelBackDurationExample() {
+    return "Dis-moi juste le temps du trajet retour, par exemple 10 min, 15 min, pareil ou 0 si aucun trajet 💕";
   }
 
   static String askDurationExample() {
@@ -21,8 +25,12 @@ class SmartPlanningResponseBuilder {
 
   static String askTravelForOutsideTask(String title) {
     return "Pour « $title », il faut prévoir un déplacement.\n\n"
-        "Combien de minutes faut-il compter pour le trajet aller ? "
-        "Je compterai le même temps pour le retour.";
+        "Combien de minutes faut-il compter pour le trajet aller ?";
+  }
+
+  static String askTravelBackForOutsideTask() {
+    return "Et combien de minutes faut-il compter pour le trajet retour ? "
+        "Tu peux répondre pareil si le temps est identique.";
   }
 
   static String askDurationValidation({

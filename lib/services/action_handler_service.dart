@@ -175,6 +175,17 @@ class ActionHandlerService {
         );
       }
 
+      if (durationMinutes <= 0) {
+        pendingAction["date"] = date;
+        pendingAction["time"] = time;
+
+        return ActionHandlerResult(
+          pendingDurationEvent: pendingAction,
+          message:
+              "Parfait 💕\n\nCombien de temps veux-tu prévoir pour « $title » ?",
+        );
+      }
+
       final earlyStartDateTimeIso = buildStartDateTimeIso(
         date: date,
         time: time,
@@ -208,14 +219,14 @@ class ActionHandlerService {
         endTime: endTimeFromDuration(
           date: date,
           time: time,
-          durationMinutes: 60,
+          durationMinutes: durationMinutes,
         ),
         endDateTimeIso: buildEndDateTimeIso(
           date: date,
           time: time,
-          durationMinutes: 60,
+          durationMinutes: durationMinutes,
         ),
-        durationMinutes: 60,
+        durationMinutes: durationMinutes,
         travelMinutes: 0,
         isRecurring: isRecurringWeekly,
         recurringType: isRecurringWeekly ? "weekly" : "",
@@ -236,17 +247,6 @@ class ActionHandlerService {
               "Attention 💕 Ce créneau semble chevaucher un rendez-vous déjà prévu : "
               "${earlyOverlapConflictEvent.title}.\n\n"
               "Peux-tu me proposer un autre horaire ? ✨",
-        );
-      }
-
-      if (durationMinutes <= 0) {
-        pendingAction["date"] = date;
-        pendingAction["time"] = time;
-
-        return ActionHandlerResult(
-          pendingDurationEvent: pendingAction,
-          message:
-              "Parfait 💕\n\nCombien de temps veux-tu prévoir pour « $title » ?",
         );
       }
 
@@ -291,6 +291,12 @@ class ActionHandlerService {
         durationMinutes: safeDuration,
         travelMinutes:
             int.tryParse(action["travelMinutes"]?.toString() ?? "0") ?? 0,
+        travelGoMinutes:
+            int.tryParse(action["travelGoMinutes"]?.toString() ?? "0") ?? 0,
+        travelBackMinutes:
+            int.tryParse(action["travelBackMinutes"]?.toString() ?? "0") ?? 0,
+        departureContext: action["departureContext"]?.toString() ?? "unknown",
+        arrivalContext: action["arrivalContext"]?.toString() ?? "unknown",
         isRecurring: isRecurringWeekly,
         recurringType: isRecurringWeekly ? "weekly" : "",
         recurringWeekday: recurringWeekday,

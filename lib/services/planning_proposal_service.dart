@@ -21,6 +21,7 @@ class PlanningProposalService {
     required String originalMessage,
     required int actionMinutes,
     required int travelGoMinutes,
+    required int travelBackMinutes,
     required List<TaskModel> groupedTasks,
     List<Map<String, dynamic>> memoryReasoning = const [],
   }) async {
@@ -30,7 +31,7 @@ class PlanningProposalService {
         originalMessage: originalMessage,
         groupedTasks: groupedTasks,
         travelGoMinutes: travelGoMinutes,
-        travelBackMinutes: travelGoMinutes,
+        travelBackMinutes: travelBackMinutes,
         actionMinutesOverride: actionMinutes > 0 ? actionMinutes : null,
         memoryReasoning: memoryReasoning,
       );
@@ -40,7 +41,7 @@ class PlanningProposalService {
       task: task,
       originalMessage: originalMessage,
       travelGoMinutes: travelGoMinutes,
-      travelBackMinutes: travelGoMinutes,
+      travelBackMinutes: travelBackMinutes,
       actionMinutesOverride: actionMinutes > 0 ? actionMinutes : null,
       memoryReasoning: memoryReasoning,
     );
