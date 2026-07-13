@@ -30,6 +30,28 @@ void main() {
       expect(restored.totalTravelMinutes, 15);
     });
 
+    test(
+      'keeps legacy travel when zero-valued separate keys are present',
+      () {
+        final restored = EventModel.fromJson({
+          'title': 'Ancien rendez-vous',
+          'date': '2026-07-14',
+          'time': '10:00',
+          'notes': '',
+          'createdAt': '2026-07-13T10:00:00',
+          'startDateTimeIso': '2026-07-14T10:00:00',
+          'durationMinutes': 45,
+          'travelMinutes': 20,
+          'travelGoMinutes': 0,
+          'travelBackMinutes': 0,
+        });
+
+        expect(restored.usesSeparateTravelTimes, false);
+        expect(restored.resolvedTravelGoMinutes, 20);
+        expect(restored.resolvedTravelBackMinutes, 20);
+      },
+    );
+
     test('keeps legacy travel compatible', () {
       final restored = EventModel.fromJson({
         'title': 'Ancien rendez-vous',

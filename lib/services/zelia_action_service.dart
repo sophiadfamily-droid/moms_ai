@@ -155,6 +155,23 @@ class ZeliaActionService {
     }
 
     if (type == "event") {
+      final legacyTravelMinutes =
+          int.tryParse(action["travelMinutes"]?.toString() ?? "0") ?? 0;
+      final travelGoMinutes =
+          int.tryParse(action["travelGoMinutes"]?.toString() ?? "0") ?? 0;
+      final travelBackMinutes =
+          int.tryParse(action["travelBackMinutes"]?.toString() ?? "0") ?? 0;
+      final marginMinutes =
+          int.tryParse(action["marginMinutes"]?.toString() ?? "0") ?? 0;
+
+      final hasSeparateTravel = action["usesSeparateTravelTimes"] == true ||
+          travelGoMinutes > 0 ||
+          travelBackMinutes > 0;
+
+      final persistedTravelMinutes = hasSeparateTravel
+          ? travelGoMinutes + travelBackMinutes
+          : legacyTravelMinutes;
+
       final startDateTimeIso = buildStartDateTimeIso(
         date: date,
         time: time,
@@ -183,12 +200,11 @@ class ZeliaActionService {
         endDateTimeIso: endDateTimeIso,
         endTime: endTime,
         durationMinutes: durationMinutes,
-        travelMinutes:
-            int.tryParse(action["travelMinutes"]?.toString() ?? "0") ?? 0,
-        travelGoMinutes:
-            int.tryParse(action["travelGoMinutes"]?.toString() ?? "0") ?? 0,
-        travelBackMinutes:
-            int.tryParse(action["travelBackMinutes"]?.toString() ?? "0") ?? 0,
+        travelMinutes: persistedTravelMinutes,
+        travelGoMinutes: travelGoMinutes,
+        travelBackMinutes: travelBackMinutes,
+        usesSeparateTravelTimes: hasSeparateTravel,
+        marginMinutes: marginMinutes,
         departureContext: action["departureContext"]?.toString() ?? "unknown",
         arrivalContext: action["arrivalContext"]?.toString() ?? "unknown",
       );

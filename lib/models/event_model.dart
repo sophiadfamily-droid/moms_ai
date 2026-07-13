@@ -171,11 +171,14 @@ class EventModel {
     final legacyTravel =
         int.tryParse(json["travelMinutes"]?.toString() ?? "0") ?? 0;
 
-    final hasSeparateTravelFields = json.containsKey("travelGoMinutes") ||
-        json.containsKey("travelBackMinutes");
+    final parsedTravelGo =
+        int.tryParse(json["travelGoMinutes"]?.toString() ?? "0") ?? 0;
+    final parsedTravelBack =
+        int.tryParse(json["travelBackMinutes"]?.toString() ?? "0") ?? 0;
 
-    final usesSeparateTravelTimes =
-        json["usesSeparateTravelTimes"] == true || hasSeparateTravelFields;
+    final usesSeparateTravelTimes = json["usesSeparateTravelTimes"] == true ||
+        parsedTravelGo > 0 ||
+        parsedTravelBack > 0;
 
     return EventModel(
       title: json["title"] ?? "",
@@ -190,10 +193,8 @@ class EventModel {
       durationMinutes:
           int.tryParse(json["durationMinutes"]?.toString() ?? "0") ?? 0,
       travelMinutes: legacyTravel,
-      travelGoMinutes:
-          int.tryParse(json["travelGoMinutes"]?.toString() ?? "0") ?? 0,
-      travelBackMinutes:
-          int.tryParse(json["travelBackMinutes"]?.toString() ?? "0") ?? 0,
+      travelGoMinutes: parsedTravelGo,
+      travelBackMinutes: parsedTravelBack,
       usesSeparateTravelTimes: usesSeparateTravelTimes,
       marginMinutes:
           int.tryParse(json["marginMinutes"]?.toString() ?? "0") ?? 0,
