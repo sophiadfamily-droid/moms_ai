@@ -10,6 +10,9 @@ const eventDictionary = require("./brain/eventDictionary");
 const memoryRules = require("./brain/memoryRules");
 const priorities = require("./brain/priorities");
 const {detectIntent} = require("./brain/engines/intentDetector");
+const {
+  detectPlanningComplexity,
+} = require("./brain/engines/planningComplexityDetector");
 
 const {generateZeliaResponse} = require("./services/openaiService");
 const {routeModel} = require("./services/modelRouterService");
@@ -71,6 +74,7 @@ exports.chatWithZeliaHttp = onRequest(
 
         const today = new Date().toISOString().slice(0, 10);
         const detectedIntent = detectIntent(message);
+        const planningComplexity = detectPlanningComplexity(message);
 
         const systemContent = `
 ${systemPrompt({
@@ -88,12 +92,15 @@ ${buildBrainContext()}
 
         const modelDecision = routeModel({
           primaryIntent: detectedIntent.primaryIntent,
+          requiresComplexPlanning:
+              planningComplexity.requiresComplexPlanning,
         });
 
         console.info("ZELIA MODEL ROUTING", {
           intent: detectedIntent.primaryIntent,
           tier: modelDecision.tier,
           model: modelDecision.model,
+          planningComplexity,
         });
 
         const parsed = await generateZeliaResponse({
