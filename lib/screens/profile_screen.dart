@@ -1429,7 +1429,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                         await saveProfile();
 
-                        if (mounted && Navigator.canPop(context)) {
+                        if (!context.mounted) return;
+
+                        if (Navigator.canPop(context)) {
                           Navigator.pop(context);
                         }
                       },
@@ -1498,7 +1500,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                         await saveProfile();
 
-                        if (mounted && Navigator.canPop(context)) {
+                        if (!context.mounted) return;
+
+                        if (Navigator.canPop(context)) {
                           Navigator.pop(context);
                         }
                       },
@@ -1632,7 +1636,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       onSave: () async {
                         await saveProfile();
 
-                        if (mounted && Navigator.canPop(context)) {
+                        if (!context.mounted) return;
+
+                        if (Navigator.canPop(context)) {
                           Navigator.pop(context);
                         }
                       },
@@ -1817,7 +1823,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                         await saveProfile();
 
-                        if (mounted && Navigator.canPop(context)) {
+                        if (!context.mounted) return;
+
+                        if (Navigator.canPop(context)) {
                           Navigator.pop(context);
                         }
                       },
@@ -1915,7 +1923,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                         await saveProfile();
 
-                        if (mounted && Navigator.canPop(context)) {
+                        if (!context.mounted) return;
+
+                        if (Navigator.canPop(context)) {
                           Navigator.pop(context);
                         }
                       },
@@ -2085,7 +2095,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                         await saveProfile();
 
-                        if (mounted && Navigator.canPop(context)) {
+                        if (!context.mounted) return;
+
+                        if (Navigator.canPop(context)) {
                           Navigator.pop(context);
                         }
                       },
@@ -2210,7 +2222,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
         await saveProfile();
 
-        if (mounted && Navigator.canPop(context)) {
+        if (!mounted) return;
+
+        if (Navigator.canPop(context)) {
           Navigator.pop(context);
         }
       },
@@ -2440,7 +2454,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       onSave: () async {
                         await saveProfile();
 
-                        if (mounted && Navigator.canPop(context)) {
+                        if (!context.mounted) return;
+
+                        if (Navigator.canPop(context)) {
                           Navigator.pop(context);
                         }
                       },
@@ -2880,7 +2896,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
               await saveProfile();
 
-              if (mounted && Navigator.canPop(context)) {
+              if (!mounted) return;
+
+              if (Navigator.canPop(context)) {
                 Navigator.pop(context);
               }
             },

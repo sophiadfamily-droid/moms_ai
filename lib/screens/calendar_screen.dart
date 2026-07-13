@@ -375,7 +375,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
     await updateEvents(events);
 
-    if (closeSheetAfterDelete && context.mounted) {
+    if (!mounted) return;
+
+    if (closeSheetAfterDelete && Navigator.canPop(context)) {
       Navigator.pop(context);
     }
 
