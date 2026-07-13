@@ -10,14 +10,11 @@ class PartnerScreen extends StatefulWidget {
   });
 
   @override
-  State<PartnerScreen> createState() =>
-      _PartnerScreenState();
+  State<PartnerScreen> createState() => _PartnerScreenState();
 }
 
-class _PartnerScreenState
-    extends State<PartnerScreen> {
-  final TextEditingController controller =
-      TextEditingController();
+class _PartnerScreenState extends State<PartnerScreen> {
+  final TextEditingController controller = TextEditingController();
 
   void validate() {
     final value = controller.text.trim();
@@ -44,7 +41,7 @@ class _PartnerScreenState
           borderRadius: BorderRadius.circular(30),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFFC78372).withOpacity(0.22),
+              color: const Color(0xFFC78372).withValues(alpha: 0.22),
               blurRadius: 18,
               offset: const Offset(0, 8),
             ),
@@ -73,8 +70,7 @@ class _PartnerScreenState
         child: LayoutBuilder(
           builder: (context, constraints) {
             return SingleChildScrollView(
-              keyboardDismissBehavior:
-                  ScrollViewKeyboardDismissBehavior.onDrag,
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               padding: EdgeInsets.fromLTRB(
                 26,
                 8,
@@ -87,8 +83,7 @@ class _PartnerScreenState
                 ),
                 child: IntrinsicHeight(
                   child: Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         "ZELIA",
@@ -99,9 +94,7 @@ class _PartnerScreenState
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-
                       const Spacer(),
-
                       Text(
                         "Comment s’appelle\nla personne qui\npartage ta vie ?",
                         style: GoogleFonts.playfairDisplay(
@@ -111,9 +104,7 @@ class _PartnerScreenState
                           fontWeight: FontWeight.w500,
                         ),
                       ),
-
                       const SizedBox(height: 18),
-
                       Text(
                         "Zelia pourra mieux comprendre\nvotre organisation familiale.",
                         style: GoogleFonts.nunito(
@@ -122,12 +113,10 @@ class _PartnerScreenState
                           color: const Color(0xFF8B6F67),
                         ),
                       ),
-
                       const SizedBox(height: 32),
-
                       Container(
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.75),
+                          color: Colors.white.withValues(alpha: 0.75),
                           borderRadius: BorderRadius.circular(28),
                           border: Border.all(
                             color: const Color(0xFFE8C7BD),
@@ -148,19 +137,15 @@ class _PartnerScreenState
                               color: const Color(0xFFB99B92),
                             ),
                             border: InputBorder.none,
-                            contentPadding:
-                                const EdgeInsets.symmetric(
+                            contentPadding: const EdgeInsets.symmetric(
                               horizontal: 22,
                               vertical: 18,
                             ),
                           ),
                         ),
                       ),
-
                       const Spacer(),
-
                       const SizedBox(height: 18),
-
                       buildContinueButton(),
                     ],
                   ),
@@ -173,4 +158,3 @@ class _PartnerScreenState
     );
   }
 }
-

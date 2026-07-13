@@ -182,7 +182,7 @@ class _ChildrenScreenState extends State<ChildrenScreen> {
                   borderRadius: BorderRadius.circular(34),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.12),
+                      color: Colors.black.withValues(alpha: 0.12),
                       blurRadius: 28,
                       offset: const Offset(0, 14),
                     ),
@@ -198,7 +198,7 @@ class _ChildrenScreenState extends State<ChildrenScreen> {
                           width: 46,
                           height: 5,
                           decoration: BoxDecoration(
-                            color: textSoft.withOpacity(0.25),
+                            color: textSoft.withValues(alpha: 0.25),
                             borderRadius: BorderRadius.circular(100),
                           ),
                         ),
@@ -251,10 +251,10 @@ class _ChildrenScreenState extends State<ChildrenScreen> {
                               height: 62,
                               width: 62,
                               decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.9),
+                                color: Colors.white.withValues(alpha: 0.9),
                                 borderRadius: BorderRadius.circular(22),
                                 border: Border.all(
-                                  color: accent.withOpacity(0.14),
+                                  color: accent.withValues(alpha: 0.14),
                                 ),
                               ),
                               child: Icon(
@@ -299,13 +299,13 @@ class _ChildrenScreenState extends State<ChildrenScreen> {
                               ),
                               decoration: BoxDecoration(
                                 color: selected
-                                    ? accent.withOpacity(0.16)
-                                    : Colors.white.withOpacity(0.88),
+                                    ? accent.withValues(alpha: 0.16)
+                                    : Colors.white.withValues(alpha: 0.88),
                                 borderRadius: BorderRadius.circular(20),
                                 border: Border.all(
                                   color: selected
                                       ? accent
-                                      : accent.withOpacity(0.10),
+                                      : accent.withValues(alpha: 0.10),
                                 ),
                               ),
                               child: Text(
@@ -433,10 +433,10 @@ class _ChildrenScreenState extends State<ChildrenScreen> {
         vertical: 6,
       ),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.9),
+        color: Colors.white.withValues(alpha: 0.9),
         borderRadius: BorderRadius.circular(22),
         border: Border.all(
-          color: accent.withOpacity(0.14),
+          color: accent.withValues(alpha: 0.14),
         ),
       ),
       child: TextField(
@@ -508,14 +508,14 @@ class _ChildrenScreenState extends State<ChildrenScreen> {
                   margin: const EdgeInsets.only(bottom: 12),
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.78),
+                    color: Colors.white.withValues(alpha: 0.78),
                     borderRadius: BorderRadius.circular(26),
                   ),
                   child: Row(
                     children: [
                       CircleAvatar(
                         radius: 26,
-                        backgroundColor: accent.withOpacity(0.12),
+                        backgroundColor: accent.withValues(alpha: 0.12),
                         child: Text(
                           child.firstName.isEmpty
                               ? "?"
@@ -572,16 +572,16 @@ class _ChildrenScreenState extends State<ChildrenScreen> {
                   width: double.infinity,
                   padding: const EdgeInsets.all(18),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.78),
+                    color: Colors.white.withValues(alpha: 0.78),
                     borderRadius: BorderRadius.circular(28),
                     border: Border.all(
-                      color: accent.withOpacity(0.14),
+                      color: accent.withValues(alpha: 0.14),
                     ),
                   ),
                   child: Row(
                     children: [
                       CircleAvatar(
-                        backgroundColor: accent.withOpacity(0.12),
+                        backgroundColor: accent.withValues(alpha: 0.12),
                         child: Icon(
                           Icons.add,
                           color: accent,
@@ -611,7 +611,7 @@ class _ChildrenScreenState extends State<ChildrenScreen> {
                     borderRadius: BorderRadius.circular(30),
                     boxShadow: [
                       BoxShadow(
-                        color: accent.withOpacity(0.22),
+                        color: accent.withValues(alpha: 0.22),
                         blurRadius: 18,
                         offset: const Offset(0, 8),
                       ),

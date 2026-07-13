@@ -14,8 +14,7 @@ class NameScreen extends StatefulWidget {
 }
 
 class _NameScreenState extends State<NameScreen> {
-  final TextEditingController controller =
-      TextEditingController();
+  final TextEditingController controller = TextEditingController();
 
   void validate() {
     final value = controller.text.trim();
@@ -42,7 +41,7 @@ class _NameScreenState extends State<NameScreen> {
           borderRadius: BorderRadius.circular(30),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFFC78372).withOpacity(0.22),
+              color: const Color(0xFFC78372).withValues(alpha: 0.22),
               blurRadius: 18,
               offset: const Offset(0, 8),
             ),
@@ -71,8 +70,7 @@ class _NameScreenState extends State<NameScreen> {
         child: LayoutBuilder(
           builder: (context, constraints) {
             return SingleChildScrollView(
-              keyboardDismissBehavior:
-                  ScrollViewKeyboardDismissBehavior.onDrag,
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               padding: EdgeInsets.fromLTRB(
                 26,
                 8,
@@ -85,8 +83,7 @@ class _NameScreenState extends State<NameScreen> {
                 ),
                 child: IntrinsicHeight(
                   child: Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         "ZELIA",
@@ -97,9 +94,7 @@ class _NameScreenState extends State<NameScreen> {
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-
                       const Spacer(),
-
                       Text(
                         "Comment veux-tu\nque Zelia\nt’appelle ?",
                         style: GoogleFonts.playfairDisplay(
@@ -109,9 +104,7 @@ class _NameScreenState extends State<NameScreen> {
                           fontWeight: FontWeight.w500,
                         ),
                       ),
-
                       const SizedBox(height: 18),
-
                       Text(
                         "Ton espace sera personnalisé\npour toi, avec douceur et simplicité.",
                         style: GoogleFonts.nunito(
@@ -120,12 +113,10 @@ class _NameScreenState extends State<NameScreen> {
                           color: const Color(0xFF8B6F67),
                         ),
                       ),
-
                       const SizedBox(height: 32),
-
                       Container(
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.75),
+                          color: Colors.white.withValues(alpha: 0.75),
                           borderRadius: BorderRadius.circular(28),
                           border: Border.all(
                             color: const Color(0xFFE8C7BD),
@@ -146,19 +137,15 @@ class _NameScreenState extends State<NameScreen> {
                               color: const Color(0xFFB99B92),
                             ),
                             border: InputBorder.none,
-                            contentPadding:
-                                const EdgeInsets.symmetric(
+                            contentPadding: const EdgeInsets.symmetric(
                               horizontal: 22,
                               vertical: 18,
                             ),
                           ),
                         ),
                       ),
-
                       const Spacer(),
-
                       const SizedBox(height: 18),
-
                       buildContinueButton(),
                     ],
                   ),
@@ -171,4 +158,3 @@ class _NameScreenState extends State<NameScreen> {
     );
   }
 }
-

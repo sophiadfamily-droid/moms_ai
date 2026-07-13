@@ -82,7 +82,7 @@ class _FamilyStatusScreenState extends State<FamilyStatusScreen> {
                     decoration: BoxDecoration(
                       color: isSelected
                           ? const Color(0xFFC78372)
-                          : Colors.white.withOpacity(0.75),
+                          : Colors.white.withValues(alpha: 0.75),
                       borderRadius: BorderRadius.circular(26),
                       border: Border.all(
                         color: isSelected
@@ -92,7 +92,8 @@ class _FamilyStatusScreenState extends State<FamilyStatusScreen> {
                       boxShadow: [
                         if (isSelected)
                           BoxShadow(
-                            color: const Color(0xFFC78372).withOpacity(0.22),
+                            color:
+                                const Color(0xFFC78372).withValues(alpha: 0.22),
                             blurRadius: 18,
                             offset: const Offset(0, 8),
                           ),
@@ -144,7 +145,8 @@ class _FamilyStatusScreenState extends State<FamilyStatusScreen> {
                     boxShadow: [
                       if (selected != null)
                         BoxShadow(
-                          color: const Color(0xFFC78372).withOpacity(0.25),
+                          color:
+                              const Color(0xFFC78372).withValues(alpha: 0.25),
                           blurRadius: 22,
                           offset: const Offset(0, 10),
                         ),
