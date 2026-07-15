@@ -1946,9 +1946,15 @@ class _ChatScreenState extends State<ChatScreen> {
       if (MemoryPipelineService.shouldProcessMemory(text)) {
         final memory = MemoryPipelineService.buildMemory(text);
 
+        final payload = MemoryPipelineService.buildSavePayload(
+          memory,
+          fallbackText: text,
+        );
+
         await MemoryService.saveMemory(
-          text: memory["text"]?.toString() ?? text,
-          category: memory["category"]?.toString() ?? "personal",
+          text: payload.text,
+          category: payload.category,
+          importance: payload.importance,
         );
       }
 
@@ -2090,9 +2096,15 @@ class _ChatScreenState extends State<ChatScreen> {
 
     final builtMemory = MemoryPipelineService.buildMemory(text);
 
+    final payload = MemoryPipelineService.buildSavePayload(
+      builtMemory,
+      fallbackText: text,
+    );
+
     await MemoryService.saveMemory(
-      text: builtMemory["text"]?.toString() ?? text,
-      category: builtMemory["category"]?.toString() ?? "personal",
+      text: payload.text,
+      category: payload.category,
+      importance: payload.importance,
     );
   }
 
