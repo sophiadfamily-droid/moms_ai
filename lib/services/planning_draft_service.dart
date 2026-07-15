@@ -191,10 +191,15 @@ class PlanningDraftService {
       parts.add("pendant ${draft.durationMinutes} min");
     }
 
-    if (draft.travelGoMinutes > 0) {
-      parts.add("avec ${draft.travelGoMinutes} min de trajet aller");
+    if (draft.isOutside || draft.totalTravelMinutes > 0) {
+      parts.add("trajet aller : ${draft.travelGoMinutes} min");
+      parts.add("trajet retour : ${draft.travelBackMinutes} min");
     }
 
-    return parts.join(" ");
+    if (draft.marginMinutes > 0) {
+      parts.add("marge de sécurité : ${draft.marginMinutes} min");
+    }
+
+    return parts.join(", ");
   }
 }

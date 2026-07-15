@@ -46,4 +46,77 @@ void main() {
       expect(draft.totalTravelMinutes, 25);
     });
   });
+  group('PlanningDraftService human summary', () {
+    PlanningDraftModel buildCompleteDraft({
+      int travelGoMinutes = 15,
+      int travelBackMinutes = 30,
+      int marginMinutes = 10,
+      bool isOutside = true,
+    }) {
+      return PlanningDraftModel.empty().copyWith(
+        title: 'Médecin',
+        dateIso: '2026-07-20',
+        time: '14:00',
+        durationMinutes: 45,
+        travelGoMinutes: travelGoMinutes,
+        travelBackMinutes: travelBackMinutes,
+        marginMinutes: marginMinutes,
+        isOutside: isOutside,
+        needsDate: false,
+        needsTime: false,
+        needsDuration: false,
+        needsTravel: false,
+      );
+    }
+
+    test('includes outbound travel, return travel and safety margin', () {
+      final summary = PlanningDraftService.humanSummary(
+        buildCompleteDraft(),
+      );
+
+      expect(summary, contains('« Médecin »'));
+      expect(summary, contains('le 2026-07-20'));
+      expect(summary, contains('à 14:00'));
+      expect(summary, contains('pendant 45 min'));
+      expect(summary, contains('trajet aller : 15 min'));
+      expect(summary, contains('trajet retour : 30 min'));
+      expect(summary, contains('marge de sécurité : 10 min'));
+    });
+
+    test('keeps an explicit zero return travel visible', () {
+      final summary = PlanningDraftService.humanSummary(
+        buildCompleteDraft(
+          travelBackMinutes: 0,
+          marginMinutes: 0,
+        ),
+      );
+
+      expect(summary, contains('trajet aller : 15 min'));
+      expect(summary, contains('trajet retour : 0 min'));
+      expect(summary, isNot(contains('marge de sécurité')));
+    });
+
+    test('does not invent travel details for an internal event', () {
+      final summary = PlanningDraftService.humanSummary(
+        buildCompleteDraft(
+          travelGoMinutes: 0,
+          travelBackMinutes: 0,
+          marginMinutes: 0,
+          isOutside: false,
+        ),
+      );
+
+      expect(summary, isNot(contains('trajet aller')));
+      expect(summary, isNot(contains('trajet retour')));
+      expect(summary, isNot(contains('marge de sécurité')));
+    });
+
+    test('total estimated minutes includes duration, both travels and margin',
+        () {
+      final draft = buildCompleteDraft();
+
+      expect(draft.totalTravelMinutes, 45);
+      expect(draft.totalEstimatedMinutes, 100);
+    });
+  });
 }
