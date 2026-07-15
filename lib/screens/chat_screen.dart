@@ -1664,7 +1664,7 @@ class _ChatScreenState extends State<ChatScreen> {
         "originalMessage": "$title cette semaine",
         "type": action["type"]?.toString() ?? "rendez-vous",
         "outside": true,
-        "estimatedMinutes": 60,
+        "estimatedMinutes": 0,
         "groupedTasks": <TaskModel>[],
         "planningDraft": {
           "sourceMessage": "$title cette semaine",

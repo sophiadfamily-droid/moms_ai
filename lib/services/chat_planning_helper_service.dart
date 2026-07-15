@@ -104,57 +104,58 @@ class ChatPlanningHelperService {
   }
 
   static int parseDurationMinutes(String text) {
-    final lower = text.toLowerCase();
+    final lower = text.trim().toLowerCase().replaceAll("’", "'");
 
-    final hourMinuteMatch = RegExp(
-      r'(\d+)\s*h\s*(\d+)?',
-    ).firstMatch(lower);
-
-    if (hourMinuteMatch != null) {
-      final hours = int.tryParse(hourMinuteMatch.group(1) ?? "") ?? 0;
-      final minutes = int.tryParse(hourMinuteMatch.group(2) ?? "") ?? 0;
-
-      final total = hours * 60 + minutes;
-
-      if (total > 0) {
-        return total;
-      }
+    if (lower.isEmpty) {
+      return 0;
     }
 
     final minuteMatch = RegExp(
-      r'(\d+)\s*(minutes|minute|min)',
+      r'(\d+)\s*(minutes|minute|min)\b',
     ).firstMatch(lower);
 
     if (minuteMatch != null) {
-      final minutes = int.tryParse(minuteMatch.group(1) ?? "") ?? 0;
-
-      if (minutes > 0) {
-        return minutes;
-      }
+      return int.tryParse(minuteMatch.group(1) ?? "") ?? 0;
     }
 
-    final hourMatch = RegExp(
-      r'(\d+)\s*(heures|heure)',
+    final hourWordMatch = RegExp(
+      r'(\d+)\s*(heures|heure)\b',
     ).firstMatch(lower);
 
-    if (hourMatch != null) {
-      final hours = int.tryParse(hourMatch.group(1) ?? "") ?? 0;
+    if (hourWordMatch != null) {
+      final hours = int.tryParse(hourWordMatch.group(1) ?? "") ?? 0;
+      return hours > 0 ? hours * 60 : 0;
+    }
 
-      if (hours > 0) {
-        return hours * 60;
+    final compactDurationMatch = RegExp(
+      r'^(\d+)\s*h(?:\s*(\d+))?$',
+    ).firstMatch(lower);
+
+    if (compactDurationMatch != null) {
+      final hours = int.tryParse(compactDurationMatch.group(1) ?? "") ?? 0;
+      final minutes = int.tryParse(compactDurationMatch.group(2) ?? "") ?? 0;
+
+      return (hours * 60) + minutes;
+    }
+
+    final contextualHourMatch = RegExp(
+      r'(\d+)\s*h(?:\s*(\d+))?',
+    ).firstMatch(lower);
+
+    if (contextualHourMatch != null && durationContextIsClear(lower)) {
+      final prefix = lower.substring(0, contextualHourMatch.start).trimRight();
+
+      final looksLikeAppointmentTime =
+          RegExp(r'(?:^|\s)(?:à|a|vers)$').hasMatch(prefix);
+
+      if (!looksLikeAppointmentTime) {
+        final hours = int.tryParse(contextualHourMatch.group(1) ?? "") ?? 0;
+        final minutes = int.tryParse(contextualHourMatch.group(2) ?? "") ?? 0;
+
+        return (hours * 60) + minutes;
       }
     }
 
-    final numberMatch = RegExp(r'\d+').firstMatch(lower);
-
-    if (numberMatch != null) {
-      final number = int.tryParse(numberMatch.group(0) ?? "") ?? 0;
-
-      if (number > 0) {
-        return number;
-      }
-    }
-
-    return 60;
+    return 0;
   }
 }

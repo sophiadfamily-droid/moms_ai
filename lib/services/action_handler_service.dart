@@ -283,17 +283,19 @@ class ActionHandlerService {
         );
       }
 
-      final safeDuration = durationMinutes > 0 ? durationMinutes : 60;
-      final startDateTimeIso = buildStartDateTimeIso(date: date, time: time);
+      final startDateTimeIso = buildStartDateTimeIso(
+        date: date,
+        time: time,
+      );
       final endDateTimeIso = buildEndDateTimeIso(
         date: date,
         time: time,
-        durationMinutes: safeDuration,
+        durationMinutes: durationMinutes,
       );
       final endTime = endTimeFromDuration(
         date: date,
         time: time,
-        durationMinutes: safeDuration,
+        durationMinutes: durationMinutes,
       );
 
       final event = EventModel(
@@ -306,7 +308,7 @@ class ActionHandlerService {
         startDateTimeIso: startDateTimeIso,
         endTime: endTime,
         endDateTimeIso: endDateTimeIso,
-        durationMinutes: safeDuration,
+        durationMinutes: durationMinutes,
         travelMinutes: persistedTravelMinutes,
         travelGoMinutes: travelGoMinutes,
         travelBackMinutes: travelBackMinutes,
