@@ -239,7 +239,7 @@ class EventService {
     final events = await getEvents();
 
     for (final event in events) {
-      if (eventsOverlap(event, candidate)) {
+      if (eventsProtectedOverlap(event, candidate)) {
         return event;
       }
     }

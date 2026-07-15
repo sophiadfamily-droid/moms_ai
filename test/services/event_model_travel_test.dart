@@ -137,4 +137,139 @@ void main() {
       DateTime(2026, 7, 14, 11, 40),
     );
   });
+
+  group('EventService protected overlap', () {
+    EventModel buildEvent({
+      required String title,
+      required String startIso,
+      required String endIso,
+      required int durationMinutes,
+      int travelGoMinutes = 0,
+      int travelBackMinutes = 0,
+      int marginMinutes = 0,
+    }) {
+      final start = DateTime.parse(startIso);
+
+      return EventModel(
+        title: title,
+        date: EventService.formatIsoDate(start),
+        time: EventService.formatIsoTime(start),
+        notes: '',
+        createdAt: DateTime(2026, 7, 13),
+        startDateTimeIso: startIso,
+        endTime: endIso.substring(11, 16),
+        endDateTimeIso: endIso,
+        durationMinutes: durationMinutes,
+        travelMinutes: travelGoMinutes + travelBackMinutes,
+        travelGoMinutes: travelGoMinutes,
+        travelBackMinutes: travelBackMinutes,
+        usesSeparateTravelTimes: true,
+        marginMinutes: marginMinutes,
+      );
+    }
+
+    test('detects conflict caused only by return travel', () {
+      final first = buildEvent(
+        title: 'Médecin',
+        startIso: '2026-07-14T14:00:00',
+        endIso: '2026-07-14T15:00:00',
+        durationMinutes: 60,
+        travelBackMinutes: 30,
+      );
+
+      final second = buildEvent(
+        title: 'École',
+        startIso: '2026-07-14T15:10:00',
+        endIso: '2026-07-14T15:40:00',
+        durationMinutes: 30,
+      );
+
+      expect(EventService.eventsOverlap(first, second), false);
+      expect(EventService.eventsProtectedOverlap(first, second), true);
+    });
+
+    test('detects conflict caused only by outbound travel', () {
+      final first = buildEvent(
+        title: 'École',
+        startIso: '2026-07-14T13:30:00',
+        endIso: '2026-07-14T13:50:00',
+        durationMinutes: 20,
+      );
+
+      final second = buildEvent(
+        title: 'Médecin',
+        startIso: '2026-07-14T14:00:00',
+        endIso: '2026-07-14T15:00:00',
+        durationMinutes: 60,
+        travelGoMinutes: 20,
+      );
+
+      expect(EventService.eventsOverlap(first, second), false);
+      expect(EventService.eventsProtectedOverlap(first, second), true);
+    });
+
+    test('detects conflict caused only by safety margin', () {
+      final first = buildEvent(
+        title: 'Médecin',
+        startIso: '2026-07-14T14:00:00',
+        endIso: '2026-07-14T15:00:00',
+        durationMinutes: 60,
+        marginMinutes: 15,
+      );
+
+      final second = buildEvent(
+        title: 'Appel',
+        startIso: '2026-07-14T15:10:00',
+        endIso: '2026-07-14T15:30:00',
+        durationMinutes: 20,
+      );
+
+      expect(EventService.eventsOverlap(first, second), false);
+      expect(EventService.eventsProtectedOverlap(first, second), true);
+    });
+
+    test('allows events touching exactly at protected boundaries', () {
+      final first = buildEvent(
+        title: 'Médecin',
+        startIso: '2026-07-14T14:00:00',
+        endIso: '2026-07-14T15:00:00',
+        durationMinutes: 60,
+        travelBackMinutes: 30,
+      );
+
+      final second = buildEvent(
+        title: 'Appel',
+        startIso: '2026-07-14T15:30:00',
+        endIso: '2026-07-14T16:00:00',
+        durationMinutes: 30,
+      );
+
+      expect(EventService.eventsProtectedOverlap(first, second), false);
+    });
+
+    test('uses legacy travel on both sides for old events', () {
+      final legacy = EventModel(
+        title: 'Ancien rendez-vous',
+        date: '2026-07-14',
+        time: '14:00',
+        notes: '',
+        createdAt: DateTime(2026, 7, 13),
+        startDateTimeIso: '2026-07-14T14:00:00',
+        endTime: '15:00',
+        endDateTimeIso: '2026-07-14T15:00:00',
+        durationMinutes: 60,
+        travelMinutes: 20,
+      );
+
+      final candidate = buildEvent(
+        title: 'Nouvel événement',
+        startIso: '2026-07-14T15:10:00',
+        endIso: '2026-07-14T15:40:00',
+        durationMinutes: 30,
+      );
+
+      expect(legacy.resolvedTravelBackMinutes, 20);
+      expect(EventService.eventsProtectedOverlap(legacy, candidate), true);
+    });
+  });
 }
