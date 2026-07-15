@@ -119,4 +119,61 @@ void main() {
       expect(draft.totalEstimatedMinutes, 100);
     });
   });
+  group('PlanningDraftService pending duration conversion', () {
+    test('keeps zero when the duration is unknown', () {
+      final draft = PlanningDraftModel.empty().copyWith(
+        title: 'Dentiste',
+        dateIso: '2026-07-20',
+        durationMinutes: 0,
+        needsDate: false,
+        needsTime: true,
+        needsDuration: true,
+        isOutside: true,
+      );
+
+      final pending = PlanningDraftService.toPendingDurationPlanningTask(draft);
+
+      expect(pending['estimatedMinutes'], 0);
+
+      final serializedDraft = pending['planningDraft'] as Map<String, dynamic>;
+
+      expect(serializedDraft['durationMinutes'], 0);
+      expect(serializedDraft['needsDuration'], true);
+    });
+
+    test('preserves an explicit duration', () {
+      final draft = PlanningDraftModel.empty().copyWith(
+        title: 'Dentiste',
+        dateIso: '2026-07-20',
+        durationMinutes: 45,
+        needsDate: false,
+        needsTime: true,
+        needsDuration: false,
+        isOutside: true,
+      );
+
+      final pending = PlanningDraftService.toPendingDurationPlanningTask(draft);
+
+      expect(pending['estimatedMinutes'], 45);
+
+      final restored =
+          PlanningDraftService.fromPendingDurationPlanningTask(pending);
+
+      expect(restored.durationMinutes, 45);
+      expect(restored.needsDuration, false);
+    });
+
+    test('never converts an unknown duration into sixty minutes', () {
+      final draft = PlanningDraftModel.empty().copyWith(
+        title: 'Médecin',
+        durationMinutes: 0,
+        needsDuration: true,
+      );
+
+      final pending = PlanningDraftService.toPendingDurationPlanningTask(draft);
+
+      expect(pending['estimatedMinutes'], 0);
+      expect(pending['estimatedMinutes'], isNot(60));
+    });
+  });
 }

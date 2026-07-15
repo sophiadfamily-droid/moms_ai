@@ -91,8 +91,7 @@ class PlanningDraftService {
       "requestedDateIso": draft.dateIso,
       "type": draft.type.isNotEmpty ? draft.type : "rendez-vous",
       "outside": draft.isOutside,
-      "estimatedMinutes":
-          draft.durationMinutes > 0 ? draft.durationMinutes : 60,
+      "estimatedMinutes": draft.durationMinutes,
       "groupedTasks": <TaskModel>[],
       "planningDraft": draft.toJson(),
     };
