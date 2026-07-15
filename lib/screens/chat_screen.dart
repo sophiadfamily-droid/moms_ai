@@ -11,6 +11,7 @@ import '../models/event_model.dart';
 import '../models/planning_draft_model.dart';
 
 import '../services/event_service.dart';
+import '../services/event_confirmation_service.dart';
 import '../services/notification_service.dart';
 import '../services/voice_service.dart';
 import '../services/memory_service.dart';
@@ -58,6 +59,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Map<String, dynamic>? pendingDurationEvent;
   Map<String, dynamic>? pendingTravelEvent;
   Map<String, dynamic>? pendingConflictResolutionEvent;
+  EventModel? pendingConfirmationEvent;
   SmartPlanningProposal? pendingSmartPlanningProposal;
   Map<String, dynamic>? pendingSmartPlanningTask;
   Map<String, dynamic>? pendingDurationPlanningTask;
@@ -1552,6 +1554,45 @@ class _ChatScreenState extends State<ChatScreen> {
     return true;
   }
 
+  Future<bool> tryCompletePendingEventConfirmation(
+    String text,
+  ) async {
+    final event = pendingConfirmationEvent;
+
+    if (event == null) return false;
+
+    if (PlannerEngineService.isNegativeAnswer(text)) {
+      pendingConfirmationEvent = null;
+
+      addAssistantMessage(
+        EventConfirmationService.buildCancellationMessage(event),
+      );
+
+      return true;
+    }
+
+    if (!PlannerEngineService.isPositiveAnswer(text)) {
+      addAssistantMessage(
+        EventConfirmationService.buildExpectedAnswerMessage(),
+      );
+
+      return true;
+    }
+
+    final result = await EventConfirmationService.confirm(
+      event: event,
+      conflictChecker: EventService.getOverlapConflict,
+      addEvent: EventService.addEvent,
+      addEvents: EventService.addEvents,
+      showNotification: NotificationService.showNotification,
+    );
+
+    pendingConfirmationEvent = null;
+    addAssistantMessage(result.message);
+
+    return true;
+  }
+
   Future<bool> tryCompletePendingConflictResolution(String text) async {
     if (pendingConflictResolutionEvent == null) return false;
 
@@ -1887,6 +1928,10 @@ class _ChatScreenState extends State<ChatScreen> {
     saveMessageInBackground(role: "user", text: text);
 
     try {
+      final completedEventConfirmation =
+          await tryCompletePendingEventConfirmation(text);
+      if (completedEventConfirmation) return;
+
       final completedConflictResolution =
           await tryCompletePendingConflictResolution(text);
       if (completedConflictResolution) return;
@@ -2178,6 +2223,10 @@ class _ChatScreenState extends State<ChatScreen> {
 
     if (result.pendingConflictResolutionEvent != null) {
       pendingConflictResolutionEvent = result.pendingConflictResolutionEvent;
+    }
+
+    if (result.pendingConfirmationEvent != null) {
+      pendingConfirmationEvent = result.pendingConfirmationEvent;
     }
 
     if (result.pendingSmartPlanningTask != null) {

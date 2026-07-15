@@ -2,11 +2,11 @@ import '../models/event_model.dart';
 import '../models/shopping_item_model.dart';
 import '../models/task_model.dart';
 
+import 'event_confirmation_service.dart';
 import 'event_service.dart';
 import 'notification_service.dart';
 import 'shopping_service.dart';
 import 'task_service.dart';
-import 'zelia_response_builder.dart';
 import 'natural_language_understanding_service.dart';
 
 class ActionHandlerResult {
@@ -16,6 +16,7 @@ class ActionHandlerResult {
   final Map<String, dynamic>? pendingDurationEvent;
   final Map<String, dynamic>? pendingTravelEvent;
   final Map<String, dynamic>? pendingConflictResolutionEvent;
+  final EventModel? pendingConfirmationEvent;
   final Map<String, dynamic>? pendingSmartPlanningTask;
 
   const ActionHandlerResult({
@@ -25,6 +26,7 @@ class ActionHandlerResult {
     this.pendingDurationEvent,
     this.pendingTravelEvent,
     this.pendingConflictResolutionEvent,
+    this.pendingConfirmationEvent,
     this.pendingSmartPlanningTask,
   });
 }
@@ -330,30 +332,9 @@ class ActionHandlerService {
         );
       }
 
-      if (event.isRecurring && event.recurringType == "weekly") {
-        final occurrences = EventService.buildWeeklyOccurrences(
-          baseEvent: event,
-          count: 52,
-        );
-        await EventService.addEvents(occurrences);
-      } else {
-        await EventService.addEvent(event);
-      }
-
-      await NotificationService.showNotification(
-        title: "Nouvel événement 📅",
-        body: title,
-      );
-
       return ActionHandlerResult(
-        message: ZeliaResponseBuilder.eventCreated(
-          title: title,
-          date: date,
-          time: time,
-          durationMinutes: safeDuration,
-          travelMinutes: event.travelMinutes,
-          isRecurring: event.isRecurring,
-        ),
+        pendingConfirmationEvent: event,
+        message: EventConfirmationService.buildConfirmationMessage(event),
       );
     }
 
