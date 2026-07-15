@@ -23,6 +23,7 @@ import '../services/smart_planning_response_builder.dart';
 import '../services/planning_proposal_service.dart';
 import '../services/planning_proposal_engine.dart';
 import '../services/planning_proposal_selection_service.dart';
+import '../services/selected_slot_schedule_service.dart';
 import '../services/planning_draft_service.dart';
 import '../services/profile_reasoning_service.dart';
 import '../services/profile_context_builder_service.dart';
@@ -407,6 +408,31 @@ class _ChatScreenState extends State<ChatScreen> {
       return true;
     }
 
+    final schedule = SelectedSlotScheduleService.build(
+      protectedStart: selectedOption.start,
+      durationMinutes: durationMinutes,
+      travelGoMinutes: travelGoMinutes,
+      travelBackMinutes: travelBackMinutes,
+      marginMinutes: marginMinutes,
+    );
+
+    if (schedule == null) {
+      pendingPlanningProposalOptions = [];
+      pendingPlanningProposalContext = null;
+
+      addAssistantMessage(
+        "Je n’ai pas pu calculer correctement les horaires de ce créneau.",
+      );
+      return true;
+    }
+
+    final appointmentStartTime =
+        SmartPlanningService.formatIsoTime(schedule.appointmentStart);
+    final appointmentEndTime =
+        SmartPlanningService.formatIsoTime(schedule.appointmentEnd);
+    final protectedEndTime =
+        SmartPlanningService.formatIsoTime(schedule.protectedEnd);
+
     pendingSelectedSlotEvent = {
       "step": "confirmation",
       "task": task,
@@ -427,7 +453,9 @@ class _ChatScreenState extends State<ChatScreen> {
         "",
         "• Rendez-vous : ${task.title}",
         "• Date : ${selectedOption.dateIso}",
-        "• Plage réservée : ${selectedOption.startTime} à ${selectedOption.endTime}",
+        "• Départ prévu : ${selectedOption.startTime}",
+        "• Rendez-vous : $appointmentStartTime à $appointmentEndTime",
+        "• Retour et marge terminés à : $protectedEndTime",
         "• Durée du rendez-vous : ${SmartPlanningService.durationLabel(durationMinutes)}",
         "• Trajet aller : ${SmartPlanningService.durationLabel(travelGoMinutes)}",
         "• Trajet retour : ${SmartPlanningService.durationLabel(travelBackMinutes)}",
@@ -559,13 +587,28 @@ class _ChatScreenState extends State<ChatScreen> {
 
       final marginMinutes =
           int.tryParse(pending["marginMinutes"]?.toString() ?? "0") ?? 0;
-      final totalTravel = travelGoMinutes + travelBackMinutes;
-      final totalMinutes = durationMinutes + totalTravel + marginMinutes;
       final start = DateTime.tryParse(option["start"]?.toString() ?? "");
-      final end = start?.add(Duration(minutes: totalMinutes));
-      final endTime = end == null
-          ? option["endTime"]?.toString() ?? ""
-          : SmartPlanningService.formatIsoTime(end);
+      final schedule = SelectedSlotScheduleService.build(
+        protectedStart: start,
+        durationMinutes: durationMinutes,
+        travelGoMinutes: travelGoMinutes,
+        travelBackMinutes: travelBackMinutes,
+        marginMinutes: marginMinutes,
+      );
+
+      if (schedule == null) {
+        addAssistantMessage(
+          "Je n’ai pas pu calculer correctement les horaires de ce créneau.",
+        );
+        return true;
+      }
+
+      final appointmentStartTime =
+          SmartPlanningService.formatIsoTime(schedule.appointmentStart);
+      final appointmentEndTime =
+          SmartPlanningService.formatIsoTime(schedule.appointmentEnd);
+      final protectedEndTime =
+          SmartPlanningService.formatIsoTime(schedule.protectedEnd);
 
       pendingSelectedSlotEvent = {
         ...pending,
@@ -578,11 +621,12 @@ class _ChatScreenState extends State<ChatScreen> {
         "Je récapitule avant de réserver 💕\n\n"
         "• Rendez-vous : ${task.title}\n"
         "• Date : ${option["dateIso"]}\n"
-        "• Début : ${option["startTime"]}\n"
+        "• Départ prévu : ${option["startTime"]}\n"
+        "• Rendez-vous : $appointmentStartTime à $appointmentEndTime\n"
         "• Durée du rendez-vous : ${SmartPlanningService.durationLabel(durationMinutes)}\n"
         "• Trajet aller : ${SmartPlanningService.durationLabel(travelGoMinutes)}\n"
         "• Trajet retour : ${SmartPlanningService.durationLabel(travelBackMinutes)}\n"
-        "• Fin estimée : $endTime\n\n"
+        "• Retour et marge terminés à : $protectedEndTime\n\n"
         "Tu confirmes que je réserve ce créneau ?",
       );
 
@@ -628,18 +672,29 @@ class _ChatScreenState extends State<ChatScreen> {
       final marginMinutes =
           int.tryParse(pending["marginMinutes"]?.toString() ?? "0") ?? 0;
       final totalTravel = travelGoMinutes + travelBackMinutes;
-
-      final appointmentStart = start.add(
-        Duration(minutes: travelGoMinutes),
+      final schedule = SelectedSlotScheduleService.build(
+        protectedStart: start,
+        durationMinutes: durationMinutes,
+        travelGoMinutes: travelGoMinutes,
+        travelBackMinutes: travelBackMinutes,
+        marginMinutes: marginMinutes,
       );
 
-      final appointmentEnd = appointmentStart.add(
-        Duration(minutes: durationMinutes),
-      );
+      if (schedule == null) {
+        pendingSelectedSlotEvent = null;
 
-      final dateIso = SmartPlanningService.formatIsoDate(appointmentStart);
-      final startTime = SmartPlanningService.formatIsoTime(appointmentStart);
-      final endTime = SmartPlanningService.formatIsoTime(appointmentEnd);
+        addAssistantMessage(
+          "Je n’ai pas pu finaliser ce rendez-vous, car ses horaires sont invalides.",
+        );
+        return true;
+      }
+
+      final dateIso =
+          SmartPlanningService.formatIsoDate(schedule.appointmentStart);
+      final startTime =
+          SmartPlanningService.formatIsoTime(schedule.appointmentStart);
+      final endTime =
+          SmartPlanningService.formatIsoTime(schedule.appointmentEnd);
 
       final event = EventModel(
         title: task.title,
