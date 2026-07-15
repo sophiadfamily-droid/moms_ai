@@ -29,6 +29,7 @@ import '../services/planner_engine_service.dart';
 import '../services/conflict_engine_service.dart';
 import '../services/zelia_response_builder.dart';
 import '../services/action_handler_service.dart';
+import '../services/zelia_action_guard_service.dart';
 import '../services/natural_date_service.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -2017,22 +2018,27 @@ class _ChatScreenState extends State<ChatScreen> {
       final eventTitles = <String>[];
 
       if (actions is List) {
-        for (final action in actions) {
-          if (action is Map) {
-            final type = action["type"]?.toString() ?? "";
-            final title = action["title"]?.toString() ?? "";
+        for (final rawAction in actions) {
+          final guarded = ZeliaActionGuardService.guard(rawAction);
 
-            if (type == "shopping" && title.trim().isNotEmpty) {
-              shoppingTitles.add(title);
-            }
+          if (!guarded.isAccepted || guarded.action == null) {
+            continue;
+          }
 
-            if (type == "task" && title.trim().isNotEmpty) {
-              taskTitles.add(title);
-            }
+          final action = guarded.action!;
+          final type = action["type"]?.toString() ?? "";
+          final title = action["title"]?.toString() ?? "";
 
-            if (type == "event" && title.trim().isNotEmpty) {
-              eventTitles.add(title);
-            }
+          if (type == "shopping" && title.isNotEmpty) {
+            shoppingTitles.add(title);
+          }
+
+          if (type == "task" && title.isNotEmpty) {
+            taskTitles.add(title);
+          }
+
+          if (type == "event" && title.isNotEmpty) {
+            eventTitles.add(title);
           }
 
           final actionText = await handleAction(action);
