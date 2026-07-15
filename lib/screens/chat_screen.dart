@@ -1229,8 +1229,25 @@ class _ChatScreenState extends State<ChatScreen> {
               ? 7
               : 21;
 
+      final task = TaskModel(
+        title: title,
+        category: "Agenda",
+        isDone: false,
+        createdAt: DateTime.now(),
+        dueDate: SmartPlanningService.formatIsoDate(startDate),
+        planning: SmartPlanningService.formatIsoDate(startDate),
+        notes: originalMessage,
+      );
+
+      final type = SmartPlanningService.detectTaskType(
+        originalMessage,
+        task,
+      );
+
+      final marginMinutes = SmartPlanningService.defaultMarginMinutes(type);
+
       final totalMinutes =
-          durationMinutes + travelGoMinutes + travelBackMinutes;
+          durationMinutes + travelGoMinutes + travelBackMinutes + marginMinutes;
 
       final result = await PlanningProposalEngine.findBestOptions(
         startDate: startDate,
@@ -1253,16 +1270,6 @@ class _ChatScreenState extends State<ChatScreen> {
         return true;
       }
 
-      final task = TaskModel(
-        title: title,
-        category: "Agenda",
-        isDone: false,
-        createdAt: DateTime.now(),
-        dueDate: SmartPlanningService.formatIsoDate(startDate),
-        planning: SmartPlanningService.formatIsoDate(startDate),
-        notes: originalMessage,
-      );
-
       pendingPlanningProposalOptions = result.options;
       pendingPlanningProposalContext = {
         "task": task,
@@ -1270,7 +1277,7 @@ class _ChatScreenState extends State<ChatScreen> {
         "actionMinutes": durationMinutes,
         "travelGoMinutes": travelGoMinutes,
         "travelBackMinutes": travelBackMinutes,
-        "marginMinutes": 0,
+        "marginMinutes": marginMinutes,
         "groupedTasks": <TaskModel>[task],
       };
 
