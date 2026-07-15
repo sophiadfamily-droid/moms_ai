@@ -129,7 +129,9 @@ class ZeliaResponseBuilder {
     required String date,
     required String time,
     required int durationMinutes,
-    required int travelMinutes,
+    required int travelGoMinutes,
+    required int travelBackMinutes,
+    required int marginMinutes,
     required bool isRecurring,
   }) {
     final lines = <String>[];
@@ -145,11 +147,19 @@ class ZeliaResponseBuilder {
     lines.add("« $title » est prévu le $displayDate à $time.");
 
     if (durationMinutes > 0) {
-      lines.add("J’ai bloqué $durationMinutes minutes pour ce créneau.");
+      lines.add("Durée du rendez-vous : $durationMinutes min.");
     }
 
-    if (travelMinutes > 0) {
-      lines.add("J’ai aussi prévu $travelMinutes minutes de trajet aller.");
+    if (travelGoMinutes > 0) {
+      lines.add("Trajet aller prévu : $travelGoMinutes min.");
+    }
+
+    if (travelBackMinutes > 0) {
+      lines.add("Trajet retour prévu : $travelBackMinutes min.");
+    }
+
+    if (marginMinutes > 0) {
+      lines.add("Marge de sécurité prévue : $marginMinutes min.");
     }
 
     return lines.join("\n\n");

@@ -102,7 +102,9 @@ class EventConfirmationService {
         date: event.date,
         time: event.time,
         durationMinutes: event.durationMinutes,
-        travelMinutes: event.totalTravelMinutes,
+        travelGoMinutes: event.resolvedTravelGoMinutes,
+        travelBackMinutes: event.resolvedTravelBackMinutes,
+        marginMinutes: event.marginMinutes,
         isRecurring: event.isRecurring,
       ),
     );
