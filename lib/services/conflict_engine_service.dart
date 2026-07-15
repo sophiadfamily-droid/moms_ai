@@ -5,9 +5,24 @@ class ConflictEngineService {
   }) {
     final action = Map<String, dynamic>.from(pendingAction);
 
-    action["time"] = time;
+    action["time"] = time.trim();
+
+    // Le flux de résolution redemande volontairement la durée.
+    // Toutes les données qui dépendent du créneau doivent donc être
+    // réinitialisées ensemble afin d'éviter un état hybride.
     action["durationMinutes"] = 0;
+    action["needsDuration"] = true;
+
     action["travelMinutes"] = 0;
+    action["travelGoMinutes"] = 0;
+    action["travelBackMinutes"] = 0;
+    action["usesSeparateTravelTimes"] = false;
+    action["marginMinutes"] = 0;
+
+    action["departureContext"] = "unknown";
+    action["arrivalContext"] = "unknown";
+
+    action.remove("travelStep");
 
     return action;
   }

@@ -1579,10 +1579,10 @@ class _ChatScreenState extends State<ChatScreen> {
       return true;
     }
 
-    final action = Map<String, dynamic>.from(pendingConflictResolutionEvent!);
-    action["time"] = time;
-    action["durationMinutes"] = 0;
-    action["travelMinutes"] = 0;
+    final action = ConflictEngineService.buildRescheduledAction(
+      pendingAction: pendingConflictResolutionEvent!,
+      time: time,
+    );
 
     pendingConflictResolutionEvent = null;
     pendingDurationEvent = action;
