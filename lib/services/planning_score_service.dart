@@ -1,4 +1,5 @@
 import '../models/event_model.dart';
+import 'event_service.dart';
 
 class PlanningScoreService {
   static int scoreSlot({
@@ -9,6 +10,10 @@ class PlanningScoreService {
     int? preferredStartHour,
     int? preferredEndHour,
   }) {
+    if (!end.isAfter(start)) {
+      return 0;
+    }
+
     var score = 50;
 
     score += _preferredPeriodScore(
@@ -17,7 +22,7 @@ class PlanningScoreService {
       preferredEndHour: preferredEndHour,
     );
 
-    score += _spacingScore(
+    score += _sameDayPlanningScore(
       start: start,
       end: end,
       events: events,
@@ -44,35 +49,100 @@ class PlanningScoreService {
     return -10;
   }
 
-  static int _spacingScore({
+  static int _sameDayPlanningScore({
     required DateTime start,
     required DateTime end,
     required List<EventModel> events,
   }) {
-    if (events.isEmpty) return 10;
-
-    var score = 10;
+    final sameDayRanges = <_ProtectedEventRange>[];
 
     for (final event in events) {
-      final eventStart = _safeParseDateTime(event.startDateTimeIso);
-      final eventEnd = _safeParseDateTime(event.endDateTimeIso);
+      final protectedStart = EventService.parseProtectedStart(event);
+      final protectedEnd = EventService.parseProtectedEnd(event);
 
-      if (eventStart == null || eventEnd == null) continue;
-
-      final minutesBefore = start.difference(eventEnd).inMinutes.abs();
-      final minutesAfter = eventStart.difference(end).inMinutes.abs();
-
-      if (minutesBefore < 30 || minutesAfter < 30) {
-        score -= 10;
+      if (protectedStart == null || protectedEnd == null) {
+        continue;
       }
 
-      if ((minutesBefore >= 30 && minutesBefore <= 120) ||
-          (minutesAfter >= 30 && minutesAfter <= 120)) {
-        score += 5;
+      if (!_isSameCalendarDay(protectedStart, start) &&
+          !_isSameCalendarDay(protectedEnd, start)) {
+        continue;
+      }
+
+      sameDayRanges.add(
+        _ProtectedEventRange(
+          start: protectedStart,
+          end: protectedEnd,
+        ),
+      );
+    }
+
+    if (sameDayRanges.isEmpty) {
+      return 5;
+    }
+
+    var nearestGapMinutes = 24 * 60;
+
+    for (final range in sameDayRanges) {
+      final gap = _gapBetween(
+        candidateStart: start,
+        candidateEnd: end,
+        eventStart: range.start,
+        eventEnd: range.end,
+      );
+
+      if (gap < nearestGapMinutes) {
+        nearestGapMinutes = gap;
       }
     }
 
-    return score.clamp(-20, 15);
+    if (nearestGapMinutes < 0) {
+      return -40;
+    }
+
+    if (nearestGapMinutes < 15) {
+      return -15;
+    }
+
+    if (nearestGapMinutes < 30) {
+      return -5;
+    }
+
+    if (nearestGapMinutes <= 120) {
+      return 15;
+    }
+
+    if (nearestGapMinutes <= 240) {
+      return 5;
+    }
+
+    return -5;
+  }
+
+  static int _gapBetween({
+    required DateTime candidateStart,
+    required DateTime candidateEnd,
+    required DateTime eventStart,
+    required DateTime eventEnd,
+  }) {
+    final overlaps =
+        candidateStart.isBefore(eventEnd) && eventStart.isBefore(candidateEnd);
+
+    if (overlaps) {
+      return -1;
+    }
+
+    if (!candidateStart.isBefore(eventEnd)) {
+      return candidateStart.difference(eventEnd).inMinutes;
+    }
+
+    return eventStart.difference(candidateEnd).inMinutes;
+  }
+
+  static bool _isSameCalendarDay(DateTime first, DateTime second) {
+    return first.year == second.year &&
+        first.month == second.month &&
+        first.day == second.day;
   }
 
   static int _dayComfortScore(DateTime start) {
@@ -83,9 +153,14 @@ class PlanningScoreService {
 
     return 0;
   }
+}
 
-  static DateTime? _safeParseDateTime(String value) {
-    if (value.trim().isEmpty) return null;
-    return DateTime.tryParse(value);
-  }
+class _ProtectedEventRange {
+  final DateTime start;
+  final DateTime end;
+
+  const _ProtectedEventRange({
+    required this.start,
+    required this.end,
+  });
 }
