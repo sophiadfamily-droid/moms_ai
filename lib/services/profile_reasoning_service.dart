@@ -1,5 +1,6 @@
 import '../models/user_profile.dart';
 import 'travel_context_service.dart';
+import 'school_schedule_metadata_service.dart';
 
 class ProfileReasoningService {
   static List<Map<String, dynamic>> buildReasoning(UserProfile profile) {
@@ -100,10 +101,11 @@ class ProfileReasoningService {
           label: child.school.isNotEmpty
               ? "École ${child.firstName} - ${child.school}"
               : "École ${child.firstName}",
+          days: SchoolScheduleMetadataService.daysFromRange(range),
           startTime: range.startTime,
           endTime: range.endTime,
           travelMinutes: range.travelMinutes,
-          notes: range.notes,
+          notes: SchoolScheduleMetadataService.cleanNotes(range),
         ));
       }
     }

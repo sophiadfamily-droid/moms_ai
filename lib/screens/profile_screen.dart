@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../models/user_profile.dart';
+import '../services/school_schedule_metadata_service.dart';
 import '../services/storage_service.dart';
 import '../services/auth_service.dart';
 import 'auth/auth_screen.dart';
@@ -626,62 +627,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return days.isNotEmpty ? days : firstRange;
   }
 
-  static const String schoolDaysMarker = "__DAYS__:";
-
   List<String> schoolDaysFromRange(TimeRangeModel range) {
-    final notes = range.notes.trim();
-
-    if (!notes.contains(schoolDaysMarker)) {
-      return [];
-    }
-
-    final markerIndex = notes.indexOf(schoolDaysMarker);
-    final afterMarker = notes.substring(markerIndex + schoolDaysMarker.length);
-    final endIndex = afterMarker.indexOf("__");
-    final encoded =
-        endIndex == -1 ? afterMarker : afterMarker.substring(0, endIndex);
-
-    return encoded
-        .split('|')
-        .where((day) => day.trim().isNotEmpty)
-        .map((day) => day.trim())
-        .toList();
+    return SchoolScheduleMetadataService.daysFromRange(range);
   }
 
   String cleanSchoolRangeNotes(TimeRangeModel range) {
-    var notes = range.notes;
-
-    if (!notes.contains(schoolDaysMarker)) {
-      return notes.trim();
-    }
-
-    final markerIndex = notes.indexOf(schoolDaysMarker);
-    final before = notes.substring(0, markerIndex).trim();
-    final afterMarker = notes.substring(markerIndex + schoolDaysMarker.length);
-    final endIndex = afterMarker.indexOf("__");
-
-    if (endIndex == -1) {
-      return before;
-    }
-
-    final after = afterMarker.substring(endIndex + 2).trim();
-
-    return [before, after].where((part) => part.isNotEmpty).join(" ").trim();
+    return SchoolScheduleMetadataService.cleanNotes(range);
   }
 
   String encodeSchoolRangeNotes({
     required List<String> days,
     required String notes,
   }) {
-    final cleanNotes = notes.trim();
-
-    if (days.isEmpty) {
-      return cleanNotes;
-    }
-
-    final marker = "$schoolDaysMarker${days.join('|')}__";
-
-    return cleanNotes.isEmpty ? marker : "$marker $cleanNotes";
+    return SchoolScheduleMetadataService.encodeNotes(
+      days: days,
+      notes: notes,
+    );
   }
 
   String schoolTimeRangeLabel(TimeRangeModel range) {
