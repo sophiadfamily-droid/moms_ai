@@ -4,6 +4,7 @@ import 'event_service.dart';
 import 'natural_date_service.dart';
 import 'planning_score_service.dart';
 import 'planning_window_service.dart';
+import 'recurrence_date_match_service.dart';
 import 'task_service.dart';
 
 class SmartPlanningProposal {
@@ -467,47 +468,7 @@ class SmartPlanningService {
     Map<String, dynamic> item,
     DateTime date,
   ) {
-    final rawDays = item["days"];
-
-    if (rawDays is! List || rawDays.isEmpty) {
-      return true;
-    }
-
-    final normalizedDays = rawDays
-        .map((day) => day.toString().trim().toLowerCase())
-        .where((day) => day.isNotEmpty)
-        .toList();
-
-    if (normalizedDays.isEmpty) return true;
-
-    final currentDayNames = _dayNamesForWeekday(date.weekday);
-
-    return normalizedDays.any((day) {
-      return currentDayNames.contains(day) ||
-          currentDayNames.any((name) => day.contains(name)) ||
-          day == date.weekday.toString();
-    });
-  }
-
-  static List<String> _dayNamesForWeekday(int weekday) {
-    switch (weekday) {
-      case DateTime.monday:
-        return ["lundi", "monday", "mon", "1"];
-      case DateTime.tuesday:
-        return ["mardi", "tuesday", "tue", "2"];
-      case DateTime.wednesday:
-        return ["mercredi", "wednesday", "wed", "3"];
-      case DateTime.thursday:
-        return ["jeudi", "thursday", "thu", "4"];
-      case DateTime.friday:
-        return ["vendredi", "friday", "fri", "5"];
-      case DateTime.saturday:
-        return ["samedi", "saturday", "sat", "6"];
-      case DateTime.sunday:
-        return ["dimanche", "sunday", "sun", "7"];
-      default:
-        return [];
-    }
+    return RecurrenceDateMatchService.appliesToDate(item, date);
   }
 
   static DateTime? _dateTimeFromTime(DateTime date, String time) {
