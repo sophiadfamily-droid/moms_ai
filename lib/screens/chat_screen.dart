@@ -24,6 +24,7 @@ import '../services/planning_proposal_service.dart';
 import '../services/planning_proposal_engine.dart';
 import '../services/planning_proposal_selection_service.dart';
 import '../services/selected_slot_schedule_service.dart';
+import '../services/selected_slot_revalidation_service.dart';
 import '../services/planning_draft_service.dart';
 import '../services/profile_reasoning_service.dart';
 import '../services/profile_context_builder_service.dart';
@@ -719,14 +720,61 @@ class _ChatScreenState extends State<ChatScreen> {
         createdAt: DateTime.now(),
       );
 
-      final conflict = await EventService.getOverlapConflict(candidate: event);
+      final totalMinutes =
+          durationMinutes + travelGoMinutes + travelBackMinutes + marginMinutes;
 
-      if (conflict != null) {
+      final revalidation = await SelectedSlotRevalidationService.revalidate(
+        candidate: event,
+        protectedStart: schedule.protectedStart,
+        totalMinutes: totalMinutes,
+        reasoning: await buildCurrentPlanningReasoning(),
+      );
+
+      if (!revalidation.isAvailable) {
         pendingSelectedSlotEvent = null;
 
+        final alternatives = revalidation.alternatives;
+
+        if (alternatives.hasOptions && alternatives.options.isNotEmpty) {
+          pendingPlanningProposalOptions = alternatives.options;
+          pendingPlanningProposalContext = {
+            "task": task,
+            "originalMessage":
+                pending["originalMessage"]?.toString() ?? task.notes,
+            "actionMinutes": durationMinutes,
+            "travelGoMinutes": travelGoMinutes,
+            "travelBackMinutes": travelBackMinutes,
+            "marginMinutes": marginMinutes,
+            "groupedTasks": <TaskModel>[task],
+          };
+
+          final lines = <String>[
+            "Ce créneau vient d’être pris par « ${revalidation.conflictEvent?.title ?? "un autre événement"} » 💕",
+            "",
+            "Je ne l’ai donc pas réservé. J’ai recherché immédiatement de nouvelles possibilités :",
+            "",
+          ];
+
+          for (var index = 0; index < alternatives.options.length; index++) {
+            lines.add(
+              "${index + 1}. ${alternatives.options[index].label}",
+            );
+          }
+
+          lines.add("");
+          lines.add("Réponds 1, 2 ou 3 pour choisir un nouveau créneau.");
+
+          addAssistantMessage(lines.join("\n"));
+          return true;
+        }
+
+        pendingPlanningProposalOptions = [];
+        pendingPlanningProposalContext = null;
+
         addAssistantMessage(
-          "Je n’ai pas réservé ce créneau, car il chevauche déjà « ${conflict.title} » 💕\n\n"
-          "Tu peux me demander un autre créneau.",
+          "Je n’ai pas réservé ce créneau, car il est maintenant en conflit avec "
+          "« ${revalidation.conflictEvent?.title ?? "un autre événement"} » 💕\n\n"
+          "Je n’ai pas trouvé d’autre disponibilité réaliste pour le moment.",
         );
         return true;
       }
