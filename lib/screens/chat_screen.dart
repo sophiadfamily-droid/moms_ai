@@ -1413,6 +1413,7 @@ class _ChatScreenState extends State<ChatScreen> {
         "category": memory["category"]?.toString() ?? "personal",
         "importance":
             int.tryParse(memory["importance"]?.toString() ?? "0") ?? 0,
+        "createdAt": memory["createdAt"],
       };
     }).toList();
 
@@ -2120,6 +2121,7 @@ class _ChatScreenState extends State<ChatScreen> {
           "category": memory["category"]?.toString() ?? "personal",
           "importance":
               int.tryParse(memory["importance"]?.toString() ?? "0") ?? 0,
+          "createdAt": memory["createdAt"],
         };
       }).toList();
 

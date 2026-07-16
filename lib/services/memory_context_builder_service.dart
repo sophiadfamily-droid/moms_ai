@@ -47,6 +47,8 @@ class MemoryContextBuilderService {
   }
 
   static Map<String, dynamic> _normalizeMemory(Map<String, dynamic> memory) {
+    final createdAtIso = _normalizeDateTime(memory["createdAt"]);
+
     return {
       "text": memory["text"]?.toString().trim() ?? "",
       "category": memory["category"]?.toString().trim() ?? "personal",
@@ -54,6 +56,30 @@ class MemoryContextBuilderService {
             memory["importance"]?.toString() ?? "0",
           ) ??
           0,
+      if (createdAtIso.isNotEmpty) "createdAtIso": createdAtIso,
     };
+  }
+
+  static String _normalizeDateTime(dynamic value) {
+    if (value == null) {
+      return "";
+    }
+
+    if (value is DateTime) {
+      return value.toIso8601String();
+    }
+
+    try {
+      final dynamic converted = value.toDate();
+
+      if (converted is DateTime) {
+        return converted.toIso8601String();
+      }
+    } catch (_) {
+      // Valeur non issue d'un Timestamp Firestore.
+    }
+
+    final parsed = DateTime.tryParse(value.toString().trim());
+    return parsed?.toIso8601String() ?? "";
   }
 }
