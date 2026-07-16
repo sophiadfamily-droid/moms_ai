@@ -170,11 +170,6 @@ class PlanningProposalEngine {
         (event) => EventService.eventsProtectedOverlap(event, slotCandidate),
       );
 
-      final hasFamilyConflict = SmartPlanningService.isBusyBecauseFamilyRoutine(
-        cursor,
-        slotEnd,
-      );
-
       final hasReasoningConflict =
           SmartPlanningService.overlapsBlockedReasoning(
         start: cursor,
@@ -182,7 +177,7 @@ class PlanningProposalEngine {
         reasoning: reasoning,
       );
 
-      if (!hasEventConflict && !hasFamilyConflict && !hasReasoningConflict) {
+      if (!hasEventConflict && !hasReasoningConflict) {
         final score = PlanningScoreService.scoreSlot(
           start: cursor,
           end: slotEnd,

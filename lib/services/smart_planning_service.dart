@@ -400,12 +400,6 @@ class SmartPlanningService {
     return 5;
   }
 
-  static bool isBusyBecauseFamilyRoutine(DateTime start, DateTime end) {
-    final eveningStart = DateTime(start.year, start.month, start.day, 18, 30);
-    final eveningEnd = DateTime(start.year, start.month, start.day, 21, 0);
-    return start.isBefore(eveningEnd) && eveningStart.isBefore(end);
-  }
-
   static bool overlapsExistingEvent({
     required DateTime start,
     required DateTime end,
@@ -599,15 +593,13 @@ class SmartPlanningService {
         events: events,
       );
 
-      final hasFamilyConflict = isBusyBecauseFamilyRoutine(cursor, slotEnd);
-
       final hasReasoningConflict = overlapsBlockedReasoning(
         start: cursor,
         end: slotEnd,
         reasoning: reasoning,
       );
 
-      if (!hasEventConflict && !hasFamilyConflict && !hasReasoningConflict) {
+      if (!hasEventConflict && !hasReasoningConflict) {
         final score = PlanningScoreService.scoreSlot(
           start: cursor,
           end: slotEnd,
