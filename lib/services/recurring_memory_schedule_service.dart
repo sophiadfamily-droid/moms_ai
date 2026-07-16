@@ -31,6 +31,8 @@ class RecurringMemoryScheduleService {
       return null;
     }
 
+    final travel = _extractTravel(normalized);
+
     return {
       "type": "blocked_period",
       "sourceType": "memory_routine",
@@ -39,9 +41,9 @@ class RecurringMemoryScheduleService {
       "days": days,
       "startTime": range.$1,
       "endTime": range.$2,
-      "travelBeforeMinutes": 0,
-      "travelAfterMinutes": 0,
-      "travelMinutes": 0,
+      "travelBeforeMinutes": travel.$1,
+      "travelAfterMinutes": travel.$2,
+      "travelMinutes": travel.$1 + travel.$2,
       "origin": "",
       "destination": "",
       "mode": "unknown",
@@ -177,6 +179,96 @@ class RecurringMemoryScheduleService {
     }
 
     return (hour * 60) + minute;
+  }
+
+  static (int, int) _extractTravel(String text) {
+    final outbound = _extractDirectionalTravel(
+      text,
+      directionPattern: r"(?:trajet\s+)?aller",
+    );
+
+    final inbound = _extractDirectionalTravel(
+      text,
+      directionPattern: r"(?:trajet\s+)?retour",
+    );
+
+    if (outbound != null || inbound != null) {
+      return (outbound ?? 0, inbound ?? 0);
+    }
+
+    final shared = _extractSharedTravel(text);
+
+    if (shared == null) {
+      return (0, 0);
+    }
+
+    return (shared, shared);
+  }
+
+  static int? _extractDirectionalTravel(
+    String text, {
+    required String directionPattern,
+  }) {
+    final durationBeforeDirection = RegExp(
+      r"\b(\d{1,3})\s*(h|heure|heures|min|mn|minute|minutes)\s+"
+      "(?:de\\s+)?$directionPattern"
+      r"\b",
+    ).firstMatch(text);
+
+    if (durationBeforeDirection != null) {
+      return _durationMatchToMinutes(durationBeforeDirection);
+    }
+
+    final directionBeforeDuration = RegExp(
+      r"\b"
+      "$directionPattern"
+      r"\s*(?:de|:|=)?\s*"
+      r"(\d{1,3})\s*(h|heure|heures|min|mn|minute|minutes)\b",
+    ).firstMatch(text);
+
+    if (directionBeforeDuration != null) {
+      return _durationMatchToMinutes(directionBeforeDuration);
+    }
+
+    return null;
+  }
+
+  static int? _extractSharedTravel(String text) {
+    final patterns = <RegExp>[
+      RegExp(
+        r"\b(?:avec\s+)?(\d{1,3})\s*"
+        r"(h|heure|heures|min|mn|minute|minutes)\s+"
+        r"(?:de\s+)?trajet\b",
+      ),
+      RegExp(
+        r"\btrajet\s*(?:de|:|=)?\s*"
+        r"(\d{1,3})\s*"
+        r"(h|heure|heures|min|mn|minute|minutes)\b",
+      ),
+    ];
+
+    for (final pattern in patterns) {
+      final match = pattern.firstMatch(text);
+
+      if (match != null) {
+        return _durationMatchToMinutes(match);
+      }
+    }
+
+    return null;
+  }
+
+  static int _durationMatchToMinutes(RegExpMatch match) {
+    final amount = int.tryParse(match.group(1) ?? "") ?? 0;
+    final unit = match.group(2)?.toLowerCase() ?? "";
+
+    if (amount <= 0) {
+      return 0;
+    }
+
+    final minutes = unit.startsWith("h") ? amount * 60 : amount;
+
+    return minutes.clamp(0, 240);
   }
 
   static String _buildLabel(String text) {

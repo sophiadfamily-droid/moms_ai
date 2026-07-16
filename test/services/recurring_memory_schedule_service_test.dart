@@ -68,6 +68,63 @@ void main() {
 
       expect(result, isNull);
     });
+    test('extracts separate outbound and return travel', () {
+      final result = RecurringMemoryScheduleService.buildBlockedPeriod(
+        text:
+            'Tous les mercredis de 18h30 à 20h avec 15 minutes de trajet aller et 20 minutes de trajet retour.',
+      );
+
+      expect(result, isNotNull);
+      expect(result!['travelBeforeMinutes'], 15);
+      expect(result['travelAfterMinutes'], 20);
+      expect(result['travelMinutes'], 35);
+    });
+
+    test('supports travel duration written after each direction', () {
+      final result = RecurringMemoryScheduleService.buildBlockedPeriod(
+        text:
+            'Chaque mardi de 19h à 20h, trajet aller 10 min et trajet retour 25 min.',
+      );
+
+      expect(result, isNotNull);
+      expect(result!['travelBeforeMinutes'], 10);
+      expect(result['travelAfterMinutes'], 25);
+      expect(result['travelMinutes'], 35);
+    });
+
+    test('applies one shared travel duration to both directions', () {
+      final result = RecurringMemoryScheduleService.buildBlockedPeriod(
+        text: 'Tous les lundis de 17h à 18h avec 15 minutes de trajet.',
+      );
+
+      expect(result, isNotNull);
+      expect(result!['travelBeforeMinutes'], 15);
+      expect(result['travelAfterMinutes'], 15);
+      expect(result['travelMinutes'], 30);
+    });
+
+    test('supports travel durations expressed in hours', () {
+      final result = RecurringMemoryScheduleService.buildBlockedPeriod(
+        text:
+            'Tous les samedis de 10h à 12h avec 1 heure de trajet aller et 30 min de trajet retour.',
+      );
+
+      expect(result, isNotNull);
+      expect(result!['travelBeforeMinutes'], 60);
+      expect(result['travelAfterMinutes'], 30);
+      expect(result['travelMinutes'], 90);
+    });
+
+    test('does not invent travel when none is provided', () {
+      final result = RecurringMemoryScheduleService.buildBlockedPeriod(
+        text: 'Tous les vendredis de 18h à 19h, cours de sport.',
+      );
+
+      expect(result, isNotNull);
+      expect(result!['travelBeforeMinutes'], 0);
+      expect(result['travelAfterMinutes'], 0);
+      expect(result['travelMinutes'], 0);
+    });
   });
 
   group('MemoryReasoningService recurring blocked periods', () {
@@ -144,6 +201,56 @@ void main() {
       expect(
         reasoning.where((item) => item['type'] == 'blocked_period'),
         isEmpty,
+      );
+    });
+    test('blocks outbound travel before a recurring routine', () {
+      final reasoning = MemoryReasoningService.buildReasoning(
+        const [
+          {
+            'text':
+                'Tous les mercredis de 18h30 à 20h avec 15 minutes de trajet aller et 20 minutes de trajet retour.',
+            'category': 'children',
+          },
+        ],
+      );
+
+      expect(
+        SmartPlanningService.overlapsBlockedReasoning(
+          start: DateTime(2026, 7, 22, 18, 20),
+          end: DateTime(2026, 7, 22, 18, 25),
+          reasoning: reasoning,
+        ),
+        true,
+      );
+    });
+
+    test('blocks return travel after a recurring routine', () {
+      final reasoning = MemoryReasoningService.buildReasoning(
+        const [
+          {
+            'text':
+                'Tous les mercredis de 18h30 à 20h avec 15 minutes de trajet aller et 20 minutes de trajet retour.',
+            'category': 'children',
+          },
+        ],
+      );
+
+      expect(
+        SmartPlanningService.overlapsBlockedReasoning(
+          start: DateTime(2026, 7, 22, 20, 10),
+          end: DateTime(2026, 7, 22, 20, 15),
+          reasoning: reasoning,
+        ),
+        true,
+      );
+
+      expect(
+        SmartPlanningService.overlapsBlockedReasoning(
+          start: DateTime(2026, 7, 22, 20, 20),
+          end: DateTime(2026, 7, 22, 20, 30),
+          reasoning: reasoning,
+        ),
+        false,
       );
     });
   });
