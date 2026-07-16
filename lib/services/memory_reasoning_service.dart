@@ -1,3 +1,5 @@
+import 'recurring_memory_schedule_service.dart';
+
 class MemoryReasoningService {
   static List<Map<String, dynamic>> buildReasoning(
     List<Map<String, dynamic>> memories,
@@ -61,11 +63,22 @@ class MemoryReasoningService {
         "tous les dimanches",
         "chaque semaine",
       ])) {
+        final category = memory["category"]?.toString().trim() ?? "personal";
+
         reasoning.add({
           "type": "routine",
-          "category": memory["category"]?.toString() ?? "personal",
+          "category": category.isEmpty ? "personal" : category,
           "source": text,
         });
+
+        final blockedPeriod = RecurringMemoryScheduleService.buildBlockedPeriod(
+          text: text,
+          category: category,
+        );
+
+        if (blockedPeriod != null) {
+          reasoning.add(blockedPeriod);
+        }
       }
     }
 
