@@ -22,10 +22,9 @@ class PlanningWindowService {
   }) {
     final avoidMorning = _shouldAvoidMorning(reasoning);
     final prefersAfternoon = _prefersAfternoon(reasoning);
-    final nightLife = _hasNightSchedule(reasoning);
-    final lateLife = _hasLateSchedule(reasoning);
+    final scheduleMode = _scheduleMode(reasoning);
 
-    if (nightLife) {
+    if (scheduleMode == "night") {
       return const PlanningWindow(
         startHour: 12,
         endHour: 24,
@@ -36,14 +35,14 @@ class PlanningWindowService {
       );
     }
 
-    if (lateLife) {
-      return const PlanningWindow(
-        startHour: 8,
+    if (scheduleMode == "late") {
+      return PlanningWindow(
+        startHour: avoidMorning ? 12 : 8,
         endHour: 23,
         preferredStartHour: 14,
         preferredEndHour: 22,
         allowNightHours: false,
-        avoidMorning: false,
+        avoidMorning: avoidMorning,
       );
     }
 
@@ -68,38 +67,45 @@ class PlanningWindowService {
     );
   }
 
-  static bool _shouldAvoidMorning(List<Map<String, dynamic>> reasoning) {
+  static bool _shouldAvoidMorning(
+    List<Map<String, dynamic>> reasoning,
+  ) {
     return reasoning.any((item) {
       return item["type"] == "schedule_constraint" &&
           item["avoidMorning"] == true;
     });
   }
 
-  static bool _prefersAfternoon(List<Map<String, dynamic>> reasoning) {
+  static bool _prefersAfternoon(
+    List<Map<String, dynamic>> reasoning,
+  ) {
     return reasoning.any((item) {
       return item["type"] == "schedule_preference" &&
           item["preferredPeriod"] == "afternoon";
     });
   }
 
-  static bool _hasNightSchedule(List<Map<String, dynamic>> reasoning) {
-    final text =
-        reasoning.map((item) => item.toString().toLowerCase()).join(" ");
+  static String _scheduleMode(
+    List<Map<String, dynamic>> reasoning,
+  ) {
+    var hasLateMode = false;
 
-    return text.contains("travail de nuit") ||
-        text.contains("horaires de nuit") ||
-        text.contains("nuit") ||
-        text.contains("night");
-  }
+    for (final item in reasoning) {
+      if (item["type"] != "schedule_constraint") {
+        continue;
+      }
 
-  static bool _hasLateSchedule(List<Map<String, dynamic>> reasoning) {
-    final text =
-        reasoning.map((item) => item.toString().toLowerCase()).join(" ");
+      final mode = item["scheduleMode"]?.toString().trim().toLowerCase() ?? "";
 
-    return text.contains("soir") ||
-        text.contains("tard") ||
-        text.contains("late") ||
-        text.contains("soirée") ||
-        text.contains("soiree");
+      if (mode == "night") {
+        return "night";
+      }
+
+      if (mode == "late") {
+        hasLateMode = true;
+      }
+    }
+
+    return hasLateMode ? "late" : "standard";
   }
 }

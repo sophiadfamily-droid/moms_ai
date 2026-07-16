@@ -54,15 +54,31 @@ class ProfileReasoningService {
     }
 
     if (_containsAny(profile.workHours, [
-      "nuit",
-      "soir",
       "travail de nuit",
       "horaires de nuit",
+      "je travaille de nuit",
+      "poste de nuit",
     ])) {
       reasoning.add({
         "type": "schedule_constraint",
         "sourceType": "work",
+        "scheduleMode": "night",
         "avoidMorning": true,
+        "source": profile.workHours,
+      });
+    } else if (_containsAny(profile.workHours, [
+      "travail le soir",
+      "je travaille le soir",
+      "horaires du soir",
+      "poste du soir",
+      "je termine tard",
+      "horaires tardifs",
+    ])) {
+      reasoning.add({
+        "type": "schedule_constraint",
+        "sourceType": "work",
+        "scheduleMode": "late",
+        "avoidMorning": false,
         "source": profile.workHours,
       });
     }

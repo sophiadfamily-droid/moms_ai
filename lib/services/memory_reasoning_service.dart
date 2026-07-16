@@ -13,12 +13,27 @@ class MemoryReasoningService {
       if (_containsAny(lower, [
         "je travaille de nuit",
         "travail de nuit",
-        "je travaille le soir",
-        "travail le soir",
+        "horaires de nuit",
+        "poste de nuit",
       ])) {
         reasoning.add({
           "type": "schedule_constraint",
+          "scheduleMode": "night",
           "avoidMorning": true,
+          "source": text,
+        });
+      } else if (_containsAny(lower, [
+        "je travaille le soir",
+        "travail le soir",
+        "horaires du soir",
+        "poste du soir",
+        "je termine tard",
+        "horaires tardifs",
+      ])) {
+        reasoning.add({
+          "type": "schedule_constraint",
+          "scheduleMode": "late",
+          "avoidMorning": false,
           "source": text,
         });
       }
