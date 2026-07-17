@@ -19,9 +19,10 @@ class RecurringMemoryScheduleService {
       return null;
     }
 
+    final recurrenceType = _extractRecurrenceType(normalized);
     final days = _extractDays(normalized);
 
-    if (days.isEmpty) {
+    if (recurrenceType == "weekly" && days.isEmpty) {
       return null;
     }
 
@@ -38,7 +39,8 @@ class RecurringMemoryScheduleService {
       "sourceType": "memory_routine",
       "label": _buildLabel(text),
       "category": category.trim().isEmpty ? "personal" : category.trim(),
-      "days": days,
+      "recurrenceType": recurrenceType,
+      if (days.isNotEmpty) "days": days,
       "startTime": range.$1,
       "endTime": range.$2,
       "travelBeforeMinutes": travel.$1,
@@ -57,7 +59,25 @@ class RecurringMemoryScheduleService {
     return text.contains("tous les ") ||
         text.contains("toutes les ") ||
         text.contains("chaque ") ||
-        text.contains("chaque semaine");
+        text.contains("chaque semaine") ||
+        _isWeekdaysRecurrence(text);
+  }
+
+  static String _extractRecurrenceType(String text) {
+    if (_isWeekdaysRecurrence(text)) {
+      return "weekdays";
+    }
+
+    return "weekly";
+  }
+
+  static bool _isWeekdaysRecurrence(String text) {
+    return text.contains("tous les jours ouvres") ||
+        text.contains("tous les jours ouvrables") ||
+        text.contains("chaque jour ouvre") ||
+        text.contains("chaque jour ouvrable") ||
+        text.contains("du lundi au vendredi") ||
+        text.contains("les jours de semaine");
   }
 
   static List<String> _extractDays(String text) {

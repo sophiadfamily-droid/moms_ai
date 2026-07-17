@@ -6,6 +6,30 @@ import 'package:moms_ai/services/smart_planning_service.dart';
 
 void main() {
   group('RecurringMemoryScheduleService', () {
+    test('extracts a weekdays recurrence without explicit days', () {
+      final result = RecurringMemoryScheduleService.buildBlockedPeriod(
+        text: 'Tous les jours ouvrés de 9h à 10h.',
+        category: 'work',
+      );
+
+      expect(result, isNotNull);
+      expect(result!['recurrenceType'], 'weekdays');
+      expect(result.containsKey('days'), false);
+      expect(result['startTime'], '09:00');
+      expect(result['endTime'], '10:00');
+      expect(result['category'], 'work');
+    });
+
+    test('keeps explicit day routines as weekly recurrences', () {
+      final result = RecurringMemoryScheduleService.buildBlockedPeriod(
+        text: 'Tous les mercredis de 18h30 à 20h.',
+      );
+
+      expect(result, isNotNull);
+      expect(result!['recurrenceType'], 'weekly');
+      expect(result['days'], ['Mercredi']);
+    });
+
     test('extracts a weekly routine with a complete time range', () {
       final result = RecurringMemoryScheduleService.buildBlockedPeriod(
         text: 'Tous les mercredis de 18h30 à 20h, j’emmène Kassim au foot.',
@@ -124,6 +148,60 @@ void main() {
       expect(result!['travelBeforeMinutes'], 0);
       expect(result['travelAfterMinutes'], 0);
       expect(result['travelMinutes'], 0);
+    });
+  });
+
+  group('MemoryReasoningService weekdays blocked periods', () {
+    test('creates a weekdays blocked period from memory', () {
+      final reasoning = MemoryReasoningService.buildReasoning(
+        const [
+          {
+            'text': 'Tous les jours ouvrés de 9h à 10h.',
+            'category': 'work',
+          },
+        ],
+      );
+
+      expect(
+        reasoning.where((item) => item['type'] == 'routine'),
+        hasLength(1),
+      );
+
+      final blockedPeriods =
+          reasoning.where((item) => item['type'] == 'blocked_period').toList();
+
+      expect(blockedPeriods, hasLength(1));
+      expect(blockedPeriods.first['recurrenceType'], 'weekdays');
+      expect(blockedPeriods.first.containsKey('days'), false);
+    });
+
+    test('blocks weekdays but leaves weekends available', () {
+      final reasoning = MemoryReasoningService.buildReasoning(
+        const [
+          {
+            'text': 'Tous les jours ouvrés de 9h à 10h.',
+            'category': 'work',
+          },
+        ],
+      );
+
+      expect(
+        SmartPlanningService.overlapsBlockedReasoning(
+          start: DateTime(2026, 7, 20, 9, 15),
+          end: DateTime(2026, 7, 20, 9, 45),
+          reasoning: reasoning,
+        ),
+        true,
+      );
+
+      expect(
+        SmartPlanningService.overlapsBlockedReasoning(
+          start: DateTime(2026, 7, 25, 9, 15),
+          end: DateTime(2026, 7, 25, 9, 45),
+          reasoning: reasoning,
+        ),
+        false,
+      );
     });
   });
 

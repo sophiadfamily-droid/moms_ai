@@ -62,6 +62,14 @@ class MemoryReasoningService {
         "tous les samedis",
         "tous les dimanches",
         "chaque semaine",
+        "tous les jours ouvrés",
+        "tous les jours ouvres",
+        "tous les jours ouvrables",
+        "chaque jour ouvré",
+        "chaque jour ouvre",
+        "chaque jour ouvrable",
+        "du lundi au vendredi",
+        "les jours de semaine",
       ])) {
         final category = memory["category"]?.toString().trim() ?? "personal";
 
