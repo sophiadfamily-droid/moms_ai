@@ -12,6 +12,7 @@ class RecurringMemoryScheduleService {
   static Map<String, dynamic>? buildBlockedPeriod({
     required String text,
     String category = "personal",
+    DateTime? referenceDate,
   }) {
     final normalized = _normalize(text);
 
@@ -20,9 +21,31 @@ class RecurringMemoryScheduleService {
     }
 
     final recurrenceType = _extractRecurrenceType(normalized);
-    final days = _extractDays(normalized);
+    final extractedDays = _extractDays(normalized);
+
+    final days = recurrenceType == "biweekly" &&
+            extractedDays.isEmpty &&
+            referenceDate != null
+        ? [_canonicalDays[referenceDate.weekday]!]
+        : extractedDays;
 
     if (recurrenceType == "weekly" && days.isEmpty) {
+      return null;
+    }
+
+    if (recurrenceType == "biweekly" &&
+        (days.isEmpty || referenceDate == null)) {
+      return null;
+    }
+
+    final anchorDateIso = recurrenceType == "biweekly"
+        ? _buildBiweeklyAnchorDateIso(
+            referenceDate: referenceDate!,
+            days: days,
+          )
+        : null;
+
+    if (recurrenceType == "biweekly" && anchorDateIso == null) {
       return null;
     }
 
@@ -41,6 +64,7 @@ class RecurringMemoryScheduleService {
       "category": category.trim().isEmpty ? "personal" : category.trim(),
       "recurrenceType": recurrenceType,
       if (days.isNotEmpty) "days": days,
+      if (anchorDateIso != null) "anchorDateIso": anchorDateIso,
       "startTime": range.$1,
       "endTime": range.$2,
       "travelBeforeMinutes": travel.$1,
@@ -60,15 +84,32 @@ class RecurringMemoryScheduleService {
         text.contains("toutes les ") ||
         text.contains("chaque ") ||
         text.contains("chaque semaine") ||
-        _isWeekdaysRecurrence(text);
+        _isWeekdaysRecurrence(text) ||
+        _isBiweeklyRecurrence(text);
   }
 
   static String _extractRecurrenceType(String text) {
+    if (_isBiweeklyRecurrence(text)) {
+      return "biweekly";
+    }
+
     if (_isWeekdaysRecurrence(text)) {
       return "weekdays";
     }
 
     return "weekly";
+  }
+
+  static bool _isBiweeklyRecurrence(String text) {
+    return text.contains("une semaine sur deux") ||
+        text.contains("toutes les deux semaines") ||
+        text.contains("tous les quinze jours") ||
+        text.contains("tous les 15 jours") ||
+        RegExp(
+          r"\bun\s+"
+          r"(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)"
+          r"\s+sur\s+deux\b",
+        ).hasMatch(text);
   }
 
   static bool _isWeekdaysRecurrence(String text) {
@@ -108,6 +149,58 @@ class RecurringMemoryScheduleService {
     }
 
     return result;
+  }
+
+  static String? _buildBiweeklyAnchorDateIso({
+    required DateTime referenceDate,
+    required List<String> days,
+  }) {
+    final referenceDay = DateTime(
+      referenceDate.year,
+      referenceDate.month,
+      referenceDate.day,
+    );
+
+    final occurrences = <DateTime>[];
+
+    for (final day in days) {
+      final weekday = _weekdayFromCanonicalDay(day);
+
+      if (weekday == null) {
+        continue;
+      }
+
+      final offset = (weekday - referenceDay.weekday + DateTime.daysPerWeek) %
+          DateTime.daysPerWeek;
+
+      occurrences.add(referenceDay.add(Duration(days: offset)));
+    }
+
+    if (occurrences.isEmpty) {
+      return null;
+    }
+
+    occurrences.sort();
+
+    return _formatDateIso(occurrences.first);
+  }
+
+  static int? _weekdayFromCanonicalDay(String day) {
+    for (final entry in _canonicalDays.entries) {
+      if (entry.value == day) {
+        return entry.key;
+      }
+    }
+
+    return null;
+  }
+
+  static String _formatDateIso(DateTime date) {
+    final year = date.year.toString().padLeft(4, "0");
+    final month = date.month.toString().padLeft(2, "0");
+    final day = date.day.toString().padLeft(2, "0");
+
+    return "$year-$month-$day";
   }
 
   static (String, String)? _extractTimeRange(String text) {

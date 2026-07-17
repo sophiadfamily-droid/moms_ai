@@ -70,8 +70,22 @@ class MemoryReasoningService {
         "chaque jour ouvrable",
         "du lundi au vendredi",
         "les jours de semaine",
+        "une semaine sur deux",
+        "toutes les deux semaines",
+        "tous les quinze jours",
+        "tous les 15 jours",
+        "un lundi sur deux",
+        "un mardi sur deux",
+        "un mercredi sur deux",
+        "un jeudi sur deux",
+        "un vendredi sur deux",
+        "un samedi sur deux",
+        "un dimanche sur deux",
       ])) {
         final category = memory["category"]?.toString().trim() ?? "personal";
+        final referenceDate = _readReferenceDate(
+          memory["createdAt"] ?? memory["createdAtIso"],
+        );
 
         reasoning.add({
           "type": "routine",
@@ -82,6 +96,7 @@ class MemoryReasoningService {
         final blockedPeriod = RecurringMemoryScheduleService.buildBlockedPeriod(
           text: text,
           category: category,
+          referenceDate: referenceDate,
         );
 
         if (blockedPeriod != null) {
@@ -91,6 +106,32 @@ class MemoryReasoningService {
     }
 
     return reasoning;
+  }
+
+  static DateTime? _readReferenceDate(dynamic value) {
+    if (value is DateTime) {
+      return value;
+    }
+
+    if (value is String) {
+      return DateTime.tryParse(value);
+    }
+
+    if (value == null) {
+      return null;
+    }
+
+    try {
+      final converted = value.toDate();
+
+      if (converted is DateTime) {
+        return converted;
+      }
+    } catch (_) {
+      return null;
+    }
+
+    return null;
   }
 
   static bool _containsAny(String text, List<String> values) {
