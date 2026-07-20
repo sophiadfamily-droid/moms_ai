@@ -353,6 +353,20 @@ void main() {
 
       expect(CloudEventService.documentIdForEvent(event), historicalId);
     });
+
+    test('empty and whitespace IDs use the historical document ID', () {
+      final event = buildEvent(parentRecurringId: 'series-1');
+      final expectedId = CloudEventService.documentIdForEvent(event);
+
+      expect(
+        CloudEventService.documentIdForEvent(event.copyWith(id: '')),
+        expectedId,
+      );
+      expect(
+        CloudEventService.documentIdForEvent(event.copyWith(id: '   ')),
+        expectedId,
+      );
+    });
   });
 }
 

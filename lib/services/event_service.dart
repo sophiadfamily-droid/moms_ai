@@ -4,12 +4,24 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/identity/entity_id_generator.dart';
+import '../core/identity/entity_identity.dart';
+import '../core/identity/entity_matcher.dart';
 import '../core/identity/uuid_v7_entity_id_generator.dart';
 import '../models/event_model.dart';
 import 'cloud_event_service.dart';
 
 class EventService {
   static const String eventsKey = "zelia_events";
+
+  static final EntityMatcher<EventModel> _eventMatcher = EntityMatcher(
+    idOf: (event) => event.id,
+    legacyEquals: (first, second) {
+      return first.title == second.title &&
+          first.createdAt == second.createdAt &&
+          first.date == second.date &&
+          first.time == second.time;
+    },
+  );
 
   static final ValueNotifier<int> eventsVersion = ValueNotifier<int>(0);
 
@@ -119,24 +131,13 @@ class EventService {
     EventModel event,
     EntityIdGenerator idGenerator,
   ) {
-    if (isValidEventId(event.id)) return event;
+    if (EntityIdentity.isValid(event.id)) return event;
     final generatedId = idGenerator.generate();
     return event.copyWith(id: generatedId);
   }
 
-  static bool isValidEventId(String? id) {
-    return id != null && id.trim().isNotEmpty;
-  }
-
   static bool areSameEvent(EventModel first, EventModel second) {
-    if (isValidEventId(first.id) && isValidEventId(second.id)) {
-      return first.id == second.id;
-    }
-
-    return first.title == second.title &&
-        first.createdAt == second.createdAt &&
-        first.date == second.date &&
-        first.time == second.time;
+    return _eventMatcher.matches(first, second);
   }
 
   static DateTime? parseStart(EventModel event) {

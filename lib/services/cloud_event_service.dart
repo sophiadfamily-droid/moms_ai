@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../core/identity/entity_identity.dart';
 import '../models/event_model.dart';
 import 'auth_service.dart';
 
@@ -21,7 +22,7 @@ class CloudEventService {
   }
 
   static String documentIdForEvent(EventModel event) {
-    if (event.id != null) return event.id!;
+    if (EntityIdentity.isValid(event.id)) return event.id!;
 
     final raw = [
       event.createdAt.toIso8601String(),

@@ -29,6 +29,14 @@ void main() {
       ).existsSync(),
       isTrue,
     );
+    expect(
+      File('${identityDirectory.path}/entity_identity.dart').existsSync(),
+      isTrue,
+    );
+    expect(
+      File('${identityDirectory.path}/entity_matcher.dart').existsSync(),
+      isTrue,
+    );
 
     for (final file in files) {
       final imports = _importsIn(file.readAsStringSync());
@@ -65,6 +73,20 @@ void main() {
         );
       }
     }
+  });
+
+  test('identity foundation introduces no base entity', () {
+    final identityDirectory = Directory(
+      '${repositoryRoot.path}/lib/core/identity',
+    );
+    final source = identityDirectory
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where((file) => file.path.endsWith('.dart'))
+        .map((file) => file.readAsStringSync())
+        .join('\n');
+
+    expect(source, isNot(contains('class BaseEntity')));
   });
 }
 
