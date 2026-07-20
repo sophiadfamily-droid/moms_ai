@@ -66,10 +66,11 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyCmT0K90q5SyOH-xNiRYkznioEnjxyT5p4',
-    appId: '1:664245687438:ios:57aa38181202fd7aca65df',
+    appId: '1:664245687438:ios:448842c47ca8b283ca65df',
     messagingSenderId: '664245687438',
     projectId: 'zelia-ai-app',
     storageBucket: 'zelia-ai-app.firebasestorage.app',
-    iosBundleId: 'com.example.momsAi',
+    iosBundleId: 'com.sophiadfamily.zeliaaiapp',
   );
+
 }
