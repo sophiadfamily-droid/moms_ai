@@ -1116,41 +1116,55 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                     selectedTravelGoMinutes +
                                         selectedTravelBackMinutes;
 
-                                final updatedEvent = EventModel(
-                                  title: title,
-                                  date: date,
-                                  time: time,
-                                  notes: notesController.text.trim(),
-                                  category: selectedCategory,
-                                  createdAt: event?.createdAt ?? DateTime.now(),
-                                  startDateTimeIso: buildStartDateTimeIso(
-                                    date: date,
-                                    time: time,
-                                  ),
-                                  endTime: endTime,
-                                  endDateTimeIso: buildEndDateTimeIso(
-                                    date: date,
-                                    time: time,
-                                    durationMinutes: selectedDuration,
-                                  ),
-                                  durationMinutes: selectedDuration,
-                                  travelMinutes: totalTravelMinutes,
-                                  travelGoMinutes: selectedTravelGoMinutes,
-                                  travelBackMinutes: selectedTravelBackMinutes,
-                                  usesSeparateTravelTimes: true,
-                                  marginMinutes: selectedMarginMinutes,
-                                  departureContext:
-                                      event?.departureContext ?? 'unknown',
-                                  arrivalContext:
-                                      event?.arrivalContext ?? 'unknown',
-                                  isRecurring: event?.isRecurring ?? false,
-                                  recurringType: event?.recurringType ?? '',
-                                  recurringWeekday:
-                                      event?.recurringWeekday ?? 0,
-                                  recurringUntil: event?.recurringUntil ?? '',
-                                  parentRecurringId:
-                                      event?.parentRecurringId ?? '',
-                                );
+                                final updatedEvent = event?.copyWith(
+                                      title: title,
+                                      date: date,
+                                      time: time,
+                                      notes: notesController.text.trim(),
+                                      category: selectedCategory,
+                                      startDateTimeIso: buildStartDateTimeIso(
+                                        date: date,
+                                        time: time,
+                                      ),
+                                      endTime: endTime,
+                                      endDateTimeIso: buildEndDateTimeIso(
+                                        date: date,
+                                        time: time,
+                                        durationMinutes: selectedDuration,
+                                      ),
+                                      durationMinutes: selectedDuration,
+                                      travelMinutes: totalTravelMinutes,
+                                      travelGoMinutes: selectedTravelGoMinutes,
+                                      travelBackMinutes:
+                                          selectedTravelBackMinutes,
+                                      usesSeparateTravelTimes: true,
+                                      marginMinutes: selectedMarginMinutes,
+                                    ) ??
+                                    EventModel(
+                                      title: title,
+                                      date: date,
+                                      time: time,
+                                      notes: notesController.text.trim(),
+                                      category: selectedCategory,
+                                      createdAt: DateTime.now(),
+                                      startDateTimeIso: buildStartDateTimeIso(
+                                        date: date,
+                                        time: time,
+                                      ),
+                                      endTime: endTime,
+                                      endDateTimeIso: buildEndDateTimeIso(
+                                        date: date,
+                                        time: time,
+                                        durationMinutes: selectedDuration,
+                                      ),
+                                      durationMinutes: selectedDuration,
+                                      travelMinutes: totalTravelMinutes,
+                                      travelGoMinutes: selectedTravelGoMinutes,
+                                      travelBackMinutes:
+                                          selectedTravelBackMinutes,
+                                      usesSeparateTravelTimes: true,
+                                      marginMinutes: selectedMarginMinutes,
+                                    );
 
                                 final conflict = findManualOverlapConflict(
                                   candidate: updatedEvent,

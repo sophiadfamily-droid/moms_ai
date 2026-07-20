@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/identity/entity_id_generator.dart';
+import '../core/identity/uuid_v7_entity_id_generator.dart';
 import '../models/event_model.dart';
 import 'cloud_event_service.dart';
 
@@ -84,21 +86,25 @@ class EventService {
   }
 
   static Future<void> addEvent(
-    EventModel event,
-  ) async {
+    EventModel event, {
+    EntityIdGenerator idGenerator = const UuidV7EntityIdGenerator(),
+  }) async {
     final events = await getEvents();
 
-    events.add(event);
+    events.add(_withIdForCreation(event, idGenerator));
 
     await saveEvents(events);
   }
 
   static Future<void> addEvents(
-    List<EventModel> newEvents,
-  ) async {
+    List<EventModel> newEvents, {
+    EntityIdGenerator idGenerator = const UuidV7EntityIdGenerator(),
+  }) async {
     final events = await getEvents();
 
-    events.addAll(newEvents);
+    events.addAll(
+      newEvents.map((event) => _withIdForCreation(event, idGenerator)),
+    );
 
     await saveEvents(events);
   }
@@ -107,6 +113,15 @@ class EventService {
     List<EventModel> events,
   ) async {
     await saveEvents(events);
+  }
+
+  static EventModel _withIdForCreation(
+    EventModel event,
+    EntityIdGenerator idGenerator,
+  ) {
+    if (event.id != null) return event;
+    final generatedId = idGenerator.generate();
+    return event.copyWith(id: generatedId);
   }
 
   static DateTime? parseStart(EventModel event) {

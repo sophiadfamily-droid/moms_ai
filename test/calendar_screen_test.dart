@@ -57,6 +57,7 @@ void main() {
       final date = isoDate(DateTime.now());
 
       final initialEvent = EventModel(
+        id: 'event-stable-id',
         title: 'Médecin',
         date: date,
         time: '10:15',
@@ -118,6 +119,7 @@ void main() {
       expect(saved.usesSeparateTravelTimes, isTrue);
       expect(saved.departureContext, 'home');
       expect(saved.arrivalContext, 'home');
+      expect(saved.id, 'event-stable-id');
     },
   );
 }

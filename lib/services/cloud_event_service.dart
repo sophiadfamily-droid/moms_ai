@@ -20,7 +20,9 @@ class CloudEventService {
     return _firestore.collection("users").doc(uid).collection("events");
   }
 
-  static String _eventId(EventModel event) {
+  static String documentIdForEvent(EventModel event) {
+    if (event.id != null) return event.id!;
+
     final raw = [
       event.createdAt.toIso8601String(),
       event.startDateTimeIso,
@@ -46,13 +48,13 @@ class CloudEventService {
     }
 
     for (final event in events) {
-      final data = event.toJson()
+      final data = firestoreDataForEvent(event)
         ..addAll({
           "schemaVersion": 1,
           "updatedAt": FieldValue.serverTimestamp(),
         });
 
-      batch.set(ref.doc(_eventId(event)), data);
+      batch.set(ref.doc(documentIdForEvent(event)), data);
     }
 
     await batch.commit();
@@ -67,6 +69,24 @@ class CloudEventService {
 
     final snapshot = await ref.orderBy("startDateTimeIso").get();
 
-    return snapshot.docs.map((doc) => EventModel.fromJson(doc.data())).toList();
+    return snapshot.docs
+        .map(
+          (doc) => eventFromDocument(
+            documentId: doc.id,
+            data: doc.data(),
+          ),
+        )
+        .toList();
+  }
+
+  static EventModel eventFromDocument({
+    required String documentId,
+    required Map<String, dynamic> data,
+  }) {
+    return EventModel.fromJson({...data, "id": documentId});
+  }
+
+  static Map<String, dynamic> firestoreDataForEvent(EventModel event) {
+    return Map<String, dynamic>.from(event.toJson())..remove("id");
   }
 }

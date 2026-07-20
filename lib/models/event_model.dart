@@ -1,4 +1,5 @@
 class EventModel {
+  final String? id;
   final String title;
   final String date;
   final String time;
@@ -44,6 +45,7 @@ class EventModel {
   final String parentRecurringId;
 
   EventModel({
+    this.id,
     required this.title,
     required this.date,
     required this.time,
@@ -90,6 +92,7 @@ class EventModel {
   }
 
   EventModel copyWith({
+    String? id,
     String? title,
     String? date,
     String? time,
@@ -114,6 +117,7 @@ class EventModel {
     String? parentRecurringId,
   }) {
     return EventModel(
+      id: id ?? this.id,
       title: title ?? this.title,
       date: date ?? this.date,
       time: time ?? this.time,
@@ -142,6 +146,7 @@ class EventModel {
 
   Map<String, dynamic> toJson() {
     return {
+      if (id != null) "id": id,
       "title": title,
       "date": date,
       "time": time,
@@ -181,6 +186,7 @@ class EventModel {
         parsedTravelBack > 0;
 
     return EventModel(
+      id: json["id"] is String ? json["id"] as String : null,
       title: json["title"] ?? "",
       date: json["date"] ?? "",
       time: json["time"] ?? "",
