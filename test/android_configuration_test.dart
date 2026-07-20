@@ -103,6 +103,138 @@ void main() {
     expect(activeAndroidConfig['projectId'], 'zelia-ai-app');
     expect(activeAndroidConfig['appId'], firebaseAppId);
   });
+
+  test('Android Release signing is dedicated and fails closed', () {
+    final repositoryRoot = _findRepositoryRoot();
+    final gradle = _withoutMultilineComments(
+      File('${repositoryRoot.path}/android/app/build.gradle.kts')
+          .readAsStringSync(),
+    );
+
+    expect(
+      RegExp(
+        r'^\s*signingConfig\s*=\s*signingConfigs\.getByName\("release"\)\s*$',
+        multiLine: true,
+      ).allMatches(gradle),
+      hasLength(1),
+    );
+    expect(
+      RegExp(
+        r'^\s*signingConfig\s*=\s*signingConfigs\.getByName\("debug"\)\s*$',
+        multiLine: true,
+      ).hasMatch(gradle),
+      isFalse,
+    );
+    expect(
+      RegExp(r'^\s*create\("release"\)\s*\{\s*$', multiLine: true)
+          .allMatches(gradle),
+      hasLength(1),
+    );
+
+    final requiredPropertiesBlock = RegExp(
+      r'^\s*val requiredReleaseSigningProperties\s*=\s*\n'
+      r'\s*listOf\(([^)]*)\)\s*$',
+      multiLine: true,
+    ).firstMatch(gradle);
+    expect(requiredPropertiesBlock, isNotNull);
+    final requiredProperties = RegExp(r'"([^"]+)"')
+        .allMatches(requiredPropertiesBlock!.group(1)!)
+        .map((match) => match.group(1)!)
+        .toSet();
+    expect(
+      requiredProperties,
+      {'storeFile', 'storePassword', 'keyAlias', 'keyPassword'},
+    );
+
+    expect(
+      RegExp(r'^\s*storeFile\s*=\s*releaseKeystoreFile\s*$', multiLine: true)
+          .allMatches(gradle),
+      hasLength(1),
+    );
+    for (final property in {'storePassword', 'keyAlias', 'keyPassword'}) {
+      expect(
+        RegExp(
+          '^\\s*${RegExp.escape(property)}\\s*=\\s*'
+          'releaseSigningProperties\\.getProperty\\("${RegExp.escape(property)}"\\)\\s*\$',
+          multiLine: true,
+        ).allMatches(gradle),
+        hasLength(1),
+      );
+    }
+
+    expect(
+      RegExp(
+        r'^\s*(?:storePassword|keyPassword)\s*=\s*"[^"]*"\s*$',
+        multiLine: true,
+      ).hasMatch(gradle),
+      isFalse,
+    );
+    expect(
+      RegExp(r'^\s*gradle\.taskGraph\.whenReady\b', multiLine: true)
+          .hasMatch(gradle),
+      isFalse,
+    );
+    expect(
+      RegExp(
+        r'^\s*tasks\.register<ValidateReleaseSigning>\("validateReleaseSigning"\)\s*\{\s*$',
+        multiLine: true,
+      ).allMatches(gradle),
+      hasLength(1),
+    );
+    expect(
+      RegExp(r'^\s*group\s*=\s*"verification"\s*$', multiLine: true)
+          .allMatches(gradle),
+      hasLength(1),
+    );
+    expect(
+      RegExp(
+        r'^\s*propertiesFile\.set\('
+        r'rootProject\.layout\.projectDirectory\.file\("key\.properties"\)'
+        r'\)\s*$',
+        multiLine: true,
+      ).allMatches(gradle),
+      hasLength(1),
+    );
+    expect(
+      RegExp(
+        r'^\s*if\s*\(!configuredPropertiesFile\.isFile\)\s*\{\s*$',
+        multiLine: true,
+      ).allMatches(gradle),
+      hasLength(1),
+    );
+    expect(
+      RegExp(
+        r'^\s*if\s*\(missingProperties\.isNotEmpty\(\)\)\s*\{\s*$',
+        multiLine: true,
+      ).allMatches(gradle),
+      hasLength(1),
+    );
+    expect(
+      RegExp(
+        r'^\s*if\s*\(!configuredStoreFile\.isFile\)\s*\{\s*$',
+        multiLine: true,
+      ).allMatches(gradle),
+      hasLength(1),
+    );
+
+    final releaseTaskPattern = RegExp(
+      r'^\s*val releaseArtifactTaskName\s*=\s*'
+      r'Regex\("\^\(assemble\|bundle\|package\)\.\*Release\.\*\$"\)\s*$',
+      multiLine: true,
+    );
+    expect(releaseTaskPattern.allMatches(gradle), hasLength(1));
+    expect(
+      RegExp(
+        r'^\s*dependsOn\(validateReleaseSigning\)\s*$',
+        multiLine: true,
+      ).allMatches(gradle),
+      hasLength(1),
+    );
+    expect(
+      RegExp(r'Regex\("[^"]*Debug[^"]*"\)').hasMatch(gradle),
+      isFalse,
+    );
+  });
 }
 
 String _withoutMultilineComments(String contents) {
