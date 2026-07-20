@@ -101,9 +101,9 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
   }
 
   int indexOfItem(ShoppingItemModel item) {
-    return items.indexWhere((current) {
-      return current.title == item.title && current.createdAt == item.createdAt;
-    });
+    return items.indexWhere(
+      (current) => ShoppingService.areSameShoppingItem(current, item),
+    );
   }
 
   Future<void> toggleItem(ShoppingItemModel item) async {
@@ -123,9 +123,9 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
   }
 
   Future<void> deleteItem(ShoppingItemModel item) async {
-    items.removeWhere((current) {
-      return current.title == item.title && current.createdAt == item.createdAt;
-    });
+    items.removeWhere(
+      (current) => ShoppingService.areSameShoppingItem(current, item),
+    );
     await saveCurrentItems();
   }
 
@@ -331,15 +331,22 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
                         final title = titleController.text.trim();
                         if (title.isEmpty) return;
 
-                        final updated = ShoppingItemModel(
-                          title: title,
-                          isBought: item?.isBought ?? false,
-                          createdAt: item?.createdAt ?? DateTime.now(),
-                          category: category,
-                          notes: notesController.text.trim(),
-                          isUrgent: urgent,
-                          section: section,
-                        );
+                        final updated = item?.copyWith(
+                              title: title,
+                              category: category,
+                              notes: notesController.text.trim(),
+                              isUrgent: urgent,
+                              section: section,
+                            ) ??
+                            ShoppingItemModel(
+                              title: title,
+                              isBought: false,
+                              createdAt: DateTime.now(),
+                              category: category,
+                              notes: notesController.text.trim(),
+                              isUrgent: urgent,
+                              section: section,
+                            );
 
                         if (isEdit) {
                           final index = indexOfItem(item);
@@ -822,7 +829,9 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
               children: [
                 Dismissible(
                   key: ValueKey(
-                      "${item.title}-${item.createdAt.toIso8601String()}"),
+                    item.id ??
+                        "${item.title}-${item.createdAt.toIso8601String()}",
+                  ),
                   direction: DismissDirection.horizontal,
                   background: buildSwipeBackground(
                     icon: Icons.check_rounded,

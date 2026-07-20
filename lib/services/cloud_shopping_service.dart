@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../core/identity/entity_identity.dart';
 import '../models/shopping_item_model.dart';
 import 'auth_service.dart';
 
@@ -20,7 +21,9 @@ class CloudShoppingService {
     return _firestore.collection("users").doc(uid).collection("shopping_items");
   }
 
-  static String _itemId(ShoppingItemModel item) {
+  static String documentIdForShoppingItem(ShoppingItemModel item) {
+    if (EntityIdentity.isValid(item.id)) return item.id!;
+
     final raw = [
       item.createdAt.toIso8601String(),
       item.title,
@@ -45,13 +48,13 @@ class CloudShoppingService {
     }
 
     for (final item in items) {
-      final data = item.toJson()
+      final data = firestoreDataForShoppingItem(item)
         ..addAll({
           "schemaVersion": 1,
           "updatedAt": FieldValue.serverTimestamp(),
         });
 
-      batch.set(ref.doc(_itemId(item)), data);
+      batch.set(ref.doc(documentIdForShoppingItem(item)), data);
     }
 
     await batch.commit();
@@ -66,8 +69,26 @@ class CloudShoppingService {
 
     final snapshot = await ref.orderBy("createdAt", descending: true).get();
 
-    return snapshot.docs.map((doc) {
-      return ShoppingItemModel.fromJson(doc.data());
-    }).toList();
+    return snapshot.docs
+        .map(
+          (doc) => shoppingItemFromDocument(
+            documentId: doc.id,
+            data: doc.data(),
+          ),
+        )
+        .toList();
+  }
+
+  static ShoppingItemModel shoppingItemFromDocument({
+    required String documentId,
+    required Map<String, dynamic> data,
+  }) {
+    return ShoppingItemModel.fromJson({...data, "id": documentId});
+  }
+
+  static Map<String, dynamic> firestoreDataForShoppingItem(
+    ShoppingItemModel item,
+  ) {
+    return Map<String, dynamic>.from(item.toJson())..remove("id");
   }
 }
