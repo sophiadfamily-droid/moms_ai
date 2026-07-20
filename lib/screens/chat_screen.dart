@@ -1,10 +1,8 @@
-import 'dart:convert';
-
 import '../services/chat_service.dart';
 import '../services/chat_planning_helper_service.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 
+import '../models/chat_backend_request.dart';
 import '../models/user_profile.dart';
 import '../models/task_model.dart';
 import '../models/event_model.dart';
@@ -34,15 +32,19 @@ import '../services/zelia_response_builder.dart';
 import '../services/action_handler_service.dart';
 import '../services/zelia_action_guard_service.dart';
 import '../services/natural_date_service.dart';
+import '../services/chat_backend_client.dart';
+import '../services/http_chat_backend_client.dart';
 
 class ChatScreen extends StatefulWidget {
   final UserProfile profile;
   final String? initialAssistantMessage;
+  final ChatBackendClient? backendClient;
 
   const ChatScreen({
     super.key,
     required this.profile,
     this.initialAssistantMessage,
+    this.backendClient,
   });
 
   @override
@@ -52,6 +54,8 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController controller = TextEditingController();
   final VoiceService voiceService = VoiceService();
+  late final ChatBackendClient backend;
+  HttpChatBackendClient? _ownedBackend;
 
   bool loading = false;
   bool isListening = false;
@@ -86,6 +90,13 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    final injectedBackend = widget.backendClient;
+    if (injectedBackend != null) {
+      backend = injectedBackend;
+    } else {
+      _ownedBackend = HttpChatBackendClient();
+      backend = _ownedBackend!;
+    }
     currentConversationId = DateTime.now().millisecondsSinceEpoch.toString();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -2150,74 +2161,60 @@ class _ChatScreenState extends State<ChatScreen> {
         };
       }).toList();
 
-      final response = await http.post(
-        Uri.parse(
-          "https://us-central1-zelia-ai-app.cloudfunctions.net/chatWithZeliaHttp",
-        ),
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode({
-          "message": text,
-          "profile": widget.profile.toJson(),
-          "profileContext": profileContext,
-          "memories": relevantMemories,
-          "memoryReasoning": memoryReasoning,
-          "events": existingEvents,
-        }),
+      final request = ChatBackendRequest(
+        message: text,
+        profile: widget.profile.toJson(),
+        profileContext: profileContext,
+        memories: relevantMemories,
+        memoryReasoning: memoryReasoning,
+        events: existingEvents,
       );
 
-      if (response.statusCode != 200) {
-        throw Exception("Erreur serveur ${response.statusCode}");
-      }
+      final response = await backend.send(request);
 
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
-
-      String reply = data["reply"]?.toString() ?? "C’est noté 💕";
-      final actions = data["actions"];
-      final newMemories = data["memories"];
+      String reply = response.reply;
+      final actions = response.actions;
+      final newMemories = response.memories;
 
       final actionMessages = <String>[];
       final shoppingTitles = <String>[];
       final taskTitles = <String>[];
       final eventTitles = <String>[];
 
-      if (actions is List) {
-        for (final rawAction in actions) {
-          final guarded = ZeliaActionGuardService.guard(rawAction);
+      for (final rawAction in actions) {
+        final guarded = ZeliaActionGuardService.guard(rawAction);
 
-          if (!guarded.isAccepted || guarded.action == null) {
-            continue;
-          }
-
-          final action = guarded.action!;
-          final type = action["type"]?.toString() ?? "";
-          final title = action["title"]?.toString() ?? "";
-
-          if (type == "shopping" && title.isNotEmpty) {
-            shoppingTitles.add(title);
-          }
-
-          if (type == "task" && title.isNotEmpty) {
-            taskTitles.add(title);
-          }
-
-          if (type == "event" && title.isNotEmpty) {
-            eventTitles.add(title);
-          }
-
-          final actionText = await handleAction(action);
-          if (actionText.isNotEmpty) actionMessages.add(actionText);
+        if (!guarded.isAccepted || guarded.action == null) {
+          continue;
         }
+
+        final action = guarded.action!;
+        final type = action["type"]?.toString() ?? "";
+        final title = action["title"]?.toString() ?? "";
+
+        if (type == "shopping" && title.isNotEmpty) {
+          shoppingTitles.add(title);
+        }
+
+        if (type == "task" && title.isNotEmpty) {
+          taskTitles.add(title);
+        }
+
+        if (type == "event" && title.isNotEmpty) {
+          eventTitles.add(title);
+        }
+
+        final actionText = await handleAction(action);
+        if (actionText.isNotEmpty) actionMessages.add(actionText);
       }
 
-      if (newMemories is List) {
-        for (final memory in newMemories) {
-          await handleMemory(memory);
-        }
+      for (final memory in newMemories) {
+        await handleMemory(memory);
       }
 
       if (actionMessages.isNotEmpty) {
         reply = actionMessages.join("\n\n");
-      } else if (actions is List && actions.isNotEmpty) {
+      } else if (actions.isNotEmpty) {
         final planningTitle = pendingSmartPlanningTask != null
             ? (pendingSmartPlanningTask!["task"] as TaskModel).title
             : null;
@@ -2408,6 +2405,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    _ownedBackend?.close();
     controller.dispose();
     voiceService.stop();
     super.dispose();
