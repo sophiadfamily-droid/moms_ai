@@ -58,7 +58,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyB2TXp_o-ijZiw5zObZTk54kO4NVOHnATI',
-    appId: '1:664245687438:android:219545494c7d82e7ca65df',
+    appId: '1:664245687438:android:176b756db5b132c6ca65df',
     messagingSenderId: '664245687438',
     projectId: 'zelia-ai-app',
     storageBucket: 'zelia-ai-app.firebasestorage.app',
@@ -72,5 +72,4 @@ class DefaultFirebaseOptions {
     storageBucket: 'zelia-ai-app.firebasestorage.app',
     iosBundleId: 'com.sophiadfamily.zeliaaiapp',
   );
-
 }
