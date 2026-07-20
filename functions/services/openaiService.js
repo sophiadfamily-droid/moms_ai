@@ -151,10 +151,11 @@ function shouldFallbackToDefaultModel(error, attemptedModel) {
  *
  * @param {Object} client client OpenAI
  * @param {Object} request requête Responses API
+ * @param {AbortSignal} signal signal d'annulation partagé
  * @return {Promise<Object>}
  */
-async function executeZeliaRequest(client, request) {
-  const response = await client.responses.create(request);
+async function executeZeliaRequest(client, request, signal) {
+  const response = await client.responses.create(request, {signal});
   return parseZeliaResponse(response);
 }
 
@@ -170,6 +171,7 @@ async function executeZeliaRequest(client, request) {
  * @param {string} params.userMessage message utilisateur
  * @param {string} params.model modèle OpenAI
  * @param {Object} params.client client injecté pour les tests
+ * @param {AbortSignal} params.signal signal d'annulation partagé
  * @return {Promise<Object>}
  */
 async function generateZeliaResponse({
@@ -178,6 +180,7 @@ async function generateZeliaResponse({
   userMessage,
   model = DEFAULT_MODEL,
   client = null,
+  signal,
 }) {
   const openai = client || new OpenAI({
     apiKey,
@@ -190,7 +193,7 @@ async function generateZeliaResponse({
   });
 
   try {
-    return await executeZeliaRequest(openai, request);
+    return await executeZeliaRequest(openai, request, signal);
   } catch (error) {
     if (!shouldFallbackToDefaultModel(error, model)) {
       throw error;
@@ -210,7 +213,7 @@ async function generateZeliaResponse({
       model: DEFAULT_MODEL,
     });
 
-    return executeZeliaRequest(openai, fallbackRequest);
+    return executeZeliaRequest(openai, fallbackRequest, signal);
   }
 }
 

@@ -140,11 +140,12 @@ test(
       } = require("../../services/openaiService");
 
       const calls = [];
+      const signal = new AbortController().signal;
 
       const client = {
         responses: {
-          async create(request) {
-            calls.push(request);
+          async create(request, options) {
+            calls.push({request, options});
 
             if (calls.length === 1) {
               const error = new Error("Service unavailable");
@@ -169,12 +170,15 @@ test(
         userMessage: "USER",
         model: "gpt-5.6-terra",
         client,
+        signal,
       });
 
       assert.equal(calls.length, 2);
-      assert.equal(calls[0].model, "gpt-5.6-terra");
-      assert.equal(calls[1].model, DEFAULT_MODEL);
-      assert.equal(calls[1].temperature, 0.03);
+      assert.equal(calls[0].request.model, "gpt-5.6-terra");
+      assert.equal(calls[1].request.model, DEFAULT_MODEL);
+      assert.equal(calls[1].request.temperature, 0.03);
+      assert.equal(calls[0].options.signal, signal);
+      assert.equal(calls[1].options.signal, signal);
 
       assert.deepEqual(result, {
         reply: "Réponse de secours",

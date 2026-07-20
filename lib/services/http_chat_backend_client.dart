@@ -7,7 +7,7 @@ import '../models/chat_backend_request.dart';
 import '../models/chat_backend_response.dart';
 import 'chat_backend_client.dart';
 
-class HttpChatBackendClient implements ChatBackendClient {
+class HttpChatBackendClient implements ClosableChatBackendClient {
   static final Uri defaultEndpoint = Uri.parse(
     'https://us-central1-zelia-ai-app.cloudfunctions.net/chatWithZeliaHttp',
   );
@@ -25,6 +25,7 @@ class HttpChatBackendClient implements ChatBackendClient {
         _ownsHttpClient = httpClient == null,
         endpoint = endpoint ?? defaultEndpoint;
 
+  @override
   void close() {
     if (_ownsHttpClient) {
       _httpClient.close();

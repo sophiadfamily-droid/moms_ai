@@ -33,7 +33,7 @@ import '../services/action_handler_service.dart';
 import '../services/zelia_action_guard_service.dart';
 import '../services/natural_date_service.dart';
 import '../services/chat_backend_client.dart';
-import '../services/http_chat_backend_client.dart';
+import '../services/chat_backend_client_factory.dart';
 
 class ChatScreen extends StatefulWidget {
   final UserProfile profile;
@@ -55,7 +55,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController controller = TextEditingController();
   final VoiceService voiceService = VoiceService();
   late final ChatBackendClient backend;
-  HttpChatBackendClient? _ownedBackend;
+  late final bool _ownsBackend;
 
   bool loading = false;
   bool isListening = false;
@@ -91,12 +91,8 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
     final injectedBackend = widget.backendClient;
-    if (injectedBackend != null) {
-      backend = injectedBackend;
-    } else {
-      _ownedBackend = HttpChatBackendClient();
-      backend = _ownedBackend!;
-    }
+    _ownsBackend = injectedBackend == null;
+    backend = injectedBackend ?? createDefaultChatBackendClient();
     currentConversationId = DateTime.now().millisecondsSinceEpoch.toString();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -2405,7 +2401,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
-    _ownedBackend?.close();
+    if (_ownsBackend && backend is ClosableChatBackendClient) {
+      (backend as ClosableChatBackendClient).close();
+    }
     controller.dispose();
     voiceService.stop();
     super.dispose();

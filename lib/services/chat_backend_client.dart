@@ -5,6 +5,11 @@ abstract interface class ChatBackendClient {
   Future<ChatBackendResponse> send(ChatBackendRequest request);
 }
 
+abstract interface class ClosableChatBackendClient
+    implements ChatBackendClient {
+  void close();
+}
+
 sealed class ChatBackendException implements Exception {
   final String safeMessage;
 
@@ -34,4 +39,11 @@ final class ChatBackendMalformedResponseException extends ChatBackendException {
 final class ChatBackendConnectionException extends ChatBackendException {
   const ChatBackendConnectionException()
       : super('Impossible de contacter le service pour le moment.');
+}
+
+final class ChatBackendCallableException extends ChatBackendException {
+  final String code;
+
+  ChatBackendCallableException(this.code)
+      : super('Le service est momentanément indisponible.');
 }
