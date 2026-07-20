@@ -1,60 +1,102 @@
+import '../models/life_context/life_context_provenance.dart';
+import '../models/life_context/life_context_snapshot.dart';
+import '../models/life_context/schedule_context.dart';
 import '../models/user_profile.dart';
+import 'life_context/life_context_engine.dart';
 import 'travel_context_service.dart';
 import 'school_schedule_metadata_service.dart';
 
 class ProfileReasoningService {
-  static List<Map<String, dynamic>> buildReasoning(UserProfile profile) {
+  /// Transitional compatibility bridge for progressive migration only.
+  ///
+  /// New consumers must call [buildReasoningFromSnapshot] directly. This
+  /// method will be removed once every consumer provides a LifeContextSnapshot.
+  static List<Map<String, dynamic>> buildReasoning(
+    UserProfile profile, {
+    LifeContextEngine? lifeContextEngine,
+    DateTime? generatedAt,
+  }) {
+    final snapshot = (lifeContextEngine ?? LifeContextEngine()).buildSnapshot(
+      profile: profile,
+      generatedAt: generatedAt ?? DateTime.now(),
+    );
+
+    return buildReasoningFromSnapshot(
+      snapshot,
+      legacyPersonalNotes: profile.personalNotes,
+    );
+  }
+
+  static List<Map<String, dynamic>> buildReasoningFromSnapshot(
+    LifeContextSnapshot snapshot, {
+    String legacyPersonalNotes = '',
+  }) {
     final reasoning = <Map<String, dynamic>>[];
 
-    reasoning.addAll(_buildWorkReasoning(profile));
-    reasoning.addAll(_buildChildrenSchoolReasoning(profile));
-    reasoning.addAll(_buildChildrenActivitiesReasoning(profile));
-    reasoning.addAll(_buildPersonalActivitiesReasoning(profile));
-    reasoning.addAll(_buildPreferenceReasoning(profile));
+    reasoning.addAll(_buildWorkReasoning(snapshot));
+    reasoning.addAll(_buildChildrenSchoolReasoning(snapshot));
+    reasoning.addAll(_buildChildrenActivitiesReasoning(snapshot));
+    reasoning.addAll(_buildPersonalActivitiesReasoning(snapshot));
+    reasoning.addAll(
+      _buildPreferenceReasoning(
+        snapshot,
+        legacyPersonalNotes: legacyPersonalNotes,
+      ),
+    );
 
     return reasoning;
   }
 
-  static List<Map<String, dynamic>> _buildWorkReasoning(UserProfile profile) {
+  static List<Map<String, dynamic>> _buildWorkReasoning(
+    LifeContextSnapshot snapshot,
+  ) {
     final reasoning = <Map<String, dynamic>>[];
+    final work = snapshot.work;
+    final workDays = work.workDays?.value ?? const <String>[];
+    final transportInfo = snapshot.mobility.transportInfo?.value ?? '';
 
-    for (final range in profile.workTimeRanges) {
+    for (final range in work.timeRanges) {
       if (!_hasValidTimeRange(range)) continue;
 
       reasoning.add(_blockedPeriod(
         sourceType: "work",
-        label: range.label.isNotEmpty ? range.label : "Travail",
-        days: profile.workDays,
-        startTime: range.startTime,
-        endTime: range.endTime,
-        travelMinutes: range.travelMinutes,
-        notes: range.notes,
+        label: _value(range.label).isNotEmpty ? _value(range.label) : "Travail",
+        days: workDays,
+        startTime: _value(range.startTime),
+        endTime: _value(range.endTime),
+        travelMinutes: _value(range.travelMinutes),
+        notes: _value(range.notes),
       ));
     }
 
-    if (profile.morningStart.isNotEmpty && profile.morningEnd.isNotEmpty) {
+    final morningStart = _value(work.legacyMorningStart);
+    final morningEnd = _value(work.legacyMorningEnd);
+    if (morningStart.isNotEmpty && morningEnd.isNotEmpty) {
       reasoning.add(_blockedPeriod(
         sourceType: "work",
         label: "Travail matin",
-        days: profile.workDays,
-        startTime: profile.morningStart,
-        endTime: profile.morningEnd,
-        travelMinutes: profile.transportInfo,
+        days: workDays,
+        startTime: morningStart,
+        endTime: morningEnd,
+        travelMinutes: transportInfo,
       ));
     }
 
-    if (profile.afternoonStart.isNotEmpty && profile.afternoonEnd.isNotEmpty) {
+    final afternoonStart = _value(work.legacyAfternoonStart);
+    final afternoonEnd = _value(work.legacyAfternoonEnd);
+    if (afternoonStart.isNotEmpty && afternoonEnd.isNotEmpty) {
       reasoning.add(_blockedPeriod(
         sourceType: "work",
         label: "Travail après-midi",
-        days: profile.workDays,
-        startTime: profile.afternoonStart,
-        endTime: profile.afternoonEnd,
-        travelMinutes: profile.transportInfo,
+        days: workDays,
+        startTime: afternoonStart,
+        endTime: afternoonEnd,
+        travelMinutes: transportInfo,
       ));
     }
 
-    if (_containsAny(profile.workHours, [
+    final workHours = _value(work.legacyWorkHours);
+    if (_containsAny(workHours, [
       "travail de nuit",
       "horaires de nuit",
       "je travaille de nuit",
@@ -65,9 +107,9 @@ class ProfileReasoningService {
         "sourceType": "work",
         "scheduleMode": "night",
         "avoidMorning": true,
-        "source": profile.workHours,
+        "source": workHours,
       });
-    } else if (_containsAny(profile.workHours, [
+    } else if (_containsAny(workHours, [
       "travail le soir",
       "je travaille le soir",
       "horaires du soir",
@@ -80,7 +122,7 @@ class ProfileReasoningService {
         "sourceType": "work",
         "scheduleMode": "late",
         "avoidMorning": false,
-        "source": profile.workHours,
+        "source": workHours,
       });
     }
 
@@ -88,24 +130,34 @@ class ProfileReasoningService {
   }
 
   static List<Map<String, dynamic>> _buildChildrenSchoolReasoning(
-    UserProfile profile,
+    LifeContextSnapshot snapshot,
   ) {
     final reasoning = <Map<String, dynamic>>[];
 
-    for (final child in profile.children) {
-      for (final range in child.schoolTimeRanges) {
+    for (var index = 0;
+        index < snapshot.routines.childRoutines.length;
+        index++) {
+      final routine = snapshot.routines.childRoutines[index];
+      final child = index < snapshot.household.children.length
+          ? snapshot.household.children[index]
+          : null;
+      final childName = _value(routine.childName);
+      final school = _value(child?.school);
+
+      for (final range in routine.schoolTimeRanges) {
         if (!_hasValidTimeRange(range)) continue;
+        final legacyRange = _legacyTimeRange(range);
 
         reasoning.add(_blockedPeriod(
           sourceType: "child_school",
-          label: child.school.isNotEmpty
-              ? "École ${child.firstName} - ${child.school}"
-              : "École ${child.firstName}",
-          days: SchoolScheduleMetadataService.daysFromRange(range),
-          startTime: range.startTime,
-          endTime: range.endTime,
-          travelMinutes: range.travelMinutes,
-          notes: SchoolScheduleMetadataService.cleanNotes(range),
+          label: school.isNotEmpty
+              ? "École $childName - $school"
+              : "École $childName",
+          days: SchoolScheduleMetadataService.daysFromRange(legacyRange),
+          startTime: _value(range.startTime),
+          endTime: _value(range.endTime),
+          travelMinutes: _value(range.travelMinutes),
+          notes: SchoolScheduleMetadataService.cleanNotes(legacyRange),
         ));
       }
     }
@@ -114,28 +166,30 @@ class ProfileReasoningService {
   }
 
   static List<Map<String, dynamic>> _buildChildrenActivitiesReasoning(
-    UserProfile profile,
+    LifeContextSnapshot snapshot,
   ) {
     final reasoning = <Map<String, dynamic>>[];
 
-    for (final child in profile.children) {
-      for (final activity in child.activities) {
+    for (final childRoutine in snapshot.routines.childRoutines) {
+      final childName = _value(childRoutine.childName);
+      for (final activity in childRoutine.activities) {
         for (final range in activity.timeRanges) {
           if (!_hasValidTimeRange(range)) continue;
 
-          final travelMinutes = activity.travelMinutes.isNotEmpty
-              ? activity.travelMinutes
-              : range.travelMinutes;
+          final activityTravel = _value(activity.travelMinutes);
+          final travelMinutes = activityTravel.isNotEmpty
+              ? activityTravel
+              : _value(range.travelMinutes);
 
           reasoning.add(_blockedPeriod(
             sourceType: "child_activity",
-            label: "${activity.title} - ${child.firstName}",
-            days: activity.days,
-            startTime: range.startTime,
-            endTime: range.endTime,
+            label: "${_value(activity.title)} - $childName",
+            days: activity.days?.value ?? const <String>[],
+            startTime: _value(range.startTime),
+            endTime: _value(range.endTime),
             travelMinutes: travelMinutes,
-            location: activity.location,
-            notes: activity.notes,
+            location: _value(activity.location),
+            notes: _value(activity.notes),
           ));
         }
       }
@@ -145,27 +199,28 @@ class ProfileReasoningService {
   }
 
   static List<Map<String, dynamic>> _buildPersonalActivitiesReasoning(
-    UserProfile profile,
+    LifeContextSnapshot snapshot,
   ) {
     final reasoning = <Map<String, dynamic>>[];
 
-    for (final activity in profile.personalActivities) {
+    for (final activity in snapshot.routines.personalActivities) {
       for (final range in activity.timeRanges) {
         if (!_hasValidTimeRange(range)) continue;
 
-        final travelMinutes = activity.travelMinutes.isNotEmpty
-            ? activity.travelMinutes
-            : range.travelMinutes;
+        final activityTravel = _value(activity.travelMinutes);
+        final travelMinutes = activityTravel.isNotEmpty
+            ? activityTravel
+            : _value(range.travelMinutes);
 
         reasoning.add(_blockedPeriod(
           sourceType: "personal_activity",
-          label: activity.title,
-          days: activity.days,
-          startTime: range.startTime,
-          endTime: range.endTime,
+          label: _value(activity.title),
+          days: activity.days?.value ?? const <String>[],
+          startTime: _value(range.startTime),
+          endTime: _value(range.endTime),
           travelMinutes: travelMinutes,
-          location: activity.location,
-          notes: activity.notes,
+          location: _value(activity.location),
+          notes: _value(activity.notes),
         ));
       }
     }
@@ -174,17 +229,18 @@ class ProfileReasoningService {
   }
 
   static List<Map<String, dynamic>> _buildPreferenceReasoning(
-    UserProfile profile,
-  ) {
+    LifeContextSnapshot snapshot, {
+    required String legacyPersonalNotes,
+  }) {
     final reasoning = <Map<String, dynamic>>[];
 
     final text = [
-      profile.preferences,
-      profile.habits,
-      profile.planningStyle,
-      profile.childcareInfo,
-      profile.transportInfo,
-      profile.personalNotes,
+      _value(snapshot.preferences.legacyPreferences),
+      _value(snapshot.routines.legacyHabits),
+      _value(snapshot.preferences.planningStyle),
+      _value(snapshot.household.childcareInfo),
+      _value(snapshot.mobility.transportInfo),
+      legacyPersonalNotes,
     ].join(" ").toLowerCase();
 
     if (_containsAny(text, [
@@ -250,8 +306,23 @@ class ProfileReasoningService {
     };
   }
 
-  static bool _hasValidTimeRange(TimeRangeModel range) {
-    return range.startTime.trim().isNotEmpty && range.endTime.trim().isNotEmpty;
+  static TimeRangeModel _legacyTimeRange(LifeContextTimeRange range) {
+    return TimeRangeModel(
+      label: _value(range.label),
+      startTime: _value(range.startTime),
+      endTime: _value(range.endTime),
+      travelMinutes: _value(range.travelMinutes),
+      notes: _value(range.notes),
+    );
+  }
+
+  static bool _hasValidTimeRange(LifeContextTimeRange range) {
+    return _value(range.startTime).trim().isNotEmpty &&
+        _value(range.endTime).trim().isNotEmpty;
+  }
+
+  static String _value(LifeContextFact<String>? fact) {
+    return fact?.value ?? '';
   }
 
   static bool _containsAny(String text, List<String> values) {
