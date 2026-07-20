@@ -2,7 +2,7 @@ import '../services/chat_service.dart';
 import '../services/chat_planning_helper_service.dart';
 import 'package:flutter/material.dart';
 
-import '../models/chat_backend_request.dart';
+import '../models/conversation_models.dart';
 import '../models/user_profile.dart';
 import '../models/task_model.dart';
 import '../models/event_model.dart';
@@ -13,7 +13,6 @@ import '../services/event_confirmation_service.dart';
 import '../services/notification_service.dart';
 import '../services/voice_service.dart';
 import '../services/memory_service.dart';
-import '../services/memory_pipeline_service.dart';
 import '../services/memory_context_builder_service.dart';
 import '../services/memory_reasoning_service.dart';
 import '../services/smart_planning_service.dart';
@@ -25,26 +24,27 @@ import '../services/selected_slot_schedule_service.dart';
 import '../services/selected_slot_revalidation_service.dart';
 import '../services/planning_draft_service.dart';
 import '../services/profile_reasoning_service.dart';
-import '../services/profile_context_builder_service.dart';
 import '../services/planner_engine_service.dart';
 import '../services/conflict_engine_service.dart';
-import '../services/zelia_response_builder.dart';
 import '../services/action_handler_service.dart';
-import '../services/zelia_action_guard_service.dart';
 import '../services/natural_date_service.dart';
 import '../services/chat_backend_client.dart';
 import '../services/chat_backend_client_factory.dart';
+import '../services/conversation_context_service.dart';
+import '../services/conversation_coordinator.dart';
 
 class ChatScreen extends StatefulWidget {
   final UserProfile profile;
   final String? initialAssistantMessage;
   final ChatBackendClient? backendClient;
+  final ConversationContextProvider? conversationContextProvider;
 
   const ChatScreen({
     super.key,
     required this.profile,
     this.initialAssistantMessage,
     this.backendClient,
+    this.conversationContextProvider,
   });
 
   @override
@@ -56,6 +56,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final VoiceService voiceService = VoiceService();
   late final ChatBackendClient backend;
   late final bool _ownsBackend;
+  late final ConversationCoordinator conversationCoordinator;
 
   bool loading = false;
   bool isListening = false;
@@ -65,7 +66,6 @@ class _ChatScreenState extends State<ChatScreen> {
   Map<String, dynamic>? pendingDurationEvent;
   Map<String, dynamic>? pendingTravelEvent;
   Map<String, dynamic>? pendingConflictResolutionEvent;
-  EventModel? pendingConfirmationEvent;
   SmartPlanningProposal? pendingSmartPlanningProposal;
   Map<String, dynamic>? pendingSmartPlanningTask;
   Map<String, dynamic>? pendingDurationPlanningTask;
@@ -93,11 +93,23 @@ class _ChatScreenState extends State<ChatScreen> {
     final injectedBackend = widget.backendClient;
     _ownsBackend = injectedBackend == null;
     backend = injectedBackend ?? createDefaultChatBackendClient();
+    conversationCoordinator = ConversationCoordinator(
+      backend: backend,
+      contextProvider: widget.conversationContextProvider ??
+          const DefaultConversationContextProvider(),
+    );
     currentConversationId = DateTime.now().millisecondsSinceEpoch.toString();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       showInitialAssistantMessage(widget.initialAssistantMessage);
     });
+  }
+
+  EventModel? get pendingConfirmationEvent =>
+      conversationCoordinator.state.pendingAction?.event;
+
+  set pendingConfirmationEvent(EventModel? event) {
+    conversationCoordinator.setPendingEventConfirmation(event);
   }
 
   @override
@@ -1675,39 +1687,28 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<bool> tryCompletePendingEventConfirmation(
     String text,
   ) async {
-    final event = pendingConfirmationEvent;
-
-    if (event == null) return false;
-
-    if (PlannerEngineService.isNegativeAnswer(text)) {
-      pendingConfirmationEvent = null;
-
-      addAssistantMessage(
-        EventConfirmationService.buildCancellationMessage(event),
-      );
-
-      return true;
-    }
-
-    if (!PlannerEngineService.isPositiveAnswer(text)) {
-      addAssistantMessage(
-        EventConfirmationService.buildExpectedAnswerMessage(),
-      );
-
-      return true;
-    }
-
-    final result = await EventConfirmationService.confirm(
-      event: event,
-      conflictChecker: EventService.getOverlapConflict,
-      addEvent: EventService.addEvent,
-      addEvents: EventService.addEvents,
-      showNotification: NotificationService.showNotification,
+    final resolution =
+        await conversationCoordinator.resolvePendingEventConfirmation(
+      answer: text,
+      isPositiveAnswer: PlannerEngineService.isPositiveAnswer,
+      isNegativeAnswer: PlannerEngineService.isNegativeAnswer,
+      cancellationMessage: EventConfirmationService.buildCancellationMessage,
+      expectedAnswerMessage:
+          EventConfirmationService.buildExpectedAnswerMessage,
+      execute: (event) async {
+        final result = await EventConfirmationService.confirm(
+          event: event,
+          conflictChecker: EventService.getOverlapConflict,
+          addEvent: EventService.addEvent,
+          addEvents: EventService.addEvents,
+          showNotification: NotificationService.showNotification,
+        );
+        return result.message;
+      },
     );
 
-    pendingConfirmationEvent = null;
-    addAssistantMessage(result.message);
-
+    if (resolution == null) return false;
+    addAssistantMessage(resolution.message);
     return true;
   }
 
@@ -2106,124 +2107,21 @@ class _ChatScreenState extends State<ChatScreen> {
       final completedPending = await tryCompletePendingDuration(text);
       if (completedPending) return;
 
-      if (MemoryPipelineService.shouldProcessMemory(text)) {
-        final memory = MemoryPipelineService.buildMemory(text);
-
-        final payload = MemoryPipelineService.buildSavePayload(
-          memory,
-          fallbackText: text,
-        );
-
-        await MemoryService.saveMemory(
-          text: payload.text,
-          category: payload.category,
-          importance: payload.importance,
-        );
-      }
-
-      final rawMemories = await MemoryService.getMemories();
-      final savedMemories = rawMemories.map((memory) {
-        return {
-          "text": memory["text"]?.toString() ?? "",
-          "category": memory["category"]?.toString() ?? "personal",
-          "importance":
-              int.tryParse(memory["importance"]?.toString() ?? "0") ?? 0,
-          "createdAt": memory["createdAt"],
-        };
-      }).toList();
-
-      final relevantMemories =
-          MemoryContextBuilderService.buildRelevantMemoryPayload(
-        memories: savedMemories,
-        limit: 12,
+      final outcome = await conversationCoordinator.send(
+        input: ConversationInput(message: text, profile: widget.profile),
+        executeAction: (action) async {
+          final actionText = await handleAction(action);
+          final planningTitle = pendingSmartPlanningTask != null
+              ? (pendingSmartPlanningTask!["task"] as TaskModel).title
+              : null;
+          return ConversationActionOutcome(
+            message: actionText,
+            planningTitle: planningTitle,
+          );
+        },
       );
 
-      final memoryReasoning =
-          MemoryReasoningService.buildReasoning(relevantMemories);
-
-      final profileContext =
-          ProfileContextBuilderService.buildStructuredContext(widget.profile);
-
-      final savedEvents = await EventService.getEvents();
-      final existingEvents = savedEvents.map((event) {
-        return {
-          "title": event.title,
-          "date": event.date,
-          "time": event.time,
-          "startDateTimeIso": event.startDateTimeIso,
-          "endTime": event.endTime,
-          "endDateTimeIso": event.endDateTimeIso,
-          "durationMinutes": event.durationMinutes,
-        };
-      }).toList();
-
-      final request = ChatBackendRequest(
-        message: text,
-        profile: widget.profile.toJson(),
-        profileContext: profileContext,
-        memories: relevantMemories,
-        memoryReasoning: memoryReasoning,
-        events: existingEvents,
-      );
-
-      final response = await backend.send(request);
-
-      String reply = response.reply;
-      final actions = response.actions;
-      final newMemories = response.memories;
-
-      final actionMessages = <String>[];
-      final shoppingTitles = <String>[];
-      final taskTitles = <String>[];
-      final eventTitles = <String>[];
-
-      for (final rawAction in actions) {
-        final guarded = ZeliaActionGuardService.guard(rawAction);
-
-        if (!guarded.isAccepted || guarded.action == null) {
-          continue;
-        }
-
-        final action = guarded.action!;
-        final type = action["type"]?.toString() ?? "";
-        final title = action["title"]?.toString() ?? "";
-
-        if (type == "shopping" && title.isNotEmpty) {
-          shoppingTitles.add(title);
-        }
-
-        if (type == "task" && title.isNotEmpty) {
-          taskTitles.add(title);
-        }
-
-        if (type == "event" && title.isNotEmpty) {
-          eventTitles.add(title);
-        }
-
-        final actionText = await handleAction(action);
-        if (actionText.isNotEmpty) actionMessages.add(actionText);
-      }
-
-      for (final memory in newMemories) {
-        await handleMemory(memory);
-      }
-
-      if (actionMessages.isNotEmpty) {
-        reply = actionMessages.join("\n\n");
-      } else if (actions.isNotEmpty) {
-        final planningTitle = pendingSmartPlanningTask != null
-            ? (pendingSmartPlanningTask!["task"] as TaskModel).title
-            : null;
-
-        reply = ZeliaResponseBuilder.buildGroupedActionReply(
-          shoppingTitles: shoppingTitles,
-          taskTitles: taskTitles,
-          eventTitles: eventTitles,
-          planningTitle: planningTitle,
-        );
-      }
-
-      addAssistantMessage(reply);
+      if (outcome != null) addAssistantMessage(outcome.reply);
     } catch (e) {
       final errorText = "Je rencontre un petit souci : $e";
       addAssistantMessage(errorText);
@@ -2234,28 +2132,6 @@ class _ChatScreenState extends State<ChatScreen> {
         });
       }
     }
-  }
-
-  Future<void> handleMemory(dynamic memory) async {
-    if (memory is! Map) return;
-
-    final text = memory["text"]?.toString() ?? "";
-
-    if (text.trim().isEmpty) return;
-    if (!MemoryPipelineService.shouldProcessMemory(text)) return;
-
-    final builtMemory = MemoryPipelineService.buildMemory(text);
-
-    final payload = MemoryPipelineService.buildSavePayload(
-      builtMemory,
-      fallbackText: text,
-    );
-
-    await MemoryService.saveMemory(
-      text: payload.text,
-      category: payload.category,
-      importance: payload.importance,
-    );
   }
 
   Future<void> startListening() async {
