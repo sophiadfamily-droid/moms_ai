@@ -139,7 +139,9 @@ class _TasksScreenState extends State<TasksScreen> {
   }
 
   int indexOfTask(TaskModel task) {
-    return tasks.indexOf(task);
+    return tasks.indexWhere(
+      (current) => TaskService.areSameTask(current, task),
+    );
   }
 
   Future<void> toggleTask(TaskModel task) async {
@@ -169,7 +171,7 @@ class _TasksScreenState extends State<TasksScreen> {
   }
 
   Future<void> deleteTask(TaskModel task) async {
-    tasks.remove(task);
+    tasks.removeWhere((current) => TaskService.areSameTask(current, task));
     await saveCurrentTasks();
   }
 
@@ -344,17 +346,26 @@ class _TasksScreenState extends State<TasksScreen> {
                         final title = titleController.text.trim();
                         if (title.isEmpty) return;
 
-                        final updated = TaskModel(
-                          title: title,
-                          category: category,
-                          isDone: task?.isDone ?? false,
-                          createdAt: task?.createdAt ?? DateTime.now(),
-                          isImportant: important,
-                          dueDate: dueDateController.text.trim(),
-                          notes: notesController.text.trim(),
-                          planning: planning,
-                          priority: priority,
-                        );
+                        final updated = task?.copyWith(
+                              title: title,
+                              category: category,
+                              isImportant: important,
+                              dueDate: dueDateController.text.trim(),
+                              notes: notesController.text.trim(),
+                              planning: planning,
+                              priority: priority,
+                            ) ??
+                            TaskModel(
+                              title: title,
+                              category: category,
+                              isDone: false,
+                              createdAt: DateTime.now(),
+                              isImportant: important,
+                              dueDate: dueDateController.text.trim(),
+                              notes: notesController.text.trim(),
+                              planning: planning,
+                              priority: priority,
+                            );
 
                         if (isEdit) {
                           final index = indexOfTask(task);
@@ -895,7 +906,8 @@ class _TasksScreenState extends State<TasksScreen> {
             children: [
               Dismissible(
                 key: ValueKey(
-                  "${task.title}-${task.createdAt.toIso8601String()}",
+                  task.id ??
+                      "${task.title}-${task.createdAt.toIso8601String()}",
                 ),
                 direction: DismissDirection.horizontal,
                 background: buildSwipeBackground(

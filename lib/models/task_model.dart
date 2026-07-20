@@ -1,4 +1,5 @@
 class TaskModel {
+  final String? id;
   final String title;
   final String category;
   final bool isDone;
@@ -14,6 +15,7 @@ class TaskModel {
   final String priority;
 
   TaskModel({
+    this.id,
     required this.title,
     required this.category,
     required this.isDone,
@@ -26,6 +28,7 @@ class TaskModel {
   });
 
   TaskModel copyWith({
+    String? id,
     String? title,
     String? category,
     bool? isDone,
@@ -37,6 +40,7 @@ class TaskModel {
     String? priority,
   }) {
     return TaskModel(
+      id: id ?? this.id,
       title: title ?? this.title,
       category: category ?? this.category,
       isDone: isDone ?? this.isDone,
@@ -51,6 +55,7 @@ class TaskModel {
 
   Map<String, dynamic> toJson() {
     return {
+      if (id != null) "id": id,
       "title": title,
       "category": category,
       "isDone": isDone,
@@ -67,6 +72,7 @@ class TaskModel {
     Map<String, dynamic> json,
   ) {
     return TaskModel(
+      id: json["id"] is String ? json["id"] as String : null,
       title: json["title"] ?? "",
       category: json["category"] ?? "Perso",
       isDone: json["isDone"] ?? false,
@@ -82,4 +88,3 @@ class TaskModel {
     );
   }
 }
-

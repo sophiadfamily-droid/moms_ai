@@ -3,11 +3,20 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/identity/entity_id_generator.dart';
+import '../core/identity/entity_identity.dart';
+import '../core/identity/entity_matcher.dart';
+import '../core/identity/uuid_v7_entity_id_generator.dart';
 import '../models/task_model.dart';
 import 'cloud_task_service.dart';
 
 class TaskService {
   static const String tasksKey = "tasks";
+
+  static final EntityMatcher<TaskModel> _taskMatcher = EntityMatcher(
+    idOf: (task) => task.id,
+    legacyEquals: (first, second) => first == second,
+  );
 
   static final ValueNotifier<int> tasksVersion = ValueNotifier<int>(0);
 
@@ -67,10 +76,26 @@ class TaskService {
     return localTasks;
   }
 
-  static Future<void> addTask(TaskModel task) async {
+  static Future<void> addTask(
+    TaskModel task, {
+    EntityIdGenerator idGenerator = const UuidV7EntityIdGenerator(),
+  }) async {
     final tasks = await getTasks();
-    tasks.add(task);
+    tasks.add(_withIdForCreation(task, idGenerator));
     await saveTasks(tasks);
+  }
+
+  static TaskModel _withIdForCreation(
+    TaskModel task,
+    EntityIdGenerator idGenerator,
+  ) {
+    if (EntityIdentity.isValid(task.id)) return task;
+    final generatedId = idGenerator.generate();
+    return task.copyWith(id: generatedId);
+  }
+
+  static bool areSameTask(TaskModel first, TaskModel second) {
+    return _taskMatcher.matches(first, second);
   }
 
   static Future<void> updateTasks(List<TaskModel> tasks) async {

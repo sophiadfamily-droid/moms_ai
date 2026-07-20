@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../core/identity/entity_identity.dart';
 import '../models/task_model.dart';
 import 'auth_service.dart';
 
@@ -20,7 +21,9 @@ class CloudTaskService {
     return _firestore.collection("users").doc(uid).collection("tasks");
   }
 
-  static String _taskId(TaskModel task) {
+  static String documentIdForTask(TaskModel task) {
+    if (EntityIdentity.isValid(task.id)) return task.id!;
+
     final raw = [
       task.createdAt.toIso8601String(),
       task.title,
@@ -45,13 +48,13 @@ class CloudTaskService {
     }
 
     for (final task in tasks) {
-      final data = task.toJson()
+      final data = firestoreDataForTask(task)
         ..addAll({
           "schemaVersion": 1,
           "updatedAt": FieldValue.serverTimestamp(),
         });
 
-      batch.set(ref.doc(_taskId(task)), data);
+      batch.set(ref.doc(documentIdForTask(task)), data);
     }
 
     await batch.commit();
@@ -66,9 +69,25 @@ class CloudTaskService {
 
     final snapshot = await ref.orderBy("createdAt", descending: true).get();
 
-    return snapshot.docs.map((doc) {
-      return TaskModel.fromJson(doc.data());
-    }).toList();
+    return snapshot.docs
+        .map(
+          (doc) => taskFromDocument(
+            documentId: doc.id,
+            data: doc.data(),
+          ),
+        )
+        .toList();
+  }
+
+  static TaskModel taskFromDocument({
+    required String documentId,
+    required Map<String, dynamic> data,
+  }) {
+    return TaskModel.fromJson({...data, "id": documentId});
+  }
+
+  static Map<String, dynamic> firestoreDataForTask(TaskModel task) {
+    return Map<String, dynamic>.from(task.toJson())..remove("id");
   }
 
   static Future<void> clearTasks() async {
