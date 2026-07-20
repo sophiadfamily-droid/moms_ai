@@ -62,7 +62,6 @@ void main() {
       );
       final fromSnapshot = ProfileReasoningService.buildReasoningFromSnapshot(
         snapshot,
-        legacyPersonalNotes: profile.personalNotes,
       );
 
       expect(bridged, fromSnapshot);
@@ -87,15 +86,17 @@ void main() {
       expect(bridged[5]['preferredPeriod'], 'afternoon');
     });
 
-    test('temporarily preserves personalNotes absent from snapshot v1', () {
+    test('reads personalNotes exclusively from the snapshot notes context', () {
       final profile = _profile(
         personalNotes: 'Je préfère organiser mes rendez-vous l’après-midi',
       );
-
-      final reasoning = ProfileReasoningService.buildReasoning(
-        profile,
+      final snapshot = const UserProfileLifeContextMapper().map(
+        profile: profile,
         generatedAt: generatedAt,
       );
+
+      final reasoning =
+          ProfileReasoningService.buildReasoningFromSnapshot(snapshot);
 
       expect(reasoning.single['type'], 'schedule_preference');
       expect(reasoning.single['preferredPeriod'], 'afternoon');

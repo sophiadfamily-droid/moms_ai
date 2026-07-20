@@ -21,16 +21,12 @@ class ProfileReasoningService {
       generatedAt: generatedAt ?? DateTime.now(),
     );
 
-    return buildReasoningFromSnapshot(
-      snapshot,
-      legacyPersonalNotes: profile.personalNotes,
-    );
+    return buildReasoningFromSnapshot(snapshot);
   }
 
   static List<Map<String, dynamic>> buildReasoningFromSnapshot(
-    LifeContextSnapshot snapshot, {
-    String legacyPersonalNotes = '',
-  }) {
+    LifeContextSnapshot snapshot,
+  ) {
     final reasoning = <Map<String, dynamic>>[];
 
     reasoning.addAll(_buildWorkReasoning(snapshot));
@@ -38,10 +34,7 @@ class ProfileReasoningService {
     reasoning.addAll(_buildChildrenActivitiesReasoning(snapshot));
     reasoning.addAll(_buildPersonalActivitiesReasoning(snapshot));
     reasoning.addAll(
-      _buildPreferenceReasoning(
-        snapshot,
-        legacyPersonalNotes: legacyPersonalNotes,
-      ),
+      _buildPreferenceReasoning(snapshot),
     );
 
     return reasoning;
@@ -229,9 +222,8 @@ class ProfileReasoningService {
   }
 
   static List<Map<String, dynamic>> _buildPreferenceReasoning(
-    LifeContextSnapshot snapshot, {
-    required String legacyPersonalNotes,
-  }) {
+    LifeContextSnapshot snapshot,
+  ) {
     final reasoning = <Map<String, dynamic>>[];
 
     final text = [
@@ -240,7 +232,7 @@ class ProfileReasoningService {
       _value(snapshot.preferences.planningStyle),
       _value(snapshot.household.childcareInfo),
       _value(snapshot.mobility.transportInfo),
-      legacyPersonalNotes,
+      _value(snapshot.notes.personalNotes),
     ].join(" ").toLowerCase();
 
     if (_containsAny(text, [

@@ -51,6 +51,9 @@ void main() {
       partnerName: 'Projection Partner',
       wantsNotifications: false,
       children: const [],
+      personalNotes: 'projection-personal',
+      adminNotes: 'projection-admin',
+      budgetNotes: 'projection-budget',
     );
     var projectionCalls = 0;
     final engine = LifeContextEngine(
@@ -78,7 +81,16 @@ void main() {
     expect(context['work'], containsPair('workStatus', 'projection-work'));
     expect(
       context['lifeContext'],
-      containsPair('personalNotes', input.personalNotes),
+      {
+        'personalNotes': 'projection-personal',
+        'vehicleInfo': '',
+        'petsInfo': '',
+        'transportInfo': '',
+        'adminNotes': 'projection-admin',
+        'budgetNotes': 'projection-budget',
+        'importantPlaces': '',
+        'personalActivities': const <Map<String, dynamic>>[],
+      },
     );
   });
 
@@ -96,9 +108,6 @@ void main() {
     final fromSnapshot =
         ProfileContextBuilderService.buildStructuredContextFromSnapshot(
       snapshot,
-      legacyPersonalNotes: profile.personalNotes,
-      legacyAdminNotes: profile.adminNotes,
-      legacyBudgetNotes: profile.budgetNotes,
     );
 
     expect(fromSnapshot, fromProfile);
@@ -111,6 +120,42 @@ void main() {
       }
     }
   });
+
+  for (final notes in [
+    const <String>[],
+    const ['personnelle'],
+    const ['personnelle', 'administrative', 'budget'],
+  ]) {
+    test('preserves ${notes.length} note values from the snapshot', () {
+      final profile = UserProfile(
+        firstName: 'Sophia',
+        familyStatus: '',
+        workStatus: '',
+        partnerName: '',
+        wantsNotifications: true,
+        children: const [],
+        personalNotes: notes.isNotEmpty ? notes[0] : '',
+        adminNotes: notes.length > 1 ? notes[1] : '',
+        budgetNotes: notes.length > 2 ? notes[2] : '',
+      );
+      final snapshot = LifeContextEngine().buildSnapshot(
+        profile: profile,
+        generatedAt: generatedAt,
+      );
+
+      final context =
+          ProfileContextBuilderService.buildStructuredContextFromSnapshot(
+        snapshot,
+      );
+
+      expect(context['lifeContext'],
+          containsPair('personalNotes', notes.isNotEmpty ? notes[0] : ''));
+      expect(context['lifeContext'],
+          containsPair('adminNotes', notes.length > 1 ? notes[1] : ''));
+      expect(context['lifeContext'],
+          containsPair('budgetNotes', notes.length > 2 ? notes[2] : ''));
+    });
+  }
 }
 
 UserProfile _completeProfile() {

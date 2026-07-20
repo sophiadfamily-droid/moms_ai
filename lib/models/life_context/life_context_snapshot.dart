@@ -1,9 +1,10 @@
 import 'identity_context.dart';
 import 'intent_context.dart';
+import 'notes_context.dart';
 import 'schedule_context.dart';
 
 final class LifeContextSnapshot {
-  static const int currentSchemaVersion = 1;
+  static const int currentSchemaVersion = 2;
 
   final int schemaVersion;
   final DateTime generatedAt;
@@ -17,6 +18,7 @@ final class LifeContextSnapshot {
   final GoalContext goals;
   final PreferenceContext preferences;
   final ConstraintContext constraints;
+  final NotesContext notes;
 
   LifeContextSnapshot({
     this.schemaVersion = currentSchemaVersion,
@@ -31,6 +33,7 @@ final class LifeContextSnapshot {
     required this.goals,
     required this.preferences,
     required this.constraints,
+    this.notes = const NotesContext(),
   });
 
   Map<String, dynamic> toJson() => {
@@ -46,5 +49,6 @@ final class LifeContextSnapshot {
         'goals': goals.toJson(),
         'preferences': preferences.toJson(),
         'constraints': constraints.toJson(),
+        'notes': notes.toJson(),
       };
 }

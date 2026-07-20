@@ -11,7 +11,7 @@ void main() {
   const mapper = UserProfileLifeContextMapper();
   final generatedAt = DateTime.utc(2026, 7, 20, 10, 30);
 
-  group('LifeContextSnapshot v1', () {
+  group('LifeContextSnapshot v2', () {
     test('can represent a minimal immutable snapshot', () {
       final snapshot = LifeContextSnapshot(
         generatedAt: generatedAt,
@@ -32,7 +32,7 @@ void main() {
         constraints: const ConstraintContext(),
       );
 
-      expect(snapshot.schemaVersion, 1);
+      expect(snapshot.schemaVersion, 2);
       expect(snapshot.generatedAt, same(generatedAt));
       expect(snapshot.identity.firstName, isNull);
       expect(snapshot.household.children, isEmpty);
@@ -46,7 +46,7 @@ void main() {
       final snapshot =
           mapper.map(profile: _completeProfile(), generatedAt: generatedAt);
 
-      expect(snapshot.schemaVersion, 1);
+      expect(snapshot.schemaVersion, 2);
       expect(snapshot.generatedAt, same(generatedAt));
       expect(snapshot.identity.firstName?.value, 'Sophia');
       expect(snapshot.identity.birthDate?.value, '01/01/1990');
@@ -79,6 +79,12 @@ void main() {
       ]);
       expect(snapshot.preferences.aiTone?.value, 'chaleureux');
       expect(snapshot.constraints.allergies?.value, 'Pénicilline');
+      expect(
+        snapshot.notes.personalNotes?.value,
+        'Notes personnelles non classées',
+      );
+      expect(snapshot.notes.adminNotes?.value, 'Dossier administratif');
+      expect(snapshot.notes.budgetNotes?.value, 'Budget mensuel');
     });
 
     test('preserves absent values instead of inventing them', () {
@@ -97,6 +103,9 @@ void main() {
       expect(snapshot.places.importantPlaces, isNull);
       expect(snapshot.work.workDays, isNull);
       expect(snapshot.goals.goals, isEmpty);
+      expect(snapshot.notes.personalNotes, isNull);
+      expect(snapshot.notes.adminNotes, isNull);
+      expect(snapshot.notes.budgetNotes, isNull);
       expect((json['identity'] as Map<String, dynamic>).containsKey('lastName'),
           isFalse);
       expect((json['identity'] as Map<String, dynamic>).containsKey('city'),
@@ -129,6 +138,50 @@ void main() {
             .map((item) => item['sourceId']),
         ['UserProfile.age'],
       );
+    });
+
+    test('keeps note metadata separate from its historical provenance', () {
+      final snapshot =
+          mapper.map(profile: _completeProfile(), generatedAt: generatedAt);
+
+      for (final entry in {
+        'personalNotes': snapshot.notes.personalNotes,
+        'adminNotes': snapshot.notes.adminNotes,
+        'budgetNotes': snapshot.notes.budgetNotes,
+      }.entries) {
+        final note = entry.value;
+        expect(note, isNotNull);
+        expect(note?.provenance.sourceType, LifeContextSourceType.profile);
+        expect(
+          note?.provenance.evidenceType,
+          LifeContextEvidenceType.historical,
+        );
+        expect(note?.provenance.updatedAt, isNull);
+        expect(note?.provenance.sourceId, 'UserProfile.${entry.key}');
+        expect(note?.sensitivity, LifeContextSensitivity.sensitive);
+        expect(note?.confidence, isNull);
+
+        final serialized = note?.toJson();
+        expect(serialized?['sensitivity'], 'sensitive');
+        expect(serialized?['confidence'], isNull);
+        final provenance = serialized?['provenance'] as Map<String, dynamic>?;
+        expect(provenance?.containsKey('confidence'), isFalse);
+        expect(provenance?.containsKey('isSensitive'), isFalse);
+      }
+    });
+
+    test('keeps historical note text verbatim and stable', () {
+      final profile = _completeProfile();
+      final first = mapper.map(profile: profile, generatedAt: generatedAt);
+      final second = mapper.map(profile: profile, generatedAt: generatedAt);
+
+      expect(first.notes.toJson(), second.notes.toJson());
+      expect(
+        first.notes.personalNotes?.value,
+        profile.personalNotes,
+      );
+      expect(first.notes.adminNotes?.value, profile.adminNotes);
+      expect(first.notes.budgetNotes?.value, profile.budgetNotes);
     });
 
     test('keeps preferences distinct from constraints', () {
@@ -185,6 +238,7 @@ void main() {
         'goals',
         'preferences',
         'constraints',
+        'notes',
       });
       final serialized = json.toString().toLowerCase();
       expect(RegExp(r'\bevents?\b').hasMatch(serialized), isFalse);

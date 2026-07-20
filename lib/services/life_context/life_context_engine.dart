@@ -9,10 +9,10 @@ typedef LifeContextProfileProjection = LifeContextSnapshot Function({
 
 /// Read-only Life Context entry point.
 ///
-/// V1 projects profile facts only. Memory, planning, and conversation
-/// projections belong at this aggregation boundary once each source has a
-/// concrete typed contract; they are intentionally not represented by unused
-/// dependencies before then.
+/// The current snapshot projects profile facts only. Memory, planning, and
+/// conversation projections belong at this aggregation boundary once each
+/// source has a concrete typed contract; they are intentionally not represented
+/// by unused dependencies before then.
 final class LifeContextEngine {
   final LifeContextProfileProjection _profileProjection;
 

@@ -10,8 +10,6 @@ class ProfileContextBuilderService {
   /// Transitional compatibility bridge for callers that still own a profile.
   ///
   /// New consumers should call [buildStructuredContextFromSnapshot] directly.
-  /// The legacy note parameters remain explicit until those fields are modeled
-  /// by Life Context.
   static Map<String, dynamic> buildStructuredContext(
     UserProfile profile, {
     LifeContextEngine? lifeContextEngine,
@@ -22,24 +20,14 @@ class ProfileContextBuilderService {
       generatedAt: generatedAt ?? DateTime.now(),
     );
 
-    return buildStructuredContextFromSnapshot(
-      snapshot,
-      legacyPersonalNotes: profile.personalNotes,
-      legacyAdminNotes: profile.adminNotes,
-      legacyBudgetNotes: profile.budgetNotes,
-    );
+    return buildStructuredContextFromSnapshot(snapshot);
   }
 
   static Map<String, dynamic> buildStructuredContextFromSnapshot(
-    LifeContextSnapshot snapshot, {
-    String legacyPersonalNotes = '',
-    String legacyAdminNotes = '',
-    String legacyBudgetNotes = '',
-  }) {
-    final profileReasoning = ProfileReasoningService.buildReasoningFromSnapshot(
-      snapshot,
-      legacyPersonalNotes: legacyPersonalNotes,
-    );
+    LifeContextSnapshot snapshot,
+  ) {
+    final profileReasoning =
+        ProfileReasoningService.buildReasoningFromSnapshot(snapshot);
 
     return {
       "identity": _identity(snapshot),
@@ -48,12 +36,7 @@ class ProfileContextBuilderService {
       "children": _children(snapshot),
       "preferences": _preferences(snapshot),
       "health": _health(snapshot),
-      "lifeContext": _lifeContext(
-        snapshot,
-        legacyPersonalNotes: legacyPersonalNotes,
-        legacyAdminNotes: legacyAdminNotes,
-        legacyBudgetNotes: legacyBudgetNotes,
-      ),
+      "lifeContext": _lifeContext(snapshot),
       "planningReasoning": profileReasoning,
     };
   }
@@ -150,19 +133,14 @@ class ProfileContextBuilderService {
     };
   }
 
-  static Map<String, dynamic> _lifeContext(
-    LifeContextSnapshot snapshot, {
-    required String legacyPersonalNotes,
-    required String legacyAdminNotes,
-    required String legacyBudgetNotes,
-  }) {
+  static Map<String, dynamic> _lifeContext(LifeContextSnapshot snapshot) {
     return {
-      "personalNotes": legacyPersonalNotes,
+      "personalNotes": _value(snapshot.notes.personalNotes),
       "vehicleInfo": _value(snapshot.mobility.vehicleInfo),
       "petsInfo": _value(snapshot.household.petsInfo),
       "transportInfo": _value(snapshot.mobility.transportInfo),
-      "adminNotes": legacyAdminNotes,
-      "budgetNotes": legacyBudgetNotes,
+      "adminNotes": _value(snapshot.notes.adminNotes),
+      "budgetNotes": _value(snapshot.notes.budgetNotes),
       "importantPlaces": _value(snapshot.places.importantPlaces),
       "personalActivities":
           snapshot.routines.personalActivities.map(_activity).toList(),

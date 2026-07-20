@@ -2,6 +2,7 @@ import '../../models/life_context/identity_context.dart';
 import '../../models/life_context/intent_context.dart';
 import '../../models/life_context/life_context_provenance.dart';
 import '../../models/life_context/life_context_snapshot.dart';
+import '../../models/life_context/notes_context.dart';
 import '../../models/life_context/schedule_context.dart';
 import '../../models/user_profile.dart';
 
@@ -94,6 +95,12 @@ final class UserProfileLifeContextMapper {
             _explicit(profile.emergencyContactName, 'emergencyContactName'),
         emergencyContactPhone:
             _explicit(profile.emergencyContactPhone, 'emergencyContactPhone'),
+      ),
+      notes: NotesContext(
+        personalNotes:
+            _historicalSensitive(profile.personalNotes, 'personalNotes'),
+        adminNotes: _historicalSensitive(profile.adminNotes, 'adminNotes'),
+        budgetNotes: _historicalSensitive(profile.budgetNotes, 'budgetNotes'),
       ),
     );
   }
@@ -199,6 +206,22 @@ final class UserProfileLifeContextMapper {
       LifeContextSourceType.profile,
       LifeContextEvidenceType.historical,
       sourceId,
+    );
+  }
+
+  LifeContextFact<String>? _historicalSensitive(
+    String value,
+    String sourceId,
+  ) {
+    if (value.trim().isEmpty) return null;
+    return LifeContextFact(
+      value: value,
+      sensitivity: LifeContextSensitivity.sensitive,
+      provenance: LifeContextProvenance(
+        sourceType: LifeContextSourceType.profile,
+        evidenceType: LifeContextEvidenceType.historical,
+        sourceId: 'UserProfile.$sourceId',
+      ),
     );
   }
 
