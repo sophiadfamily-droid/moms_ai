@@ -125,6 +125,48 @@ void main() {
     });
   });
 
+  group('EventService identity comparison', () {
+    test('different valid IDs override identical historical properties', () {
+      final first = buildEvent(id: 'event-1');
+      final second = buildEvent(id: 'event-2');
+
+      expect(EventService.areSameEvent(first, second), isFalse);
+    });
+
+    test('legacy events retain the exact historical comparison', () {
+      final first = buildEvent();
+      final sameLegacyEvent = buildEvent();
+      final differentLegacyEvent = buildEvent(title: 'Autre titre');
+
+      expect(EventService.areSameEvent(first, sameLegacyEvent), isTrue);
+      expect(EventService.areSameEvent(first, differentLegacyEvent), isFalse);
+    });
+
+    test('ID-first deletion removes only the selected entity', () {
+      final selected = buildEvent(id: 'event-1');
+      final distinctDuplicate = buildEvent(id: 'event-2');
+      final events = [selected, distinctDuplicate]..removeWhere(
+          (event) => EventService.areSameEvent(event, selected),
+        );
+
+      expect(events, [same(distinctDuplicate)]);
+    });
+
+    test('ID-first conflict exclusion ignores only the edited entity', () {
+      final edited = buildEvent(id: 'event-1');
+      final distinctConflict = buildEvent(id: 'event-2');
+      final candidates = [edited, distinctConflict].where(
+        (event) => !EventService.areSameEvent(event, edited),
+      );
+
+      expect(candidates, [same(distinctConflict)]);
+      expect(
+        EventService.eventsProtectedOverlap(candidates.single, edited),
+        isTrue,
+      );
+    });
+  });
+
   group('EventService creation identity', () {
     setUp(() {
       SharedPreferences.setMockInitialValues({});
@@ -162,6 +204,32 @@ void main() {
       expect(stored.single.id, 'event-existing');
     });
 
+    test('replaces an empty ID with one generated ID', () async {
+      final generator = FakeEntityIdGenerator(['event-from-empty']);
+
+      await EventService.addEvent(
+        buildEvent(id: ''),
+        idGenerator: generator,
+      );
+
+      final stored = await _storedEvents();
+      expect(generator.callCount, 1);
+      expect(stored.single.id, 'event-from-empty');
+    });
+
+    test('replaces a whitespace ID with one generated ID', () async {
+      final generator = FakeEntityIdGenerator(['event-from-whitespace']);
+
+      await EventService.addEvent(
+        buildEvent(id: '   '),
+        idGenerator: generator,
+      );
+
+      final stored = await _storedEvents();
+      expect(generator.callCount, 1);
+      expect(stored.single.id, 'event-from-whitespace');
+    });
+
     test('recurring occurrences receive distinct IDs and keep their series',
         () async {
       final generator = FakeEntityIdGenerator([
@@ -197,6 +265,44 @@ void main() {
       expect(
         stored.map((event) => event.parentRecurringId).toSet(),
         {'series-1'},
+      );
+    });
+
+    test('persisted recurring base never shares its ID with occurrences',
+        () async {
+      final generator = FakeEntityIdGenerator([
+        'generated-occurrence-1',
+        'generated-occurrence-2',
+        'generated-occurrence-3',
+      ]);
+      final persistedBase = buildEvent(id: 'persisted-base-id');
+      final occurrences = EventService.buildWeeklyOccurrences(
+        baseEvent: persistedBase,
+        count: 3,
+      );
+
+      expect(occurrences, hasLength(3));
+      expect(occurrences.every((event) => event.id == null), isTrue);
+      expect(
+        occurrences.map((event) => event.parentRecurringId).toSet(),
+        hasLength(1),
+      );
+
+      await EventService.addEvents(
+        occurrences,
+        idGenerator: generator,
+      );
+
+      final stored = await _storedEvents();
+      expect(generator.callCount, 3);
+      expect(stored.map((event) => event.id).toSet(), {
+        'generated-occurrence-1',
+        'generated-occurrence-2',
+        'generated-occurrence-3',
+      });
+      expect(
+        stored.map((event) => event.parentRecurringId).toSet(),
+        hasLength(1),
       );
     });
 

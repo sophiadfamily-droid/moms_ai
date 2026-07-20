@@ -291,13 +291,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
   void nextMonth() => setState(() =>
       visibleMonth = DateTime(visibleMonth.year, visibleMonth.month + 1, 1));
 
-  bool sameEvent(EventModel first, EventModel second) {
-    return first.title == second.title &&
-        first.createdAt == second.createdAt &&
-        first.date == second.date &&
-        first.time == second.time;
-  }
-
   Future<void> showDeleteChoices(EventModel event,
       {bool closeSheetAfterDelete = false}) async {
     final isRecurring = event.parentRecurringId.isNotEmpty;
@@ -370,7 +363,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       events.removeWhere(
           (item) => item.parentRecurringId == event.parentRecurringId);
     } else {
-      events.removeWhere((item) => sameEvent(item, event));
+      events.removeWhere((item) => EventService.areSameEvent(item, event));
     }
 
     await updateEvents(events);
@@ -452,7 +445,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
     EventModel? ignoredEvent,
   }) {
     for (final existingEvent in events) {
-      if (ignoredEvent != null && sameEvent(existingEvent, ignoredEvent)) {
+      if (ignoredEvent != null &&
+          EventService.areSameEvent(existingEvent, ignoredEvent)) {
         continue;
       }
 
@@ -1181,7 +1175,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
                                 if (isEdit) {
                                   final index = events.indexWhere(
-                                      (item) => sameEvent(item, event));
+                                    (item) =>
+                                        EventService.areSameEvent(item, event),
+                                  );
                                   if (index != -1) {
                                     events[index] = updatedEvent;
                                     await updateEvents(events);

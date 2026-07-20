@@ -93,6 +93,7 @@ class EventModel {
 
   EventModel copyWith({
     String? id,
+    bool clearId = false,
     String? title,
     String? date,
     String? time,
@@ -117,7 +118,7 @@ class EventModel {
     String? parentRecurringId,
   }) {
     return EventModel(
-      id: id ?? this.id,
+      id: clearId ? null : id ?? this.id,
       title: title ?? this.title,
       date: date ?? this.date,
       time: time ?? this.time,

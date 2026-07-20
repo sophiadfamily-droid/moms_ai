@@ -119,9 +119,24 @@ class EventService {
     EventModel event,
     EntityIdGenerator idGenerator,
   ) {
-    if (event.id != null) return event;
+    if (isValidEventId(event.id)) return event;
     final generatedId = idGenerator.generate();
     return event.copyWith(id: generatedId);
+  }
+
+  static bool isValidEventId(String? id) {
+    return id != null && id.trim().isNotEmpty;
+  }
+
+  static bool areSameEvent(EventModel first, EventModel second) {
+    if (isValidEventId(first.id) && isValidEventId(second.id)) {
+      return first.id == second.id;
+    }
+
+    return first.title == second.title &&
+        first.createdAt == second.createdAt &&
+        first.date == second.date &&
+        first.time == second.time;
   }
 
   static DateTime? parseStart(EventModel event) {
@@ -312,6 +327,7 @@ class EventService {
 
       occurrences.add(
         baseEvent.copyWith(
+          clearId: true,
           date: date,
           time: time,
           startDateTimeIso: "${date}T$time:00",
