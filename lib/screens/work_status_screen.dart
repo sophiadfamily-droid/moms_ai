@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+
+import '../theme/app_theme.dart';
 
 class WorkStatusScreen extends StatefulWidget {
   final Function(String) onNext;
@@ -51,7 +52,8 @@ class _WorkStatusScreenState extends State<WorkStatusScreen> {
             Expanded(
               child: Text(
                 text,
-                style: GoogleFonts.nunito(
+                style: TextStyle(
+                  fontFamily: AppTheme.bodyFontFamily,
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
                   color: isSelected ? Colors.white : const Color(0xFF3D241E),
@@ -99,7 +101,8 @@ class _WorkStatusScreenState extends State<WorkStatusScreen> {
               const SizedBox(height: 20),
               Text(
                 "ZELIA",
-                style: GoogleFonts.cormorantGaramond(
+                style: TextStyle(
+                  fontFamily: AppTheme.secondaryDisplayFontFamily,
                   fontSize: 34,
                   letterSpacing: 6,
                   color: const Color(0xFFC78372),
@@ -109,7 +112,8 @@ class _WorkStatusScreenState extends State<WorkStatusScreen> {
               const SizedBox(height: 30),
               Text(
                 "Et dans ta\nvie pro ?",
-                style: GoogleFonts.playfairDisplay(
+                style: TextStyle(
+                  fontFamily: AppTheme.displayFontFamily,
                   fontSize: 52,
                   height: 1,
                   fontWeight: FontWeight.w500,
@@ -119,7 +123,8 @@ class _WorkStatusScreenState extends State<WorkStatusScreen> {
               const SizedBox(height: 24),
               Text(
                 "Pour organiser tes journées selon ton rythme, ton énergie et tes priorités.",
-                style: GoogleFonts.nunito(
+                style: TextStyle(
+                  fontFamily: AppTheme.bodyFontFamily,
                   fontSize: 18,
                   height: 1.5,
                   color: const Color(0xFF9A847C),
@@ -146,7 +151,8 @@ class _WorkStatusScreenState extends State<WorkStatusScreen> {
                   ),
                   child: Text(
                     "Continuer",
-                    style: GoogleFonts.nunito(
+                    style: TextStyle(
+                      fontFamily: AppTheme.bodyFontFamily,
                       fontSize: 20,
                       fontWeight: FontWeight.w800,
                     ),

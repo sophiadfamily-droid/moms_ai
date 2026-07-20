@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+
+import '../theme/app_theme.dart';
 
 class FamilyStatusScreen extends StatefulWidget {
   final Function(String) onNext;
@@ -36,7 +37,8 @@ class _FamilyStatusScreenState extends State<FamilyStatusScreen> {
             children: [
               Text(
                 "ZELIA",
-                style: GoogleFonts.cormorantGaramond(
+                style: TextStyle(
+                  fontFamily: AppTheme.secondaryDisplayFontFamily,
                   fontSize: 34,
                   letterSpacing: 6,
                   color: const Color(0xFFC78372),
@@ -46,7 +48,8 @@ class _FamilyStatusScreenState extends State<FamilyStatusScreen> {
               const SizedBox(height: 70),
               Text(
                 "À quoi ressemble\nton quotidien ?",
-                style: GoogleFonts.playfairDisplay(
+                style: TextStyle(
+                  fontFamily: AppTheme.displayFontFamily,
                   fontSize: 42,
                   height: 1.1,
                   color: const Color(0xFF3D241E),
@@ -56,7 +59,8 @@ class _FamilyStatusScreenState extends State<FamilyStatusScreen> {
               const SizedBox(height: 18),
               Text(
                 "Zelia s'adapte à ta vraie vie,\npas à une organisation parfaite.",
-                style: GoogleFonts.nunito(
+                style: TextStyle(
+                  fontFamily: AppTheme.bodyFontFamily,
                   fontSize: 17,
                   height: 1.5,
                   color: const Color(0xFF8B6F67),
@@ -104,7 +108,8 @@ class _FamilyStatusScreenState extends State<FamilyStatusScreen> {
                         Expanded(
                           child: Text(
                             choice,
-                            style: GoogleFonts.nunito(
+                            style: TextStyle(
+                              fontFamily: AppTheme.bodyFontFamily,
                               fontSize: 17,
                               fontWeight: FontWeight.w700,
                               color: isSelected
@@ -155,7 +160,8 @@ class _FamilyStatusScreenState extends State<FamilyStatusScreen> {
                   child: Center(
                     child: Text(
                       "Continuer",
-                      style: GoogleFonts.nunito(
+                      style: TextStyle(
+                        fontFamily: AppTheme.bodyFontFamily,
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
                         color: Colors.white,

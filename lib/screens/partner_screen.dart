@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+
+import '../theme/app_theme.dart';
 
 class PartnerScreen extends StatefulWidget {
   final Function(String) onNext;
@@ -50,7 +51,8 @@ class _PartnerScreenState extends State<PartnerScreen> {
         child: Center(
           child: Text(
             "Continuer",
-            style: GoogleFonts.nunito(
+            style: TextStyle(
+              fontFamily: AppTheme.bodyFontFamily,
               fontSize: 17,
               fontWeight: FontWeight.w800,
               color: Colors.white,
@@ -87,7 +89,8 @@ class _PartnerScreenState extends State<PartnerScreen> {
                     children: [
                       Text(
                         "ZELIA",
-                        style: GoogleFonts.cormorantGaramond(
+                        style: TextStyle(
+                          fontFamily: AppTheme.secondaryDisplayFontFamily,
                           fontSize: 34,
                           letterSpacing: 6,
                           color: const Color(0xFFC78372),
@@ -97,7 +100,8 @@ class _PartnerScreenState extends State<PartnerScreen> {
                       const Spacer(),
                       Text(
                         "Comment s’appelle\nla personne qui\npartage ta vie ?",
-                        style: GoogleFonts.playfairDisplay(
+                        style: TextStyle(
+                          fontFamily: AppTheme.displayFontFamily,
                           fontSize: 38,
                           height: 1.1,
                           color: const Color(0xFF3D241E),
@@ -107,7 +111,8 @@ class _PartnerScreenState extends State<PartnerScreen> {
                       const SizedBox(height: 18),
                       Text(
                         "Zelia pourra mieux comprendre\nvotre organisation familiale.",
-                        style: GoogleFonts.nunito(
+                        style: TextStyle(
+                          fontFamily: AppTheme.bodyFontFamily,
                           fontSize: 16,
                           height: 1.5,
                           color: const Color(0xFF8B6F67),
@@ -126,14 +131,16 @@ class _PartnerScreenState extends State<PartnerScreen> {
                           controller: controller,
                           textInputAction: TextInputAction.done,
                           onSubmitted: (_) => validate(),
-                          style: GoogleFonts.nunito(
+                          style: TextStyle(
+                            fontFamily: AppTheme.bodyFontFamily,
                             fontSize: 18,
                             fontWeight: FontWeight.w600,
                             color: const Color(0xFF3D241E),
                           ),
                           decoration: InputDecoration(
                             hintText: "Son prénom",
-                            hintStyle: GoogleFonts.nunito(
+                            hintStyle: TextStyle(
+                              fontFamily: AppTheme.bodyFontFamily,
                               color: const Color(0xFFB99B92),
                             ),
                             border: InputBorder.none,

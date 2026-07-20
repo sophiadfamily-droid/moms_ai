@@ -12,7 +12,6 @@ dependencies:
     sdk: flutter
 
   cupertino_icons: ^1.0.8
-  google_fonts: ^6.3.3
   shared_preferences: ^2.5.5
   firebase_core: ^4.9.0
   cloud_functions: ^6.3.1
@@ -42,9 +41,19 @@ flutter:
     - assets/images/welcome_bg.png
     - assets/images/zelia_logo.png
 
+  fonts:
+    - family: PlayfairDisplay
+      fonts:
+        - asset: assets/fonts/playfair_display/PlayfairDisplay[wght].ttf
+    - family: CormorantGaramond
+      fonts:
+        - asset: assets/fonts/cormorant_garamond/CormorantGaramond[wght].ttf
+    - family: Nunito
+      fonts:
+        - asset: assets/fonts/nunito/Nunito[wght].ttf
+
 flutter_launcher_icons:
   android: true
   ios: true
   image_path: "assets/images/app_icon.png"
   remove_alpha_ios: true
-  

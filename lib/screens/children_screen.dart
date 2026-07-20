@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../models/user_profile.dart';
+import '../theme/app_theme.dart';
 
 class ChildrenScreen extends StatefulWidget {
   final Function(List<ChildProfile>) onNext;
@@ -208,7 +208,8 @@ class _ChildrenScreenState extends State<ChildrenScreen> {
                         child == null
                             ? "Ajouter un enfant"
                             : "Modifier l'enfant",
-                        style: GoogleFonts.playfairDisplay(
+                        style: TextStyle(
+                          fontFamily: AppTheme.displayFontFamily,
                           color: textDark,
                           fontSize: 28,
                           fontWeight: FontWeight.w700,
@@ -274,7 +275,8 @@ class _ChildrenScreenState extends State<ChildrenScreen> {
                       const SizedBox(height: 16),
                       Text(
                         "Genre",
-                        style: GoogleFonts.nunito(
+                        style: TextStyle(
+                          fontFamily: AppTheme.bodyFontFamily,
                           color: textDark,
                           fontWeight: FontWeight.w900,
                         ),
@@ -310,7 +312,8 @@ class _ChildrenScreenState extends State<ChildrenScreen> {
                               ),
                               child: Text(
                                 item,
-                                style: GoogleFonts.nunito(
+                                style: TextStyle(
+                                  fontFamily: AppTheme.bodyFontFamily,
                                   color: selected ? accent : textDark,
                                   fontWeight: FontWeight.w800,
                                 ),
@@ -327,7 +330,8 @@ class _ChildrenScreenState extends State<ChildrenScreen> {
                               onPressed: () => Navigator.pop(context),
                               child: Text(
                                 "Annuler",
-                                style: GoogleFonts.nunito(
+                                style: TextStyle(
+                                  fontFamily: AppTheme.bodyFontFamily,
                                   color: textSoft,
                                   fontWeight: FontWeight.w800,
                                 ),
@@ -401,7 +405,8 @@ class _ChildrenScreenState extends State<ChildrenScreen> {
                               },
                               child: Text(
                                 "Valider",
-                                style: GoogleFonts.nunito(
+                                style: TextStyle(
+                                  fontFamily: AppTheme.bodyFontFamily,
                                   fontWeight: FontWeight.w900,
                                 ),
                               ),
@@ -447,7 +452,8 @@ class _ChildrenScreenState extends State<ChildrenScreen> {
           border: InputBorder.none,
           labelText: label,
           hintText: hint,
-          labelStyle: GoogleFonts.nunito(
+          labelStyle: TextStyle(
+            fontFamily: AppTheme.bodyFontFamily,
             color: textSoft,
           ),
         ),
@@ -471,7 +477,8 @@ class _ChildrenScreenState extends State<ChildrenScreen> {
             children: [
               Text(
                 "ZELIA",
-                style: GoogleFonts.cormorantGaramond(
+                style: TextStyle(
+                  fontFamily: AppTheme.secondaryDisplayFontFamily,
                   fontSize: 34,
                   letterSpacing: 6,
                   color: accent,
@@ -481,7 +488,8 @@ class _ChildrenScreenState extends State<ChildrenScreen> {
               const SizedBox(height: 64),
               Text(
                 "Ajoute tes\nenfants",
-                style: GoogleFonts.playfairDisplay(
+                style: TextStyle(
+                  fontFamily: AppTheme.displayFontFamily,
                   fontSize: 39,
                   height: 1.1,
                   color: textDark,
@@ -491,7 +499,8 @@ class _ChildrenScreenState extends State<ChildrenScreen> {
               const SizedBox(height: 18),
               Text(
                 "Zelia pourra mieux adapter ton planning familial.",
-                style: GoogleFonts.nunito(
+                style: TextStyle(
+                  fontFamily: AppTheme.bodyFontFamily,
                   fontSize: 16,
                   height: 1.5,
                   color: textSoft,
@@ -520,7 +529,8 @@ class _ChildrenScreenState extends State<ChildrenScreen> {
                           child.firstName.isEmpty
                               ? "?"
                               : child.firstName[0].toUpperCase(),
-                          style: GoogleFonts.nunito(
+                          style: TextStyle(
+                            fontFamily: AppTheme.bodyFontFamily,
                             color: accent,
                             fontWeight: FontWeight.w900,
                           ),
@@ -533,7 +543,8 @@ class _ChildrenScreenState extends State<ChildrenScreen> {
                           children: [
                             Text(
                               child.firstName,
-                              style: GoogleFonts.nunito(
+                              style: TextStyle(
+                                fontFamily: AppTheme.bodyFontFamily,
                                 color: textDark,
                                 fontSize: 17,
                                 fontWeight: FontWeight.w900,
@@ -543,7 +554,8 @@ class _ChildrenScreenState extends State<ChildrenScreen> {
                               cleanBirthDate.isEmpty
                                   ? "Date de naissance non renseignée"
                                   : "${child.age.isEmpty ? "" : "${child.age} ans • "}né(e) le $cleanBirthDate",
-                              style: GoogleFonts.nunito(
+                              style: TextStyle(
+                                fontFamily: AppTheme.bodyFontFamily,
                                 color: textSoft,
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600,
@@ -590,7 +602,8 @@ class _ChildrenScreenState extends State<ChildrenScreen> {
                       const SizedBox(width: 14),
                       Text(
                         "Ajouter un enfant",
-                        style: GoogleFonts.nunito(
+                        style: TextStyle(
+                          fontFamily: AppTheme.bodyFontFamily,
                           color: textDark,
                           fontSize: 17,
                           fontWeight: FontWeight.w800,
@@ -620,7 +633,8 @@ class _ChildrenScreenState extends State<ChildrenScreen> {
                   child: Center(
                     child: Text(
                       children.isEmpty ? "Continuer sans enfant" : "Terminer",
-                      style: GoogleFonts.nunito(
+                      style: TextStyle(
+                        fontFamily: AppTheme.bodyFontFamily,
                         fontSize: 17,
                         fontWeight: FontWeight.w800,
                         color: Colors.white,
