@@ -165,6 +165,9 @@ final class _FakeLifecycleRepository implements MemoryLifecycleRepository {
   }
 
   @override
+  Future<LifeMemoryFact?> getById(String memoryId) async => null;
+
+  @override
   Future<void> applyMutations(List<MemoryLifecycleMutation> mutations) async {}
 }
 
@@ -178,6 +181,9 @@ final class _FailingLifecycleRepository implements MemoryLifecycleRepository {
     int limit = 25,
   }) async =>
       const [];
+
+  @override
+  Future<LifeMemoryFact?> getById(String memoryId) async => null;
 
   @override
   Future<void> applyMutations(List<MemoryLifecycleMutation> mutations) async {

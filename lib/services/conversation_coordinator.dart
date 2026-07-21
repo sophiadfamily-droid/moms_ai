@@ -1,7 +1,14 @@
 import '../models/conversation_models.dart';
 import '../models/event_model.dart';
+import '../models/life_context/memory_context.dart';
+import '../models/memory_lifecycle.dart';
+import '../models/memory_lifecycle_state.dart';
 import 'chat_backend_client.dart';
+import 'conversation_answer_classifier.dart';
 import 'conversation_context_service.dart';
+import 'memory_confirmation_copy.dart';
+import 'memory_lifecycle_engine.dart';
+import 'memory_lifecycle_repository.dart';
 import 'zelia_action_guard_service.dart';
 import 'zelia_response_builder.dart';
 
@@ -14,6 +21,10 @@ typedef PendingEventExecutor = Future<String> Function(EventModel event);
 class ConversationCoordinator {
   final ChatBackendClient backend;
   final ConversationContextProvider contextProvider;
+  final MemoryLifecycleEngine memoryLifecycleEngine;
+  final MemoryLifecycleRepository? _memoryLifecycleRepository;
+  final ConversationAnswerClassifier answerClassifier;
+  final MemoryConfirmationCopy memoryCopy;
 
   ConversationState _state = const ConversationState();
   bool _isSending = false;
@@ -22,7 +33,11 @@ class ConversationCoordinator {
   ConversationCoordinator({
     required this.backend,
     required this.contextProvider,
-  });
+    this.memoryLifecycleEngine = const MemoryLifecycleEngine(),
+    MemoryLifecycleRepository? memoryLifecycleRepository,
+    this.answerClassifier = const ConversationAnswerClassifier(),
+    this.memoryCopy = const MemoryConfirmationCopy(),
+  }) : _memoryLifecycleRepository = memoryLifecycleRepository;
 
   ConversationState get state => _state;
 
@@ -41,6 +56,26 @@ class ConversationCoordinator {
     );
   }
 
+  void setPendingMemoryConfirmation(
+    MemoryConfirmationRequest? request, {
+    required DateTime createdAt,
+  }) {
+    final proposalId = request?.proposalId?.trim() ?? '';
+    if (request == null || proposalId.isEmpty) return;
+    if (_state.pendingAction?.type ==
+        PendingConversationActionType.eventConfirmation) {
+      return;
+    }
+    _state = _state.copyWith(
+      phase: ConversationPhase.awaitingActionConfirmation,
+      pendingAction: PendingConversationAction.memoryConfirmation(
+        proposalId: proposalId,
+        createdAt: createdAt,
+        expectedMemoryAction: request.action,
+      ),
+    );
+  }
+
   Future<PendingConversationResolution?> resolvePendingEventConfirmation({
     required String answer,
     required bool Function(String value) isPositiveAnswer,
@@ -50,7 +85,10 @@ class ConversationCoordinator {
     required PendingEventExecutor execute,
   }) async {
     final pending = _state.pendingAction;
-    if (pending == null) return null;
+    if (pending == null ||
+        pending.type != PendingConversationActionType.eventConfirmation) {
+      return null;
+    }
 
     if (isNegativeAnswer(answer)) {
       _state = _state.copyWith(
@@ -85,6 +123,61 @@ class ConversationCoordinator {
     }
   }
 
+  Future<PendingConversationResolution?> resolvePendingMemoryConfirmation({
+    required String answer,
+    required DateTime referenceDate,
+  }) async {
+    final pending = _state.pendingAction;
+    if (pending == null ||
+        pending.type != PendingConversationActionType.memoryConfirmation) {
+      return null;
+    }
+    final proposalId = pending.proposalId?.trim() ?? '';
+    final repository = _repository;
+    if (proposalId.isEmpty || repository == null) {
+      _clearPendingAction();
+      return PendingConversationResolution(memoryCopy.unavailable);
+    }
+    final answerType = answerClassifier.classify(answer);
+    if (answerType == ConversationAnswer.ambiguous) {
+      return PendingConversationResolution(memoryCopy.clarification);
+    }
+    if (_isResolvingPendingAction) return null;
+    _isResolvingPendingAction = true;
+    _state = _state.copyWith(phase: ConversationPhase.executingAction);
+
+    try {
+      final memory = await repository.getById(proposalId);
+      if (memory == null) {
+        _clearPendingAction();
+        return PendingConversationResolution(memoryCopy.unavailable);
+      }
+      if (memory.validUntil?.isBefore(referenceDate) == true) {
+        _clearPendingAction();
+        return PendingConversationResolution(memoryCopy.unavailable);
+      }
+      if (answerType == ConversationAnswer.negative) {
+        return await _rejectMemory(
+          repository: repository,
+          memory: memory,
+          referenceDate: referenceDate,
+        );
+      }
+      return await _confirmMemory(
+        repository: repository,
+        memory: memory,
+        referenceDate: referenceDate,
+      );
+    } catch (_) {
+      _state = _state.copyWith(
+        phase: ConversationPhase.awaitingActionConfirmation,
+      );
+      return PendingConversationResolution(memoryCopy.persistenceFailure);
+    } finally {
+      _isResolvingPendingAction = false;
+    }
+  }
+
   Future<ConversationOutcome?> send({
     required ConversationInput input,
     required ConversationActionExecutor executeAction,
@@ -101,6 +194,21 @@ class ConversationCoordinator {
         message: input.message,
         profile: input.profile,
       );
+      final memoryContext = contextProvider is MemoryConversationContextProvider
+          ? contextProvider as MemoryConversationContextProvider
+          : null;
+      final userProposal =
+          await memoryContext?.proposeUserMemory(input.message);
+      if (userProposal != null && _state.pendingAction == null) {
+        setPendingMemoryConfirmation(
+          userProposal,
+          createdAt: DateTime.now(),
+        );
+        return ConversationOutcome(
+          reply: memoryCopy.proposal(userProposal),
+          request: request,
+        );
+      }
       final response = await backend.send(request);
       var reply = response.reply;
       final actionMessages = <String>[];
@@ -125,8 +233,16 @@ class ConversationCoordinator {
         planningTitle = outcome.planningTitle ?? planningTitle;
       }
 
+      MemoryConfirmationRequest? memoryConfirmation;
       for (final memory in response.memories) {
-        await contextProvider.saveResponseMemory(memory);
+        final request = memoryContext == null
+            ? null
+            : await memoryContext.proposeResponseMemory(memory);
+        if (memoryContext == null) {
+          await contextProvider.saveResponseMemory(memory);
+        } else if (memoryConfirmation == null && request != null) {
+          memoryConfirmation = request;
+        }
       }
 
       if (actionMessages.isNotEmpty) {
@@ -140,6 +256,16 @@ class ConversationCoordinator {
         );
       }
 
+      if (memoryConfirmation != null &&
+          response.actions.isEmpty &&
+          _state.pendingAction == null) {
+        setPendingMemoryConfirmation(
+          memoryConfirmation,
+          createdAt: DateTime.now(),
+        );
+        reply = memoryCopy.proposal(memoryConfirmation);
+      }
+
       return ConversationOutcome(reply: reply, request: request);
     } finally {
       _isSending = false;
@@ -149,5 +275,111 @@ class ConversationCoordinator {
             : ConversationPhase.awaitingActionConfirmation,
       );
     }
+  }
+
+  MemoryLifecycleRepository? get _repository {
+    if (_memoryLifecycleRepository != null) return _memoryLifecycleRepository;
+    final provider = contextProvider;
+    if (provider is! MemoryConversationContextProvider) return null;
+    return (provider as MemoryConversationContextProvider)
+        .memoryLifecycleRepository;
+  }
+
+  Future<PendingConversationResolution> _confirmMemory({
+    required MemoryLifecycleRepository repository,
+    required LifeMemoryFact memory,
+    required DateTime referenceDate,
+  }) async {
+    if (memory.lifecycleState == MemoryLifecycleState.active) {
+      _clearPendingAction();
+      return PendingConversationResolution(memoryCopy.alreadyActive);
+    }
+    if (memory.lifecycleState != MemoryLifecycleState.proposed &&
+        memory.lifecycleState != MemoryLifecycleState.confirmed) {
+      _clearPendingAction();
+      return PendingConversationResolution(memoryCopy.unavailable);
+    }
+    final mutations = <MemoryLifecycleMutation>[];
+    if (memory.lifecycleState == MemoryLifecycleState.proposed) {
+      final confirmation = memoryLifecycleEngine.evaluate(
+        MemoryLifecycleCommand(
+          action: MemoryLifecycleAction.confirm,
+          referenceDate: referenceDate,
+          actor: MemoryLifecycleActor.user,
+          source: 'conversation_confirmation',
+          target: memory,
+          targetState: MemoryLifecycleState.proposed,
+          reason: 'user_confirmed_memory',
+        ),
+      );
+      if (confirmation.type !=
+              MemoryLifecycleDecisionType.confirmExistingProposal ||
+          confirmation.mutations.isEmpty) {
+        _clearPendingAction();
+        return PendingConversationResolution(memoryCopy.unavailable);
+      }
+      mutations.addAll(confirmation.mutations);
+    }
+    final activation = memoryLifecycleEngine.evaluate(
+      MemoryLifecycleCommand(
+        action: MemoryLifecycleAction.activate,
+        referenceDate: referenceDate,
+        actor: MemoryLifecycleActor.user,
+        source: 'conversation_confirmation',
+        target: memory,
+        targetState: MemoryLifecycleState.confirmed,
+        reason: 'confirmed_memory_activated',
+      ),
+    );
+    if (activation.type != MemoryLifecycleDecisionType.createNewMemory ||
+        activation.mutations.isEmpty) {
+      _clearPendingAction();
+      return PendingConversationResolution(memoryCopy.unavailable);
+    }
+    mutations.addAll(activation.mutations);
+    await repository.applyMutations(mutations);
+    _clearPendingAction();
+    return PendingConversationResolution(memoryCopy.confirmed);
+  }
+
+  Future<PendingConversationResolution> _rejectMemory({
+    required MemoryLifecycleRepository repository,
+    required LifeMemoryFact memory,
+    required DateTime referenceDate,
+  }) async {
+    if (memory.lifecycleState == MemoryLifecycleState.rejected) {
+      _clearPendingAction();
+      return PendingConversationResolution(memoryCopy.rejected);
+    }
+    if (memory.lifecycleState != MemoryLifecycleState.proposed) {
+      _clearPendingAction();
+      return PendingConversationResolution(memoryCopy.unavailable);
+    }
+    final rejection = memoryLifecycleEngine.evaluate(
+      MemoryLifecycleCommand(
+        action: MemoryLifecycleAction.reject,
+        referenceDate: referenceDate,
+        actor: MemoryLifecycleActor.user,
+        source: 'conversation_confirmation',
+        target: memory,
+        targetState: MemoryLifecycleState.proposed,
+        reason: 'user_rejected_memory',
+      ),
+    );
+    if (rejection.type != MemoryLifecycleDecisionType.rejectProposal ||
+        rejection.mutations.isEmpty) {
+      _clearPendingAction();
+      return PendingConversationResolution(memoryCopy.unavailable);
+    }
+    await repository.applyMutations(rejection.mutations);
+    _clearPendingAction();
+    return PendingConversationResolution(memoryCopy.rejected);
+  }
+
+  void _clearPendingAction() {
+    _state = _state.copyWith(
+      phase: ConversationPhase.idle,
+      clearPendingAction: true,
+    );
   }
 }

@@ -523,6 +523,40 @@ void main() {
       expect(json['lifecycleHistory'], isA<List>());
     });
 
+    test('Firestore consolidates confirmation and activation atomically', () {
+      final target = _fact(
+        id: 'proposal-1',
+        state: MemoryLifecycleState.proposed,
+        lifecycleStateIsExplicit: true,
+      );
+      final confirmation = engine.evaluate(
+        _command(
+          action: MemoryLifecycleAction.confirm,
+          target: target,
+          state: MemoryLifecycleState.proposed,
+          now: now,
+        ),
+      );
+      final activation = engine.evaluate(
+        _command(
+          action: MemoryLifecycleAction.activate,
+          target: target,
+          state: MemoryLifecycleState.confirmed,
+          now: now,
+        ),
+      );
+
+      final json = MemoryLifecycleFirestoreSerializer.mutations([
+        ...confirmation.mutations,
+        ...activation.mutations,
+      ]);
+
+      expect(json['lifecycleState'], 'active');
+      expect(json['confirmationStatus'], 'confirmed');
+      expect(json['confirmedAt'], now);
+      expect(json['lifecycleHistory'], isNotNull);
+    });
+
     test('repository contract can be replaced by a fake', () async {
       final fake = _FakeMemoryLifecycleRepository();
       final proposal = _proposal(id: 'fake-id');
@@ -632,6 +666,9 @@ final class _FakeMemoryLifecycleRepository
     int limit = 25,
   }) async =>
       const [];
+
+  @override
+  Future<LifeMemoryFact?> getById(String memoryId) async => null;
 
   @override
   Future<void> applyMutations(List<MemoryLifecycleMutation> mutations) async {}

@@ -106,8 +106,12 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  EventModel? get pendingConfirmationEvent =>
-      conversationCoordinator.state.pendingAction?.event;
+  EventModel? get pendingConfirmationEvent {
+    final pending = conversationCoordinator.state.pendingAction;
+    return pending?.type == PendingConversationActionType.eventConfirmation
+        ? pending!.event
+        : null;
+  }
 
   set pendingConfirmationEvent(EventModel? event) {
     conversationCoordinator.setPendingEventConfirmation(event);
@@ -1703,6 +1707,17 @@ class _ChatScreenState extends State<ChatScreen> {
     return true;
   }
 
+  Future<bool> tryCompletePendingMemoryConfirmation(String text) async {
+    final resolution =
+        await conversationCoordinator.resolvePendingMemoryConfirmation(
+      answer: text,
+      referenceDate: DateTime.now(),
+    );
+    if (resolution == null) return false;
+    addAssistantMessage(resolution.message);
+    return true;
+  }
+
   Future<bool> tryCompletePendingConflictResolution(String text) async {
     if (pendingConflictResolutionEvent == null) return false;
 
@@ -2097,6 +2112,10 @@ class _ChatScreenState extends State<ChatScreen> {
 
       final completedPending = await tryCompletePendingDuration(text);
       if (completedPending) return;
+
+      final completedMemoryConfirmation =
+          await tryCompletePendingMemoryConfirmation(text);
+      if (completedMemoryConfirmation) return;
 
       final outcome = await conversationCoordinator.send(
         input: ConversationInput(message: text, profile: widget.profile),

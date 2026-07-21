@@ -30,8 +30,16 @@ abstract class ConversationContextProvider {
   Future<void> saveResponseMemory(dynamic memory);
 }
 
+abstract interface class MemoryConversationContextProvider {
+  MemoryLifecycleRepository get memoryLifecycleRepository;
+
+  Future<MemoryConfirmationRequest?> proposeUserMemory(String message);
+
+  Future<MemoryConfirmationRequest?> proposeResponseMemory(dynamic memory);
+}
+
 class DefaultConversationContextProvider
-    implements ConversationContextProvider {
+    implements ConversationContextProvider, MemoryConversationContextProvider {
   final LifeContextEngine? _lifeContextEngine;
   final LifeContextMemoryPayloadBuilder _memoryPayloadBuilder;
   final ConversationContextPrivacyFilter _privacyFilter;
@@ -66,20 +74,6 @@ class DefaultConversationContextProvider
     required String message,
     required UserProfile profile,
   }) async {
-    if (MemoryPipelineService.shouldProcessMemory(message)) {
-      final memory = MemoryPipelineService.buildMemory(message);
-      final payload = MemoryPipelineService.buildSavePayload(
-        memory,
-        fallbackText: message,
-      );
-
-      await _proposeMemory({
-        'text': payload.text,
-        'category': payload.category,
-        'importance': payload.importance,
-      }, source: 'explicit_user_message');
-    }
-
     final rawMemories = await (_loadMemories ?? MemoryService.getMemories)();
     final snapshot = (_lifeContextEngine ?? LifeContextEngine()).buildSnapshot(
       profile: profile,
@@ -131,11 +125,36 @@ class DefaultConversationContextProvider
 
   @override
   Future<void> saveResponseMemory(dynamic memory) async {
-    if (memory is! Map) return;
+    await proposeResponseMemory(memory);
+  }
+
+  @override
+  MemoryLifecycleRepository get memoryLifecycleRepository =>
+      _memoryLifecycleRepository ?? FirestoreMemoryLifecycleRepository();
+
+  @override
+  Future<MemoryConfirmationRequest?> proposeUserMemory(String message) async {
+    if (!MemoryPipelineService.shouldProcessMemory(message)) return null;
+    final memory = MemoryPipelineService.buildMemory(message);
+    final payload = MemoryPipelineService.buildSavePayload(
+      memory,
+      fallbackText: message,
+    );
+    return _proposeMemory({
+      'text': payload.text,
+      'category': payload.category,
+      'importance': payload.importance,
+    }, source: 'explicit_user_message');
+  }
+
+  @override
+  Future<MemoryConfirmationRequest?> proposeResponseMemory(
+      dynamic memory) async {
+    if (memory is! Map) return null;
 
     final text = memory['text']?.toString() ?? '';
-    if (text.trim().isEmpty) return;
-    if (!MemoryPipelineService.shouldProcessMemory(text)) return;
+    if (text.trim().isEmpty) return null;
+    if (!MemoryPipelineService.shouldProcessMemory(text)) return null;
 
     final builtMemory = MemoryPipelineService.buildMemory(text);
     final payload = MemoryPipelineService.buildSavePayload(
@@ -143,14 +162,14 @@ class DefaultConversationContextProvider
       fallbackText: text,
     );
 
-    await _proposeMemory({
+    return _proposeMemory({
       'text': payload.text,
       'category': payload.category,
       'importance': payload.importance,
     }, source: 'assistant_memory_candidate');
   }
 
-  Future<void> _proposeMemory(
+  Future<MemoryConfirmationRequest?> _proposeMemory(
     Map<String, dynamic> payload, {
     required String source,
   }) async {
@@ -158,7 +177,7 @@ class DefaultConversationContextProvider
       final repository =
           _memoryLifecycleRepository ?? FirestoreMemoryLifecycleRepository();
       final proposalId = await repository.allocateProposalId();
-      if (proposalId == null || proposalId.isEmpty) return;
+      if (proposalId == null || proposalId.isEmpty) return null;
       final proposedAt = DateTime.now();
       final proposal = _memoryProposalFactory.fromHistoricalPayload(
         id: proposalId,
@@ -167,21 +186,27 @@ class DefaultConversationContextProvider
         proposedAt: proposedAt,
         confirmationRequired: true,
       );
-      if (proposal == null) return;
+      if (proposal == null) return null;
       final existing = await repository.findCandidates(proposal);
       final decision = _memoryLifecycleEngine.evaluateProposal(
         proposal: proposal,
         existingMemories: existing,
         referenceDate: proposedAt,
       );
+      if (decision.type ==
+          MemoryLifecycleDecisionType.confirmExistingProposal) {
+        return decision.confirmationRequest;
+      }
       if (decision.type != MemoryLifecycleDecisionType.createProposal ||
           decision.mutations.isEmpty) {
-        return;
+        return null;
       }
       await repository.createProposal(proposal, decision.mutations.single);
+      return decision.confirmationRequest;
     } catch (error, stackTrace) {
       debugPrint('Memory proposal persistence failed: $error');
       debugPrint('$stackTrace');
+      return null;
     }
   }
 }

@@ -95,6 +95,38 @@ through `MemoryService`. Pagination or server-side relevance for that
 pre-existing read path is deferred because it requires a wider retrieval
 contract, not a lifecycle change.
 
+## Conversational confirmation workflow
+
+`ConversationCoordinator` is the application boundary for a memory proposal.
+It keeps a typed pending action containing only the proposal identifier, the
+expected lifecycle action, and its creation date. The proposal is reloaded by
+identifier before every decision; its text and internal metadata are not
+duplicated in conversation state.
+
+Existing event and planning confirmations retain priority. The chat screen
+routes a reply to the memory workflow only after those pending workflows have
+declined it, so words such as “oui”, “non”, or “oublie” cannot select a memory
+without a typed memory pending action.
+
+The deterministic conversation classifier recognizes a deliberately small set
+of normalized French positive and negative answers. Mixed or unknown signals
+are ambiguous and cause a short clarification without mutation. User approval
+executes `proposed -> confirmed -> active` through `MemoryLifecycleEngine` and
+applies both returned mutations through `MemoryLifecycleRepository`. Rejection
+executes `proposed -> rejected`. No conversation component writes lifecycle
+fields directly.
+
+Terminal, missing, and expired proposals return a safe unavailable response.
+Repeated handling is idempotent. Repository failures retain the pending action,
+do not claim success, and allow a retry. Proposal persistence failure remains
+non-blocking for the broader conversation.
+
+The pending action follows the current in-memory conversation-state mechanism.
+An application restart therefore clears it safely instead of guessing the
+target of a late reply. Durable pending confirmation recovery, multiple queued
+memory proposals, localization resources, and a complete memory-management UI
+remain outside V1.
+
 ## Deliberately deferred
 
 - general contradiction and entity-resolution engines;

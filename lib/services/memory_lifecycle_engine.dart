@@ -61,14 +61,27 @@ final class MemoryLifecycleEngine {
 
     for (final existing in existingMemories) {
       if (_canCompete(existing) && _isExactDuplicate(existing, proposal)) {
+        final isPending =
+            existing.lifecycleState == MemoryLifecycleState.proposed;
         return _decision(
-          existing.lifecycleState == MemoryLifecycleState.proposed
+          isPending
               ? MemoryLifecycleDecisionType.confirmExistingProposal
               : MemoryLifecycleDecisionType.noChange,
           proposal: proposal,
           memoryIds: [existing.id],
           reasons: const ['exact_typed_duplicate'],
           risks: const [MemoryLifecycleSignal.duplicate],
+          confirmationRequest: isPending
+              ? MemoryConfirmationRequest(
+                  action: MemoryLifecycleAction.confirm,
+                  proposalId: existing.id,
+                  prompt: '',
+                  newValue: existing.text,
+                  changeType: 'existingProposal',
+                  sensitivity: existing.sensitivity,
+                  consequence: 'requires_explicit_confirmation',
+                )
+              : null,
         );
       }
     }

@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/memory_lifecycle.dart';
+import '../models/memory_lifecycle_state.dart';
 import '../models/life_context/memory_context.dart';
 import 'auth_service.dart';
 import 'life_context/life_context_memory_projection.dart';
@@ -17,6 +18,8 @@ abstract interface class MemoryLifecycleRepository {
     MemoryProposal proposal,
     MemoryLifecycleMutation mutation,
   );
+
+  Future<LifeMemoryFact?> getById(String memoryId);
 
   Future<void> applyMutations(List<MemoryLifecycleMutation> mutations);
 }
@@ -67,6 +70,21 @@ final class FirestoreMemoryLifecycleRepository
   }
 
   @override
+  Future<LifeMemoryFact?> getById(String memoryId) async {
+    final ref = _memoriesRef();
+    if (ref == null || memoryId.trim().isEmpty) return null;
+    final document = await ref.doc(memoryId).get();
+    final data = document.data();
+    if (!document.exists || data == null) return null;
+    return const HistoricalMemoryContextProjection()
+        .project([
+          {...data, 'id': document.id},
+        ])
+        .memories
+        .single;
+  }
+
+  @override
   Future<void> createProposal(
     MemoryProposal proposal,
     MemoryLifecycleMutation mutation,
@@ -87,10 +105,14 @@ final class FirestoreMemoryLifecycleRepository
     final ref = _memoriesRef();
     if (ref == null || mutations.isEmpty) return;
     final batch = _firestore.batch();
+    final grouped = <String, List<MemoryLifecycleMutation>>{};
     for (final mutation in mutations) {
+      grouped.putIfAbsent(mutation.memoryId, () => []).add(mutation);
+    }
+    for (final entry in grouped.entries) {
       batch.set(
-        ref.doc(mutation.memoryId),
-        MemoryLifecycleFirestoreSerializer.mutation(mutation),
+        ref.doc(entry.key),
+        MemoryLifecycleFirestoreSerializer.mutations(entry.value),
         SetOptions(merge: true),
       );
     }
@@ -130,6 +152,15 @@ final class MemoryLifecycleFirestoreSerializer {
 
   static Map<String, dynamic> mutation(MemoryLifecycleMutation mutation) => {
         'lifecycleState': mutation.newState.name,
+        if (mutation.newState == MemoryLifecycleState.confirmed ||
+            mutation.newState == MemoryLifecycleState.active)
+          'confirmationStatus': 'confirmed',
+        if (mutation.newState == MemoryLifecycleState.rejected)
+          'confirmationStatus': 'rejected',
+        if (mutation.newState == MemoryLifecycleState.obsolete ||
+            mutation.newState == MemoryLifecycleState.superseded ||
+            mutation.newState == MemoryLifecycleState.expired)
+          'confirmationStatus': 'obsolete',
         'updatedAt': mutation.record.occurredAt,
         if (mutation.confirmedAt != null) 'confirmedAt': mutation.confirmedAt,
         if (mutation.rejectedAt != null) 'rejectedAt': mutation.rejectedAt,
@@ -141,4 +172,39 @@ final class MemoryLifecycleFirestoreSerializer {
           'supersedesMemoryId': mutation.supersedesMemoryId,
         'lifecycleHistory': FieldValue.arrayUnion([mutation.record.toJson()]),
       };
+
+  static Map<String, dynamic> mutations(
+    List<MemoryLifecycleMutation> mutations,
+  ) {
+    if (mutations.isEmpty) return const {};
+    final result = mutation(mutations.last);
+    DateTime? confirmedAt;
+    DateTime? rejectedAt;
+    DateTime? deletedAt;
+    DateTime? expiresAt;
+    String? replacedByMemoryId;
+    String? supersedesMemoryId;
+    for (final item in mutations) {
+      confirmedAt ??= item.confirmedAt;
+      rejectedAt ??= item.rejectedAt;
+      deletedAt ??= item.deletedAt;
+      expiresAt ??= item.expiresAt;
+      replacedByMemoryId ??= item.replacedByMemoryId;
+      supersedesMemoryId ??= item.supersedesMemoryId;
+    }
+    if (confirmedAt != null) result['confirmedAt'] = confirmedAt;
+    if (rejectedAt != null) result['rejectedAt'] = rejectedAt;
+    if (deletedAt != null) result['deletedAt'] = deletedAt;
+    if (expiresAt != null) result['expiresAt'] = expiresAt;
+    if (replacedByMemoryId != null) {
+      result['replacedByMemoryId'] = replacedByMemoryId;
+    }
+    if (supersedesMemoryId != null) {
+      result['supersedesMemoryId'] = supersedesMemoryId;
+    }
+    result['lifecycleHistory'] = FieldValue.arrayUnion(
+      mutations.map((item) => item.record.toJson()).toList(growable: false),
+    );
+    return result;
+  }
 }
