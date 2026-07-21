@@ -88,6 +88,35 @@ void main() {
 
     expect(source, isNot(contains('class BaseEntity')));
   });
+
+  test('active identity-related copy and rules stay generic', () {
+    final planningSource = File(
+      '${repositoryRoot.path}/lib/services/smart_planning_service.dart',
+    ).readAsStringSync();
+    final profileSource = File(
+      '${repositoryRoot.path}/lib/screens/profile_screen.dart',
+    ).readAsStringSync();
+    final homeSource = File(
+      '${repositoryRoot.path}/lib/screens/home_screen.dart',
+    ).readAsStringSync();
+    final promptSource = File(
+      '${repositoryRoot.path}/functions/brain/identityPrompt.js',
+    ).readAsStringSync();
+
+    expect(
+      RegExp(r'value\.contains\("[^" ]+"\)').allMatches(planningSource),
+      everyElement(
+        predicate<RegExpMatch>(
+          (match) => !RegExp(r'contains\("[a-z]+name"\)')
+              .hasMatch(match.group(0) ?? ''),
+          'a semantic category term rather than a fixture placeholder',
+        ),
+      ),
+    );
+    expect(profileSource, contains('hint: "Ex : Prénom"'));
+    expect(homeSource, contains('return "toi";'));
+    expect(promptSource, contains('développée par son équipe produit'));
+  });
 }
 
 Iterable<String> _importsIn(String source) sync* {

@@ -1316,7 +1316,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         buildTextField(
           controller: firstNameController,
           label: "Prénom",
-          hint: "Ex : Sophia",
+          hint: "Ex : Prénom",
         ),
       ],
     );
@@ -1486,7 +1486,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         buildTextField(
           controller: firstNameController,
           label: "Prénom",
-          hint: "Ex : Sophia",
+          hint: "Ex : Prénom",
         ),
         const SizedBox(height: 14),
         buildDateField(
@@ -2493,7 +2493,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     buildTextField(
                       controller: firstNameController,
                       label: "Prénom",
-                      hint: "Ex : Kasim",
+                      hint: "Ex : Prénom",
                     ),
                     const SizedBox(height: 12),
                     buildDateField(

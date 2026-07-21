@@ -275,8 +275,6 @@ class SmartPlanningService {
         value.contains("ecole") ||
         value.contains("crèche") ||
         value.contains("creche") ||
-        value.contains("kassim") ||
-        value.contains("kasim") ||
         value.contains("enfant")) {
       return "enfant";
     }
@@ -728,8 +726,6 @@ class SmartPlanningService {
         value.contains("ecole") ||
         value.contains("crèche") ||
         value.contains("creche") ||
-        value.contains("kassim") ||
-        value.contains("kasim") ||
         value.contains("enfant") ||
         value.contains("inscription")) {
       score += 25;

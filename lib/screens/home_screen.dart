@@ -320,7 +320,7 @@ class _HomeScreenState extends State<HomeScreen>
     final name = widget.profile.firstName.trim();
 
     if (name.isEmpty) {
-      return "Sophia";
+      return "toi";
     }
 
     return name;
