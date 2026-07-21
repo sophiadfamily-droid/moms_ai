@@ -1,12 +1,23 @@
 import 'recurring_memory_schedule_service.dart';
+import '../models/life_context/memory_context.dart';
+import 'life_context/life_context_memory_projection.dart';
+import 'life_context/life_context_memory_serializer.dart';
 
 class MemoryReasoningService {
   static List<Map<String, dynamic>> buildReasoning(
     List<Map<String, dynamic>> memories,
   ) {
+    final context = const HistoricalMemoryContextProjection().project(memories);
+    return buildReasoningFromContext(context);
+  }
+
+  static List<Map<String, dynamic>> buildReasoningFromContext(
+    MemoryContext context,
+  ) {
     final reasoning = <Map<String, dynamic>>[];
 
-    for (final memory in memories) {
+    for (final fact in context.memories) {
+      final memory = LifeContextMemorySerializer.toPlanningMap(fact);
       final text = memory["text"]?.toString().trim() ?? "";
       final lower = text.toLowerCase();
 

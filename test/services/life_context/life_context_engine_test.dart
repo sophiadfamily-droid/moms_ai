@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:moms_ai/models/life_context/life_context_snapshot.dart';
 import 'package:moms_ai/models/user_profile.dart';
+import 'package:moms_ai/models/life_context/memory_context.dart';
 import 'package:moms_ai/services/life_context/life_context_engine.dart';
 import 'package:moms_ai/services/life_context/user_profile_life_context_mapper.dart';
 
@@ -7,6 +9,42 @@ void main() {
   final generatedAt = DateTime.utc(2026, 7, 20, 12);
 
   group('LifeContextEngine', () {
+    test('upgrades a legacy profile projection to schema version 3', () {
+      final currentSnapshot = const UserProfileLifeContextMapper().map(
+        profile: _profile(),
+        generatedAt: generatedAt,
+      );
+      final legacySnapshot = LifeContextSnapshot(
+        schemaVersion: 2,
+        generatedAt: currentSnapshot.generatedAt,
+        identity: currentSnapshot.identity,
+        household: currentSnapshot.household,
+        places: currentSnapshot.places,
+        mobility: currentSnapshot.mobility,
+        work: currentSnapshot.work,
+        agenda: currentSnapshot.agenda,
+        routines: currentSnapshot.routines,
+        goals: currentSnapshot.goals,
+        preferences: currentSnapshot.preferences,
+        constraints: currentSnapshot.constraints,
+        notes: currentSnapshot.notes,
+      );
+      final engine = LifeContextEngine(
+        profileProjection: ({required profile, required generatedAt}) =>
+            legacySnapshot,
+      );
+
+      final result = engine.buildSnapshot(
+        profile: _profile(),
+        generatedAt: DateTime.utc(2026, 7, 21),
+        memories: const [
+          {'id': 'memory-1', 'text': 'Routine historique'},
+        ],
+      );
+
+      expect(result.schemaVersion, LifeContextSnapshot.currentSchemaVersion);
+    });
+
     test('buildSnapshot delegates exactly once to the profile projection', () {
       final expected = const UserProfileLifeContextMapper().map(
         profile: _profile(),
@@ -108,6 +146,29 @@ void main() {
       expect(profile.toJson(), originalJson);
       expect(identical(profile.workDays, workDays), isTrue);
       expect(identical(profile.children, children), isTrue);
+    });
+
+    test('composes profile and historical memory without overwriting profile',
+        () {
+      final snapshot = LifeContextEngine().buildSnapshot(
+        profile: _profile(),
+        generatedAt: generatedAt,
+        memories: const [
+          {
+            'id': 'memory-name',
+            'text': 'Je m’appelle une autre personne',
+            'category': 'fact',
+          },
+        ],
+      );
+
+      expect(snapshot.identity.firstName?.value, 'Sophia');
+      expect(snapshot.memory.memories, hasLength(1));
+      expect(
+        snapshot.memory.memories.single.semanticType,
+        LifeMemorySemanticType.fact,
+      );
+      expect(snapshot.memory.memories.single.id, 'memory-name');
     });
   });
 }

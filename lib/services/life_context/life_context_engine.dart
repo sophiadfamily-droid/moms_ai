@@ -1,5 +1,6 @@
 import '../../models/life_context/life_context_snapshot.dart';
 import '../../models/user_profile.dart';
+import 'life_context_memory_projection.dart';
 import 'user_profile_life_context_mapper.dart';
 
 typedef LifeContextProfileProjection = LifeContextSnapshot Function({
@@ -9,21 +10,28 @@ typedef LifeContextProfileProjection = LifeContextSnapshot Function({
 
 /// Read-only Life Context entry point.
 ///
-/// The current snapshot projects profile facts only. Memory, planning, and
-/// conversation projections belong at this aggregation boundary once each
-/// source has a concrete typed contract; they are intentionally not represented
-/// by unused dependencies before then.
+/// Composes profile facts and normalized historical memories without owning
+/// either source or persisting the resulting snapshot.
 final class LifeContextEngine {
   final LifeContextProfileProjection _profileProjection;
+  final LifeContextMemoryProjection _memoryProjection;
 
-  LifeContextEngine({LifeContextProfileProjection? profileProjection})
-      : _profileProjection =
+  LifeContextEngine({
+    LifeContextProfileProjection? profileProjection,
+    LifeContextMemoryProjection? memoryProjection,
+  })  : _memoryProjection =
+            memoryProjection ?? const HistoricalMemoryContextProjection(),
+        _profileProjection =
             profileProjection ?? const UserProfileLifeContextMapper().map;
 
   LifeContextSnapshot buildSnapshot({
     required UserProfile profile,
     required DateTime generatedAt,
+    Iterable<Map<String, dynamic>> memories = const [],
   }) {
-    return _profileProjection(profile: profile, generatedAt: generatedAt);
+    final profileSnapshot =
+        _profileProjection(profile: profile, generatedAt: generatedAt);
+    if (memories.isEmpty) return profileSnapshot;
+    return profileSnapshot.withMemory(_memoryProjection.project(memories));
   }
 }

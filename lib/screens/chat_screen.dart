@@ -13,8 +13,9 @@ import '../services/event_confirmation_service.dart';
 import '../services/notification_service.dart';
 import '../services/voice_service.dart';
 import '../services/memory_service.dart';
-import '../services/memory_context_builder_service.dart';
 import '../services/memory_reasoning_service.dart';
+import '../services/life_context/life_context_engine.dart';
+import '../services/life_context/life_context_memory_serializer.dart';
 import '../services/smart_planning_service.dart';
 import '../services/smart_planning_response_builder.dart';
 import '../services/planning_proposal_service.dart';
@@ -1425,28 +1426,18 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<List<Map<String, dynamic>>> buildCurrentPlanningReasoning() async {
     final rawMemories = await MemoryService.getMemories();
-
-    final savedMemories = rawMemories.map((memory) {
-      return {
-        "text": memory["text"]?.toString() ?? "",
-        "category": memory["category"]?.toString() ?? "personal",
-        "importance":
-            int.tryParse(memory["importance"]?.toString() ?? "0") ?? 0,
-        "createdAt": memory["createdAt"],
-      };
-    }).toList();
-
-    final relevantMemories =
-        MemoryContextBuilderService.buildRelevantMemoryPayload(
-      memories: savedMemories,
-      limit: 12,
+    final snapshot = LifeContextEngine().buildSnapshot(
+      profile: widget.profile,
+      generatedAt: DateTime.now(),
+      memories: rawMemories,
     );
-
+    final planningMemory = LifeContextMemorySerializer.selectForPlanning(
+      snapshot.memory,
+    );
     final memoryReasoning =
-        MemoryReasoningService.buildReasoning(relevantMemories);
-
+        MemoryReasoningService.buildReasoningFromContext(planningMemory);
     final profileReasoning =
-        ProfileReasoningService.buildReasoning(widget.profile);
+        ProfileReasoningService.buildReasoningFromSnapshot(snapshot);
 
     return [
       ...profileReasoning,

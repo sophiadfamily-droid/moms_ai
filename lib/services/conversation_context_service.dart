@@ -1,11 +1,19 @@
 import '../models/chat_backend_request.dart';
+import '../models/event_model.dart';
 import '../models/user_profile.dart';
+import 'conversation_context_privacy_filter.dart';
 import 'event_service.dart';
-import 'memory_context_builder_service.dart';
 import 'memory_pipeline_service.dart';
 import 'memory_reasoning_service.dart';
 import 'memory_service.dart';
+import 'life_context/life_context_engine.dart';
+import 'life_context/life_context_memory_payload_builder.dart';
+import 'life_context/life_context_memory_serializer.dart';
 import 'profile_context_builder_service.dart';
+
+typedef ConversationMemoryLoader = Future<List<Map<String, dynamic>>>
+    Function();
+typedef ConversationEventLoader = Future<List<EventModel>> Function();
 
 abstract class ConversationContextProvider {
   Future<ChatBackendRequest> buildRequest({
@@ -18,7 +26,25 @@ abstract class ConversationContextProvider {
 
 class DefaultConversationContextProvider
     implements ConversationContextProvider {
-  const DefaultConversationContextProvider();
+  final LifeContextEngine? _lifeContextEngine;
+  final LifeContextMemoryPayloadBuilder _memoryPayloadBuilder;
+  final ConversationContextPrivacyFilter _privacyFilter;
+  final ConversationMemoryLoader? _loadMemories;
+  final ConversationEventLoader? _loadEvents;
+
+  const DefaultConversationContextProvider({
+    LifeContextEngine? lifeContextEngine,
+    LifeContextMemoryPayloadBuilder memoryPayloadBuilder =
+        const LifeContextMemoryPayloadBuilder(),
+    ConversationContextPrivacyFilter privacyFilter =
+        const ConversationContextPrivacyFilter(),
+    ConversationMemoryLoader? loadMemories,
+    ConversationEventLoader? loadEvents,
+  })  : _lifeContextEngine = lifeContextEngine,
+        _memoryPayloadBuilder = memoryPayloadBuilder,
+        _privacyFilter = privacyFilter,
+        _loadMemories = loadMemories,
+        _loadEvents = loadEvents;
 
   @override
   Future<ChatBackendRequest> buildRequest({
@@ -39,27 +65,30 @@ class DefaultConversationContextProvider
       );
     }
 
-    final rawMemories = await MemoryService.getMemories();
-    final savedMemories = rawMemories.map((memory) {
-      return {
-        'text': memory['text']?.toString() ?? '',
-        'category': memory['category']?.toString() ?? 'personal',
-        'importance':
-            int.tryParse(memory['importance']?.toString() ?? '0') ?? 0,
-        'createdAt': memory['createdAt'],
-      };
-    }).toList();
-
-    final relevantMemories =
-        MemoryContextBuilderService.buildRelevantMemoryPayload(
-      memories: savedMemories,
+    final rawMemories = await (_loadMemories ?? MemoryService.getMemories)();
+    final snapshot = (_lifeContextEngine ?? LifeContextEngine()).buildSnapshot(
+      profile: profile,
+      generatedAt: DateTime.now(),
+      memories: rawMemories,
+    );
+    final selectedMemory = _memoryPayloadBuilder.select(
+      context: snapshot.memory,
+      message: message,
       limit: 12,
     );
+    final relevantMemories = selectedMemory.memories
+        .map(LifeContextMemorySerializer.toBackendMap)
+        .toList(growable: false);
     final memoryReasoning =
-        MemoryReasoningService.buildReasoning(relevantMemories);
-    final profileContext =
-        ProfileContextBuilderService.buildStructuredContext(profile);
-    final savedEvents = await EventService.getEvents();
+        MemoryReasoningService.buildReasoningFromContext(selectedMemory);
+    final profileContext = _privacyFilter.filterStructuredProfile(
+      profileContext:
+          ProfileContextBuilderService.buildStructuredContextFromSnapshot(
+        snapshot,
+      ),
+      message: message,
+    );
+    final savedEvents = await (_loadEvents ?? EventService.getEvents)();
     final existingEvents = savedEvents.map((event) {
       return {
         'title': event.title,
@@ -74,7 +103,10 @@ class DefaultConversationContextProvider
 
     return ChatBackendRequest(
       message: message,
-      profile: profile.toJson(),
+      profile: _privacyFilter.filterProfile(
+        profile: profile.toJson(),
+        message: message,
+      ),
       profileContext: profileContext,
       memories: relevantMemories,
       memoryReasoning: memoryReasoning,

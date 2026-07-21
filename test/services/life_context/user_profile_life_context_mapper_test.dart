@@ -11,7 +11,7 @@ void main() {
   const mapper = UserProfileLifeContextMapper();
   final generatedAt = DateTime.utc(2026, 7, 20, 10, 30);
 
-  group('LifeContextSnapshot v2', () {
+  group('LifeContextSnapshot v3', () {
     test('can represent a minimal immutable snapshot', () {
       final snapshot = LifeContextSnapshot(
         generatedAt: generatedAt,
@@ -32,7 +32,7 @@ void main() {
         constraints: const ConstraintContext(),
       );
 
-      expect(snapshot.schemaVersion, 2);
+      expect(snapshot.schemaVersion, 3);
       expect(snapshot.generatedAt, same(generatedAt));
       expect(snapshot.identity.firstName, isNull);
       expect(snapshot.household.children, isEmpty);
@@ -46,7 +46,7 @@ void main() {
       final snapshot =
           mapper.map(profile: _completeProfile(), generatedAt: generatedAt);
 
-      expect(snapshot.schemaVersion, 2);
+      expect(snapshot.schemaVersion, 3);
       expect(snapshot.generatedAt, same(generatedAt));
       expect(snapshot.identity.firstName?.value, 'Sophia');
       expect(snapshot.identity.birthDate?.value, '01/01/1990');
@@ -220,10 +220,10 @@ void main() {
       );
     });
 
-    test('contains no event, task, shopping, or memory collections', () {
-      final json = mapper
-          .map(profile: _completeProfile(), generatedAt: generatedAt)
-          .toJson();
+    test('contains an empty memory context and no domain collections', () {
+      final snapshot =
+          mapper.map(profile: _completeProfile(), generatedAt: generatedAt);
+      final json = snapshot.toJson();
 
       expect(json.keys, {
         'schemaVersion',
@@ -239,12 +239,13 @@ void main() {
         'preferences',
         'constraints',
         'notes',
+        'memory',
       });
       final serialized = json.toString().toLowerCase();
       expect(RegExp(r'\bevents?\b').hasMatch(serialized), isFalse);
       expect(RegExp(r'\btasks?\b').hasMatch(serialized), isFalse);
       expect(RegExp(r'\bshopping\b').hasMatch(serialized), isFalse);
-      expect(RegExp(r'\bmemories?\b').hasMatch(serialized), isFalse);
+      expect(snapshot.memory.isEmpty, isTrue);
     });
 
     test('is deterministic and does not mutate UserProfile lists', () {
