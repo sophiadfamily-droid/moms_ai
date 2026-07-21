@@ -37,6 +37,19 @@ void main() {
       File('${identityDirectory.path}/entity_matcher.dart').existsSync(),
       isTrue,
     );
+    for (final domainFile in [
+      'entity_types.dart',
+      'life_entity.dart',
+      'entity_alias.dart',
+      'entity_reference.dart',
+      'entity_candidate.dart',
+      'entity_resolution.dart',
+      'entity_normalizer.dart',
+      'identity_engine.dart',
+    ]) {
+      expect(
+          File('${identityDirectory.path}/$domainFile').existsSync(), isTrue);
+    }
 
     for (final file in files) {
       final imports = _importsIn(file.readAsStringSync());
@@ -45,6 +58,7 @@ void main() {
         imports,
         everyElement(
           anyOf(
+            startsWith('dart:'),
             startsWith('package:uuid/'),
             startsWith('package:moms_ai/core/identity/'),
             predicate<String>(
@@ -75,7 +89,7 @@ void main() {
     }
   });
 
-  test('identity foundation introduces no base entity', () {
+  test('identity domain does not introduce a generic base entity', () {
     final identityDirectory = Directory(
       '${repositoryRoot.path}/lib/core/identity',
     );

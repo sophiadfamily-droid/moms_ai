@@ -2,10 +2,23 @@
 
 ## Status
 
-Engineering specification for a planned capability. The repository currently
-contains stable record-identity primitives, not an implemented entity identity
-or reference-resolution engine. This document separates verified current state
-from the proposed V1 contract.
+Engineering specification with Phase 1 implemented. The repository contains
+stable record-identity primitives and a pure deterministic entity-resolution
+domain. Persistence and application integrations remain planned.
+
+### Implementation status
+
+**Implemented in Phase 1:** closed domain enums, immutable `LifeEntity`, typed
+aliases/references/candidates/relations/results, deterministic normalization,
+bounded pure resolution, one-level merge redirection, explainable signals, and
+unit/architecture tests.
+
+**Coming in Phase 2:** repository contract, bounded account-scoped candidate
+queries, additive serialization, fake repository, and compatibility tests. No
+Firestore repository or index is implemented yet.
+
+**Outside V1:** fuzzy, phonetic, embedding, or LLM matching; global identities;
+automatic merges; inferred sensitive relationships; and Knowledge Graph logic.
 
 ## Mission
 
@@ -37,8 +50,8 @@ reading, and historical records without IDs retain domain-specific comparison
 fallbacks. Cloud services use authenticated paths below `users/{uid}`.
 
 This foundation solves record continuity for events, tasks, and shopping items.
-It does not define entity types, labels, aliases, candidates, resolution,
-confidence, status, provenance, repositories, or person/place identities.
+Phase 1 now defines the pure semantic entity domain alongside it, without a
+repository or application integration.
 
 ### Structured profile and Life Context
 
@@ -367,11 +380,14 @@ repository first.
 Precedence:
 
 1. exact valid entity ID in the same account scope;
-2. unique exact active alias plus compatible type and scope;
-3. unique exact canonical normalized label plus compatible type and scope;
-4. explicit typed conversation target or explicit verified relation narrowing
-   an otherwise exact candidate set;
-5. otherwise ambiguity, confirmation, or not found.
+2. explicit typed conversation target;
+3. explicit verified relation;
+4. unique exact active alias plus compatible type and scope;
+5. unique exact canonical normalized label plus compatible type and scope;
+6. otherwise ambiguity, confirmation, or not found.
+
+An alias match and a canonical-label match on different active entities remain
+ambiguous; precedence never hides two plausible identities.
 
 Rules:
 
@@ -621,23 +637,24 @@ text.
 
 ## Exact implementation file plan
 
-The first implementation should create:
+Phase 1 creates:
 
 ```text
 lib/core/identity/entity_types.dart
 lib/core/identity/life_entity.dart
 lib/core/identity/entity_alias.dart
 lib/core/identity/entity_reference.dart
+lib/core/identity/entity_candidate.dart
 lib/core/identity/entity_resolution.dart
 lib/core/identity/entity_normalizer.dart
 lib/core/identity/identity_engine.dart
-lib/repositories/entity_repository.dart
-lib/services/entity_resolution_service.dart
 test/core/identity/entity_normalizer_test.dart
 test/core/identity/identity_engine_test.dart
-test/repositories/entity_repository_contract_test.dart
-test/services/entity_resolution_service_test.dart
+test/core/identity/life_entity_test.dart
 ```
+
+The repository contract, concrete serialization, and application service are
+Phase 2 work and are deliberately absent from Phase 1.
 
 It should modify only when required by the phased adoption:
 
