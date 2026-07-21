@@ -101,6 +101,35 @@ void main() {
         .join('\n');
 
     expect(source, isNot(contains('class BaseEntity')));
+    expect(source, isNot(contains('repositories/identity')));
+    expect(source, isNot(contains('identity_repository')));
+  });
+
+  test('identity repository boundary has no framework or application imports',
+      () {
+    final repositoryDirectory = Directory(
+      '${repositoryRoot.path}/lib/repositories/identity',
+    );
+    final forbidden = [
+      'firebase',
+      'cloud_firestore',
+      'package:flutter',
+      'dart:io',
+      'openai',
+      'screens/',
+      'services/',
+    ];
+
+    for (final file in repositoryDirectory
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where((file) => file.path.endsWith('.dart'))) {
+      final source = file.readAsStringSync();
+      for (final dependency in forbidden) {
+        expect(source, isNot(contains(dependency)),
+            reason: '${file.path} contains $dependency.');
+      }
+    }
   });
 
   test('active identity-related copy and rules stay generic', () {

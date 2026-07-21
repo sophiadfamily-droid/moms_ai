@@ -13,9 +13,14 @@ aliases/references/candidates/relations/results, deterministic normalization,
 bounded pure resolution, one-level merge redirection, explainable signals, and
 unit/architecture tests.
 
-**Coming in Phase 2:** repository contract, bounded account-scoped candidate
-queries, additive serialization, fake repository, and compatibility tests. No
-Firestore repository or index is implemented yet.
+**Implemented in Phase 2:** framework-independent repository contract, explicit
+account scope, bounded typed candidate queries, deterministic result ordering,
+additive UTC serialization, defensive historical reads, and an in-memory fake
+covered by a reusable contract suite.
+
+**Coming in Phase 3:** Identity Application Service V1 and controlled
+conversation integration. No concrete Firestore repository, index, migration,
+profile seeding, or application integration is implemented yet.
 
 **Outside V1:** fuzzy, phonetic, embedding, or LLM matching; global identities;
 automatic merges; inferred sensitive relationships; and Knowledge Graph logic.
@@ -419,26 +424,42 @@ not an independent decision input.
 
 ## Repository contract
 
-The pure engine depends on no repository. The application layer depends on an
-interface such as:
+The pure engine depends on no repository. Phase 2 provides an abstract
+`IdentityRepository` for a future application layer:
 
 ```text
-getById(scopeId, entityId)
-findByCanonicalKey(scopeId, type, normalizedKey, limit)
-findByAliasKey(scopeId, type, normalizedKey, limit)
-findCandidates(scopeId, referenceQuery, limit, pageToken?)
-create(scopeId, entity, expectedAbsent)
-updateCanonicalLabel(scopeId, command)
-updateAliases(scopeId, command)
-markMerged(scopeId, sourceId, targetId, auditRecord)
-markDeleted(scopeId, entityId, auditRecord)
+findById(scope, entityId)
+findByIds(scope, entityIds)
+queryCandidates(scope, query)
+save(scope, entity)
+saveAll(scope, entities)
 ```
 
-All reads are scope-bound and limited. V1 candidate limit is 20, exact lookup
-limits are 10, and pagination is required for user-facing entity lists. No
-method loads every entity. Commands are idempotent and use optimistic version
-or transaction preconditions. Repository implementations own Firestore
-serialization and server timestamps; engines own decisions.
+Every operation requires a trimmed, non-empty `IdentityAccountScope`; no global
+or implicit account exists. Candidate and ID queries are limited to 20 and
+never resolve ambiguity. Results are ordered by entity type, comparison key,
+then ID, independently of insertion or database return order. Duplicate input
+IDs are rejected. The fake keeps account stores and explicit relation indexes
+strictly separate and validates an entire `saveAll` before changing its store.
+
+`IdentityRepositoryQuery` can prefilter exact comparison keys, explicit IDs,
+types, statuses, and explicitly indexed relation keys. An optional injected
+reference date safely removes inactive temporal aliases; without it the
+repository returns a bounded superset and leaves final temporal decisions to
+`IdentityEngine`.
+
+`IdentitySerialization` maps entities outside the domain. It writes ISO-8601
+UTC dates and all Phase 1 entity/alias fields. Historical reads safely default
+missing type to `unknown`, status to `active`, source to `historical`, aliases
+and metadata to empty, `updatedAt` to `createdAt`, normalized label to a
+deterministic recalculation, and schema version to 1. Unknown additive fields
+are ignored but not preserved by a later write. Corrupt required fields,
+unknown enum values, invalid dates, malformed aliases, contradictory merges,
+and invalid versions fail with typed, non-sensitive errors.
+
+The contract and fake have no Firebase, Flutter, network, disk, UI, service, or
+OpenAI dependency. A concrete Firestore repository, transaction policy,
+pagination for user-facing lists, rules, and indexes remain future work.
 
 Potential Firestore fields are additive: `entityType`, `canonicalLabel`,
 `normalizedLabel`, bounded `aliasKeys`, `status`, `source`, timestamps,
