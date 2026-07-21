@@ -72,7 +72,8 @@ void main() {
     }
   });
 
-  test('models and screens do not use the identity foundation directly', () {
+  test('only the typed conversation model uses identity from application code',
+      () {
     for (final relativeDirectory in ['lib/models', 'lib/screens']) {
       final directory = Directory('${repositoryRoot.path}/$relativeDirectory');
 
@@ -80,11 +81,11 @@ void main() {
           .listSync(recursive: true)
           .whereType<File>()
           .where((file) => file.path.endsWith('.dart'))) {
-        expect(
-          file.readAsStringSync(),
-          isNot(contains('core/identity/')),
-          reason: '${file.path} must not depend on the identity foundation.',
-        );
+        final usesIdentity = file.readAsStringSync().contains('core/identity/');
+        final isConversationModel =
+            file.path.endsWith('/lib/models/conversation_models.dart');
+        expect(usesIdentity, isConversationModel,
+            reason: '${file.path} has an unexpected identity dependency.');
       }
     }
   });

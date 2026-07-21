@@ -3,12 +3,15 @@ import '../models/event_model.dart';
 import '../models/life_context/memory_context.dart';
 import '../models/memory_lifecycle.dart';
 import '../models/memory_lifecycle_state.dart';
+import '../core/identity/uuid_v7_entity_id_generator.dart';
 import 'chat_backend_client.dart';
 import 'conversation_answer_classifier.dart';
 import 'conversation_context_service.dart';
 import 'memory_confirmation_copy.dart';
 import 'memory_lifecycle_engine.dart';
 import 'memory_lifecycle_repository.dart';
+import 'identity/identity_application_models.dart';
+import 'identity/identity_clarification_service.dart';
 import 'zelia_action_guard_service.dart';
 import 'zelia_response_builder.dart';
 
@@ -25,6 +28,7 @@ class ConversationCoordinator {
   final MemoryLifecycleRepository? _memoryLifecycleRepository;
   final ConversationAnswerClassifier answerClassifier;
   final MemoryConfirmationCopy memoryCopy;
+  final IdentityClarificationService identityClarificationService;
 
   ConversationState _state = const ConversationState();
   bool _isSending = false;
@@ -37,7 +41,12 @@ class ConversationCoordinator {
     MemoryLifecycleRepository? memoryLifecycleRepository,
     this.answerClassifier = const ConversationAnswerClassifier(),
     this.memoryCopy = const MemoryConfirmationCopy(),
-  }) : _memoryLifecycleRepository = memoryLifecycleRepository;
+    IdentityClarificationService? identityClarificationService,
+  })  : _memoryLifecycleRepository = memoryLifecycleRepository,
+        identityClarificationService = identityClarificationService ??
+            IdentityClarificationService(
+              idGenerator: UuidV7EntityIdGenerator(),
+            );
 
   ConversationState get state => _state;
 
@@ -63,7 +72,9 @@ class ConversationCoordinator {
     final proposalId = request?.proposalId?.trim() ?? '';
     if (request == null || proposalId.isEmpty) return;
     if (_state.pendingAction?.type ==
-        PendingConversationActionType.eventConfirmation) {
+            PendingConversationActionType.eventConfirmation ||
+        _state.pendingAction?.type ==
+            PendingConversationActionType.identityClarification) {
       return;
     }
     _state = _state.copyWith(
@@ -73,6 +84,49 @@ class ConversationCoordinator {
         createdAt: createdAt,
         expectedMemoryAction: request.action,
       ),
+    );
+  }
+
+  PendingConversationResolution? beginIdentityClarification({
+    required IdentityApplicationResult applicationResult,
+    required IdentityResolutionRequest request,
+  }) {
+    if (_state.pendingAction != null) return null;
+    final pending = identityClarificationService.create(
+      applicationResult: applicationResult,
+      request: request,
+    );
+    _state = _state.copyWith(
+      phase: ConversationPhase.awaitingActionConfirmation,
+      pendingAction: PendingConversationAction.identityClarification(pending),
+    );
+    return PendingConversationResolution(
+      identityClarificationService.question(pending),
+    );
+  }
+
+  Future<PendingConversationResolution?> resolvePendingIdentityClarification({
+    required String answer,
+    DateTime? referenceDate,
+  }) async {
+    final pendingAction = _state.pendingAction;
+    if (pendingAction == null ||
+        pendingAction.type !=
+            PendingConversationActionType.identityClarification) {
+      return null;
+    }
+    final pending = pendingAction.identityClarification!;
+    final result = identityClarificationService.process(
+      pending: pending,
+      answer: answer,
+      referenceDate: referenceDate,
+    );
+    if (result.status != IdentityClarificationStatus.stillAmbiguous) {
+      _clearPendingAction();
+    }
+    return PendingConversationResolution(
+      result.followUpMessage,
+      identityClarificationResult: result,
     );
   }
 
@@ -182,6 +236,16 @@ class ConversationCoordinator {
     required ConversationInput input,
     required ConversationActionExecutor executeAction,
   }) async {
+    final identityResolution = await resolvePendingIdentityClarification(
+      answer: input.message,
+    );
+    if (identityResolution != null) {
+      return ConversationOutcome(
+        reply: identityResolution.message,
+        identityClarificationResult:
+            identityResolution.identityClarificationResult,
+      );
+    }
     if (_isSending) return null;
     _isSending = true;
     _state = _state.copyWith(

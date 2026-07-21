@@ -23,11 +23,15 @@ service validates scoped resolution requests, performs bounded repository
 lookups, attaches only caller-supplied evidence, invokes the deterministic
 domain engine, and maps failures to safe typed results.
 
-**Coming in Phase 3B:** controlled conversational clarification and pending
-state integration. The Identity Engine is not active in chat. Phase 3A creates
-no proposal, performs no save, and has no concrete Firestore repository or
-production-persisted Identity data. No index, migration, profile seeding, or
-application-model integration is implemented.
+**Implemented in Phase 3B:** controlled clarification for existing ambiguous
+identities, with a typed pending state, deterministic numbered or exact-label
+selection, stable entity IDs, cancellation, and a fifteen-minute expiration.
+The LLM never selects a candidate and no business action resumes automatically.
+
+The Identity Engine is not applied to every chat message. Phases 3A and 3B
+create no identity or proposal, perform no Identity save, and have no concrete
+Firestore repository or production-persisted Identity data. No index,
+migration, profile seeding, or application-model integration is implemented.
 
 **Outside V1:** fuzzy, phonetic, embedding, or LLM matching; global identities;
 automatic merges; inferred sensitive relationships; and Knowledge Graph logic.
