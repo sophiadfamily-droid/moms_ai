@@ -18,9 +18,16 @@ account scope, bounded typed candidate queries, deterministic result ordering,
 additive UTC serialization, defensive historical reads, and an in-memory fake
 covered by a reusable contract suite.
 
-**Coming in Phase 3:** Identity Application Service V1 and controlled
-conversation integration. No concrete Firestore repository, index, migration,
-profile seeding, or application integration is implemented yet.
+**Implemented in Phase 3A:** a framework-independent, read-only application
+service validates scoped resolution requests, performs bounded repository
+lookups, attaches only caller-supplied evidence, invokes the deterministic
+domain engine, and maps failures to safe typed results.
+
+**Coming in Phase 3B:** controlled conversational clarification and pending
+state integration. The Identity Engine is not active in chat. Phase 3A creates
+no proposal, performs no save, and has no concrete Firestore repository or
+production-persisted Identity data. No index, migration, profile seeding, or
+application-model integration is implemented.
 
 **Outside V1:** fuzzy, phonetic, embedding, or LLM matching; global identities;
 automatic merges; inferred sensitive relationships; and Knowledge Graph logic.
