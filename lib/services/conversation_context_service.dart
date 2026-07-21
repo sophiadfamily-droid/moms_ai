@@ -1,5 +1,8 @@
+import 'package:flutter/foundation.dart';
+
 import '../models/chat_backend_request.dart';
 import '../models/event_model.dart';
+import '../models/memory_lifecycle.dart';
 import '../models/user_profile.dart';
 import 'conversation_context_privacy_filter.dart';
 import 'event_service.dart';
@@ -9,7 +12,10 @@ import 'memory_service.dart';
 import 'life_context/life_context_engine.dart';
 import 'life_context/life_context_memory_payload_builder.dart';
 import 'life_context/life_context_memory_serializer.dart';
+import 'memory_lifecycle_engine.dart';
+import 'memory_lifecycle_repository.dart';
 import 'profile_context_builder_service.dart';
+import 'memory_proposal_factory.dart';
 
 typedef ConversationMemoryLoader = Future<List<Map<String, dynamic>>>
     Function();
@@ -31,6 +37,9 @@ class DefaultConversationContextProvider
   final ConversationContextPrivacyFilter _privacyFilter;
   final ConversationMemoryLoader? _loadMemories;
   final ConversationEventLoader? _loadEvents;
+  final MemoryLifecycleEngine _memoryLifecycleEngine;
+  final MemoryProposalFactory _memoryProposalFactory;
+  final MemoryLifecycleRepository? _memoryLifecycleRepository;
 
   const DefaultConversationContextProvider({
     LifeContextEngine? lifeContextEngine,
@@ -40,11 +49,17 @@ class DefaultConversationContextProvider
         const ConversationContextPrivacyFilter(),
     ConversationMemoryLoader? loadMemories,
     ConversationEventLoader? loadEvents,
+    MemoryLifecycleEngine memoryLifecycleEngine = const MemoryLifecycleEngine(),
+    MemoryProposalFactory memoryProposalFactory = const MemoryProposalFactory(),
+    MemoryLifecycleRepository? memoryLifecycleRepository,
   })  : _lifeContextEngine = lifeContextEngine,
         _memoryPayloadBuilder = memoryPayloadBuilder,
         _privacyFilter = privacyFilter,
         _loadMemories = loadMemories,
-        _loadEvents = loadEvents;
+        _loadEvents = loadEvents,
+        _memoryLifecycleEngine = memoryLifecycleEngine,
+        _memoryProposalFactory = memoryProposalFactory,
+        _memoryLifecycleRepository = memoryLifecycleRepository;
 
   @override
   Future<ChatBackendRequest> buildRequest({
@@ -58,11 +73,11 @@ class DefaultConversationContextProvider
         fallbackText: message,
       );
 
-      await MemoryService.saveMemory(
-        text: payload.text,
-        category: payload.category,
-        importance: payload.importance,
-      );
+      await _proposeMemory({
+        'text': payload.text,
+        'category': payload.category,
+        'importance': payload.importance,
+      }, source: 'explicit_user_message');
     }
 
     final rawMemories = await (_loadMemories ?? MemoryService.getMemories)();
@@ -128,10 +143,45 @@ class DefaultConversationContextProvider
       fallbackText: text,
     );
 
-    await MemoryService.saveMemory(
-      text: payload.text,
-      category: payload.category,
-      importance: payload.importance,
-    );
+    await _proposeMemory({
+      'text': payload.text,
+      'category': payload.category,
+      'importance': payload.importance,
+    }, source: 'assistant_memory_candidate');
+  }
+
+  Future<void> _proposeMemory(
+    Map<String, dynamic> payload, {
+    required String source,
+  }) async {
+    try {
+      final repository =
+          _memoryLifecycleRepository ?? FirestoreMemoryLifecycleRepository();
+      final proposalId = await repository.allocateProposalId();
+      if (proposalId == null || proposalId.isEmpty) return;
+      final proposedAt = DateTime.now();
+      final proposal = _memoryProposalFactory.fromHistoricalPayload(
+        id: proposalId,
+        payload: payload,
+        source: source,
+        proposedAt: proposedAt,
+        confirmationRequired: true,
+      );
+      if (proposal == null) return;
+      final existing = await repository.findCandidates(proposal);
+      final decision = _memoryLifecycleEngine.evaluateProposal(
+        proposal: proposal,
+        existingMemories: existing,
+        referenceDate: proposedAt,
+      );
+      if (decision.type != MemoryLifecycleDecisionType.createProposal ||
+          decision.mutations.isEmpty) {
+        return;
+      }
+      await repository.createProposal(proposal, decision.mutations.single);
+    } catch (error, stackTrace) {
+      debugPrint('Memory proposal persistence failed: $error');
+      debugPrint('$stackTrace');
+    }
   }
 }

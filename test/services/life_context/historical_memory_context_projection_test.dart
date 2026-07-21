@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:moms_ai/models/life_context/life_context_provenance.dart';
 import 'package:moms_ai/models/life_context/memory_context.dart';
+import 'package:moms_ai/models/memory_lifecycle_state.dart';
 import 'package:moms_ai/services/life_context/life_context_memory_projection.dart';
 
 void main() {
@@ -43,6 +44,7 @@ void main() {
       expect(memory.validFrom, DateTime.parse('2026-07-01T00:00:00.000Z'));
       expect(memory.validUntil, DateTime.parse('2026-12-31T00:00:00.000Z'));
       expect(memory.confirmationStatus, MemoryConfirmationStatus.confirmed);
+      expect(memory.lifecycleState, MemoryLifecycleState.confirmed);
       expect(memory.confidence, 0.8);
       expect(memory.evidenceType, LifeContextEvidenceType.explicit);
       expect(memory.legacyData['historicalFlag'], true);
@@ -70,6 +72,41 @@ void main() {
         MemoryConfirmationStatus.unconfirmed,
       );
       expect(memory.evidenceType, LifeContextEvidenceType.historical);
+      expect(memory.lifecycleState, MemoryLifecycleState.proposed);
+      expect(memory.lifecycleStateIsExplicit, isFalse);
+    });
+
+    test('reads optional lifecycle fields without breaking legacy fallback',
+        () {
+      final memories = projection.project([
+        {
+          'id': 'active',
+          'text': 'Mémoire explicitement active',
+          'lifecycleState': 'active',
+        },
+        {
+          'id': 'legacy',
+          'text': 'Mémoire historique sans statut',
+          'unknownHistoricalField': {'nested': true},
+        },
+      ]).memories;
+
+      expect(memories.first.lifecycleState, MemoryLifecycleState.active);
+      expect(memories.first.lifecycleStateIsExplicit, isTrue);
+      expect(
+        memories.first.confirmationStatus,
+        MemoryConfirmationStatus.confirmed,
+      );
+      expect(memories.last.lifecycleState, MemoryLifecycleState.proposed);
+      expect(memories.last.lifecycleStateIsExplicit, isFalse);
+      expect(
+        memories.last.confirmationStatus,
+        MemoryConfirmationStatus.unconfirmed,
+      );
+      expect(
+        memories.last.legacyData['unknownHistoricalField'],
+        {'nested': true},
+      );
     });
 
     test('supports both historical preference category spellings', () {

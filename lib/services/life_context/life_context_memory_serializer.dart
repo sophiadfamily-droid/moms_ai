@@ -24,7 +24,7 @@ final class LifeContextMemorySerializer {
     int limit = 12,
   }) {
     if (limit <= 0 || context.isEmpty) return MemoryContext.empty;
-    final indexed = context.memories.indexed.toList()
+    final indexed = context.consumableMemories.indexed.toList()
       ..sort((first, second) {
         final importance = second.$2.importance.compareTo(first.$2.importance);
         return importance != 0 ? importance : first.$1.compareTo(second.$1);

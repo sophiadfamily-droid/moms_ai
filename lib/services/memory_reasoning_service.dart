@@ -16,7 +16,7 @@ class MemoryReasoningService {
   ) {
     final reasoning = <Map<String, dynamic>>[];
 
-    for (final fact in context.memories) {
+    for (final fact in context.consumableMemories) {
       final memory = LifeContextMemorySerializer.toPlanningMap(fact);
       final text = memory["text"]?.toString().trim() ?? "";
       final lower = text.toLowerCase();

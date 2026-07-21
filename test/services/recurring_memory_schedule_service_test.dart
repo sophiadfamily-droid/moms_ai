@@ -5,6 +5,22 @@ import 'package:moms_ai/services/recurring_memory_schedule_service.dart';
 import 'package:moms_ai/services/smart_planning_service.dart';
 
 void main() {
+  test('explicit lifecycle proposals do not block planning', () {
+    final reasoning = MemoryReasoningService.buildReasoning([
+      {
+        'id': 'proposal-routine',
+        'text': 'Tous les lundis de 09h à 10h',
+        'category': 'routine',
+        'lifecycleState': 'proposed',
+      },
+    ]);
+
+    expect(
+      reasoning.where((item) => item['type'] == 'blocked_period'),
+      isEmpty,
+    );
+  });
+
   group('RecurringMemoryScheduleService', () {
     test('extracts a weekdays recurrence without explicit days', () {
       final result = RecurringMemoryScheduleService.buildBlockedPeriod(
@@ -32,7 +48,7 @@ void main() {
 
     test('extracts a weekly routine with a complete time range', () {
       final result = RecurringMemoryScheduleService.buildBlockedPeriod(
-        text: 'Tous les mercredis de 18h30 à 20h, j’emmène Kassim au foot.',
+        text: 'Tous les mercredis de 18h30 à 20h, activité familiale.',
         category: 'children',
       );
 
@@ -71,7 +87,7 @@ void main() {
 
     test('does not invent an end time from a single hour', () {
       final result = RecurringMemoryScheduleService.buildBlockedPeriod(
-        text: 'Tous les mercredis à 18h30, Kassim a football.',
+        text: 'Tous les mercredis à 18h30, activité familiale.',
       );
 
       expect(result, isNull);
@@ -79,7 +95,7 @@ void main() {
 
     test('ignores a non-recurring appointment', () {
       final result = RecurringMemoryScheduleService.buildBlockedPeriod(
-        text: 'Mercredi de 18h30 à 20h, Kassim a football.',
+        text: 'Mercredi de 18h30 à 20h, activité familiale.',
       );
 
       expect(result, isNull);
@@ -210,8 +226,7 @@ void main() {
       final reasoning = MemoryReasoningService.buildReasoning(
         const [
           {
-            'text':
-                'Tous les mercredis de 18h30 à 20h, j’emmène Kassim au foot.',
+            'text': 'Tous les mercredis de 18h30 à 20h, activité familiale.',
             'category': 'children',
           },
         ],
@@ -235,8 +250,7 @@ void main() {
       final reasoning = MemoryReasoningService.buildReasoning(
         const [
           {
-            'text':
-                'Tous les mercredis de 18h30 à 20h, j’emmène Kassim au foot.',
+            'text': 'Tous les mercredis de 18h30 à 20h, activité familiale.',
             'category': 'children',
           },
         ],
@@ -265,7 +279,7 @@ void main() {
       final reasoning = MemoryReasoningService.buildReasoning(
         const [
           {
-            'text': 'Tous les mercredis à 18h30, Kassim a football.',
+            'text': 'Tous les mercredis à 18h30, activité familiale.',
             'category': 'children',
           },
         ],

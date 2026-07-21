@@ -1,6 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:moms_ai/models/life_context/memory_context.dart';
 import 'package:moms_ai/models/user_profile.dart';
+import 'package:moms_ai/models/memory_lifecycle.dart';
 import 'package:moms_ai/services/conversation_context_service.dart';
+import 'package:moms_ai/services/memory_lifecycle_repository.dart';
 import 'package:moms_ai/services/smart_planning_service.dart';
 
 void main() {
@@ -24,8 +27,8 @@ void main() {
       profile: _profile(),
     );
 
-    expect(request.profileContext['identity'],
-        containsPair('firstName', 'Sophia'));
+    expect(
+        request.profileContext['identity'], containsPair('firstName', 'User'));
     expect(request.memories.single['text'], source['text']);
     expect(
       request.memoryReasoning.where(
@@ -63,11 +66,72 @@ void main() {
     );
     expect(request.memories, isEmpty);
   });
+
+  test('explicit non-active proposal is excluded from chat context', () async {
+    final provider = DefaultConversationContextProvider(
+      loadMemories: () async => [
+        {
+          'id': 'proposal-1',
+          'text': 'Routine proposée le lundi',
+          'category': 'routine',
+          'importance': 3,
+          'lifecycleState': 'proposed',
+        },
+      ],
+      loadEvents: () async => [],
+    );
+
+    final request = await provider.buildRequest(
+      message: 'Planifie ma journée de lundi',
+      profile: _profile(),
+    );
+
+    expect(request.memories, isEmpty);
+    expect(request.memoryReasoning, isEmpty);
+  });
+
+  test('assistant memory output is persisted only as a proposal', () async {
+    final repository = _FakeLifecycleRepository();
+    final provider = DefaultConversationContextProvider(
+      loadMemories: () async => [],
+      loadEvents: () async => [],
+      memoryLifecycleRepository: repository,
+    );
+
+    await provider.saveResponseMemory({
+      'text': 'Souviens-toi que je préfère les rendez-vous le matin',
+      'category': 'preference',
+      'importance': 3,
+    });
+
+    expect(repository.proposals, hasLength(1));
+    expect(repository.proposals.single.id, 'proposal-1');
+    expect(repository.mutations.single.newState.name, 'proposed');
+    expect(repository.proposals.single.confirmationRequired, isTrue);
+  });
+
+  test('memory persistence failure does not break the conversation flow',
+      () async {
+    final provider = DefaultConversationContextProvider(
+      loadMemories: () async => [],
+      loadEvents: () async => [],
+      memoryLifecycleRepository: _FailingLifecycleRepository(),
+    );
+
+    await expectLater(
+      provider.saveResponseMemory({
+        'text': 'Souviens-toi que je préfère le matin',
+        'category': 'preference',
+        'importance': 3,
+      }),
+      completes,
+    );
+  });
 }
 
 UserProfile _profile({String profilePhotoPath = ''}) {
   return UserProfile(
-    firstName: 'Sophia',
+    firstName: 'User',
     familyStatus: '',
     workStatus: '',
     partnerName: '',
@@ -75,4 +139,56 @@ UserProfile _profile({String profilePhotoPath = ''}) {
     children: const [],
     profilePhotoPath: profilePhotoPath,
   );
+}
+
+final class _FakeLifecycleRepository implements MemoryLifecycleRepository {
+  final List<MemoryProposal> proposals = [];
+  final List<MemoryLifecycleMutation> mutations = [];
+
+  @override
+  Future<String?> allocateProposalId() async => 'proposal-1';
+
+  @override
+  Future<List<LifeMemoryFact>> findCandidates(
+    MemoryProposal proposal, {
+    int limit = 25,
+  }) async =>
+      const [];
+
+  @override
+  Future<void> createProposal(
+    MemoryProposal proposal,
+    MemoryLifecycleMutation mutation,
+  ) async {
+    proposals.add(proposal);
+    mutations.add(mutation);
+  }
+
+  @override
+  Future<void> applyMutations(List<MemoryLifecycleMutation> mutations) async {}
+}
+
+final class _FailingLifecycleRepository implements MemoryLifecycleRepository {
+  @override
+  Future<String?> allocateProposalId() async => 'proposal-failure';
+
+  @override
+  Future<List<LifeMemoryFact>> findCandidates(
+    MemoryProposal proposal, {
+    int limit = 25,
+  }) async =>
+      const [];
+
+  @override
+  Future<void> applyMutations(List<MemoryLifecycleMutation> mutations) async {
+    throw StateError('persistence unavailable');
+  }
+
+  @override
+  Future<void> createProposal(
+    MemoryProposal proposal,
+    MemoryLifecycleMutation mutation,
+  ) async {
+    throw StateError('persistence unavailable');
+  }
 }

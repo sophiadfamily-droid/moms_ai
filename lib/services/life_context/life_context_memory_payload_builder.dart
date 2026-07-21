@@ -40,7 +40,7 @@ final class LifeContextMemoryPayloadBuilder {
     ]);
     final sensitiveDomains = _requestedSensitiveDomains(query);
 
-    final scored = context.memories.where((memory) {
+    final scored = context.consumableMemories.where((memory) {
       if (memory.text.trim().isEmpty) return false;
       if (memory.sensitivity == LifeContextSensitivity.sensitive &&
           !_isSensitiveMemoryRequested(memory, sensitiveDomains)) {

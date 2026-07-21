@@ -1,5 +1,6 @@
 import '../../models/life_context/life_context_provenance.dart';
 import '../../models/life_context/memory_context.dart';
+import '../../models/memory_lifecycle_state.dart';
 
 abstract interface class LifeContextMemoryProjection {
   MemoryContext project(Iterable<Map<String, dynamic>> documents);
@@ -38,10 +39,11 @@ final class HistoricalMemoryContextProjection
       createdAt: _dateTime(snapshot['createdAt'] ?? snapshot['createdAtIso']),
       updatedAt: _dateTime(snapshot['updatedAt']),
       validFrom: _dateTime(snapshot['validFrom']),
-      validUntil: _dateTime(snapshot['validUntil']),
-      confirmationStatus: _confirmationStatus(
-        snapshot['confirmationStatus'],
-      ),
+      validUntil: _dateTime(snapshot['validUntil'] ?? snapshot['expiresAt']),
+      confirmationStatus: _confirmationStatus(snapshot),
+      lifecycleState: _lifecycleState(snapshot),
+      lifecycleStateIsExplicit:
+          snapshot['lifecycleState']?.toString().trim().isNotEmpty == true,
       confidence: _confidence(snapshot['confidence']),
       sensitivity: _sensitivity(category, text),
       evidenceType: _evidenceType(snapshot['evidenceType']),
@@ -121,12 +123,43 @@ final class HistoricalMemoryContextProjection
         : LifeContextSensitivity.standard;
   }
 
-  MemoryConfirmationStatus _confirmationStatus(dynamic value) {
-    final normalized = value?.toString().trim().toLowerCase() ?? '';
+  MemoryConfirmationStatus _confirmationStatus(Map<String, dynamic> snapshot) {
+    final normalized =
+        snapshot['confirmationStatus']?.toString().trim().toLowerCase() ?? '';
+    if (normalized.isEmpty) {
+      final lifecycle =
+          snapshot['lifecycleState']?.toString().trim().toLowerCase() ?? '';
+      return switch (lifecycle) {
+        'confirmed' || 'active' => MemoryConfirmationStatus.confirmed,
+        'rejected' => MemoryConfirmationStatus.rejected,
+        'obsolete' ||
+        'superseded' ||
+        'expired' =>
+          MemoryConfirmationStatus.obsolete,
+        _ => MemoryConfirmationStatus.unconfirmed,
+      };
+    }
     return MemoryConfirmationStatus.values.firstWhere(
       (status) => status.name == normalized,
       orElse: () => MemoryConfirmationStatus.unconfirmed,
     );
+  }
+
+  MemoryLifecycleState _lifecycleState(Map<String, dynamic> snapshot) {
+    final stored = snapshot['lifecycleState']?.toString().trim().toLowerCase();
+    if (stored != null && stored.isNotEmpty) {
+      return MemoryLifecycleState.values.firstWhere(
+        (state) => state.name.toLowerCase() == stored,
+        orElse: () => MemoryLifecycleState.proposed,
+      );
+    }
+    final confirmation = _confirmationStatus(snapshot);
+    return switch (confirmation) {
+      MemoryConfirmationStatus.confirmed => MemoryLifecycleState.confirmed,
+      MemoryConfirmationStatus.rejected => MemoryLifecycleState.rejected,
+      MemoryConfirmationStatus.obsolete => MemoryLifecycleState.obsolete,
+      _ => MemoryLifecycleState.proposed,
+    };
   }
 
   LifeContextEvidenceType _evidenceType(dynamic value) {
@@ -199,7 +232,9 @@ final class HistoricalMemoryContextProjection
       'updatedAt',
       'validFrom',
       'validUntil',
+      'expiresAt',
       'confirmationStatus',
+      'lifecycleState',
       'confidence',
       'evidenceType',
     };

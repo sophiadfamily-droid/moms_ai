@@ -1,6 +1,7 @@
 import 'dart:collection';
 
 import 'life_context_provenance.dart';
+import '../memory_lifecycle_state.dart';
 
 enum LifeMemorySemanticType {
   fact,
@@ -36,6 +37,8 @@ final class LifeMemoryFact {
   final DateTime? validFrom;
   final DateTime? validUntil;
   final MemoryConfirmationStatus confirmationStatus;
+  final MemoryLifecycleState lifecycleState;
+  final bool lifecycleStateIsExplicit;
   final double? confidence;
   final LifeContextSensitivity sensitivity;
   final LifeContextEvidenceType evidenceType;
@@ -58,6 +61,8 @@ final class LifeMemoryFact {
     this.validFrom,
     this.validUntil,
     this.confidence,
+    this.lifecycleState = MemoryLifecycleState.proposed,
+    this.lifecycleStateIsExplicit = false,
     Map<String, Object?> legacyData = const {},
   }) : _legacyData = _freezeMap(legacyData);
 
@@ -77,6 +82,8 @@ final class LifeMemoryFact {
         'validFrom': validFrom?.toIso8601String(),
         'validUntil': validUntil?.toIso8601String(),
         'confirmationStatus': confirmationStatus.name,
+        'lifecycleState': lifecycleState.name,
+        'lifecycleStateIsExplicit': lifecycleStateIsExplicit,
         'confidence': confidence,
         'sensitivity': sensitivity.name,
         'evidenceType': evidenceType.name,
@@ -125,6 +132,11 @@ final class MemoryContext {
   }
 
   bool get isEmpty => memories.isEmpty;
+
+  Iterable<LifeMemoryFact> get consumableMemories => memories.where((memory) {
+        return !memory.lifecycleStateIsExplicit ||
+            memory.lifecycleState == MemoryLifecycleState.active;
+      });
 
   Map<String, dynamic> toJson() => {
         'memories': memories.map((memory) => memory.toJson()).toList(),

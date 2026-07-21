@@ -90,4 +90,27 @@ void main() {
       isEmpty,
     );
   });
+
+  test('excludes explicit proposals but preserves historical fallback', () {
+    final context = projection.project([
+      {
+        'id': 'proposal',
+        'text': 'Routine proposée lundi',
+        'category': 'routine',
+        'lifecycleState': 'proposed',
+      },
+      {
+        'id': 'historical',
+        'text': 'Routine historique lundi',
+        'category': 'routine',
+      },
+    ]);
+
+    final result = const LifeContextMemoryPayloadBuilder().select(
+      context: context,
+      message: 'Planifie lundi selon ma routine',
+    );
+
+    expect(result.memories.map((memory) => memory.id), ['historical']);
+  });
 }
