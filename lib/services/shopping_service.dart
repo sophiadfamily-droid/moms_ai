@@ -9,6 +9,7 @@ import '../core/identity/entity_matcher.dart';
 import '../core/identity/uuid_v7_entity_id_generator.dart';
 import '../models/shopping_item_model.dart';
 import 'cloud_shopping_service.dart';
+import 'app_diagnostics.dart';
 
 class ShoppingService {
   static const String shoppingKey = "shopping_items";
@@ -45,9 +46,12 @@ class ShoppingService {
 
     try {
       await CloudShoppingService.saveItems(items);
-    } catch (error, stackTrace) {
-      debugPrint('Cloud shopping sync failed: $error');
-      debugPrint('$stackTrace');
+    } catch (_) {
+      AppDiagnostics.record(
+        component: 'shopping_storage',
+        step: 'cloud_sync',
+        code: AppErrorCode.syncFailure,
+      );
     }
 
     notifyUpdate();
@@ -89,9 +93,12 @@ class ShoppingService {
       if (localItems.isNotEmpty) {
         await CloudShoppingService.saveItems(localItems);
       }
-    } catch (error, stackTrace) {
-      debugPrint('Cloud shopping load failed: $error');
-      debugPrint('$stackTrace');
+    } catch (_) {
+      AppDiagnostics.record(
+        component: 'shopping_storage',
+        step: 'cloud_load',
+        code: AppErrorCode.syncFailure,
+      );
     }
 
     return localItems;

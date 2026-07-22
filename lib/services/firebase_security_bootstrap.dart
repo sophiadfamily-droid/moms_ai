@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 import 'auth_service.dart';
+import 'app_diagnostics.dart';
 import 'callable_chat_backend_client.dart';
 
 enum ZeliaFirebaseEnvironment {
@@ -75,6 +76,15 @@ final class FirebaseSecurityBootstrap {
     final environment = ZeliaFirebaseEnvironmentPolicy.resolve(
       configured: _configuredEnvironment,
       isRelease: kReleaseMode,
+    );
+    AppDiagnostics.configure(
+      environment: switch (environment) {
+        ZeliaFirebaseEnvironment.emulator => AppDiagnosticEnvironment.emulator,
+        ZeliaFirebaseEnvironment.debug => AppDiagnosticEnvironment.debug,
+        ZeliaFirebaseEnvironment.staging => AppDiagnosticEnvironment.staging,
+        ZeliaFirebaseEnvironment.production =>
+          AppDiagnosticEnvironment.production,
+      },
     );
     final instance = _productionInstance ??= _createProduction(environment);
     return instance.initialize();

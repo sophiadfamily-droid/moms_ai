@@ -1,10 +1,10 @@
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/user_profile.dart';
 import 'cloud_profile_service.dart';
+import 'app_diagnostics.dart';
 
 class StorageService {
   static const String userProfileKey = "user_profile";
@@ -30,9 +30,12 @@ class StorageService {
 
     try {
       await CloudProfileService.saveProfile(profile);
-    } catch (error, stackTrace) {
-      debugPrint('Cloud profile sync failed: $error');
-      debugPrint('$stackTrace');
+    } catch (_) {
+      AppDiagnostics.record(
+        component: 'profile_storage',
+        step: 'cloud_sync',
+        code: AppErrorCode.syncFailure,
+      );
     }
   }
 
@@ -55,9 +58,12 @@ class StorageService {
 
         return cloudProfile;
       }
-    } catch (error, stackTrace) {
-      debugPrint('Cloud profile load failed: $error');
-      debugPrint('$stackTrace');
+    } catch (_) {
+      AppDiagnostics.record(
+        component: 'profile_storage',
+        step: 'cloud_load',
+        code: AppErrorCode.syncFailure,
+      );
     }
 
     final profileData = prefs.getString(userProfileKey);

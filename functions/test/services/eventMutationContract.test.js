@@ -133,5 +133,5 @@ test("removes an invalid mutation without corrupting valid actions", () => {
       {info: (message, data) => logs.push({message, data})},
   );
   assert.deepEqual(result, [creation, valid]);
-  assert.equal(logs[0].data.code, "invalid_event_mutation_removed");
+  assert.equal(logs[0].data.code, "invalid-event-mutation-removed");
 });

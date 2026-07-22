@@ -40,6 +40,31 @@ void main() {
       'events': const <Map<String, dynamic>>[],
     });
   });
+
+  testWidgets('ChatScreen never exposes a raw backend failure', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ChatScreen(
+          profile: _profile(),
+          backendClient: _FailingWidgetBackend(),
+          conversationContextProvider: _WidgetContextProvider(),
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), 'Message privé');
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.send));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('private provider detail'), findsNothing);
+    expect(
+      find.text(
+        'Zélia rencontre un problème temporaire. Tes données ne sont pas perdues.',
+      ),
+      findsOneWidget,
+    );
+  });
 }
 
 class _WidgetBackend implements ChatBackendClient {
@@ -53,6 +78,13 @@ class _WidgetBackend implements ChatBackendClient {
       actions: [],
       memories: [],
     );
+  }
+}
+
+class _FailingWidgetBackend implements ChatBackendClient {
+  @override
+  Future<ChatBackendResponse> send(ChatBackendRequest request) async {
+    throw Exception('private provider detail');
   }
 }
 

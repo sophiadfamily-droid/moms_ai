@@ -1,10 +1,9 @@
-import 'package:flutter/foundation.dart';
-
 import '../models/chat_backend_request.dart';
 import '../models/event_model.dart';
 import '../models/memory_lifecycle.dart';
 import '../models/user_profile.dart';
 import 'conversation_context_privacy_filter.dart';
+import 'app_diagnostics.dart';
 import 'event_service.dart';
 import 'memory_pipeline_service.dart';
 import 'memory_reasoning_service.dart';
@@ -204,9 +203,12 @@ class DefaultConversationContextProvider
       }
       await repository.createProposal(proposal, decision.mutations.single);
       return decision.confirmationRequest;
-    } catch (error, stackTrace) {
-      debugPrint('Memory proposal persistence failed: $error');
-      debugPrint('$stackTrace');
+    } catch (_) {
+      AppDiagnostics.record(
+        component: 'conversation_memory',
+        step: 'proposal_persistence',
+        code: AppErrorCode.storageFailure,
+      );
       return null;
     }
   }

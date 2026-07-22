@@ -31,6 +31,7 @@ import '../services/conflict_engine_service.dart';
 import '../services/action_handler_service.dart';
 import '../services/natural_date_service.dart';
 import '../services/chat_backend_client.dart';
+import '../services/app_diagnostics.dart';
 import '../services/chat_backend_client_factory.dart';
 import '../services/conversation_context_service.dart';
 import '../services/conversation_coordinator.dart';
@@ -2141,9 +2142,19 @@ class _ChatScreenState extends State<ChatScreen> {
       );
 
       if (outcome != null) addAssistantMessage(outcome.reply);
-    } catch (e) {
-      final errorText = "Je rencontre un petit souci : $e";
-      addAssistantMessage(errorText);
+    } catch (error) {
+      final descriptor = error is ChatBackendException
+          ? error.descriptor
+          : AppErrorCatalog.describe(AppErrorCode.unknown);
+      AppDiagnostics.record(
+        component: 'chat',
+        step: 'send',
+        code: descriptor.code,
+        severity: descriptor.severity,
+        correlationId: descriptor.correlationId,
+        metadata: {'retryable': descriptor.retryable},
+      );
+      addAssistantMessage(descriptor.userMessage);
     } finally {
       if (mounted) {
         setState(() {

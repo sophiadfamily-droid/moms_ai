@@ -105,7 +105,7 @@ test("removes invalid participant without rejecting the event", () => {
   );
 
   assert.deepEqual(result, [{type: "event", title: "Rendez-vous"}]);
-  assert.equal(logs[0].data.code, "invalid_event_participant_removed");
+  assert.equal(logs[0].data.code, "invalid-event-participant-removed");
   assert.deepEqual(actions[0].participant, validParticipant);
 });
 

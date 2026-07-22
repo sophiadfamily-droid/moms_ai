@@ -14,6 +14,7 @@ const {generateZeliaResponse} = require("./openaiService");
 const {routeModel} = require("./modelRouterService");
 const {sanitizeEventParticipants} = require("./eventParticipantContract");
 const {sanitizeEventMutations} = require("./eventMutationContract");
+const {writeDiagnostic} = require("./diagnostics");
 
 const OPENAI_TIMEOUT_MS = 22000;
 
@@ -143,11 +144,19 @@ ${buildBrainContext()}
     env: dependencies.env || process.env,
   });
 
-  logger.info("ZELIA MODEL ROUTING", {
-    intent: detectedIntent.primaryIntent,
-    tier: modelDecision.tier,
-    model: modelDecision.model,
-    planningComplexity,
+  writeDiagnostic({
+    logger,
+    level: "info",
+    event: "ZELIA_MODEL_ROUTING",
+    component: "chat_orchestration",
+    step: "model_routing",
+    code: "model-routed",
+    env: dependencies.env || process.env,
+    metadata: {
+      intent: detectedIntent.primaryIntent,
+      tier: modelDecision.tier,
+      model: modelDecision.model,
+    },
   });
 
   const parsed = await runWithOpenAiDeadline(
@@ -156,6 +165,8 @@ ${buildBrainContext()}
         systemContent,
         userMessage: message,
         model: modelDecision.model,
+        logger,
+        env: dependencies.env || process.env,
         signal,
       }),
       timeoutMs,

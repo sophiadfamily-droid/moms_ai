@@ -49,9 +49,9 @@ class _AuthScreenState extends State<AuthScreen> {
       case "network-request-failed":
         return "Connexion internet indisponible.";
       case "operation-not-allowed":
-        return "La connexion par e-mail n’est pas activée dans Firebase.";
+        return "Ce mode de connexion est temporairement indisponible.";
       default:
-        return "Erreur Firebase : ${error.code}";
+        return "Connexion impossible. Réessaie dans quelques instants.";
     }
   }
 

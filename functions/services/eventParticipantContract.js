@@ -111,9 +111,10 @@ function sanitizeEventParticipants(actions, userMessage, logger = console) {
       null;
     if (participant == null) {
       delete action.participant;
-      logger.info("EVENT PARTICIPANT REMOVED", {
-        code: "invalid_event_participant_removed",
-      });
+      writeDiagnostic({logger, level: "info",
+        event: "EVENT_PARTICIPANT_REMOVED", component: "event_guard",
+        step: "participant_validation",
+        code: "invalid-event-participant-removed"});
     } else {
       action.participant = participant;
     }
@@ -127,3 +128,4 @@ module.exports = {
   sanitizeEventParticipants,
   validateExplicitEventParticipant,
 };
+const {writeDiagnostic} = require("./diagnostics");

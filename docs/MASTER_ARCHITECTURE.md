@@ -540,6 +540,34 @@ unrestricted fallback endpoint.
 
 Firebase project, database, region, provider, enforcement, secret, and deployment changes always require explicit approval and current-state verification.
 
+### Diagnostic and error policy
+
+**Current state:** Flutter and Functions use one minimal diagnostic boundary per
+runtime. Production, staging, debug and emulator are explicit environments, but
+none of them may log user content. Diagnostics are deny-by-default: they accept
+only a bounded technical component, step, stable code, severity/environment,
+random correlation ID and explicitly allowlisted scalar metrics. Arbitrary
+objects, exceptions and stack traces are never serialized.
+
+Conversation text, prompts, model responses, memories, profiles, events, tasks,
+shopping data, documents, names, contact details, addresses, birth dates,
+health data, Firebase UIDs, Auth/App Check tokens, credentials, secrets, request
+bodies and Firestore documents are forbidden in logs in every environment.
+Debug and emulator may provide additional technical scalar metadata only; they
+do not relax the content policy. Test fixtures must remain synthetic.
+
+The shared error taxonomy keeps Firebase-compatible stable codes where useful
+and maps authentication, App Check, permissions, validation, quota, network,
+timeout, availability, conflict/stale revision, absence, cancellation, storage,
+synchronization and unknown failures to non-sensitive French messages and a
+retry policy. Correlation IDs are random and never derived from an account or
+business object. No analytics, crash-reporting provider or remote observability
+platform is introduced by this policy.
+
+Remaining limitation: diagnostics currently use local/runtime logging sinks.
+Retention, operational dashboards, crash reporting, support workflows and
+organization-wide historical log remediation require separate approved work.
+
 ## 16. Testing and quality model
 
 ZELIA uses layered confidence:

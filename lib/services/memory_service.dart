@@ -1,7 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart';
-
 import 'auth_service.dart';
+import 'app_diagnostics.dart';
 
 class MemoryService {
   static final FirebaseFirestore firestore = FirebaseFirestore.instance;
@@ -46,9 +45,12 @@ class MemoryService {
           return true;
         }
       }
-    } catch (error, stackTrace) {
-      debugPrint("Memory duplicate check failed: $error");
-      debugPrint("$stackTrace");
+    } catch (_) {
+      AppDiagnostics.record(
+        component: 'memory',
+        step: 'duplicate_check',
+        code: AppErrorCode.storageFailure,
+      );
       return true;
     }
 
@@ -86,9 +88,12 @@ class MemoryService {
         "updatedAt": now,
         "source": "chat",
       });
-    } catch (error, stackTrace) {
-      debugPrint("Memory save failed: $error");
-      debugPrint("$stackTrace");
+    } catch (_) {
+      AppDiagnostics.record(
+        component: 'memory',
+        step: 'save',
+        code: AppErrorCode.storageFailure,
+      );
     }
   }
 
@@ -110,9 +115,12 @@ class MemoryService {
           "id": doc.id,
         };
       }).toList();
-    } catch (error, stackTrace) {
-      debugPrint("Memory load failed: $error");
-      debugPrint("$stackTrace");
+    } catch (_) {
+      AppDiagnostics.record(
+        component: 'memory',
+        step: 'load',
+        code: AppErrorCode.storageFailure,
+      );
       return [];
     }
   }

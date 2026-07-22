@@ -1,6 +1,7 @@
 const {HttpsError} = require("firebase-functions/v2/https");
 const {ChatQuotaExceededError} = require("./chatQuotaService");
 const {requiresAppCheck} = require("./securityEnvironment");
+const {ERROR_CODES, writeDiagnostic} = require("./diagnostics");
 
 const CALLABLE_TIMEOUT_SECONDS = 25;
 const CHAT_FUNCTION_REGION = "us-central1";
@@ -104,8 +105,14 @@ function createCallableChatHandler({
       if (error instanceof HttpsErrorClass) {
         throw error;
       }
-      logger.error("ZELIA_CHAT_FAILURE", {
-        code: "chat_processing_failed",
+      writeDiagnostic({
+        logger,
+        level: "error",
+        event: "ZELIA_CHAT_FAILURE",
+        component: "chat_transport",
+        step: "request",
+        code: ERROR_CODES.serviceUnavailable,
+        env,
       });
       throw new HttpsErrorClass(
           "internal",

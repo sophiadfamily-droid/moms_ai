@@ -3,6 +3,7 @@ const {OpenAI} = require("openai");
 const {
   zeliaResponseJsonSchema,
 } = require("../brain/zeliaResponseJsonSchema");
+const {writeDiagnostic} = require("./diagnostics");
 
 const DEFAULT_MODEL = "gpt-4.1-mini";
 const RESPONSE_SCHEMA_NAME = "zelia_response";
@@ -180,6 +181,8 @@ async function generateZeliaResponse({
   userMessage,
   model = DEFAULT_MODEL,
   client = null,
+  logger = console,
+  env = process.env,
   signal,
 }) {
   const openai = client || new OpenAI({
@@ -199,11 +202,19 @@ async function generateZeliaResponse({
       throw error;
     }
 
-    console.warn("ZELIA MODEL FALLBACK", {
-      attemptedModel: model,
-      fallbackModel: DEFAULT_MODEL,
-      status: error && error.status ? error.status : null,
-      code: error && error.code ? error.code : null,
+    writeDiagnostic({
+      logger,
+      level: "warn",
+      event: "ZELIA_MODEL_FALLBACK",
+      component: "openai",
+      step: "model_fallback",
+      code: "provider-fallback",
+      env,
+      metadata: {
+        model: DEFAULT_MODEL,
+        status: Number(error && error.status) || 0,
+        retryable: true,
+      },
     });
 
     const fallbackRequest = buildZeliaResponseRequest({

@@ -9,6 +9,7 @@ import '../core/identity/entity_matcher.dart';
 import '../core/identity/uuid_v7_entity_id_generator.dart';
 import '../models/task_model.dart';
 import 'cloud_task_service.dart';
+import 'app_diagnostics.dart';
 
 class TaskService {
   static const String tasksKey = "tasks";
@@ -34,9 +35,12 @@ class TaskService {
 
     try {
       await CloudTaskService.saveTasks(tasks);
-    } catch (error, stackTrace) {
-      debugPrint('Cloud tasks sync failed: $error');
-      debugPrint('$stackTrace');
+    } catch (_) {
+      AppDiagnostics.record(
+        component: 'task_storage',
+        step: 'cloud_sync',
+        code: AppErrorCode.syncFailure,
+      );
     }
 
     notifyTasksChanged();
@@ -68,9 +72,12 @@ class TaskService {
       if (localTasks.isNotEmpty) {
         await CloudTaskService.saveTasks(localTasks);
       }
-    } catch (error, stackTrace) {
-      debugPrint('Cloud tasks load failed: $error');
-      debugPrint('$stackTrace');
+    } catch (_) {
+      AppDiagnostics.record(
+        component: 'task_storage',
+        step: 'cloud_load',
+        code: AppErrorCode.syncFailure,
+      );
     }
 
     return localTasks;
@@ -108,9 +115,12 @@ class TaskService {
 
     try {
       await CloudTaskService.clearTasks();
-    } catch (error, stackTrace) {
-      debugPrint('Cloud tasks clear failed: $error');
-      debugPrint('$stackTrace');
+    } catch (_) {
+      AppDiagnostics.record(
+        component: 'task_storage',
+        step: 'cloud_clear',
+        code: AppErrorCode.syncFailure,
+      );
     }
 
     notifyTasksChanged();

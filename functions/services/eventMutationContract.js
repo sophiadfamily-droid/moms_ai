@@ -173,11 +173,12 @@ function sanitizeEventMutations(actions, userMessage, logger = console) {
     if (!action || action.type !== "event_mutation") return [action];
     const valid = validateEventMutation(action, userMessage);
     if (valid) return [valid];
-    logger.info("EVENT MUTATION REMOVED", {
-      code: "invalid_event_mutation_removed",
-    });
+    writeDiagnostic({logger, level: "info", event: "EVENT_MUTATION_REMOVED",
+      component: "event_guard", step: "mutation_validation",
+      code: "invalid-event-mutation-removed"});
     return [];
   });
 }
 
 module.exports = {sanitizeEventMutations, validateEventMutation};
+const {writeDiagnostic} = require("./diagnostics");

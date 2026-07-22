@@ -180,10 +180,19 @@ test("logs only a stable code for OpenAI failures", async () => {
       (error) => error.code === "internal" &&
         !error.message.includes("private"),
   );
-  assert.deepEqual(logs, [[
-    "ZELIA_CHAT_FAILURE",
-    {code: "chat_processing_failed"},
-  ]]);
+  assert.equal(logs.length, 1);
+  assert.equal(logs[0][0], "ZELIA_CHAT_FAILURE");
+  assert.deepEqual({
+    ...logs[0][1],
+    correlationId: "redacted-for-test",
+  }, {
+    component: "chat_transport",
+    step: "request",
+    code: "service-unavailable",
+    environment: "production",
+    correlationId: "redacted-for-test",
+  });
+  assert.equal(JSON.stringify(logs).includes("private"), false);
 });
 
 test("rejects malformed payload before quota", async () => {

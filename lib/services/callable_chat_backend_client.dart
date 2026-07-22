@@ -6,6 +6,7 @@ import '../models/chat_backend_request.dart';
 import '../models/chat_backend_response.dart';
 import 'chat_backend_client.dart';
 import 'auth_service.dart';
+import 'app_diagnostics.dart';
 
 typedef ChatCallableInvoker = Future<dynamic> Function(
   Map<String, dynamic> data,
@@ -75,35 +76,63 @@ class CallableChatBackendClient implements ChatBackendClient {
       final data = await _invoke(request.toJson());
 
       if (data is! Map) {
-        throw const ChatBackendMalformedResponseException();
+        throw ChatBackendMalformedResponseException();
       }
 
       final Map<String, dynamic> normalized;
       try {
         normalized = Map<String, dynamic>.from(data);
       } on TypeError {
-        throw const ChatBackendMalformedResponseException();
+        throw ChatBackendMalformedResponseException();
       }
 
       return ChatBackendResponse.fromJson(normalized);
     } on ChatBackendException {
       rethrow;
     } on TimeoutException {
-      throw const ChatBackendTimeoutException();
+      throw ChatBackendTimeoutException();
     } on FirebaseFunctionsException catch (error) {
       switch (error.code) {
         case 'deadline-exceeded':
-          throw const ChatBackendTimeoutException();
+          throw ChatBackendTimeoutException();
         case 'unavailable':
-          throw const ChatBackendConnectionException();
+          throw ChatBackendConnectionException();
         case 'resource-exhausted':
-          throw const ChatBackendQuotaExceededException();
+          throw ChatBackendQuotaExceededException();
         case 'unauthenticated':
-          throw const ChatBackendAuthenticationException();
+          throw ChatBackendAuthenticationException();
+        case 'failed-precondition':
+          throw ChatBackendCallableException(
+            error.code,
+            AppErrorCode.appCheckRequired,
+          );
+        case 'permission-denied':
+          throw ChatBackendCallableException(
+            error.code,
+            AppErrorCode.permissionDenied,
+          );
+        case 'invalid-argument':
+          throw ChatBackendCallableException(
+            error.code,
+            AppErrorCode.invalidArgument,
+          );
+        case 'aborted':
+          throw ChatBackendCallableException(
+            error.code,
+            AppErrorCode.conflict,
+          );
+        case 'not-found':
+          throw ChatBackendCallableException(
+            error.code,
+            AppErrorCode.notFound,
+          );
         case 'internal':
           throw ChatBackendHttpException(500);
         default:
-          throw ChatBackendCallableException(error.code);
+          throw ChatBackendCallableException(
+            error.code,
+            AppErrorCode.serviceUnavailable,
+          );
       }
     }
   }
