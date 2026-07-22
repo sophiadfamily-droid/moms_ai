@@ -1,4 +1,5 @@
 import '../models/event_model.dart';
+import '../models/event_participant.dart';
 import '../models/shopping_item_model.dart';
 import '../models/task_model.dart';
 
@@ -17,6 +18,7 @@ class ActionHandlerResult {
   final Map<String, dynamic>? pendingTravelEvent;
   final Map<String, dynamic>? pendingConflictResolutionEvent;
   final EventModel? pendingConfirmationEvent;
+  final EventParticipant? eventParticipant;
   final Map<String, dynamic>? pendingSmartPlanningTask;
 
   const ActionHandlerResult({
@@ -27,6 +29,7 @@ class ActionHandlerResult {
     this.pendingTravelEvent,
     this.pendingConflictResolutionEvent,
     this.pendingConfirmationEvent,
+    this.eventParticipant,
     this.pendingSmartPlanningTask,
   });
 }
@@ -336,6 +339,9 @@ class ActionHandlerService {
 
       return ActionHandlerResult(
         pendingConfirmationEvent: event,
+        eventParticipant: action['participant'] is EventParticipant
+            ? action['participant'] as EventParticipant
+            : null,
         message: EventConfirmationService.buildConfirmationMessage(event),
       );
     }

@@ -1,4 +1,5 @@
 import '../models/planning_draft_model.dart';
+import '../models/event_participant.dart';
 import '../models/task_model.dart';
 import 'natural_language_understanding_service.dart';
 
@@ -54,7 +55,10 @@ class PlanningDraftService {
     return updated.markUpdated();
   }
 
-  static Map<String, dynamic> toPendingTimeEvent(PlanningDraftModel draft) {
+  static Map<String, dynamic> toPendingTimeEvent(
+    PlanningDraftModel draft, {
+    EventParticipant? participant,
+  }) {
     return {
       "type": draft.type,
       "title": draft.title,
@@ -72,6 +76,7 @@ class PlanningDraftService {
       "recurringUntil": draft.recurringUntil,
       "originalUserMessage": draft.sourceMessage,
       "planningDraft": draft.toJson(),
+      if (participant != null) "participant": participant,
     };
   }
 

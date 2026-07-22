@@ -74,6 +74,14 @@ existing clarification, and only `notFound` with an explicit compatible
 creation request can create a pending proposal. A successful creation attaches
 the new stable ID to the in-memory draft binding without executing the event.
 
+**Implemented in Phase 4F-A:** event actions may carry one optional, closed,
+typed person participant from the strict backend schema through the client
+guard and temporary conversation draft. The server retains it only when its
+bounded label occurs literally in the original user message after conservative
+case, accent, apostrophe, punctuation, and whitespace normalization. Pronouns,
+closed relational expressions, invalid shapes, non-event uses, and unproven
+labels are removed without rejecting the otherwise valid event action.
+
 The Identity Engine is not applied to every chat message. Phases 3A through 3C
 create no identity or proposal, perform no Identity save, and have no
 concrete Firestore repository or production-persisted Identity data. Phase
@@ -107,6 +115,12 @@ inspect backend/LLM output or free conversation for names. Missing, mismatched,
 relational, pronominal, explicit-ID, unknown-type, empty-label, or unknown-source
 creation data cannot start a proposal. Tasks, shopping, memory, profile, and
 all persistent business links remain excluded.
+
+Phase 4F-A only establishes transport provenance. Literal occurrence proves
+neither legal identity nor semantic intent: it deliberately does not resolve,
+clarify, create, or persist an Identity. The participant remains outside
+`EventModel` and Firestore, Identity services remain absent from production
+composition, and the existing event confirmation behavior is unchanged.
 
 **Outside V1:** fuzzy, phonetic, embedding, or LLM matching; global identities;
 automatic merges; inferred sensitive relationships; and Knowledge Graph logic.

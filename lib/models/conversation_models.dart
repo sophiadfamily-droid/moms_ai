@@ -5,6 +5,7 @@ import '../core/identity/entity_reference.dart';
 import '../core/identity/entity_types.dart';
 import 'chat_backend_request.dart';
 import 'event_model.dart';
+import 'event_participant.dart';
 import 'memory_lifecycle_state.dart';
 import 'user_profile.dart';
 
@@ -380,14 +381,17 @@ final class IdentityClarificationResult {
 class PendingConversationAction {
   final PendingConversationActionType type;
   final EventModel? _event;
+  final EventParticipant? eventParticipant;
   final String? proposalId;
   final MemoryLifecycleAction? expectedMemoryAction;
   final DateTime? createdAt;
   final PendingIdentityClarification? identityClarification;
   final PendingIdentityCreation? identityCreation;
 
-  const PendingConversationAction.eventConfirmation(EventModel this._event)
-      : type = PendingConversationActionType.eventConfirmation,
+  const PendingConversationAction.eventConfirmation(
+    EventModel this._event, {
+    this.eventParticipant,
+  })  : type = PendingConversationActionType.eventConfirmation,
         proposalId = null,
         expectedMemoryAction = null,
         createdAt = null,
@@ -400,6 +404,7 @@ class PendingConversationAction {
     required this.expectedMemoryAction,
   })  : type = PendingConversationActionType.memoryConfirmation,
         _event = null,
+        eventParticipant = null,
         identityClarification = null,
         identityCreation = null;
 
@@ -407,6 +412,7 @@ class PendingConversationAction {
     PendingIdentityClarification this.identityClarification,
   )   : type = PendingConversationActionType.identityClarification,
         _event = null,
+        eventParticipant = null,
         proposalId = null,
         expectedMemoryAction = null,
         createdAt = null,
@@ -416,6 +422,7 @@ class PendingConversationAction {
     PendingIdentityCreation this.identityCreation,
   )   : type = PendingConversationActionType.identityCreation,
         _event = null,
+        eventParticipant = null,
         proposalId = null,
         expectedMemoryAction = null,
         createdAt = null,

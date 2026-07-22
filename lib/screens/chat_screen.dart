@@ -6,6 +6,7 @@ import '../models/conversation_models.dart';
 import '../models/user_profile.dart';
 import '../models/task_model.dart';
 import '../models/event_model.dart';
+import '../models/event_participant.dart';
 import '../models/planning_draft_model.dart';
 
 import '../services/event_service.dart';
@@ -2201,7 +2202,12 @@ class _ChatScreenState extends State<ChatScreen> {
         needsTravel: eventNeedsTravel(pendingAction),
       );
 
-      pendingTimeEvent = PlanningDraftService.toPendingTimeEvent(draft);
+      pendingTimeEvent = PlanningDraftService.toPendingTimeEvent(
+        draft,
+        participant: pendingAction['participant'] is EventParticipant
+            ? pendingAction['participant'] as EventParticipant
+            : null,
+      );
     }
 
     if (result.pendingDurationEvent != null) {
@@ -2217,7 +2223,10 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     if (result.pendingConfirmationEvent != null) {
-      pendingConfirmationEvent = result.pendingConfirmationEvent;
+      conversationCoordinator.setPendingEventConfirmation(
+        result.pendingConfirmationEvent,
+        participant: result.eventParticipant,
+      );
     }
 
     if (result.pendingSmartPlanningTask != null) {

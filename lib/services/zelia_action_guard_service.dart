@@ -1,3 +1,5 @@
+import '../models/event_participant.dart';
+
 class ZeliaActionGuardResult {
   final bool isAccepted;
   final Map<String, dynamic>? action;
@@ -128,6 +130,14 @@ class ZeliaActionGuardService {
       'isUrgent': source['isUrgent'] == true,
       'usesSeparateTravelTimes': source['usesSeparateTravelTimes'] == true,
     };
+    normalized.remove('participant');
+
+    final participant = _validatedParticipant(
+      source['participant'],
+      actionType: type,
+      corrections: corrections,
+    );
+    if (participant != null) normalized['participant'] = participant;
 
     _normalizeRecurringState(normalized, corrections);
     _normalizeTravelState(normalized, corrections);
@@ -137,6 +147,40 @@ class ZeliaActionGuardService {
       action: normalized,
       corrections: corrections,
     );
+  }
+
+  static EventParticipant? _validatedParticipant(
+    dynamic rawParticipant, {
+    required String actionType,
+    required List<String> corrections,
+  }) {
+    if (rawParticipant == null) return null;
+    if (actionType != 'event' || rawParticipant is! Map) {
+      corrections.add('invalid_event_participant_removed');
+      return null;
+    }
+
+    final participant = Map<Object?, Object?>.from(rawParticipant);
+    const allowedKeys = {'label', 'entityType', 'evidence'};
+    if (participant.keys.any((key) => !allowedKeys.contains(key)) ||
+        participant.length != allowedKeys.length ||
+        participant['label'] is! String ||
+        participant['entityType'] != 'person' ||
+        participant['evidence'] != 'explicit_user_input') {
+      corrections.add('invalid_event_participant_removed');
+      return null;
+    }
+
+    try {
+      return EventParticipant(
+        label: participant['label']! as String,
+        entityType: EventParticipantEntityType.person,
+        evidence: EventParticipantEvidence.explicitUserInput,
+      );
+    } on FormatException {
+      corrections.add('invalid_event_participant_removed');
+      return null;
+    }
   }
 
   static String _normalizeType(dynamic rawValue) {

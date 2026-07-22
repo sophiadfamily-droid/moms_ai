@@ -72,6 +72,43 @@ test("preserves legacy defaults for missing fields", async () => {
 });
 
 test(
+    "keeps only a participant literally present in the user message",
+    async () => {
+      const explicit = await handleChatRequest({
+        message: "Ajoute un rendez-vous avec Person A",
+      }, {}, {
+        now: () => new Date("2026-07-20T10:00:00.000Z"),
+        logger: {info() {}},
+        generateResponse: async () => ({
+          reply: "D'accord",
+          actions: [{
+            type: "event",
+            title: "Rendez-vous",
+            participant: {
+              label: "Person A",
+              entityType: "person",
+              evidence: "explicit_user_input",
+            },
+          }],
+          memories: [],
+        }),
+      });
+      assert.equal(explicit.actions[0].participant.label, "Person A");
+
+      const invented = await handleChatRequest(
+          {message: "Ajoute un rendez-vous"},
+          {},
+          {
+            now: () => new Date("2026-07-20T10:00:00.000Z"),
+            logger: {info() {}},
+            generateResponse: async () => explicit,
+          },
+      );
+      assert.equal("participant" in invented.actions[0], false);
+    },
+);
+
+test(
     "aborts and rejects the whole OpenAI operation at its deadline",
     async () => {
       let receivedSignal;

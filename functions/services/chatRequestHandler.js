@@ -12,6 +12,7 @@ const {
 } = require("../brain/engines/planningComplexityDetector");
 const {generateZeliaResponse} = require("./openaiService");
 const {routeModel} = require("./modelRouterService");
+const {sanitizeEventParticipants} = require("./eventParticipantContract");
 
 const OPENAI_TIMEOUT_MS = 22000;
 
@@ -159,7 +160,7 @@ ${buildBrainContext()}
 
   return {
     reply: parsed.reply || "C'est noté 💕",
-    actions: parsed.actions || [],
+    actions: sanitizeEventParticipants(parsed.actions, message, logger),
     memories: parsed.memories || [],
   };
 }

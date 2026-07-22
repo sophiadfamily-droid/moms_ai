@@ -4,6 +4,22 @@ const ACTION_TYPES = Object.freeze([
   "event",
 ]);
 
+const eventParticipantSchema = Object.freeze({
+  anyOf: [
+    {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        label: {type: "string", minLength: 1, maxLength: 120},
+        entityType: {type: "string", enum: ["person"]},
+        evidence: {type: "string", enum: ["explicit_user_input"]},
+      },
+      required: ["label", "entityType", "evidence"],
+    },
+    {type: "null"},
+  ],
+});
+
 const actionSchema = Object.freeze({
   type: "object",
   additionalProperties: false,
@@ -91,6 +107,7 @@ const actionSchema = Object.freeze({
     arrivalContext: {
       type: "string",
     },
+    participant: eventParticipantSchema,
   },
   required: [
     "type",
@@ -118,6 +135,7 @@ const actionSchema = Object.freeze({
     "marginMinutes",
     "departureContext",
     "arrivalContext",
+    "participant",
   ],
 });
 
@@ -170,6 +188,7 @@ const zeliaResponseJsonSchema = Object.freeze({
 module.exports = {
   ACTION_TYPES,
   actionSchema,
+  eventParticipantSchema,
   memorySchema,
   zeliaResponseJsonSchema,
 };

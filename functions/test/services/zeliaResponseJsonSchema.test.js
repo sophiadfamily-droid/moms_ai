@@ -5,6 +5,7 @@ const {
   ACTION_TYPES,
   actionSchema,
   memorySchema,
+  eventParticipantSchema,
   zeliaResponseJsonSchema,
 } = require("../../brain/zeliaResponseJsonSchema");
 
@@ -57,6 +58,26 @@ test("requires recurring, task, and shopping compatibility fields", () => {
   assert.equal(requiredFields.has("priority"), true);
   assert.equal(requiredFields.has("isUrgent"), true);
   assert.equal(requiredFields.has("section"), true);
+});
+
+test("defines a closed nullable event participant contract", () => {
+  const requiredFields = new Set(actionSchema.required);
+  const objectSchema = eventParticipantSchema.anyOf[0];
+
+  assert.equal(requiredFields.has("participant"), true);
+  assert.equal(actionSchema.properties.participant, eventParticipantSchema);
+  assert.equal(objectSchema.additionalProperties, false);
+  assert.deepEqual(
+      objectSchema.required,
+      ["label", "entityType", "evidence"],
+  );
+  assert.deepEqual(objectSchema.properties.entityType.enum, ["person"]);
+  assert.deepEqual(
+      objectSchema.properties.evidence.enum,
+      ["explicit_user_input"],
+  );
+  assert.equal(objectSchema.properties.label.maxLength, 120);
+  assert.equal(eventParticipantSchema.anyOf[1].type, "null");
 });
 
 test("defines memories using the Flutter memory contract", () => {

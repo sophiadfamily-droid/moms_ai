@@ -21,11 +21,18 @@ FORMAT OBLIGATOIRE :
       "isImportant": false,
       "dueDate": "",
       "planning": "",
-      "priority": ""
+      "priority": "",
+      "participant": null
     }
   ],
   "memories": []
 }
+
+Pour une action event uniquement, participant peut remplacer null par :
+{"label":"libellé explicite","entityType":"person",
+"evidence":"explicit_user_input"}.
+N'utilise jamais participant pour un pronom, une relation implicite ou une
+personne seulement supposée. Ne fournis ni identifiant, ni alias, ni metadata.
 `;
 
 module.exports = responseSchema;

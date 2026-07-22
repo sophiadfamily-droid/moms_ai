@@ -1,5 +1,6 @@
 import '../models/conversation_models.dart';
 import '../models/event_model.dart';
+import '../models/event_participant.dart';
 import '../models/life_context/memory_context.dart';
 import '../models/memory_lifecycle.dart';
 import '../models/memory_lifecycle_state.dart';
@@ -64,7 +65,10 @@ class ConversationCoordinator {
 
   ConversationState get state => _state;
 
-  void setPendingEventConfirmation(EventModel? event) {
+  void setPendingEventConfirmation(
+    EventModel? event, {
+    EventParticipant? participant,
+  }) {
     if (event == null) {
       _state = _state.copyWith(
         phase: ConversationPhase.idle,
@@ -75,7 +79,10 @@ class ConversationCoordinator {
 
     _state = _state.copyWith(
       phase: ConversationPhase.awaitingActionConfirmation,
-      pendingAction: PendingConversationAction.eventConfirmation(event),
+      pendingAction: PendingConversationAction.eventConfirmation(
+        event,
+        eventParticipant: participant,
+      ),
     );
   }
 
