@@ -7,16 +7,19 @@ import '../../repositories/identity/firestore_identity_write_repository.dart';
 import '../../repositories/identity/identity_read_repository.dart';
 import 'identity_application_service.dart';
 import 'identity_creation_service.dart';
+import 'event_participant_identity_validation_service.dart';
 
 final class IdentityProductionServices {
   final IdentityAccountScope scope;
   final IdentityApplicationService applicationService;
   final IdentityCreationService creationService;
+  final EventParticipantIdentityValidationService eventParticipantValidation;
 
   IdentityProductionServices._({
     required this.scope,
     required this.applicationService,
     required this.creationService,
+    required this.eventParticipantValidation,
   });
 
   factory IdentityProductionServices.create({
@@ -40,6 +43,9 @@ final class IdentityProductionServices {
         readRepository: readRepository,
         writeRepository: writeRepository,
         idGenerator: UuidV7EntityIdGenerator(),
+      ),
+      eventParticipantValidation: EventParticipantIdentityValidationService(
+        repository: readRepository,
       ),
     );
   }

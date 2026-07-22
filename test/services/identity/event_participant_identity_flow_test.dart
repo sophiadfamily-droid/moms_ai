@@ -21,6 +21,7 @@ import 'package:moms_ai/services/identity/identity_action_binding_service.dart';
 import 'package:moms_ai/services/identity/identity_application_service.dart';
 import 'package:moms_ai/services/identity/identity_clarification_service.dart';
 import 'package:moms_ai/services/identity/identity_creation_service.dart';
+import 'package:moms_ai/services/identity/event_participant_identity_validation_service.dart';
 
 void main() {
   group('production event participant Identity flow', () {
@@ -44,6 +45,24 @@ void main() {
       expect(pending?.eventParticipant, _participant());
       expect(pending?.participantIdentityEntityId, 'entity-1');
       expect(fixture.eventWrites, 0);
+
+      EventModel? persisted;
+      final confirmation =
+          await fixture.coordinator.resolvePendingEventConfirmation(
+        answer: 'oui',
+        isPositiveAnswer: (value) => value == 'oui',
+        isNegativeAnswer: (value) => value == 'non',
+        cancellationMessage: (_) => 'Annulé',
+        expectedAnswerMessage: () => 'Réponds oui ou non',
+        execute: (event) async {
+          fixture.eventWrites++;
+          persisted = event;
+          return 'Événement créé';
+        },
+      );
+      expect(confirmation?.message, 'Événement créé');
+      expect(persisted?.participantIdentity?.identity.entityId, 'entity-1');
+      expect(fixture.eventWrites, 1);
     });
 
     test('ambiguity keeps the draft then explicit selection resumes it',
@@ -146,6 +165,25 @@ void main() {
       );
       expect(ambiguousEventAnswer?.message, 'Confirme l’événement séparément');
       expect(fixture.eventWrites, 0);
+
+      EventModel? persisted;
+      await fixture.coordinator.resolvePendingEventConfirmation(
+        answer: 'oui',
+        isPositiveAnswer: (value) => value == 'oui',
+        isNegativeAnswer: (value) => value == 'non',
+        cancellationMessage: (_) => 'Annulé',
+        expectedAnswerMessage: () => 'Réponds oui ou non',
+        execute: (event) async {
+          fixture.eventWrites++;
+          persisted = event;
+          return 'Événement créé';
+        },
+      );
+      expect(
+        persisted?.participantIdentity?.identity.entityId,
+        createdEntityId,
+      );
+      expect(fixture.eventWrites, 1);
     });
 
     test('creation refusal and ambiguity write neither identity nor event',
@@ -273,6 +311,42 @@ void main() {
       expect(spy.scopes, isNotEmpty);
       expect(spy.scopes.toSet(), {scope});
     });
+
+    test('deleted identity before event confirmation blocks the event write',
+        () async {
+      final fixture = await _fixture([_entity()]);
+      await fixture.coordinator.beginEventParticipantIdentity(
+        event: _event(),
+        participant: _participant(),
+        confirmationMessage: 'Confirmer cet événement ?',
+      );
+      await fixture.repository.seedAll(
+        scope: fixture.scope,
+        entities: [_entity(status: EntityStatus.deleted)],
+      );
+
+      final result = await fixture.coordinator.resolvePendingEventConfirmation(
+        answer: 'oui',
+        isPositiveAnswer: (value) => value == 'oui',
+        isNegativeAnswer: (value) => value == 'non',
+        cancellationMessage: (_) => 'Annulé',
+        expectedAnswerMessage: () => 'Réponds oui ou non',
+        execute: (_) async {
+          fixture.eventWrites++;
+          return 'Événement créé';
+        },
+      );
+
+      expect(
+        result?.diagnosticCode,
+        'event_participant_identity_not_referenceable',
+      );
+      expect(fixture.eventWrites, 0);
+      expect(
+        fixture.coordinator.state.pendingAction?.type,
+        PendingConversationActionType.eventConfirmation,
+      );
+    });
   });
 }
 
@@ -320,6 +394,8 @@ Future<_Fixture> _fixture(
       idGenerator: ids,
       now: now ?? () => _now,
     ),
+    eventParticipantIdentityValidationService:
+        EventParticipantIdentityValidationService(repository: reads),
   );
   return _Fixture(
     coordinator: coordinator,
@@ -453,6 +529,7 @@ LifeEntity _entity({
   String id = 'entity-1',
   String label = 'Person A',
   String? alias,
+  EntityStatus status = EntityStatus.active,
 }) =>
     LifeEntity.fromLabel(
       id: id,
@@ -468,6 +545,7 @@ LifeEntity _entity({
                 createdAt: _now,
               ),
             ],
+      status: status,
       source: _source,
       createdAt: _now,
       updatedAt: _now,

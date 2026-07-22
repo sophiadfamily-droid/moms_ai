@@ -509,12 +509,14 @@ class ConversationOutcome {
 
 class PendingConversationResolution {
   final String message;
+  final String? diagnosticCode;
   final IdentityClarificationResult? identityClarificationResult;
   final IdentityActionBindingResult? identityActionBindingResult;
   final IdentityCreationResult? identityCreationResult;
 
   const PendingConversationResolution(
     this.message, {
+    this.diagnosticCode,
     this.identityClarificationResult,
     this.identityActionBindingResult,
     this.identityCreationResult,

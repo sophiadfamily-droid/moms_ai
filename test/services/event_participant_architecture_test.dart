@@ -14,11 +14,12 @@ void main() {
     expect(screen, isNot(contains('FirebaseFirestore')));
   });
 
-  test('EventModel remains free of participant and Identity links', () {
+  test('EventModel uses only the minimal typed participant Identity link', () {
     final eventModel = File('lib/models/event_model.dart').readAsStringSync();
 
-    expect(eventModel, isNot(contains('EventParticipant')));
+    expect(eventModel, contains('EventParticipantIdentityLink'));
     expect(eventModel, isNot(contains('PersistedIdentityLink')));
-    expect(eventModel, isNot(contains('participantIdentity')));
+    expect(eventModel, isNot(contains('LifeEntity')));
+    expect(eventModel, isNot(contains('IdentityRepository')));
   });
 }

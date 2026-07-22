@@ -19,6 +19,7 @@ import 'identity/identity_application_service.dart';
 import 'identity/identity_action_binding_service.dart';
 import 'identity/identity_clarification_service.dart';
 import 'identity/identity_creation_service.dart';
+import 'identity/event_participant_identity_validation_service.dart';
 import '../repositories/identity/identity_read_repository.dart';
 import 'zelia_action_guard_service.dart';
 import 'zelia_response_builder.dart';
@@ -41,6 +42,8 @@ class ConversationCoordinator {
   final IdentityApplicationService? identityApplicationService;
   final IdentityCreationService? identityCreationService;
   final IdentityAccountScope? identityAccountScope;
+  final EventParticipantIdentityValidationService?
+      eventParticipantIdentityValidationService;
   final EntityIdGenerator _actionDraftIdGenerator;
 
   ConversationState _state = const ConversationState();
@@ -61,6 +64,7 @@ class ConversationCoordinator {
     this.identityApplicationService,
     this.identityCreationService,
     this.identityAccountScope,
+    this.eventParticipantIdentityValidationService,
     EntityIdGenerator? actionDraftIdGenerator,
   })  : _memoryLifecycleRepository = memoryLifecycleRepository,
         identityClarificationService = identityClarificationService ??
@@ -473,7 +477,40 @@ class ConversationCoordinator {
     _state = _state.copyWith(phase: ConversationPhase.executingAction);
 
     try {
-      final message = await execute(pending.event);
+      var event = pending.event;
+      final participant = pending.eventParticipant;
+      final entityId = pending.participantIdentityEntityId;
+      if (participant != null) {
+        final scope = identityAccountScope;
+        final validator = eventParticipantIdentityValidationService;
+        if (scope == null || validator == null || entityId == null) {
+          _state = _state.copyWith(
+            phase: ConversationPhase.awaitingActionConfirmation,
+          );
+          return const PendingConversationResolution(
+            'Je ne peux pas vérifier le participant pour le moment. '
+            'Je n’ai pas ajouté l’événement.',
+          );
+        }
+        final validation = await validator.validate(
+          scope: scope,
+          entityId: entityId,
+          participant: participant,
+        );
+        if (validation.status !=
+            EventParticipantIdentityValidationStatus.valid) {
+          _state = _state.copyWith(
+            phase: ConversationPhase.awaitingActionConfirmation,
+          );
+          return PendingConversationResolution(
+            'Je ne peux pas vérifier le participant pour le moment. '
+            'Je n’ai pas ajouté l’événement.',
+            diagnosticCode: validation.diagnosticCode,
+          );
+        }
+        event = event.copyWith(participantIdentity: validation.link);
+      }
+      final message = await execute(event);
       _state = _state.copyWith(
         phase: ConversationPhase.idle,
         clearPendingAction: true,

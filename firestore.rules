@@ -69,6 +69,31 @@ service cloud.firestore {
         && next.updatedAt != previous.updatedAt;
     }
 
+    function hasValidEventParticipantIdentity(userId) {
+      let data = request.resource.data;
+      let hasLink = data.keys().hasAny(['participantIdentity']);
+      let link = hasLink ? data.participantIdentity : {};
+      return !hasLink || (
+        link is map
+        && link.keys().hasOnly([
+          'entityId', 'entityType', 'schemaVersion', 'role', 'accountScopeId'
+        ])
+        && link.keys().hasAll([
+          'entityId', 'entityType', 'schemaVersion', 'role', 'accountScopeId'
+        ])
+        && link.entityId is string
+        && link.entityId.size() > 0
+        && link.entityId.size() <= 200
+        && link.entityType == 'person'
+        && link.schemaVersion == 1
+        && link.role == 'participant'
+        && link.accountScopeId is string
+        && link.accountScopeId.size() > 0
+        && link.accountScopeId.size() <= 128
+        && link.accountScopeId == userId
+      );
+    }
+
     match /users/{userId} {
       allow read, write: if isOwner(userId);
 
@@ -79,8 +104,17 @@ service cloud.firestore {
         allow delete: if false;
       }
 
+      match /events/{eventId} {
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId)
+          && hasValidEventParticipantIdentity(userId);
+        allow delete: if isOwner(userId);
+      }
+
       match /{collection}/{document=**} {
-        allow read, write: if isOwner(userId) && collection != 'identities';
+        allow read, write: if isOwner(userId)
+          && collection != 'identities'
+          && collection != 'events';
       }
     }
 

@@ -73,7 +73,7 @@ void main() {
     }
   });
 
-  test('only the typed conversation model uses identity from application code',
+  test('only approved typed models use core Identity from application code',
       () {
     for (final relativeDirectory in ['lib/models', 'lib/screens']) {
       final directory = Directory('${repositoryRoot.path}/$relativeDirectory');
@@ -85,7 +85,9 @@ void main() {
         final usesIdentity = file.readAsStringSync().contains('core/identity/');
         final isConversationModel =
             file.path.endsWith('/lib/models/conversation_models.dart');
-        expect(usesIdentity, isConversationModel,
+        final isEventIdentityLink = file.path
+            .endsWith('/lib/models/event_participant_identity_link.dart');
+        expect(usesIdentity, isConversationModel || isEventIdentityLink,
             reason: '${file.path} has an unexpected identity dependency.');
       }
     }
@@ -107,9 +109,16 @@ void main() {
     expect(source, isNot(contains('identity_repository')));
   });
 
-  test('persisted Identity link is not integrated into business models', () {
+  test('persisted participant Identity link is limited to events', () {
+    final eventSource = File(
+      '${repositoryRoot.path}/lib/models/event_model.dart',
+    ).readAsStringSync();
+    expect(eventSource, contains('participantIdentity'));
+    expect(eventSource, isNot(contains('LifeEntity')));
+    expect(eventSource, isNot(contains('repositories/identity')));
+    expect(eventSource, isNot(contains('services/identity')));
+
     for (final relativePath in [
-      'lib/models/event_model.dart',
       'lib/models/task_model.dart',
       'lib/models/shopping_item_model.dart',
     ]) {

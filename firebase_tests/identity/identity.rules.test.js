@@ -101,6 +101,65 @@ try {
     doc(other, 'users/account-a/events/event-b'),
     {title: 'Cross-account write remains denied'},
   ));
+  const participantIdentity = {
+    entityId: 'valid',
+    entityType: 'person',
+    schemaVersion: 1,
+    role: 'participant',
+    accountScopeId: 'account-a',
+  };
+  await succeeds(setDoc(
+    doc(owner, 'users/account-a/events/event-with-identity'),
+    {title: 'Event', participantIdentity},
+  ));
+  await succeeds(getDoc(
+    doc(owner, 'users/account-a/events/event-with-identity'),
+  ));
+  await succeeds(updateDoc(
+    doc(owner, 'users/account-a/events/event-with-identity'),
+    {title: 'Updated event'},
+  ));
+  await fails(updateDoc(
+    doc(owner, 'users/account-a/events/event-with-identity'),
+    {participantIdentity: {...participantIdentity, role: 'owner'}},
+  ));
+  await fails(setDoc(
+    doc(owner, 'users/account-a/events/event-invalid-role'),
+    {title: 'Event', participantIdentity: {...participantIdentity, role: 'owner'}},
+  ));
+  await fails(setDoc(
+    doc(owner, 'users/account-a/events/event-extra-link-field'),
+    {title: 'Event', participantIdentity: {...participantIdentity, label: 'Private'}},
+  ));
+  await fails(setDoc(
+    doc(owner, 'users/account-a/events/event-empty-identity'),
+    {title: 'Event', participantIdentity: {...participantIdentity, entityId: ''}},
+  ));
+  await fails(setDoc(
+    doc(owner, 'users/account-a/events/event-long-identity'),
+    {title: 'Event', participantIdentity: {...participantIdentity, entityId: 'a'.repeat(201)}},
+  ));
+  await environment.withSecurityRulesDisabled(async (context) => {
+    await setDoc(
+      doc(context.firestore(), 'users/account-b/identities/foreign'),
+      identity('foreign'),
+    );
+  });
+  await fails(setDoc(
+    doc(owner, 'users/account-a/events/event-foreign-identity'),
+    {
+      title: 'Event',
+      participantIdentity: {
+        ...participantIdentity,
+        entityId: 'foreign',
+        accountScopeId: 'account-b',
+      },
+    },
+  ));
+  await fails(setDoc(
+    doc(guest, 'users/account-a/events/event-guest'),
+    {title: 'Event', participantIdentity},
+  ));
 
   await fails(setDoc(doc(guest, identities, 'guest'), identity('guest')));
   await fails(setDoc(doc(other, identities, 'other'), identity('other')));

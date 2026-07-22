@@ -105,6 +105,8 @@ class _ChatScreenState extends State<ChatScreen> {
       identityApplicationService: widget.identityServices?.applicationService,
       identityCreationService: widget.identityServices?.creationService,
       identityAccountScope: widget.identityServices?.scope,
+      eventParticipantIdentityValidationService:
+          widget.identityServices?.eventParticipantValidation,
     );
     currentConversationId = DateTime.now().millisecondsSinceEpoch.toString();
 

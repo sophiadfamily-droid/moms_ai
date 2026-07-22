@@ -1,3 +1,5 @@
+import 'event_participant_identity_link.dart';
+
 class EventModel {
   final String? id;
   final String title;
@@ -43,6 +45,7 @@ class EventModel {
   final int recurringWeekday;
   final String recurringUntil;
   final String parentRecurringId;
+  final EventParticipantIdentityLink? participantIdentity;
 
   EventModel({
     this.id,
@@ -68,6 +71,7 @@ class EventModel {
     this.recurringWeekday = 0,
     this.recurringUntil = "",
     this.parentRecurringId = "",
+    this.participantIdentity,
   });
 
   int get resolvedTravelGoMinutes {
@@ -116,6 +120,8 @@ class EventModel {
     int? recurringWeekday,
     String? recurringUntil,
     String? parentRecurringId,
+    EventParticipantIdentityLink? participantIdentity,
+    bool clearParticipantIdentity = false,
   }) {
     return EventModel(
       id: clearId ? null : id ?? this.id,
@@ -142,6 +148,9 @@ class EventModel {
       recurringWeekday: recurringWeekday ?? this.recurringWeekday,
       recurringUntil: recurringUntil ?? this.recurringUntil,
       parentRecurringId: parentRecurringId ?? this.parentRecurringId,
+      participantIdentity: clearParticipantIdentity
+          ? null
+          : participantIdentity ?? this.participantIdentity,
     );
   }
 
@@ -170,6 +179,8 @@ class EventModel {
       "recurringWeekday": recurringWeekday,
       "recurringUntil": recurringUntil,
       "parentRecurringId": parentRecurringId,
+      if (participantIdentity != null)
+        "participantIdentity": participantIdentity!.toJson(),
     };
   }
 
@@ -213,6 +224,9 @@ class EventModel {
           int.tryParse(json["recurringWeekday"]?.toString() ?? "0") ?? 0,
       recurringUntil: json["recurringUntil"] ?? "",
       parentRecurringId: json["parentRecurringId"] ?? "",
+      participantIdentity: EventParticipantIdentityLink.tryFromJson(
+        json["participantIdentity"],
+      ),
     );
   }
 }

@@ -133,11 +133,22 @@ composition, and the existing event confirmation behavior is unchanged.
 
 Phase 4F activates only the single `eventParticipant` path. Identity refusal,
 expiration, invalid scope, or repository failure never confirms or creates the
-event. The resolved ID remains conversation state only: `EventModel`, event
-Firestore documents, tasks, shopping, memory, profile, planning, and backend
-contracts are unchanged. Identity confirmation and event confirmation remain
-separate user decisions; no migration, backfill, merge, relation, push, or
-deployment is included.
+event. Identity confirmation and event confirmation remain separate user
+decisions.
+
+**Implemented in Phase 4G:** after the distinct event confirmation, the
+coordinator revalidates the attached Identity in the explicit account scope.
+Only an active person is persisted directly; inactive and deleted identities
+block the event write. A merged identity is followed through a bounded,
+cycle-safe chain and only its validated active target may be persisted. The
+optional `participantIdentity` event field contains only `entityId`,
+`entityType`, `schemaVersion`, the closed `participant` role, and the matching
+`accountScopeId`. Historical events without the field remain valid; malformed
+links are ignored defensively on read. Firestore rules validate the closed
+shape and same-account scope. Existence and current status remain application
+checks because event persistence uses collection batch rewrites. Tasks,
+shopping, memory, profile, planning semantics, and backend contracts remain
+unchanged; there is no migration, backfill, relation, push, or deployment.
 
 **Outside V1:** fuzzy, phonetic, embedding, or LLM matching; global identities;
 automatic merges; inferred sensitive relationships; and Knowledge Graph logic.
