@@ -8,6 +8,7 @@ import {
 } from '@firebase/rules-unit-testing';
 import {
   collection,
+  deleteField,
   deleteDoc,
   doc,
   getDoc,
@@ -17,6 +18,7 @@ import {
   runTransaction,
   setDoc,
   updateDoc,
+  writeBatch,
   where,
 } from 'firebase/firestore';
 
@@ -110,7 +112,7 @@ try {
   };
   await succeeds(setDoc(
     doc(owner, 'users/account-a/events/event-with-identity'),
-    {title: 'Event', participantIdentity},
+    {title: 'Event', participantIdentity, participantIdentityRevision: 1},
   ));
   await succeeds(getDoc(
     doc(owner, 'users/account-a/events/event-with-identity'),
@@ -122,6 +124,47 @@ try {
   await fails(updateDoc(
     doc(owner, 'users/account-a/events/event-with-identity'),
     {participantIdentity: {...participantIdentity, role: 'owner'}},
+  ));
+  await fails(updateDoc(
+    doc(owner, 'users/account-a/events/event-with-identity'),
+    {participantIdentity: deleteField()},
+  ));
+  await succeeds(updateDoc(
+    doc(owner, 'users/account-a/events/event-with-identity'),
+    {
+      participantIdentity: deleteField(),
+      participantIdentityRevision: 2,
+    },
+  ));
+  await succeeds(updateDoc(
+    doc(owner, 'users/account-a/events/event-with-identity'),
+    {title: 'Updated after explicit removal'},
+  ));
+  await fails(updateDoc(
+    doc(owner, 'users/account-a/events/event-with-identity'),
+    {participantIdentityRevision: deleteField()},
+  ));
+  await succeeds(setDoc(
+    doc(owner, 'users/account-a/events/event-replacement'),
+    {title: 'Event', participantIdentity, participantIdentityRevision: 1},
+  ));
+  await succeeds(updateDoc(
+    doc(owner, 'users/account-a/events/event-replacement'),
+    {
+      participantIdentity: {...participantIdentity, entityId: 'replacement'},
+      participantIdentityRevision: 2,
+    },
+  ));
+  await fails(updateDoc(
+    doc(owner, 'users/account-a/events/event-replacement'),
+    {
+      participantIdentity: {
+        ...participantIdentity,
+        entityId: 'foreign',
+        accountScopeId: 'account-b',
+      },
+      participantIdentityRevision: 3,
+    },
   ));
   await fails(setDoc(
     doc(owner, 'users/account-a/events/event-invalid-role'),
@@ -160,6 +203,42 @@ try {
     doc(guest, 'users/account-a/events/event-guest'),
     {title: 'Event', participantIdentity},
   ));
+  await succeeds(updateDoc(
+    doc(owner, 'users/account-a/events/event-a'),
+    {title: 'Historical event remains editable'},
+  ));
+  await succeeds(setDoc(
+    doc(owner, 'users/account-a/events/event-batch-1'),
+    {title: 'Batch 1', participantIdentity, participantIdentityRevision: 1},
+  ));
+  await succeeds(setDoc(
+    doc(owner, 'users/account-a/events/event-batch-2'),
+    {title: 'Batch 2', participantIdentity, participantIdentityRevision: 1},
+  ));
+  const eventBatch = writeBatch(owner);
+  eventBatch.update(
+    doc(owner, 'users/account-a/events/event-batch-1'),
+    {title: 'Batch 1 updated'},
+  );
+  eventBatch.update(
+    doc(owner, 'users/account-a/events/event-batch-2'),
+    {title: 'Batch 2 updated'},
+  );
+  await succeeds(eventBatch.commit());
+  await succeeds(setDoc(
+    doc(owner, 'users/account-a/events/event-delete'),
+    {title: 'Delete', participantIdentity, participantIdentityRevision: 1},
+  ));
+  await fails(deleteDoc(
+    doc(other, 'users/account-a/events/event-delete'),
+  ));
+  await fails(deleteDoc(
+    doc(guest, 'users/account-a/events/event-delete'),
+  ));
+  await succeeds(deleteDoc(
+    doc(owner, 'users/account-a/events/event-delete'),
+  ));
+  await succeeds(getDoc(doc(owner, identities, 'valid')));
 
   await fails(setDoc(doc(guest, identities, 'guest'), identity('guest')));
   await fails(setDoc(doc(other, identities, 'other'), identity('other')));

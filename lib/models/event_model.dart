@@ -46,6 +46,7 @@ class EventModel {
   final String recurringUntil;
   final String parentRecurringId;
   final EventParticipantIdentityLink? participantIdentity;
+  final int participantIdentityRevision;
 
   EventModel({
     this.id,
@@ -72,7 +73,16 @@ class EventModel {
     this.recurringUntil = "",
     this.parentRecurringId = "",
     this.participantIdentity,
-  });
+    int? participantIdentityRevision,
+  }) : participantIdentityRevision = participantIdentityRevision ??
+            (participantIdentity == null ? 0 : 1) {
+    if (this.participantIdentityRevision < 0 ||
+        (participantIdentity != null && this.participantIdentityRevision < 1) ||
+        (participantIdentity == null &&
+            this.participantIdentityRevision == 1)) {
+      throw const FormatException('invalid_participant_identity_revision');
+    }
+  }
 
   int get resolvedTravelGoMinutes {
     if (usesSeparateTravelTimes) return travelGoMinutes;
@@ -122,7 +132,15 @@ class EventModel {
     String? parentRecurringId,
     EventParticipantIdentityLink? participantIdentity,
     bool clearParticipantIdentity = false,
+    int? participantIdentityRevision,
   }) {
+    final nextParticipantIdentity = clearParticipantIdentity
+        ? null
+        : participantIdentity ?? this.participantIdentity;
+    final nextParticipantIdentityRevision = participantIdentityRevision ??
+        (participantIdentity != null && this.participantIdentity == null
+            ? 1
+            : this.participantIdentityRevision);
     return EventModel(
       id: clearId ? null : id ?? this.id,
       title: title ?? this.title,
@@ -148,9 +166,8 @@ class EventModel {
       recurringWeekday: recurringWeekday ?? this.recurringWeekday,
       recurringUntil: recurringUntil ?? this.recurringUntil,
       parentRecurringId: parentRecurringId ?? this.parentRecurringId,
-      participantIdentity: clearParticipantIdentity
-          ? null
-          : participantIdentity ?? this.participantIdentity,
+      participantIdentity: nextParticipantIdentity,
+      participantIdentityRevision: nextParticipantIdentityRevision,
     );
   }
 
@@ -181,6 +198,8 @@ class EventModel {
       "parentRecurringId": parentRecurringId,
       if (participantIdentity != null)
         "participantIdentity": participantIdentity!.toJson(),
+      if (participantIdentityRevision > 0)
+        "participantIdentityRevision": participantIdentityRevision,
     };
   }
 
@@ -224,9 +243,37 @@ class EventModel {
           int.tryParse(json["recurringWeekday"]?.toString() ?? "0") ?? 0,
       recurringUntil: json["recurringUntil"] ?? "",
       parentRecurringId: json["parentRecurringId"] ?? "",
-      participantIdentity: EventParticipantIdentityLink.tryFromJson(
-        json["participantIdentity"],
-      ),
+      participantIdentity: _participantIdentityFromJson(json),
+      participantIdentityRevision: _participantIdentityRevisionFromJson(json),
     );
+  }
+
+  static EventParticipantIdentityLink? _participantIdentityFromJson(
+    Map<String, dynamic> json,
+  ) {
+    final link = EventParticipantIdentityLink.tryFromJson(
+      json["participantIdentity"],
+    );
+    final revision = int.tryParse(
+          json["participantIdentityRevision"]?.toString() ?? '',
+        ) ??
+        (link == null ? 0 : 1);
+    if (link == null || revision < 1) return null;
+    return link;
+  }
+
+  static int _participantIdentityRevisionFromJson(
+    Map<String, dynamic> json,
+  ) {
+    final link = EventParticipantIdentityLink.tryFromJson(
+      json["participantIdentity"],
+    );
+    final revision = int.tryParse(
+          json["participantIdentityRevision"]?.toString() ?? '',
+        ) ??
+        (link == null ? 0 : 1);
+    if (link != null && revision >= 1) return revision;
+    if (link == null && revision >= 2) return revision;
+    return 0;
   }
 }

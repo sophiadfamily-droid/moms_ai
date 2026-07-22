@@ -43,9 +43,12 @@ class CloudEventService {
 
     final existing = await ref.get();
     final batch = _firestore.batch();
+    final desiredIds = events.map(documentIdForEvent).toSet();
 
     for (final doc in existing.docs) {
-      batch.delete(doc.reference);
+      if (!desiredIds.contains(doc.id)) {
+        batch.delete(doc.reference);
+      }
     }
 
     for (final event in events) {

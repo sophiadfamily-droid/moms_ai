@@ -9,6 +9,7 @@ import '../core/identity/entity_matcher.dart';
 import '../core/identity/uuid_v7_entity_id_generator.dart';
 import '../models/event_model.dart';
 import 'cloud_event_service.dart';
+import 'event_mutation_service.dart';
 
 class EventService {
   static const String eventsKey = "zelia_events";
@@ -33,8 +34,20 @@ class EventService {
     List<EventModel> events,
   ) async {
     final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getStringList(eventsKey) ?? const [];
+    final existing = stored
+        .map(
+          (event) => EventModel.fromJson(
+            Map<String, dynamic>.from(jsonDecode(event) as Map),
+          ),
+        )
+        .toList(growable: false);
+    final reconciled = EventMutationService.reconcileFullRewrite(
+      existing: existing,
+      proposed: events,
+    );
 
-    final encoded = events
+    final encoded = reconciled
         .map(
           (event) => jsonEncode(event.toJson()),
         )
@@ -46,7 +59,7 @@ class EventService {
     );
 
     try {
-      await CloudEventService.saveEvents(events);
+      await CloudEventService.saveEvents(reconciled);
     } catch (_) {
       // L'agenda reste disponible hors ligne ou sans compte connecté.
     }
@@ -125,6 +138,35 @@ class EventService {
     List<EventModel> events,
   ) async {
     await saveEvents(events);
+  }
+
+  static Future<void> mutateEvent({
+    required EventModel existing,
+    required EventModel proposed,
+    EventParticipantMutationIntent participantIntent =
+        const PreserveEventParticipant(),
+  }) async {
+    final events = await getEvents();
+    final index = events.indexWhere(
+      (event) => areSameEvent(event, existing),
+    );
+    if (index < 0) return;
+    events[index] = EventMutationService.apply(
+      existing: existing,
+      proposed: proposed,
+      participantIntent: participantIntent,
+    );
+    await saveEvents(events);
+  }
+
+  static Future<void> duplicateEvent(
+    EventModel source, {
+    EntityIdGenerator idGenerator = const UuidV7EntityIdGenerator(),
+  }) {
+    return addEvent(
+      EventMutationService.duplicate(source),
+      idGenerator: idGenerator,
+    );
   }
 
   static EventModel _withIdForCreation(

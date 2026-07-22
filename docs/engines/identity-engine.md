@@ -150,6 +150,32 @@ checks because event persistence uses collection batch rewrites. Tasks,
 shopping, memory, profile, planning semantics, and backend contracts remain
 unchanged; there is no migration, backfill, relation, push, or deployment.
 
+**Implemented in Phase 4H:** the participant link lifecycle is protected by a
+typed event-mutation boundary and a monotonically increasing
+`participantIdentityRevision`. Historical events without a link use revision
+zero, Phase 4G links missing the new field defensively default to revision one,
+and an explicit replacement or removal increments the current revision by
+exactly one. Ordinary title, schedule, duration, travel, margin, notes,
+category, and recurrence edits preserve the exact link. Full local and cloud
+collection rewrites reconcile against the stored event, preventing an older
+model reconstruction from silently erasing the link.
+
+Participant replacement remains a separate, explicit intent whose replacement
+link must already have completed the controlled Identity workflow. Participant
+removal is represented by an absent link plus its incremented lifecycle
+revision; it never deletes or modifies the global Identity. User duplication
+deliberately strips the participant link, while technical recurrence expansion
+preserves it. Event deletion has no Identity cascade. Firestore rules enforce
+same-scope closed links and exact lifecycle revision changes on updates, while
+remaining backward-compatible with events that never had a link.
+
+Phase 4H does not add a participant editing UI or bypass the existing Identity
+confirmation workflow. A legacy client that deletes and recreates an event can
+not be distinguished by Firestore rules from an intentional owner deletion;
+the current client therefore uses differential cloud rewrites instead of
+delete-and-recreate. Supporting arbitrary obsolete clients would require a
+server-owned mutation endpoint or an independently versioned event protocol.
+
 **Outside V1:** fuzzy, phonetic, embedding, or LLM matching; global identities;
 automatic merges; inferred sensitive relationships; and Knowledge Graph logic.
 

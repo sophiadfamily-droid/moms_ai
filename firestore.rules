@@ -94,6 +94,50 @@ service cloud.firestore {
       );
     }
 
+    function eventParticipantRevision(data) {
+      return data.keys().hasAny(['participantIdentityRevision'])
+        ? data.participantIdentityRevision
+        : (data.keys().hasAny(['participantIdentity']) ? 1 : 0);
+    }
+
+    function hasValidEventParticipantLifecycle(userId) {
+      let data = request.resource.data;
+      let hasLink = data.keys().hasAny(['participantIdentity']);
+      let hasRevision = data.keys().hasAny(['participantIdentityRevision']);
+      let revision = eventParticipantRevision(data);
+      return hasValidEventParticipantIdentity(userId)
+        && revision is int
+        && revision >= 0
+        && (
+          (hasLink && revision >= 1)
+          || (!hasLink && (!hasRevision || revision == 0 || revision >= 2))
+        );
+    }
+
+    function isValidEventCreate(userId) {
+      let data = request.resource.data;
+      let hasLink = data.keys().hasAny(['participantIdentity']);
+      let revision = eventParticipantRevision(data);
+      return hasValidEventParticipantLifecycle(userId)
+        && ((hasLink && revision == 1) || (!hasLink && revision == 0));
+    }
+
+    function isValidEventUpdate(userId) {
+      let previousRevision = eventParticipantRevision(resource.data);
+      let nextRevision = eventParticipantRevision(request.resource.data);
+      let previousLink = resource.data.keys().hasAny(['participantIdentity'])
+        ? resource.data.participantIdentity
+        : null;
+      let nextLink = request.resource.data.keys().hasAny(['participantIdentity'])
+        ? request.resource.data.participantIdentity
+        : null;
+      return hasValidEventParticipantLifecycle(userId)
+        && (
+          (nextLink == previousLink && nextRevision == previousRevision)
+          || (nextLink != previousLink && nextRevision == previousRevision + 1)
+        );
+    }
+
     match /users/{userId} {
       allow read, write: if isOwner(userId);
 
@@ -106,8 +150,8 @@ service cloud.firestore {
 
       match /events/{eventId} {
         allow read: if isOwner(userId);
-        allow create, update: if isOwner(userId)
-          && hasValidEventParticipantIdentity(userId);
+        allow create: if isOwner(userId) && isValidEventCreate(userId);
+        allow update: if isOwner(userId) && isValidEventUpdate(userId);
         allow delete: if isOwner(userId);
       }
 

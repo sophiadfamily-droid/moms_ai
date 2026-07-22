@@ -39,7 +39,30 @@ void main() {
       'role': 'participant',
       'accountScopeId': 'account-a',
     });
+    expect(map['participantIdentityRevision'], 1);
     expect(EventModel.fromJson(map).participantIdentity, link);
+  });
+
+  test('Phase 4G links without an explicit lifecycle revision default to one',
+      () {
+    final map = event(link: link).toJson()
+      ..remove('participantIdentityRevision');
+    final restored = EventModel.fromJson(map);
+    expect(restored.participantIdentity, link);
+    expect(restored.participantIdentityRevision, 1);
+  });
+
+  test('an explicit removal tombstone round-trips without an empty link', () {
+    final removed = event(link: link).copyWith(
+      clearParticipantIdentity: true,
+      participantIdentityRevision: 2,
+    );
+    final map = removed.toJson();
+    expect(map, isNot(containsPair('participantIdentity', anything)));
+    expect(map['participantIdentityRevision'], 2);
+    final restored = EventModel.fromJson(map);
+    expect(restored.participantIdentity, isNull);
+    expect(restored.participantIdentityRevision, 2);
   });
 
   test('the typed link rejects invalid scope and non-person identities', () {
