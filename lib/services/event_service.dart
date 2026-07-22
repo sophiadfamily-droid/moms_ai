@@ -8,9 +8,13 @@ import '../core/identity/entity_identity.dart';
 import '../core/identity/entity_matcher.dart';
 import '../core/identity/uuid_v7_entity_id_generator.dart';
 import '../models/event_model.dart';
+import '../models/event_sync_models.dart';
 import 'cloud_event_service.dart';
+import 'auth_service.dart';
 import 'event_mutation_service.dart';
 import 'event_mutation_result.dart';
+import 'event_sync_journal.dart';
+import 'event_sync_service.dart';
 
 typedef EventCloudMutation = Future<EventMutationResult?> Function({
   required EventModel existing,
@@ -25,6 +29,12 @@ typedef EventCloudDeletion = Future<EventMutationResult?> Function({
 
 class EventService {
   static const String eventsKey = "zelia_events";
+  static final EventSyncJournal _syncJournal = EventSyncJournal();
+  static final EventSyncService _syncService = EventSyncService(
+    journal: _syncJournal,
+    execute: CloudEventService.executeSyncOperation,
+  );
+  static const EntityIdGenerator _syncIdGenerator = UuidV7EntityIdGenerator();
 
   static final EntityMatcher<EventModel> _eventMatcher = EntityMatcher(
     idOf: (event) => event.id,
@@ -96,6 +106,11 @@ class EventService {
             .toList();
 
     try {
+      final sync = await synchronizePendingEvents();
+      if (sync.status == EventSyncStatus.conflicts ||
+          sync.status == EventSyncStatus.failed) {
+        return localEvents;
+      }
       final cloudEvents = await CloudEventService.getEvents();
 
       if (cloudEvents.isNotEmpty) {
@@ -112,10 +127,6 @@ class EventService {
 
         return cloudEvents;
       }
-
-      if (localEvents.isNotEmpty) {
-        await CloudEventService.saveEvents(localEvents);
-      }
     } catch (_) {
       // Si Firestore est indisponible, on utilise l'agenda local.
     }
@@ -129,9 +140,11 @@ class EventService {
   }) async {
     final events = await getEvents();
 
-    events.add(_withIdForCreation(event, idGenerator));
-
-    await saveEvents(events);
+    final created = _withIdForCreation(event, idGenerator);
+    events.add(created);
+    await _writeLocalEvents(events);
+    await _syncCreation(created);
+    notifyEventsChanged();
   }
 
   static Future<void> addEvents(
@@ -140,11 +153,16 @@ class EventService {
   }) async {
     final events = await getEvents();
 
-    events.addAll(
-      newEvents.map((event) => _withIdForCreation(event, idGenerator)),
-    );
-
-    await saveEvents(events);
+    final created = newEvents
+        .map((event) => _withIdForCreation(event, idGenerator))
+        .toList(growable: false);
+    events.addAll(created);
+    await _writeLocalEvents(events);
+    final batchId = _syncIdGenerator.generate();
+    for (final event in created) {
+      await _syncCreation(event, batchId: batchId);
+    }
+    notifyEventsChanged();
   }
 
   static Future<void> updateEvents(
@@ -183,11 +201,20 @@ class EventService {
         expectedEventRevision: expectedEventRevision,
       );
       if (cloudResult != null &&
-          cloudResult.status != EventMutationStatus.success) {
+          cloudResult.status != EventMutationStatus.success &&
+          cloudResult.status != EventMutationStatus.persistenceFailure) {
         return cloudResult;
       }
       events[index] = next;
       await _writeLocalEvents(events);
+      if (cloudResult == null ||
+          cloudResult.status == EventMutationStatus.persistenceFailure) {
+        await _enqueue(
+          type: EventSyncOperationType.update,
+          event: next,
+          expectedEventRevision: expectedEventRevision,
+        );
+      }
       notifyEventsChanged();
       return EventMutationResult.success(next);
     } on FormatException {
@@ -201,6 +228,7 @@ class EventService {
     required EventModel existing,
     required int expectedEventRevision,
     EventCloudDeletion cloudDelete = CloudEventService.deleteEvent,
+    String? batchId,
   }) async {
     final events = await getEvents();
     final index = events.indexWhere((event) => areSameEvent(event, existing));
@@ -214,11 +242,21 @@ class EventService {
         expectedEventRevision: expectedEventRevision,
       );
       if (cloudResult != null &&
-          cloudResult.status != EventMutationStatus.success) {
+          cloudResult.status != EventMutationStatus.success &&
+          cloudResult.status != EventMutationStatus.persistenceFailure) {
         return cloudResult;
       }
       final removed = events.removeAt(index);
       await _writeLocalEvents(events);
+      if (cloudResult == null ||
+          cloudResult.status == EventMutationStatus.persistenceFailure) {
+        await _enqueue(
+          type: EventSyncOperationType.delete,
+          eventId: removed.id,
+          expectedEventRevision: expectedEventRevision,
+          batchId: batchId,
+        );
+      }
       notifyEventsChanged();
       return EventMutationResult.success(removed);
     } catch (_) {
@@ -226,11 +264,86 @@ class EventService {
     }
   }
 
+  static Future<EventBatchMutationResult> deleteEvents(
+    List<EventModel> targets,
+  ) async {
+    if (targets.isEmpty) return EventBatchMutationResult(const []);
+    final batchId = _syncIdGenerator.generate();
+    final results = <EventMutationResult>[];
+    for (final target in targets) {
+      results.add(
+        await deleteEvent(
+          existing: target,
+          expectedEventRevision: target.eventRevision,
+          batchId: batchId,
+        ),
+      );
+    }
+    return EventBatchMutationResult(results);
+  }
+
   static Future<void> _writeLocalEvents(List<EventModel> events) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(
       eventsKey,
       events.map((event) => jsonEncode(event.toJson())).toList(),
+    );
+  }
+
+  static Future<EventSyncResult> synchronizePendingEvents() {
+    return _syncService.synchronize();
+  }
+
+  static Future<void> _syncCreation(
+    EventModel event, {
+    String? batchId,
+  }) async {
+    EventMutationResult? result;
+    try {
+      result = await CloudEventService.createEvent(event);
+    } catch (_) {
+      result = const EventMutationResult.persistenceFailure();
+    }
+    if (result == null ||
+        result.status == EventMutationStatus.persistenceFailure) {
+      await _enqueue(
+        type: EventSyncOperationType.create,
+        event: event,
+        batchId: batchId,
+      );
+      return;
+    }
+    if (result.status != EventMutationStatus.success) {
+      throw const FormatException('event_sync_creation_conflict');
+    }
+  }
+
+  static Future<void> _enqueue({
+    required EventSyncOperationType type,
+    EventModel? event,
+    String? eventId,
+    int? expectedEventRevision,
+    String? batchId,
+  }) {
+    final operationId = _syncIdGenerator.generate();
+    String? accountScopeId;
+    try {
+      accountScopeId = AuthService.currentUserId;
+    } catch (_) {
+      accountScopeId = null;
+    }
+    return _syncJournal.append(
+      PendingEventSyncOperation(
+        operationId: operationId,
+        eventId: event?.id ?? eventId ?? '',
+        accountScopeId: accountScopeId,
+        type: type,
+        expectedEventRevision: expectedEventRevision,
+        event: event,
+        batchId: batchId ?? operationId,
+        createdAt: DateTime.now().toUtc(),
+        state: EventSyncOperationState.pending,
+      ),
     );
   }
 
@@ -245,7 +358,9 @@ class EventService {
     for (final current in existing) {
       if (!EntityIdentity.isValid(current.id)) continue;
       final next = proposedById[current.id];
-      if (next == null) continue;
+      if (next == null) {
+        throw const FormatException('event_deletion_precondition_required');
+      }
       if (jsonEncode(current.toJson()) == jsonEncode(next.toJson())) continue;
       if (next.eventRevision != current.eventRevision + 1) {
         throw const FormatException('event_mutation_revision_required');

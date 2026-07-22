@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../core/identity/entity_identity.dart';
 import '../models/event_model.dart';
+import '../models/event_sync_models.dart';
 import 'auth_service.dart';
 import 'event_mutation_result.dart';
 
@@ -99,6 +100,68 @@ class CloudEventService {
         .toList();
   }
 
+  static Future<EventMutationResult?> createEvent(EventModel event) async {
+    final ref = _eventsRef;
+    if (ref == null) return null;
+    if (event.eventRevision != 1) {
+      return const EventMutationResult.invalid();
+    }
+    try {
+      return await _firestore.runTransaction((transaction) async {
+        final document = ref.doc(documentIdForEvent(event));
+        final snapshot = await transaction.get(document);
+        if (snapshot.exists) {
+          final current = eventFromDocument(
+            documentId: snapshot.id,
+            data: snapshot.data()!,
+          );
+          return _samePersistedEvent(current, event)
+              ? EventMutationResult.success(current)
+              : const EventMutationResult.alreadyExists();
+        }
+        final data = firestoreDataForEvent(event)
+          ..addAll({
+            'schemaVersion': 1,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        transaction.set(document, data);
+        return EventMutationResult.success(event);
+      });
+    } on FirebaseException {
+      return const EventMutationResult.persistenceFailure();
+    } on FormatException {
+      return const EventMutationResult.invalid();
+    }
+  }
+
+  static Future<EventMutationResult> executeSyncOperation(
+    PendingEventSyncOperation operation,
+  ) async {
+    final currentAccountId = AuthService.currentUserId;
+    if (currentAccountId == null || currentAccountId.isEmpty) {
+      return const EventMutationResult.persistenceFailure();
+    }
+    if (operation.accountScopeId == null ||
+        currentAccountId != operation.accountScopeId) {
+      return const EventMutationResult.scopeMismatch();
+    }
+    final result = switch (operation.type) {
+      EventSyncOperationType.create => createEvent(operation.event!),
+      EventSyncOperationType.update => mutateEvent(
+          existing: operation.event!.copyWith(
+            eventRevision: operation.expectedEventRevision,
+          ),
+          proposed: operation.event!,
+          expectedEventRevision: operation.expectedEventRevision!,
+        ),
+      EventSyncOperationType.delete => deleteEventById(
+          eventId: operation.eventId,
+          expectedEventRevision: operation.expectedEventRevision!,
+        ),
+    };
+    return await result ?? const EventMutationResult.persistenceFailure();
+  }
+
   /// Atomically applies one existing-event mutation when cloud persistence is
   /// active. A null result means there is no authenticated cloud boundary and
   /// the caller may use the documented local-only protocol.
@@ -127,6 +190,10 @@ class CloudEventService {
           data: snapshot.data()!,
         );
         if (current.eventRevision != expectedEventRevision) {
+          if (current.eventRevision == proposed.eventRevision &&
+              _samePersistedEvent(current, proposed)) {
+            return EventMutationResult.success(current);
+          }
           return const EventMutationResult.revisionConflict();
         }
         final data = firestoreDataForEvent(proposed)
@@ -172,6 +239,34 @@ class CloudEventService {
       if (error.code == 'aborted' || error.code == 'failed-precondition') {
         return const EventMutationResult.revisionConflict();
       }
+      return const EventMutationResult.persistenceFailure();
+    } on FormatException {
+      return const EventMutationResult.invalid();
+    }
+  }
+
+  static Future<EventMutationResult?> deleteEventById({
+    required String eventId,
+    required int expectedEventRevision,
+  }) async {
+    final ref = _eventsRef;
+    if (ref == null) return null;
+    try {
+      return await _firestore.runTransaction((transaction) async {
+        final document = ref.doc(eventId);
+        final snapshot = await transaction.get(document);
+        if (!snapshot.exists) return const EventMutationResult.notFound();
+        final current = eventFromDocument(
+          documentId: snapshot.id,
+          data: snapshot.data()!,
+        );
+        if (current.eventRevision != expectedEventRevision) {
+          return const EventMutationResult.revisionConflict();
+        }
+        transaction.delete(document);
+        return EventMutationResult.success(current);
+      });
+    } on FirebaseException {
       return const EventMutationResult.persistenceFailure();
     } on FormatException {
       return const EventMutationResult.invalid();

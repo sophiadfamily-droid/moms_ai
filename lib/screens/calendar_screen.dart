@@ -10,7 +10,6 @@ class CalendarScreen extends StatefulWidget {
     super.key,
     this.loadEventsForTest,
     this.addEventForTest,
-    this.updateEventsForTest,
     this.mutateEventForTest,
     this.deleteEventForTest,
     this.eventsVersionForTest,
@@ -18,7 +17,6 @@ class CalendarScreen extends StatefulWidget {
 
   final Future<List<EventModel>> Function()? loadEventsForTest;
   final Future<void> Function(EventModel event)? addEventForTest;
-  final Future<void> Function(List<EventModel> events)? updateEventsForTest;
   final Future<EventMutationResult> Function({
     required EventModel existing,
     required EventModel proposed,
@@ -62,11 +60,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   Future<void> addEvent(EventModel event) {
     return widget.addEventForTest?.call(event) ?? EventService.addEvent(event);
-  }
-
-  Future<void> updateEvents(List<EventModel> updatedEvents) {
-    return widget.updateEventsForTest?.call(updatedEvents) ??
-        EventService.updateEvents(updatedEvents);
   }
 
   Future<EventMutationResult> mutateEvent({
@@ -406,9 +399,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
             .where((item) => item.parentRecurringId == event.parentRecurringId)
             .toList(growable: false)
         : [event];
-    for (final target in targets) {
-      final result = await deleteEvent(target);
-      if (result.status != EventMutationStatus.success) {
+    if (targets.length > 1 && widget.deleteEventForTest == null) {
+      final batch = await EventService.deleteEvents(targets);
+      if (!batch.isComplete) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -419,6 +412,22 @@ class _CalendarScreenState extends State<CalendarScreen> {
           );
         }
         return;
+      }
+    } else {
+      for (final target in targets) {
+        final result = await deleteEvent(target);
+        if (result.status != EventMutationStatus.success) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  "Cet événement a changé. Rechargez l'agenda puis réessayez.",
+                ),
+              ),
+            );
+          }
+          return;
+        }
       }
     }
 

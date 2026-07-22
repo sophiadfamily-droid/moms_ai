@@ -21,7 +21,6 @@ Widget buildCalendar({
       eventsVersionForTest: ValueNotifier<int>(0),
       loadEventsForTest: () async => List<EventModel>.from(initialEvents),
       addEventForTest: (_) async {},
-      updateEventsForTest: onUpdate ?? (_) async {},
       mutateEventForTest: ({
         required existing,
         required proposed,

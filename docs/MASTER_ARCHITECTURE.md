@@ -51,6 +51,41 @@ replaced or removed. Calendar and conversational edits share the same mutation
 boundary. SharedPreferences applies the same compare-and-increment contract,
 but cannot provide Firestore's multi-process transactional guarantee.
 
+### Offline event synchronization
+
+**Current state:** Phase 4K replaces list-authority synchronization with a
+versioned local operation journal. Local `create`, `update`, and `delete`
+intentions carry a stable operation ID, event ID, batch ID, expected revision
+where required, immutable payload where required, attempt count, and a closed
+state. The journal is bounded to 500 retained operations; applied and cancelled
+entries are removed, while conflicts and failures remain available for later
+product handling. Transient failures are retried at most five times
+automatically. Operations captured for an authenticated account retain that
+account scope and cannot be replayed under another account. Local activity
+created without an authenticated scope remains local and is reported as a
+scope conflict rather than being silently attributed at reconnection.
+
+On reconnection, pending operations are replayed deterministically through the
+same transactional Firestore document boundaries. Cloud state may rebuild the
+local cache only when replay has no conflict or persistence failure. A missing
+local event is never treated as cloud deletion. Create retries accept only an
+identical existing document, update retries accept only the identical
+already-applied next revision, and missing delete retries are idempotent.
+
+Recurring occurrences remain independent event documents at revision one.
+Multi-occurrence work shares a stable logical batch ID and uses an explicit
+partial-result policy: each child operation has its own durable status, so a
+series can never report false global success. This favors resumable offline
+work over a server Function; no LLM, Identity repository, or screen owns sync.
+SharedPreferences prevents duplicate replay within the active application
+service, but does not claim interprocess locking.
+
+Series creation and explicit series deletion use the logical batch identity.
+Arbitrary whole-series edits are not enabled: the current materialized
+occurrence model cannot yet preserve independent exceptions with a strict
+all-or-nothing transaction. Such edits must remain blocked until their target
+occurrences and expected revisions can be frozen explicitly.
+
 ## 1. Vision
 
 ZELIA is a French-language AI assistant for the practical organization of personal and family life. It is designed to help a person understand, organize, remember, prioritize, and act on the realities of daily life without requiring the person to become a project manager for their own household.

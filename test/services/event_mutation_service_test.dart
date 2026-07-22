@@ -131,8 +131,7 @@ void main() {
     expect(stored.single.participantIdentityRevision, 2);
   });
 
-  test('event deletion and retry remove no other event or Identity data',
-      () async {
+  test('full rewrite cannot infer deletion from local absence', () async {
     final linked = _event(link: originalLink);
     final other = _event(id: 'event-2', link: originalLink);
     SharedPreferences.setMockInitialValues({
@@ -141,10 +140,9 @@ void main() {
         jsonEncode(other.toJson()),
       ],
     });
-    await EventService.updateEvents([other]);
-    expect((await _storedEvents()).map((event) => event.id), ['event-2']);
-    await EventService.updateEvents([other]);
-    expect((await _storedEvents()).map((event) => event.id), ['event-2']);
+    expect(EventService.updateEvents([other]), throwsFormatException);
+    expect((await _storedEvents()).map((event) => event.id),
+        ['event-1', 'event-2']);
     expect(originalLink.identity.entityId, 'identity-1');
   });
 

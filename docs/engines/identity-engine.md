@@ -222,6 +222,13 @@ but cannot overwrite a changed existing document. Local-only SharedPreferences
 storage compares and increments within the process, without claiming
 interprocess or multi-device guarantees.
 
+**Phase 4K non-regression guarantee:** offline Event synchronization journals
+only Event document operations. Standard updates retain the participant link
+and its lifecycle revision; a previously validated replacement or removal is
+replayed with both recorded revisions. A stale local operation conflicts with
+the newer cloud document and cannot restore an older participant. Event delete
+tombstones contain no Identity payload and never cascade to an Identity.
+
 **Outside V1:** fuzzy, phonetic, embedding, or LLM matching; global identities;
 automatic merges; inferred sensitive relationships; and Knowledge Graph logic.
 

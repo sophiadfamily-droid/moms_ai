@@ -30,7 +30,10 @@ void main() {
     expect(source, contains('runTransaction'));
     expect(source, contains('transaction.get(document)'));
     expect(source, contains('transaction.update(document, data)'));
+    expect(source, contains('transaction.set(document, data)'));
+    expect(source, contains('transaction.delete(document)'));
     expect(source, contains('event_mutation_revision_required'));
+    expect(source, contains('event_deletion_precondition_required'));
   });
 
   test('screens do not access Identity repositories directly', () {
