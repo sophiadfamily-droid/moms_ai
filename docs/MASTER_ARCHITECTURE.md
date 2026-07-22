@@ -163,7 +163,11 @@ Transient requests must not silently become durable identity. Durable facts must
 
 ### 2.5 Graceful capability without forced visible registration
 
-**Planned architecture:** ZELIA remains immediately usable without forcing the user to create a visible permanent account. A temporary Firebase identity should protect backend and user-owned data, while a later account upgrade preserves or safely reconciles that identity and data.
+**Current state:** ZELIA remains immediately usable without forcing the user to
+create a visible permanent account. Startup reuses the current Firebase session
+or creates an anonymous Firebase session before any protected service is used.
+Concurrent calls share the same bootstrap. Complete linking to permanent
+providers remains a later phase.
 
 Anonymous identity is an authenticated technical state, not unrestricted public access and not a substitute for application attestation, validation, or abuse controls.
 
@@ -394,7 +398,18 @@ Interaction rules:
 
 The Flutter chat experience, primarily through `ChatScreen`, coordinates message state, pending information and actions, planning paths and proposals, backend requests, validation, confirmation, persistence calls, interruption and cancellation paths, and feedback. The backend receives profile, memory, reasoning, and event context, then returns a strict reply/actions/memories object. Client validation remains mandatory before action handling.
 
-The existing remote AI boundary is a public HTTP Function. Authentication is optional in the current application. These are current-state facts and known security debt, not the desired final architecture.
+The active remote AI boundary is the single Firebase callable
+`chatWithZeliaCallable`. It requires a Firebase Auth UID, including an anonymous
+UID, and derives identity only from verified callable context. The historical
+HTTP transport is no longer exported or present in the Flutter client.
+Production and staging enforce App Check. Debug uses the official debug
+providers. The explicit emulator environment connects Auth, Firestore and
+Functions to localhost and is the only server environment that omits App Check.
+
+Before OpenAI execution, a transaction consumes a technical quota from one
+deny-by-default Firestore document per UID. It stores no conversation content.
+Its bounded settings are `ZELIA_AI_CHAT_QUOTA_LIMIT` and
+`ZELIA_AI_CHAT_QUOTA_WINDOW_SECONDS`; it is not a commercial entitlement model.
 
 ### 9.2 Planned architecture
 
@@ -511,11 +526,17 @@ Security is layered:
 
 ### Current state
 
-Firestore data is UID-owned and deny-by-default outside the user subtree. Storage is deny-all. The OpenAI secret is held by the Functions environment. The public HTTP AI endpoint does not yet implement the planned identity and application-attestation boundary.
+Firestore data is UID-owned and deny-by-default outside the user subtree.
+Storage is deny-all. The OpenAI secret is held by the Functions environment.
+The callable AI boundary requires Firebase Auth, production App Check, strict
+request validation and a transactional server quota. It has no HTTP fallback.
 
 ### Planned architecture
 
-The AI boundary uses Firebase Authentication, anonymous authentication for immediate use, callable Functions, App Check after monitored rollout, strict request validation, bounded errors and timeouts, and no unrestricted fallback endpoint.
+The AI boundary uses Firebase Authentication, anonymous authentication for
+immediate use, callable Functions, production App Check, strict request
+validation, a transactional server quota, bounded errors and timeouts, and no
+unrestricted fallback endpoint.
 
 Firebase project, database, region, provider, enforcement, secret, and deployment changes always require explicit approval and current-state verification.
 
@@ -562,10 +583,10 @@ This register records durable decisions and declared directions, not every imple
 | Consequential calendar operations require explicit confirmation | Accepted | Protects user intent and prevents fabricated authorization |
 | Planning uses complete protected ranges | Accepted | Availability must include travel and margin, not only appointment time |
 | Existing stored data remains backward compatible | Accepted | User data must survive schema evolution |
-| ZELIA remains usable without visible account registration | Planned architecture | Immediate usefulness is a product requirement |
-| Anonymous Firebase identity protects nonregistered sessions | Planned architecture | Enables UID ownership without forced registration |
-| The AI boundary migrates to protected Firebase-native callable access | Planned architecture | Auth, App Check, and validation address different abuse risks |
-| App Check enforcement follows client rollout and monitoring | Planned architecture | Immediate enforcement could lock out legitimate clients |
+| ZELIA remains usable without visible account registration | Current state | Anonymous Auth preserves immediate usefulness |
+| Anonymous Firebase identity protects nonregistered sessions | Current state | Enables UID ownership without forced registration |
+| The AI boundary uses protected Firebase-native callable access | Current state | Auth, App Check, quota, and validation address different abuse risks |
+| App Check is enforced outside the explicit local emulator | Current state | Debug tokens remain a controlled development mechanism |
 | A typed Conversation Engine is extracted before new shared engines | Planned architecture | Stabilizes interaction and action lifecycle state without moving domain truth into the conversation layer |
 | Life Context becomes the first shared authoritative context projection after the conversation boundary exists | Planned architecture | Reduces duplicated interpretation across planning, priority, and reasoning without owning conversational state |
 | Reasoning consumes typed conversation state and typed Life Context projections | Planned architecture | Multi-domain reasoning depends on both inputs and must not replace deterministic domain engines |
@@ -576,7 +597,9 @@ Architectural debt is recorded here to prevent accidental normalization. It does
 
 ### High priority
 
-- The AI backend boundary is publicly callable and lacks the planned authentication, attestation, and request-validation layers.
+- App Check providers and enforcement must be configured in every remote
+  Firebase environment before release; checked-in code fails closed but does
+  not alter remote Firebase configuration.
 - Local persistence is not identity-scoped, and account transitions lack a complete reconciliation policy.
 - Cloud list synchronization has ambiguous empty-cloud and full-replacement behavior.
 - Recurring calendar series require a complete conflict policy across all occurrences.

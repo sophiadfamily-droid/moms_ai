@@ -1,9 +1,25 @@
 import 'package:firebase_auth/firebase_auth.dart';
 
+import 'firebase_anonymous_auth_bootstrap.dart';
+
 class AuthService {
   AuthService._();
 
   static final FirebaseAuth _auth = FirebaseAuth.instance;
+  static final FirebaseAnonymousAuthBootstrap _anonymousBootstrap =
+      FirebaseAnonymousAuthBootstrap(
+    currentUid: () => _auth.currentUser?.uid,
+    signInAnonymously: () async {
+      final credential = await _auth.signInAnonymously();
+      final uid = credential.user?.uid;
+      if (uid == null || uid.trim().isEmpty) {
+        throw const FirebaseAnonymousAuthException(
+          'anonymous_auth_missing_uid',
+        );
+      }
+      return uid;
+    },
+  );
 
   static Stream<User?> get authStateChanges => _auth.authStateChanges();
 
@@ -17,8 +33,18 @@ class AuthService {
     required String email,
     required String password,
   }) {
+    final normalizedEmail = email.trim();
+    final current = _auth.currentUser;
+    if (current?.isAnonymous ?? false) {
+      return current!.linkWithCredential(
+        EmailAuthProvider.credential(
+          email: normalizedEmail,
+          password: password,
+        ),
+      );
+    }
     return _auth.createUserWithEmailAndPassword(
-      email: email.trim(),
+      email: normalizedEmail,
       password: password,
     );
   }
@@ -43,6 +69,10 @@ class AuthService {
 
   static Future<void> signOut() {
     return _auth.signOut();
+  }
+
+  static Future<String> ensureAuthenticatedUid() {
+    return _anonymousBootstrap.ensureAuthenticatedUid();
   }
 
   static String requireUserId() {

@@ -92,7 +92,7 @@ async function runWithOpenAiDeadline(
  * Exécute l'orchestration ZELIA indépendamment du transport.
  *
  * @param {Object} payload charge utile HTTP ou callable
- * @param {Object} context métadonnées de transport non utilisées en phase 2
+ * @param {Object} context identité vérifiée par le transport
  * @param {Object} dependencies dépendances injectables
  * @return {Promise<Object>}
  */
@@ -101,7 +101,9 @@ async function handleChatRequest(
     context = {},
     dependencies = {},
 ) {
-  void context;
+  if (typeof context.uid !== "string" || context.uid.trim().length === 0) {
+    throw new Error("CHAT_AUTH_CONTEXT_REQUIRED");
+  }
 
   const source = payload || {};
   const message = source.message || "";

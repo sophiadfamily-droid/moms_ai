@@ -25,7 +25,7 @@ test("handles the legacy payload without mutating it", async () => {
   const original = structuredClone(payload);
   const calls = [];
 
-  const result = await handleChatRequest(payload, {}, {
+  const result = await handleChatRequest(payload, {uid: "test-uid"}, {
     apiKey: "test-key",
     now: () => new Date("2026-07-20T10:00:00.000Z"),
     env: {ZELIA_MODEL_FAST: "test-fast"},
@@ -54,7 +54,7 @@ test("handles the legacy payload without mutating it", async () => {
 });
 
 test("preserves legacy defaults for missing fields", async () => {
-  const result = await handleChatRequest({}, {}, {
+  const result = await handleChatRequest({}, {uid: "test-uid"}, {
     apiKey: "test-key",
     now: () => new Date("2026-07-20T10:00:00.000Z"),
     logger: {info() {}},
@@ -76,7 +76,7 @@ test(
     async () => {
       const explicit = await handleChatRequest({
         message: "Ajoute un rendez-vous avec Person A",
-      }, {}, {
+      }, {uid: "test-uid"}, {
         now: () => new Date("2026-07-20T10:00:00.000Z"),
         logger: {info() {}},
         generateResponse: async () => ({
@@ -97,7 +97,7 @@ test(
 
       const invented = await handleChatRequest(
           {message: "Ajoute un rendez-vous"},
-          {},
+          {uid: "test-uid"},
           {
             now: () => new Date("2026-07-20T10:00:00.000Z"),
             logger: {info() {}},

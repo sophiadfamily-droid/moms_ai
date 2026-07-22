@@ -3524,13 +3524,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget buildAccountRow() {
     final user = FirebaseAuth.instance.currentUser;
-    final email = user?.email;
+    final hasPermanentAccount = user != null && !user.isAnonymous;
+    final email = hasPermanentAccount ? user.email : null;
 
     return buildProfileRow(
-      icon: user == null ? Icons.lock_outline : Icons.verified_user_outlined,
+      icon: hasPermanentAccount
+          ? Icons.verified_user_outlined
+          : Icons.lock_outline,
       label: "Compte Zélia",
-      value: user == null ? "Créer ou connecter" : email ?? "Connecté",
-      iconColor: user == null ? textSoft : accent,
+      value: hasPermanentAccount ? email ?? "Connecté" : "Créer ou connecter",
+      iconColor: hasPermanentAccount ? accent : textSoft,
       onTap: showAccountSheet,
       showChevron: true,
     );
@@ -3539,7 +3542,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> showAccountSheet() async {
     final user = FirebaseAuth.instance.currentUser;
 
-    if (user == null) {
+    if (user == null || user.isAnonymous) {
       await showModalBottomSheet(
         context: context,
         isScrollControlled: true,

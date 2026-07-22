@@ -204,7 +204,6 @@ async function generateZeliaResponse({
       fallbackModel: DEFAULT_MODEL,
       status: error && error.status ? error.status : null,
       code: error && error.code ? error.code : null,
-      message: error && error.message ? error.message : String(error),
     });
 
     const fallbackRequest = buildZeliaResponseRequest({

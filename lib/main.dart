@@ -18,6 +18,7 @@ import 'models/user_profile.dart';
 import 'services/storage_service.dart';
 import 'services/notification_service.dart';
 import 'services/auth_service.dart';
+import 'services/firebase_security_bootstrap.dart';
 import 'services/identity/identity_production_services.dart';
 
 Future<void> main() async {
@@ -26,6 +27,8 @@ Future<void> main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
+  await FirebaseSecurityBootstrap.initializeProduction();
 
   await NotificationService.init();
 

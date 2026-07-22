@@ -423,6 +423,19 @@ try {
   }
   checks++;
 
+  const quotaPath = '__server_ai_chat_quota/account-a';
+  await fails(setDoc(doc(owner, quotaPath), {
+    windowStartedAtMs: 1,
+    count: 1,
+    updatedAtMs: 1,
+  }));
+  await fails(getDoc(doc(owner, quotaPath)));
+  await fails(setDoc(doc(guest, quotaPath), {
+    windowStartedAtMs: 1,
+    count: 1,
+    updatedAtMs: 1,
+  }));
+
   process.stdout.write(`${checks} Identity Firestore checks passed\n`);
 } finally {
   await environment.cleanup();

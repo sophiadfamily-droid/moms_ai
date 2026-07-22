@@ -1,33 +1,17 @@
 /* eslint-disable require-jsdoc */
 
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const test = require("node:test");
 
 const {
   createCallableChatHandler,
   createCallableFunctionOptions,
-  createHttpChatHandler,
   OPENAI_API_KEY_NAME,
 } = require("../../services/chatTransportAdapters");
-const {handleChatRequest} = require("../../services/chatRequestHandler");
 
-test("provides the production callable Function configuration", () => {
-  const secret = {name: OPENAI_API_KEY_NAME};
-
-  assert.equal(OPENAI_API_KEY_NAME, "OPENAI_API_KEY");
-  assert.deepEqual(createCallableFunctionOptions(secret), {
-    region: "us-central1",
-    secrets: [secret],
-    timeoutSeconds: 25,
-    enforceAppCheck: false,
-  });
-});
-
-const response = {
-  reply: "Réponse",
-  actions: [{type: "task", title: "Appeler"}],
-  memories: [{text: "Préfère le matin"}],
-};
+const response = {reply: "Réponse", actions: [], memories: []};
 
 class FakeHttpsError extends Error {
   constructor(code, message) {
@@ -36,174 +20,189 @@ class FakeHttpsError extends Error {
   }
 }
 
-function createResponseRecorder() {
+function createHandler(overrides = {}) {
+  return createCallableChatHandler({
+    handleChatRequest: async () => response,
+    getApiKey: () => "test-key",
+    consumeQuota: async () => ({remaining: 2}),
+    HttpsErrorClass: FakeHttpsError,
+    logger: {error() {}},
+    env: {ZELIA_ENVIRONMENT: "production"},
+    ...overrides,
+  });
+}
+
+function secureRequest(data = {message: "Bonjour"}) {
   return {
-    statusCode: 200,
-    body: null,
-    status(code) {
-      this.statusCode = code;
-      return this;
+    data,
+    auth: {
+      uid: "firebase-uid",
+      token: {firebase: {sign_in_provider: "password"}},
     },
-    json(body) {
-      this.body = body;
-      return this;
-    },
+    app: {appId: "verified-app"},
   };
 }
 
-test("HTTP and callable adapters return the same shared result", async () => {
-  const calls = [];
-  const shared = async (payload, context, dependencies) => {
-    calls.push({payload, context, dependencies});
-    return response;
-  };
-  const getApiKey = () => "test-key";
-  const httpHandler = createHttpChatHandler({
-    handleChatRequest: shared,
-    getApiKey,
+test("provides fail-closed production callable options", () => {
+  const secret = {name: OPENAI_API_KEY_NAME};
+  assert.deepEqual(createCallableFunctionOptions(secret, {
+    ZELIA_ENVIRONMENT: "production",
+  }), {
+    region: "us-central1",
+    secrets: [secret],
+    timeoutSeconds: 25,
+    enforceAppCheck: true,
   });
-  const callableHandler = createCallableChatHandler({
-    handleChatRequest: shared,
-    getApiKey,
-    HttpsErrorClass: FakeHttpsError,
-  });
-  const payload = {message: "Bonjour"};
-  const res = createResponseRecorder();
-
-  await httpHandler({body: payload}, res);
-  const callableResult = await callableHandler({
-    data: payload,
-    auth: undefined,
-    app: undefined,
-  });
-
-  assert.deepEqual(res.body, response);
-  assert.deepEqual(callableResult, response);
-  assert.equal(calls.length, 2);
-  assert.equal(calls[0].payload, payload);
-  assert.equal(calls[1].payload, payload);
-  assert.equal(calls[0].dependencies.apiKey, "test-key");
-  assert.equal(calls[1].dependencies.apiKey, "test-key");
+  assert.equal(createCallableFunctionOptions(secret, {
+    FUNCTIONS_EMULATOR: "true",
+  }).enforceAppCheck, false);
 });
 
-test("real orchestration preserves HTTP/callable parity", async () => {
-  const completePayload = {
-    message: "Ajoute du lait aux courses",
-    profile: {firstName: "Sophie"},
-    profileContext: {work: {status: "active"}},
-    memories: [{text: "Préfère le matin"}],
-    memoryReasoning: [{type: "preference"}],
-    events: [{title: "École"}],
-  };
-  const originalPayload = structuredClone(completePayload);
-  const generated = {
-    reply: "C'est noté.",
-    actions: [{type: "shopping", title: "Lait"}],
-    memories: [{text: "Achète du lait"}],
-  };
-  const invocationCounts = {http: 0, callable: 0};
-  const handlerDependencies = {
-    now: () => new Date("2026-07-20T10:00:00.000Z"),
-    logger: {info() {}},
-    generateResponse: async () => generated,
-  };
-  const createCountedHandler = (transport) => async (...args) => {
-    invocationCounts[transport] += 1;
-    return handleChatRequest(...args);
-  };
-  const httpHandler = createHttpChatHandler({
-    handleChatRequest: createCountedHandler("http"),
-    getApiKey: () => "test-key",
-    handlerDependencies,
-  });
-  const callableHandler = createCallableChatHandler({
-    handleChatRequest: createCountedHandler("callable"),
-    getApiKey: () => "test-key",
-    handlerDependencies,
-    HttpsErrorClass: FakeHttpsError,
-  });
-  const httpResponse = createResponseRecorder();
-
-  await httpHandler({body: completePayload}, httpResponse);
-  const callableResponse = await callableHandler({data: completePayload});
-
-  assert.deepEqual(httpResponse.body, generated);
-  assert.deepEqual(callableResponse, generated);
-  assert.deepEqual(httpResponse.body.actions, generated.actions);
-  assert.deepEqual(httpResponse.body.memories, generated.memories);
-  assert.equal(invocationCounts.http, 1);
-  assert.equal(invocationCounts.callable, 1);
-  assert.deepEqual(completePayload, originalPayload);
-});
-
-test("callable accepts missing authentication during migration", async () => {
-  let context;
-  const handler = createCallableChatHandler({
-    handleChatRequest: async (payload, receivedContext) => {
-      context = receivedContext;
+test("accepts permanent and anonymous Firebase users", async () => {
+  const contexts = [];
+  const handler = createHandler({
+    handleChatRequest: async (_, context) => {
+      contexts.push(context);
       return response;
     },
-    getApiKey: () => "test-key",
-    HttpsErrorClass: FakeHttpsError,
   });
 
-  await handler({data: {message: "Bonjour"}});
+  await handler(secureRequest());
+  await handler({
+    ...secureRequest(),
+    auth: {uid: "anonymous-uid", token: {
+      firebase: {sign_in_provider: "anonymous"},
+    }},
+  });
 
-  assert.deepEqual(context, {auth: undefined, app: undefined});
+  assert.deepEqual(contexts, [
+    {uid: "firebase-uid"},
+    {uid: "anonymous-uid"},
+  ]);
 });
 
-test("callable rejects a malformed payload before orchestration", async () => {
-  let callCount = 0;
-  const handler = createCallableChatHandler({
+test("rejects missing authentication before orchestration", async () => {
+  let quotaCalls = 0;
+  let handlerCalls = 0;
+  const handler = createHandler({
+    consumeQuota: async () => quotaCalls++,
     handleChatRequest: async () => {
-      callCount += 1;
+      handlerCalls++;
       return response;
     },
-    getApiKey: () => "test-key",
-    HttpsErrorClass: FakeHttpsError,
   });
 
   await assert.rejects(
-      () => handler({data: "invalid"}),
+      () => handler({...secureRequest(), auth: undefined}),
+      (error) => error.code === "unauthenticated",
+  );
+  assert.equal(quotaCalls, 0);
+  assert.equal(handlerCalls, 0);
+});
+
+test("rejects absent App Check in production but allows emulator", async () => {
+  await assert.rejects(
+      () => createHandler()({...secureRequest(), app: undefined}),
+      (error) => error.code === "failed-precondition",
+  );
+
+  const emulatorHandler = createHandler({
+    env: {FUNCTIONS_EMULATOR: "true"},
+  });
+  assert.deepEqual(
+      await emulatorHandler({...secureRequest(), app: undefined}),
+      response,
+  );
+});
+
+test("rejects an invalid App Check context in production", async () => {
+  await assert.rejects(
+      () => createHandler()({...secureRequest(), app: {}}),
+      (error) => error.code === "failed-precondition",
+  );
+});
+
+test("rejects client-controlled identity fields", async () => {
+  for (const field of ["uid", "userId", "accountId"]) {
+    await assert.rejects(
+        () => createHandler()(secureRequest({
+          message: "Bonjour",
+          [field]: "x",
+        })),
+        (error) => error.code === "invalid-argument",
+    );
+  }
+});
+
+test("binds quota and orchestration exclusively to verified UID", async () => {
+  const quotaUids = [];
+  const contexts = [];
+  const handler = createHandler({
+    consumeQuota: async ({uid}) => quotaUids.push(uid),
+    handleChatRequest: async (_, context) => {
+      contexts.push(context);
+      return response;
+    },
+  });
+
+  await handler(secureRequest());
+  assert.deepEqual(quotaUids, ["firebase-uid"]);
+  assert.deepEqual(contexts, [{uid: "firebase-uid"}]);
+});
+
+test("maps quota exhaustion to a stable safe error", async () => {
+  const handler = createHandler({
+    consumeQuota: async () => {
+      const error = new Error("private quota detail");
+      error.code = "chat_quota_exceeded";
+      throw error;
+    },
+  });
+
+  await assert.rejects(
+      () => handler(secureRequest()),
+      (error) => error.code === "resource-exhausted" &&
+        !error.message.includes("private"),
+  );
+});
+
+test("logs only a stable code for OpenAI failures", async () => {
+  const logs = [];
+  const handler = createHandler({
+    handleChatRequest: async () => {
+      throw new Error("private conversation and provider detail");
+    },
+    logger: {error: (...values) => logs.push(values)},
+  });
+
+  await assert.rejects(
+      () => handler(secureRequest()),
+      (error) => error.code === "internal" &&
+        !error.message.includes("private"),
+  );
+  assert.deepEqual(logs, [[
+    "ZELIA_CHAT_FAILURE",
+    {code: "chat_processing_failed"},
+  ]]);
+});
+
+test("rejects malformed payload before quota", async () => {
+  let quotaCalls = 0;
+  const handler = createHandler({
+    consumeQuota: async () => quotaCalls++,
+  });
+  await assert.rejects(
+      () => handler(secureRequest("invalid")),
       (error) => error.code === "invalid-argument",
   );
-  assert.equal(callCount, 0);
+  assert.equal(quotaCalls, 0);
 });
 
-test("HTTP preserves its safe 500 response", async () => {
-  const res = createResponseRecorder();
-  const handler = createHttpChatHandler({
-    handleChatRequest: async () => {
-      throw new Error("private detail");
-    },
-    getApiKey: () => "test-key",
-    logger: {error() {}},
-  });
-
-  await handler({body: {}}, res);
-
-  assert.equal(res.statusCode, 500);
-  assert.deepEqual(res.body, {
-    reply: "Je rencontre un petit souci 💕",
-    actions: [],
-    memories: [],
-  });
-});
-
-test("callable maps failures to a safe internal error", async () => {
-  const handler = createCallableChatHandler({
-    handleChatRequest: async () => {
-      throw new Error("private detail");
-    },
-    getApiKey: () => "test-key",
-    logger: {error() {}},
-    HttpsErrorClass: FakeHttpsError,
-  });
-
-  await assert.rejects(
-      () => handler({data: {}}),
-      (error) =>
-        error.code === "internal" &&
-        !error.message.includes("private detail"),
+test("legacy HTTP transport is no longer exported", () => {
+  const source = fs.readFileSync(
+      path.resolve(__dirname, "../../index.js"),
+      "utf8",
   );
+  assert.doesNotMatch(source, /chatWithZeliaHttp|onRequest/);
+  assert.match(source, /chatWithZeliaCallable/);
 });

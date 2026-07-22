@@ -5,6 +5,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import '../models/chat_backend_request.dart';
 import '../models/chat_backend_response.dart';
 import 'chat_backend_client.dart';
+import 'auth_service.dart';
 
 typedef ChatCallableInvoker = Future<dynamic> Function(
   Map<String, dynamic> data,
@@ -17,26 +18,36 @@ typedef ChatCallableFactory = ChatCallableInvoker Function({
   FirebaseFunctions? functions,
 });
 
+typedef ChatAuthenticationBootstrap = Future<String> Function();
+
 class CallableChatBackendClient implements ChatBackendClient {
   static const functionName = 'chatWithZeliaCallable';
   static const region = 'us-central1';
   static const defaultTimeout = Duration(seconds: 30);
 
   final ChatCallableInvoker _invoke;
+  final ChatAuthenticationBootstrap _ensureAuthenticatedUid;
 
   CallableChatBackendClient({
     FirebaseFunctions? functions,
     Duration timeout = defaultTimeout,
     ChatCallableFactory callableFactory = _createFirebaseInvoker,
-  }) : _invoke = callableFactory(
+    ChatAuthenticationBootstrap ensureAuthenticatedUid =
+        AuthService.ensureAuthenticatedUid,
+  })  : _ensureAuthenticatedUid = ensureAuthenticatedUid,
+        _invoke = callableFactory(
           region: region,
           functionName: functionName,
           timeout: timeout,
           functions: functions,
         );
 
-  CallableChatBackendClient.withInvoker(ChatCallableInvoker invoker)
-      : _invoke = invoker;
+  CallableChatBackendClient.withInvoker(
+    ChatCallableInvoker invoker, {
+    ChatAuthenticationBootstrap? ensureAuthenticatedUid,
+  })  : _invoke = invoker,
+        _ensureAuthenticatedUid =
+            ensureAuthenticatedUid ?? (() async => 'test-authenticated-uid');
 
   static ChatCallableInvoker _createFirebaseInvoker({
     required String region,
@@ -60,6 +71,7 @@ class CallableChatBackendClient implements ChatBackendClient {
   @override
   Future<ChatBackendResponse> send(ChatBackendRequest request) async {
     try {
+      await _ensureAuthenticatedUid();
       final data = await _invoke(request.toJson());
 
       if (data is! Map) {
@@ -84,6 +96,10 @@ class CallableChatBackendClient implements ChatBackendClient {
           throw const ChatBackendTimeoutException();
         case 'unavailable':
           throw const ChatBackendConnectionException();
+        case 'resource-exhausted':
+          throw const ChatBackendQuotaExceededException();
+        case 'unauthenticated':
+          throw const ChatBackendAuthenticationException();
         case 'internal':
           throw ChatBackendHttpException(500);
         default:

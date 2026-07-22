@@ -1,8 +1,9 @@
 const {
   onCall,
-  onRequest,
 } = require("firebase-functions/v2/https");
 const {defineSecret} = require("firebase-functions/params");
+const {getApps, initializeApp} = require("firebase-admin/app");
+const {getFirestore} = require("firebase-admin/firestore");
 
 const {
   handleChatRequest,
@@ -10,10 +11,14 @@ const {
 const {
   createCallableChatHandler,
   createCallableFunctionOptions,
-  createHttpChatHandler,
-  createHttpFunctionOptions,
   OPENAI_API_KEY_NAME,
 } = require("./services/chatTransportAdapters");
+const {consumeChatQuota} = require("./services/chatQuotaService");
+
+if (getApps().length === 0) {
+  initializeApp();
+}
+const firestore = getFirestore();
 
 const openaiApiKey = defineSecret(OPENAI_API_KEY_NAME);
 
@@ -22,12 +27,10 @@ const sharedDependencies = {
   getApiKey: () => openaiApiKey.value(),
 };
 
-exports.chatWithZeliaHttp = onRequest(
-    createHttpFunctionOptions(openaiApiKey),
-    createHttpChatHandler(sharedDependencies),
-);
-
 exports.chatWithZeliaCallable = onCall(
     createCallableFunctionOptions(openaiApiKey),
-    createCallableChatHandler(sharedDependencies),
+    createCallableChatHandler({
+      ...sharedDependencies,
+      consumeQuota: ({uid}) => consumeChatQuota({firestore, uid}),
+    }),
 );

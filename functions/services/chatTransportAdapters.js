@@ -1,35 +1,24 @@
 const {HttpsError} = require("firebase-functions/v2/https");
+const {ChatQuotaExceededError} = require("./chatQuotaService");
+const {requiresAppCheck} = require("./securityEnvironment");
 
 const CALLABLE_TIMEOUT_SECONDS = 25;
 const CHAT_FUNCTION_REGION = "us-central1";
 const OPENAI_API_KEY_NAME = "OPENAI_API_KEY";
 
 /**
- * Construit les options de la Function HTTP historique.
+ * Construit les options du callable sécurisé.
  *
  * @param {Object} openaiApiKey secret Firebase OpenAI
+ * @param {Object} env variables d'environnement
  * @return {Object}
  */
-function createHttpFunctionOptions(openaiApiKey) {
-  return {
-    cors: true,
-    region: CHAT_FUNCTION_REGION,
-    secrets: [openaiApiKey],
-  };
-}
-
-/**
- * Construit les options de la Function callable.
- *
- * @param {Object} openaiApiKey secret Firebase OpenAI
- * @return {Object}
- */
-function createCallableFunctionOptions(openaiApiKey) {
+function createCallableFunctionOptions(openaiApiKey, env = process.env) {
   return {
     region: CHAT_FUNCTION_REGION,
     secrets: [openaiApiKey],
     timeoutSeconds: CALLABLE_TIMEOUT_SECONDS,
-    enforceAppCheck: false,
+    enforceAppCheck: requiresAppCheck(env),
   };
 }
 
@@ -39,37 +28,8 @@ function createCallableFunctionOptions(openaiApiKey) {
  * @param {Object} dependencies dépendances de l'adaptateur
  * @return {Function}
  */
-function createHttpChatHandler({
-  handleChatRequest,
-  getApiKey,
-  logger = console,
-  handlerDependencies = {},
-}) {
-  return async (req, res) => {
-    try {
-      const result = await handleChatRequest(req.body, {}, {
-        ...handlerDependencies,
-        apiKey: getApiKey(),
-      });
-
-      res.json(result);
-    } catch (error) {
-      logger.error("ZELIA ERROR :", error);
-
-      res.status(500).json({
-        reply: "Je rencontre un petit souci 💕",
-        actions: [],
-        memories: [],
-      });
-    }
-  };
-}
-
 /**
- * Construit l'adaptateur Firebase callable de phase 2.
- *
- * L'authentification et App Check sont volontairement observables mais non
- * imposés pendant la migration de transport.
+ * Construit l'adaptateur Firebase callable sécurisé.
  *
  * @param {Object} dependencies dépendances de l'adaptateur
  * @return {Function}
@@ -80,9 +40,28 @@ function createCallableChatHandler({
   logger = console,
   HttpsErrorClass = HttpsError,
   handlerDependencies = {},
+  consumeQuota,
+  env = process.env,
 }) {
   return async (request) => {
     const payload = request && request.data;
+
+    const uid = request && request.auth && request.auth.uid;
+    if (typeof uid !== "string" || uid.trim().length === 0) {
+      throw new HttpsErrorClass(
+          "unauthenticated",
+          "Une session ZELIA valide est nécessaire.",
+      );
+    }
+
+    const appId = request && request.app && request.app.appId;
+    if (requiresAppCheck(env) &&
+        (typeof appId !== "string" || appId.trim().length === 0)) {
+      throw new HttpsErrorClass(
+          "failed-precondition",
+          "La vérification de l'application est requise.",
+      );
+    }
 
     if (
       typeof payload !== "object" ||
@@ -95,16 +74,39 @@ function createCallableChatHandler({
       );
     }
 
+    const forbiddenIdentityFields = ["uid", "userId", "accountId"];
+    if (forbiddenIdentityFields.some((field) => field in payload)) {
+      throw new HttpsErrorClass(
+          "invalid-argument",
+          "La requête ZELIA contient un champ interdit.",
+      );
+    }
+
     try {
+      if (typeof consumeQuota !== "function") {
+        throw new Error("CHAT_QUOTA_NOT_CONFIGURED");
+      }
+      await consumeQuota({uid});
       return await handleChatRequest(payload, {
-        auth: request.auth,
-        app: request.app,
+        uid,
       }, {
         ...handlerDependencies,
         apiKey: getApiKey(),
       });
     } catch (error) {
-      logger.error("ZELIA ERROR :", error);
+      if (error instanceof ChatQuotaExceededError ||
+          error && error.code === "chat_quota_exceeded") {
+        throw new HttpsErrorClass(
+            "resource-exhausted",
+            "Le nombre de requêtes autorisé a été atteint. Réessaie plus tard.",
+        );
+      }
+      if (error instanceof HttpsErrorClass) {
+        throw error;
+      }
+      logger.error("ZELIA_CHAT_FAILURE", {
+        code: "chat_processing_failed",
+      });
       throw new HttpsErrorClass(
           "internal",
           "Je rencontre un petit souci 💕",
@@ -117,8 +119,6 @@ module.exports = {
   CALLABLE_TIMEOUT_SECONDS,
   CHAT_FUNCTION_REGION,
   OPENAI_API_KEY_NAME,
-  createHttpFunctionOptions,
   createCallableFunctionOptions,
-  createHttpChatHandler,
   createCallableChatHandler,
 };

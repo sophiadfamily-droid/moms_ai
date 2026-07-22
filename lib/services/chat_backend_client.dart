@@ -41,6 +41,16 @@ final class ChatBackendConnectionException extends ChatBackendException {
       : super('Impossible de contacter le service pour le moment.');
 }
 
+final class ChatBackendQuotaExceededException extends ChatBackendException {
+  const ChatBackendQuotaExceededException()
+      : super('La limite de requêtes est atteinte. Réessaie plus tard.');
+}
+
+final class ChatBackendAuthenticationException extends ChatBackendException {
+  const ChatBackendAuthenticationException()
+      : super('Une session sécurisée est nécessaire. Réessaie plus tard.');
+}
+
 final class ChatBackendCallableException extends ChatBackendException {
   final String code;
 

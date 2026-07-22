@@ -6,7 +6,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:moms_ai/models/chat_backend_request.dart';
 import 'package:moms_ai/services/callable_chat_backend_client.dart';
 import 'package:moms_ai/services/chat_backend_client.dart';
-import 'package:moms_ai/services/http_chat_backend_client.dart';
 
 void main() {
   const request = ChatBackendRequest(
@@ -31,6 +30,7 @@ void main() {
     late Duration capturedTimeout;
     late Map<String, dynamic> capturedPayload;
     final backend = CallableChatBackendClient(
+      ensureAuthenticatedUid: () async => 'test-authenticated-uid',
       callableFactory: ({
         required region,
         required functionName,
@@ -143,6 +143,52 @@ void main() {
     );
   });
 
+  test('maps callable quota exhaustion to a stable safe exception', () async {
+    final backend = CallableChatBackendClient.withInvoker((_) async {
+      throw FirebaseFunctionsException(
+        message: 'private quota detail',
+        code: 'resource-exhausted',
+      );
+    });
+
+    await expectLater(
+      backend.send(request),
+      throwsA(isA<ChatBackendQuotaExceededException>()),
+    );
+  });
+
+  test('maps missing Firebase authentication to a stable safe exception',
+      () async {
+    final backend = CallableChatBackendClient.withInvoker((_) async {
+      throw FirebaseFunctionsException(
+        message: 'private authentication detail',
+        code: 'unauthenticated',
+      );
+    });
+
+    await expectLater(
+      backend.send(request),
+      throwsA(isA<ChatBackendAuthenticationException>()),
+    );
+  });
+
+  test('waits for authentication bootstrap before invoking callable', () async {
+    final order = <String>[];
+    final backend = CallableChatBackendClient.withInvoker(
+      (_) async {
+        order.add('callable');
+        return {'reply': 'Réponse', 'actions': [], 'memories': []};
+      },
+      ensureAuthenticatedUid: () async {
+        order.add('auth');
+        return 'uid';
+      },
+    );
+
+    await backend.send(request);
+    expect(order, ['auth', 'callable']);
+  });
+
   test('maps callable internal errors like the legacy HTTP 500', () async {
     final backend = CallableChatBackendClient.withInvoker((_) async {
       throw FirebaseFunctionsException(
@@ -229,10 +275,13 @@ void main() {
     expect(defaultSelectionOccurrences, 3);
   });
 
-  test('keeps HTTP independently constructible for rollback', () {
-    final backend = HttpChatBackendClient();
-
-    expect(backend, isA<HttpChatBackendClient>());
-    backend.close();
+  test('contains no legacy HTTP production endpoint', () {
+    final serviceSources = Directory('lib/services')
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where((file) => file.path.endsWith('.dart'))
+        .map((file) => file.readAsStringSync())
+        .join('\n');
+    expect(serviceSources, isNot(contains('chatWithZeliaHttp')));
   });
 }
