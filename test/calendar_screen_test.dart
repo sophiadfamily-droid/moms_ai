@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:moms_ai/models/event_model.dart';
+import 'package:moms_ai/models/event_sync_conflict.dart';
+import 'package:moms_ai/models/event_sync_models.dart';
 import 'package:moms_ai/screens/calendar_screen.dart';
 import 'package:moms_ai/services/event_mutation_result.dart';
 
@@ -39,6 +41,72 @@ Widget buildCalendar({
 }
 
 void main() {
+  testWidgets('conflict dialog reports a new planning conflict safely',
+      (WidgetTester tester) async {
+    final conflict = EventSyncConflict.fromOperation(
+      PendingEventSyncOperation(
+        operationId: 'synthetic-operation',
+        eventId: 'synthetic-event',
+        accountScopeId: 'synthetic-scope',
+        type: EventSyncOperationType.update,
+        expectedEventRevision: 1,
+        event: EventModel(
+          id: 'synthetic-event',
+          title: 'Événement synthétique',
+          date: '2026-07-23',
+          time: '10:00',
+          notes: '',
+          createdAt: DateTime.utc(2026, 7, 22),
+          startDateTimeIso: '2026-07-23T10:00:00',
+          eventRevision: 2,
+        ),
+        baseEvent: EventModel(
+          id: 'synthetic-event',
+          title: 'Événement synthétique',
+          date: '2026-07-23',
+          time: '09:00',
+          notes: '',
+          createdAt: DateTime.utc(2026, 7, 22),
+          startDateTimeIso: '2026-07-23T09:00:00',
+          eventRevision: 1,
+        ),
+        batchId: 'synthetic-batch',
+        createdAt: DateTime.utc(2026, 7, 22),
+        state: EventSyncOperationState.conflict,
+        conflictType: EventSyncConflictType.revisionConflict,
+      ),
+    );
+    EventConflictResolutionDecision? transmitted;
+    await tester.pumpWidget(MaterialApp(
+      home: CalendarScreen(
+        eventsVersionForTest: ValueNotifier<int>(0),
+        loadEventsForTest: () async => <EventModel>[],
+        loadSyncConflictsForTest: () async => [conflict],
+        resolveSyncConflictForTest: ({
+          required conflictId,
+          required decision,
+          required confirmed,
+        }) async {
+          transmitted = decision;
+          return const EventConflictResolutionResult.planningConflict();
+        },
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('1 modification(s) à vérifier'));
+    await tester.pumpAndSettle();
+    expect(find.text('Modification à vérifier'), findsOneWidget);
+    await tester.tap(find.text('Reprendre'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Confirmer'));
+    await tester.pumpAndSettle();
+
+    expect(transmitted, EventConflictResolutionDecision.retryAgainstLatest);
+    expect(find.textContaining('conflit dans ton planning'), findsOneWidget);
+    expect(find.textContaining('Exception'), findsNothing);
+  });
+
   testWidgets(
     'manual event form exposes separate travel fields',
     (WidgetTester tester) async {

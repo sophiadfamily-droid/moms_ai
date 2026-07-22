@@ -14,9 +14,12 @@ import 'cloud_event_service.dart';
 import 'auth_service.dart';
 import 'event_mutation_service.dart';
 import 'event_mutation_result.dart';
+import 'event_mutation_invariant_service.dart';
 import 'event_sync_journal.dart';
 import 'event_sync_service.dart';
 import 'event_conflict_resolution_service.dart';
+import 'profile_reasoning_service.dart';
+import 'storage_service.dart';
 
 typedef EventCloudMutation = Future<EventMutationResult?> Function({
   required EventModel existing,
@@ -45,6 +48,7 @@ class EventService {
     deleteCloud: CloudEventService.deleteEvent,
     reconcileLocal: _reconcileLocalEvent,
     createLocal: addEvent,
+    validateMutation: _validateConflictMutation,
     idGenerator: _syncIdGenerator,
   );
 
@@ -348,6 +352,32 @@ class EventService {
     }
     await _writeLocalEvents(events);
     notifyEventsChanged();
+  }
+
+  static Future<EventMutationInvariantResult> _validateConflictMutation({
+    required EventModel existing,
+    required EventModel proposed,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getStringList(eventsKey) ?? const [];
+    final events = stored
+        .map((item) => EventModel.fromJson(jsonDecode(item)))
+        .toList(growable: false);
+    List<Map<String, dynamic>> reasoning = const [];
+    try {
+      final profile = await StorageService.getUserProfile();
+      if (profile != null) {
+        reasoning = ProfileReasoningService.buildReasoning(profile);
+      }
+    } catch (_) {
+      // An unavailable profile must not bypass Event-to-Event validation.
+    }
+    return EventMutationInvariantService.validate(
+      existing: existing,
+      proposed: proposed,
+      events: events,
+      blockedReasoning: reasoning,
+    );
   }
 
   static Future<void> _syncCreation(

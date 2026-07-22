@@ -4,6 +4,7 @@ import '../models/event_model.dart';
 import '../models/event_mutation_models.dart';
 import 'event_mutation_service.dart';
 import 'event_mutation_result.dart';
+import 'event_mutation_invariant_service.dart';
 import 'event_service.dart';
 import 'event_target_selector.dart';
 
@@ -103,16 +104,21 @@ final class EventConversationMutationService {
         'event_mutation_concurrent_change',
       );
     }
-    final conflict = participantIntent is PreserveEventParticipant &&
-        events.any(
-          (event) =>
-              event.id != current.id &&
-              EventService.eventsProtectedOverlap(event, proposed),
-        );
-    if (conflict) {
+    final validation = EventMutationInvariantService.validate(
+      existing: current,
+      proposed: proposed,
+      events: events,
+    );
+    if (validation.status == EventMutationInvariantStatus.planningConflict) {
       return const EventMutationExecutionResult(
         EventMutationExecutionStatus.conflict,
         'event_mutation_conflict',
+      );
+    }
+    if (validation.status != EventMutationInvariantStatus.valid) {
+      return EventMutationExecutionResult(
+        EventMutationExecutionStatus.invalid,
+        validation.diagnosticCode,
       );
     }
     try {

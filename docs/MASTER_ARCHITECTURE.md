@@ -107,6 +107,25 @@ are retained in the same bounded journal to make repeated decisions idempotent.
 Batch conflicts remain child conflicts sharing a batch ID; successful children
 are never replayed and no aggregate decision hides an occurrence exception.
 
+Conflict rebases that produce a new Event version pass through the same
+side-effect-free mutation-invariant boundary as normal conversational Event
+updates. The boundary first detects the actual changed fields. Descriptive-only
+changes do not invoke planning unnecessarily; date, time, duration, travel,
+margin, location context, or recurrence changes are checked against protected
+Event intervals and the current profile-derived blocked periods before the
+transactional write. A planning conflict is distinct from a revision conflict,
+performs no write, and leaves the original journal conflict visible.
+
+The latest cloud revision is still only an input snapshot: the Firestore
+transaction verifies it again at write time. If it changed again, resolution
+returns a new explicit concurrency result and retains the conflict. Repeated
+decisions remain idempotent through the resolving state and bounded resolution
+receipt. Legacy journal updates without a base snapshot, participant deltas
+that cannot be safely reconstructed, and series-scope changes that cannot
+preserve materialized occurrence exceptions fail closed instead of inventing a
+merge. The local SharedPreferences recovery guarantee remains process-local;
+it is not presented as an interprocess transaction.
+
 ## 1. Vision
 
 ZELIA is a French-language AI assistant for the practical organization of personal and family life. It is designed to help a person understand, organize, remember, prioritize, and act on the realities of daily life without requiring the person to become a project manager for their own household.

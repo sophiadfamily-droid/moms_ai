@@ -10,6 +10,8 @@ enum EventConflictResolutionStatus {
   invalidDecision,
   scopeMismatch,
   cloudChangedAgain,
+  planningConflict,
+  unsupportedRebase,
   confirmationRequired,
   persistenceFailure,
 }
@@ -144,6 +146,12 @@ final class EventConflictResolutionResult {
   const EventConflictResolutionResult.cloudChangedAgain()
       : this._(EventConflictResolutionStatus.cloudChangedAgain,
             'event_conflict_cloud_changed_again');
+  const EventConflictResolutionResult.planningConflict()
+      : this._(EventConflictResolutionStatus.planningConflict,
+            'event_conflict_planning_conflict');
+  const EventConflictResolutionResult.unsupportedRebase()
+      : this._(EventConflictResolutionStatus.unsupportedRebase,
+            'event_conflict_rebase_not_supported');
   const EventConflictResolutionResult.confirmationRequired()
       : this._(EventConflictResolutionStatus.confirmationRequired,
             'event_conflict_confirmation_required');

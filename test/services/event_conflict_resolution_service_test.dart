@@ -2,8 +2,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:moms_ai/models/event_model.dart';
 import 'package:moms_ai/models/event_sync_conflict.dart';
 import 'package:moms_ai/models/event_sync_models.dart';
+import 'package:moms_ai/models/event_participant_identity_link.dart';
+import 'package:moms_ai/core/identity/entity_types.dart';
+import 'package:moms_ai/core/identity/persisted_identity_link.dart';
 import 'package:moms_ai/services/event_conflict_resolution_service.dart';
 import 'package:moms_ai/services/event_mutation_result.dart';
+import 'package:moms_ai/services/event_mutation_invariant_service.dart';
 import 'package:moms_ai/services/event_sync_journal.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -78,6 +82,91 @@ void main() {
     expect(fixture.written?.eventRevision, 3);
   });
 
+  test('retry update keeps conflict visible when planning validation blocks',
+      () async {
+    final fixture = await _Fixture.create(
+      EventSyncOperationType.update,
+      validation: const EventMutationInvariantResult.planningConflict(),
+    );
+    final result = await fixture.service.resolve(
+      conflictId: 'operation',
+      accountScopeId: 'account',
+      decision: EventConflictResolutionDecision.retryAgainstLatest,
+      confirmed: true,
+    );
+
+    expect(result.status, EventConflictResolutionStatus.planningConflict);
+    expect(fixture.cloudWrites, 0);
+    final journalEntry = (await EventSyncJournal().load()).single;
+    expect(journalEntry.state, EventSyncOperationState.conflict);
+    expect(journalEntry.resolutionState, EventConflictResolutionState.failed);
+  });
+
+  test('retry update reports a second revision conflict without overwriting',
+      () async {
+    final fixture = await _Fixture.create(
+      EventSyncOperationType.update,
+      mutationResult: const EventMutationResult.revisionConflict(),
+    );
+    final result = await fixture.service.resolve(
+      conflictId: 'operation',
+      accountScopeId: 'account',
+      decision: EventConflictResolutionDecision.retryAgainstLatest,
+      confirmed: true,
+    );
+
+    expect(result.status, EventConflictResolutionStatus.cloudChangedAgain);
+    expect(fixture.cloudWrites, 1);
+    expect(fixture.reconciled, isEmpty);
+  });
+
+  test('retry preserves a participant changed only in the cloud', () async {
+    final cloudLink = EventParticipantIdentityLink(
+      identity: PersistedIdentityLink(
+        entityId: 'cloud-person',
+        entityType: EntityType.person,
+      ),
+      accountScopeId: 'account',
+    );
+    final fixture = await _Fixture.create(
+      EventSyncOperationType.update,
+      cloudEvent: _event(title: 'Cloud', revision: 2).copyWith(
+        participantIdentity: cloudLink,
+        participantIdentityRevision: 2,
+      ),
+    );
+    final result = await fixture.service.resolve(
+      conflictId: 'operation',
+      accountScopeId: 'account',
+      decision: EventConflictResolutionDecision.retryAgainstLatest,
+      confirmed: true,
+    );
+
+    expect(result.status, EventConflictResolutionStatus.success);
+    expect(fixture.written?.participantIdentity, same(cloudLink));
+    expect(fixture.written?.participantIdentityRevision, 2);
+  });
+
+  test('series-scope rebase fails closed before cloud persistence', () async {
+    final fixture = await _Fixture.create(
+      EventSyncOperationType.update,
+      localEvent: _event(title: 'Local', revision: 2).copyWith(
+        isRecurring: true,
+        recurringType: 'weekly',
+      ),
+      validation: const EventMutationInvariantResult.unsupportedRebase(),
+    );
+    final result = await fixture.service.resolve(
+      conflictId: 'operation',
+      accountScopeId: 'account',
+      decision: EventConflictResolutionDecision.retryAgainstLatest,
+      confirmed: true,
+    );
+
+    expect(result.status, EventConflictResolutionStatus.unsupportedRebase);
+    expect(fixture.cloudWrites, 0);
+  });
+
   test('legacy update without a base snapshot cannot be force-rebased',
       () async {
     final fixture = await _Fixture.create(EventSyncOperationType.update,
@@ -133,12 +222,13 @@ PendingEventSyncOperation _operation(
   EventSyncOperationType type, {
   EventSyncConflictType conflictType = EventSyncConflictType.revisionConflict,
   bool includeBase = true,
+  EventModel? localEvent,
 }) {
   final base = _event(title: 'Base', revision: 1);
   final local = type == EventSyncOperationType.create
       ? _event(title: 'Local', revision: 1)
       : type == EventSyncOperationType.update
-          ? _event(title: 'Local', revision: 2)
+          ? localEvent ?? _event(title: 'Local', revision: 2)
           : null;
   return PendingEventSyncOperation(
     operationId: 'operation',
@@ -180,15 +270,25 @@ final class _Fixture {
   _Fixture(this.service, this.reconciled, this.created);
 
   static Future<_Fixture> create(EventSyncOperationType type,
-      {bool includeBase = true}) async {
+      {bool includeBase = true,
+      EventMutationInvariantResult validation =
+          const EventMutationInvariantResult.valid(),
+      EventMutationResult? mutationResult,
+      EventModel? localEvent,
+      EventModel? cloudEvent}) async {
     final journal = EventSyncJournal();
-    await journal.append(_operation(type, includeBase: includeBase));
+    await journal.append(_operation(
+      type,
+      includeBase: includeBase,
+      localEvent: localEvent,
+    ));
     final reconciled = <EventModel>[];
     final created = <EventModel>[];
     late _Fixture fixture;
     final service = EventConflictResolutionService(
       journal: journal,
       readCloud: (_) async =>
+          cloudEvent ??
           _event(title: 'Cloud', revision: 2, notes: 'changed elsewhere'),
       mutateCloud: (
           {required existing,
@@ -196,7 +296,7 @@ final class _Fixture {
           required expectedEventRevision}) async {
         fixture.cloudWrites++;
         fixture.written = proposed;
-        return EventMutationResult.success(proposed);
+        return mutationResult ?? EventMutationResult.success(proposed);
       },
       deleteCloud: ({required existing, required expectedEventRevision}) async {
         fixture.cloudWrites++;
@@ -207,6 +307,8 @@ final class _Fixture {
         if (event != null) reconciled.add(event);
       },
       createLocal: (event) async => created.add(event),
+      validateMutation: ({required existing, required proposed}) async =>
+          validation,
       idGenerator: FakeEntityIdGenerator(['new-event']),
     );
     fixture = _Fixture(service, reconciled, created);

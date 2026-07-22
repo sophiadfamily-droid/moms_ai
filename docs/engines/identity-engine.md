@@ -237,6 +237,11 @@ recorded base Event and preserves the participant link currently present in the
 cloud; a legacy update without a safe base snapshot cannot be rebased. Event
 deletion remains non-cascading and recreation follows the existing duplication
 policy, which does not copy a participant link implicitly.
+Conflict rebases now pass through the canonical Event mutation-invariant
+validator before persistence. Temporal rebases can therefore be blocked by the
+current planning constraints without changing the cloud participant. A local
+participant delta that cannot be reconstructed and revalidated safely remains
+unresolved; it is never merged from a stale complete Event payload.
 
 **Outside V1:** fuzzy, phonetic, embedding, or LLM matching; global identities;
 automatic merges; inferred sensitive relationships; and Knowledge Graph logic.

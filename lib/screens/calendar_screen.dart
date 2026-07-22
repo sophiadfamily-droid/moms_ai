@@ -14,6 +14,8 @@ class CalendarScreen extends StatefulWidget {
     this.addEventForTest,
     this.mutateEventForTest,
     this.deleteEventForTest,
+    this.loadSyncConflictsForTest,
+    this.resolveSyncConflictForTest,
     this.eventsVersionForTest,
   });
 
@@ -30,6 +32,12 @@ class CalendarScreen extends StatefulWidget {
     required int expectedEventRevision,
   })? deleteEventForTest;
   final ValueNotifier<int>? eventsVersionForTest;
+  final Future<List<EventSyncConflict>> Function()? loadSyncConflictsForTest;
+  final Future<EventConflictResolutionResult> Function({
+    required String conflictId,
+    required EventConflictResolutionDecision decision,
+    required bool confirmed,
+  })? resolveSyncConflictForTest;
 
   @override
   State<CalendarScreen> createState() => _CalendarScreenState();
@@ -110,7 +118,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final loaded = await getEvents();
     List<EventSyncConflict> conflicts;
     try {
-      conflicts = await EventService.getSyncConflicts();
+      conflicts = await (widget.loadSyncConflictsForTest?.call() ??
+          EventService.getSyncConflicts());
     } catch (_) {
       // Calendar remains usable before Firebase initialization and in tests.
       conflicts = const [];
@@ -184,18 +193,31 @@ class _CalendarScreenState extends State<CalendarScreen> {
           false;
     }
     if (!confirmed) return;
-    final result = await EventService.resolveSyncConflict(
-      conflictId: conflict.conflictId,
-      decision: decision,
-      confirmed: confirmed,
-    );
+    final result = await (widget.resolveSyncConflictForTest?.call(
+          conflictId: conflict.conflictId,
+          decision: decision,
+          confirmed: confirmed,
+        ) ??
+        EventService.resolveSyncConflict(
+          conflictId: conflict.conflictId,
+          decision: decision,
+          confirmed: confirmed,
+        ));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          result.status == EventConflictResolutionStatus.success
-              ? 'Le conflit a été traité.'
-              : 'Le conflit n’a pas pu être traité. Rechargez puis réessayez.',
+          switch (result.status) {
+            EventConflictResolutionStatus.success => 'Le conflit a été traité.',
+            EventConflictResolutionStatus.planningConflict =>
+              'Ce changement crée un conflit dans ton planning. '
+                  'Vérifie le créneau avant de réessayer.',
+            EventConflictResolutionStatus.cloudChangedAgain =>
+              'Cet événement a encore été modifié ailleurs. Recharge-le avant de continuer.',
+            EventConflictResolutionStatus.unsupportedRebase =>
+              'Cette ancienne modification ne peut pas être reprise automatiquement.',
+            _ => 'Le conflit n’a pas pu être traité. Recharge puis réessaie.',
+          },
         ),
       ),
     );

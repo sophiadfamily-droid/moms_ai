@@ -5,6 +5,7 @@ import '../models/event_model.dart';
 import '../models/event_sync_conflict.dart';
 import '../models/event_sync_models.dart';
 import 'event_mutation_result.dart';
+import 'event_mutation_invariant_service.dart';
 import 'event_mutation_service.dart';
 import 'event_sync_journal.dart';
 
@@ -23,6 +24,8 @@ typedef EventConflictLocalReconciler = Future<void> Function(
   EventModel? event,
 );
 typedef EventConflictLocalCreator = Future<void> Function(EventModel event);
+typedef EventConflictMutationValidator = Future<EventMutationInvariantResult>
+    Function({required EventModel existing, required EventModel proposed});
 
 final class EventConflictResolutionService {
   final EventSyncJournal _journal;
@@ -31,6 +34,7 @@ final class EventConflictResolutionService {
   final EventConflictCloudDeletion _deleteCloud;
   final EventConflictLocalReconciler _reconcileLocal;
   final EventConflictLocalCreator _createLocal;
+  final EventConflictMutationValidator _validateMutation;
   final EntityIdGenerator _idGenerator;
   final Set<String> _active = {};
 
@@ -40,6 +44,7 @@ final class EventConflictResolutionService {
     required EventConflictCloudDeletion deleteCloud,
     required EventConflictLocalReconciler reconcileLocal,
     required EventConflictLocalCreator createLocal,
+    required EventConflictMutationValidator validateMutation,
     required EntityIdGenerator idGenerator,
     EventSyncJournal? journal,
   })  : _readCloud = readCloud,
@@ -47,6 +52,7 @@ final class EventConflictResolutionService {
         _deleteCloud = deleteCloud,
         _reconcileLocal = reconcileLocal,
         _createLocal = createLocal,
+        _validateMutation = validateMutation,
         _idGenerator = idGenerator,
         _journal = journal ?? EventSyncJournal();
 
@@ -205,6 +211,19 @@ final class EventConflictResolutionService {
     final proposed =
         EventMutationService.apply(existing: cloud, proposed: rebased)
             .copyWith(eventRevision: cloud.eventRevision + 1);
+    final validation = await _validateMutation(
+      existing: cloud,
+      proposed: proposed,
+    );
+    if (validation.status == EventMutationInvariantStatus.planningConflict) {
+      return const EventConflictResolutionResult.planningConflict();
+    }
+    if (validation.status == EventMutationInvariantStatus.unsupportedRebase) {
+      return const EventConflictResolutionResult.unsupportedRebase();
+    }
+    if (validation.status != EventMutationInvariantStatus.valid) {
+      return const EventConflictResolutionResult.invalidDecision();
+    }
     final result = await _mutateCloud(
       existing: cloud,
       proposed: proposed,
