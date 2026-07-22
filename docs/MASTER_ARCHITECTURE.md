@@ -603,6 +603,37 @@ Tests must focus on outcomes and invariants, not merely reproduce implementation
 
 No test may be reported as passing unless it was executed successfully in the current work. Environmental limitations must be reported explicitly.
 
+### Mobile baseline
+
+The supported V1 mobile clients are iPhone, iPad, and Android phones. The
+verified local baseline uses Flutter 3.41.9, Dart 3.11.5, Xcode 26.5,
+CocoaPods 1.16.2, Android SDK 36, Android Gradle Plugin 8.11.1, Gradle 8.14,
+Kotlin 2.2.20, and JDK 17. iOS has a deployment target of 15.0 and supports
+device families 1 and 2. Android has minSdk 24 and compileSdk/targetSdk 36.
+
+Local validation uses:
+
+- `flutter build ios --simulator` for unsigned iPhone and iPad simulator code;
+- `flutter build ios --release --no-codesign` for an unsigned device release;
+- `flutter build apk --debug`, `flutter build apk --release`, and
+  `flutter build appbundle --release` for Android artifacts;
+- Firebase Emulator plus `ZELIA_FIREBASE_ENVIRONMENT=emulator` for mobile smoke
+  tests that create an anonymous Firebase session without touching remote data.
+
+Debug Android alone permits clear-text loopback traffic to the local Firebase
+Emulator. Release builds do not inherit that exception. Debug App Check uses
+the official debug providers, emulator mode omits App Check only for local
+emulators, and staging/production use platform attestation providers. Remote
+provider registration and enforcement remain a controlled deployment step.
+
+The current native permissions are deliberately limited. Android declares
+network and microphone access; gallery selection uses the modern system picker
+and does not request broad storage, camera, location, contacts, or notification
+permissions. iOS declares microphone, speech-recognition, and photo-library
+usage because those paths are reachable today. Distribution signing and
+physical-device release validation remain deferred; local release validation
+does not require a paid Apple Developer membership.
+
 ## 17. Architectural decision framework
 
 Architectural decisions should be evaluated in this order:

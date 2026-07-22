@@ -28,6 +28,8 @@
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Zelia utilise le micro pour écouter votre voix.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Zelia accède aux photos que vous choisissez pour personnaliser votre profil.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Zelia utilise la reconnaissance vocale.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
