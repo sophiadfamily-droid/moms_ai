@@ -22,6 +22,7 @@ import 'identity/identity_clarification_service.dart';
 import 'identity/identity_creation_service.dart';
 import 'identity/event_participant_identity_validation_service.dart';
 import 'event_conversation_mutation_service.dart';
+import 'event_mutation_service.dart';
 import 'event_target_selector.dart';
 import '../repositories/identity/identity_read_repository.dart';
 import 'zelia_action_guard_service.dart';
@@ -56,6 +57,8 @@ class ConversationCoordinator {
   bool _isResolvingPendingAction = false;
   final Map<String, PendingIdentityActionBinding> _identityActionBindings = {};
   final Map<String, PendingEventIdentityDraft> _eventIdentityDrafts = {};
+  final Map<String, PendingEventParticipantMutationDraft>
+      _eventParticipantMutationDrafts = {};
 
   ConversationCoordinator({
     required this.backend,
@@ -159,7 +162,7 @@ class ConversationCoordinator {
         source: source,
       ),
     );
-    return _resumeEventDraft(resolution);
+    return _resumeIdentityContinuation(resolution);
   }
 
   void setPendingMemoryConfirmation(
@@ -360,7 +363,7 @@ class ConversationCoordinator {
     if (result.status != IdentityClarificationStatus.stillAmbiguous) {
       _clearPendingAction();
     }
-    return _resumeEventDraft(PendingConversationResolution(
+    return _resumeIdentityContinuation(PendingConversationResolution(
       result.followUpMessage,
       identityClarificationResult: result,
       identityActionBindingResult: bindingResult,
@@ -408,7 +411,7 @@ class ConversationCoordinator {
           phase: ConversationPhase.awaitingActionConfirmation,
         );
       }
-      return _resumeEventDraft(PendingConversationResolution(
+      return _resumeIdentityContinuation(PendingConversationResolution(
         result.followUpMessage,
         identityCreationResult: result,
         identityActionBindingResult: bindingResult,
@@ -418,13 +421,15 @@ class ConversationCoordinator {
     }
   }
 
-  PendingConversationResolution _resumeEventDraft(
+  PendingConversationResolution _resumeIdentityContinuation(
     PendingConversationResolution resolution,
   ) {
     final bindingResult = resolution.identityActionBindingResult;
     if (bindingResult == null) return resolution;
     final draft = _eventIdentityDrafts[bindingResult.actionDraftId];
-    if (draft == null) return resolution;
+    if (draft == null) {
+      return _resumeEventParticipantMutation(resolution, bindingResult);
+    }
 
     if (bindingResult.status == IdentityActionBindingStatus.attached) {
       _eventIdentityDrafts.remove(bindingResult.actionDraftId);
@@ -452,6 +457,42 @@ class ConversationCoordinator {
         bindingResult.status == IdentityActionBindingStatus.invalid ||
         bindingResult.status == IdentityActionBindingStatus.alreadyApplied) {
       _eventIdentityDrafts.remove(bindingResult.actionDraftId);
+    }
+    return resolution;
+  }
+
+  PendingConversationResolution _resumeEventParticipantMutation(
+    PendingConversationResolution resolution,
+    IdentityActionBindingResult bindingResult,
+  ) {
+    final draft = _eventParticipantMutationDrafts[bindingResult.actionDraftId];
+    if (draft == null) return resolution;
+    if (bindingResult.status == IdentityActionBindingStatus.attached) {
+      _eventParticipantMutationDrafts.remove(bindingResult.actionDraftId);
+      final confirmation = _beginEventMutationConfirmation(
+        request: draft.request,
+        original: draft.original,
+        participantIdentityEntityId: bindingResult.resolvedEntityId,
+      );
+      final prefix = resolution.identityCreationResult?.status ==
+                  IdentityCreationStatus.created ||
+              resolution.identityClarificationResult?.status ==
+                  IdentityClarificationStatus.resolved
+          ? '${resolution.message}\n\n'
+          : '';
+      return PendingConversationResolution(
+        '$prefix${confirmation.message}',
+        diagnosticCode: confirmation.diagnosticCode,
+        identityCreationResult: resolution.identityCreationResult,
+        identityClarificationResult: resolution.identityClarificationResult,
+        identityActionBindingResult: bindingResult,
+      );
+    }
+    if (bindingResult.status == IdentityActionBindingStatus.cancelled ||
+        bindingResult.status == IdentityActionBindingStatus.expired ||
+        bindingResult.status == IdentityActionBindingStatus.invalid ||
+        bindingResult.status == IdentityActionBindingStatus.alreadyApplied) {
+      _eventParticipantMutationDrafts.remove(bindingResult.actionDraftId);
     }
     return resolution;
   }
@@ -497,7 +538,7 @@ class ConversationCoordinator {
           diagnosticCode: selection.diagnosticCode,
         );
       case EventTargetSelectionStatus.selected:
-        return _beginEventMutationConfirmation(
+        return _continueSelectedEventMutation(
           request: request,
           original: selection.selected!,
         );
@@ -535,7 +576,7 @@ class ConversationCoordinator {
         );
       }
       _clearPendingAction();
-      return _beginEventMutationConfirmation(
+      return await _continueSelectedEventMutation(
         request: clarification.request,
         original: clarification.candidates[index],
       );
@@ -570,9 +611,52 @@ class ConversationCoordinator {
     _isResolvingPendingAction = true;
     _state = _state.copyWith(phase: ConversationPhase.executingAction);
     try {
+      EventParticipantMutationIntent participantIntent =
+          const PreserveEventParticipant();
+      if (confirmation.request.operation ==
+          EventMutationOperation.removeParticipant) {
+        participantIntent = const RemoveEventParticipant();
+      } else if (confirmation.request.operation ==
+          EventMutationOperation.replaceParticipant) {
+        final scope = identityAccountScope;
+        final validator = eventParticipantIdentityValidationService;
+        final entityId = confirmation.participantIdentityEntityId;
+        final participant = confirmation.request.participant;
+        if (scope == null ||
+            validator == null ||
+            entityId == null ||
+            participant == null) {
+          _state = _state.copyWith(
+            phase: ConversationPhase.awaitingActionConfirmation,
+          );
+          return const PendingConversationResolution(
+            'Le nouveau participant ne peut pas être vérifié. '
+            'L’événement reste inchangé.',
+            diagnosticCode: 'event_participant_revalidation_unavailable',
+          );
+        }
+        final validation = await validator.validate(
+          scope: scope,
+          entityId: entityId,
+          participant: participant,
+        );
+        if (validation.status !=
+            EventParticipantIdentityValidationStatus.valid) {
+          _state = _state.copyWith(
+            phase: ConversationPhase.awaitingActionConfirmation,
+          );
+          return PendingConversationResolution(
+            'Le nouveau participant ne peut pas être vérifié. '
+            'L’événement reste inchangé.',
+            diagnosticCode: validation.diagnosticCode,
+          );
+        }
+        participantIntent = ReplaceEventParticipant(validation.link!);
+      }
       final result = await eventConversationMutationService.execute(
         original: confirmation.original,
         proposed: confirmation.proposed,
+        participantIntent: participantIntent,
       );
       if (result.status == EventMutationExecutionStatus.updated) {
         _clearPendingAction();
@@ -594,16 +678,82 @@ class ConversationCoordinator {
     }
   }
 
+  Future<PendingConversationResolution> _continueSelectedEventMutation({
+    required EventMutationRequest request,
+    required EventModel original,
+  }) async {
+    if (request.operation != EventMutationOperation.update) {
+      if (original.participantIdentity == null) {
+        return const PendingConversationResolution(
+          'Cet événement n’a pas de participant lié. '
+          'L’ajout d’un participant n’est pas disponible dans ce parcours.',
+          diagnosticCode: 'event_participant_mutation_requires_existing_link',
+        );
+      }
+      final scope = identityAccountScope;
+      if (scope == null ||
+          original.participantIdentity!.accountScopeId != scope.accountId) {
+        return const PendingConversationResolution(
+          'Le participant ne peut pas être vérifié pour le moment.',
+          diagnosticCode: 'event_participant_identity_scope_mismatch',
+        );
+      }
+    }
+    if (request.operation == EventMutationOperation.replaceParticipant) {
+      final participant = request.participant!;
+      final scope = identityAccountScope!;
+      final draftId = _actionDraftIdGenerator.generate();
+      _eventParticipantMutationDrafts[draftId] =
+          PendingEventParticipantMutationDraft(
+        actionDraftId: draftId,
+        request: request,
+        original: original,
+      );
+      const source = EntitySource(type: EntitySourceType.user);
+      final resolution = await beginIdentityActionBinding(
+        request: IdentityResolutionRequest(
+          scope: scope,
+          reference: EntityReference.text(
+            value: participant.label,
+            kind: EntityReferenceKind.genericLabel,
+            expectedType: EntityType.person,
+            source: source,
+          ),
+        ),
+        continuation: IdentityActionContinuation(
+          actionKind: IdentityActionKind.event,
+          actionDraftId: draftId,
+          target: IdentityActionTarget.eventParticipant,
+        ),
+        creationRequest: IdentityCreationRequest(
+          scope: scope,
+          entityType: EntityType.person,
+          canonicalLabel: participant.label,
+          source: source,
+        ),
+      );
+      return _resumeIdentityContinuation(resolution);
+    }
+    return _beginEventMutationConfirmation(
+      request: request,
+      original: original,
+    );
+  }
+
   PendingConversationResolution _beginEventMutationConfirmation({
     required EventMutationRequest request,
     required EventModel original,
+    String? participantIdentityEntityId,
   }) {
-    final proposed = eventConversationMutationService.propose(
-      original,
-      request.changes,
-    );
+    final proposed = request.operation == EventMutationOperation.update
+        ? eventConversationMutationService.propose(
+            original,
+            request.changes!,
+          )
+        : original;
     final now = _clock().toUtc();
-    final message = _eventMutationConfirmationMessage(original, proposed);
+    final message =
+        _eventMutationConfirmationMessage(original, proposed, request);
     _state = _state.copyWith(
       phase: ConversationPhase.awaitingActionConfirmation,
       pendingAction: PendingConversationAction.eventMutationConfirmation(
@@ -612,6 +762,7 @@ class ConversationCoordinator {
           request: request,
           original: original,
           proposed: proposed,
+          participantIdentityEntityId: participantIdentityEntityId,
           confirmationMessage: message,
           createdAt: now,
           expiresAt: now.add(const Duration(minutes: 15)),
@@ -644,9 +795,16 @@ class ConversationCoordinator {
   }
 
   static String _eventMutationConfirmationMessage(
-    EventModel original,
-    EventModel proposed,
-  ) {
+      EventModel original, EventModel proposed,
+      [EventMutationRequest? request]) {
+    if (request?.operation == EventMutationOperation.replaceParticipant) {
+      return 'Je vais remplacer le participant de « ${original.title} » '
+          'par ${request!.participant!.label}. Confirmer ?';
+    }
+    if (request?.operation == EventMutationOperation.removeParticipant) {
+      return 'Je vais retirer le participant de « ${original.title} ». '
+          'L’identité restera enregistrée dans Zelia. Confirmer ?';
+    }
     return 'Je vais modifier « ${original.title} » du ${original.date} à '
         '${original.time} vers le ${proposed.date} à ${proposed.time}. '
         'Confirmer ?';

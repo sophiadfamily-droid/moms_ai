@@ -83,6 +83,8 @@ final class EventConversationMutationService {
   Future<EventMutationExecutionResult> execute({
     required EventModel original,
     required EventModel proposed,
+    EventParticipantMutationIntent participantIntent =
+        const PreserveEventParticipant(),
   }) async {
     final events = await _loadEvents();
     final current =
@@ -99,11 +101,12 @@ final class EventConversationMutationService {
         'event_mutation_concurrent_change',
       );
     }
-    final conflict = events.any(
-      (event) =>
-          event.id != current.id &&
-          EventService.eventsProtectedOverlap(event, proposed),
-    );
+    final conflict = participantIntent is PreserveEventParticipant &&
+        events.any(
+          (event) =>
+              event.id != current.id &&
+              EventService.eventsProtectedOverlap(event, proposed),
+        );
     if (conflict) {
       return const EventMutationExecutionResult(
         EventMutationExecutionStatus.conflict,
@@ -114,7 +117,7 @@ final class EventConversationMutationService {
       await _write(
         existing: current,
         proposed: proposed,
-        participantIntent: const PreserveEventParticipant(),
+        participantIntent: participantIntent,
       );
       return const EventMutationExecutionResult(
         EventMutationExecutionStatus.updated,

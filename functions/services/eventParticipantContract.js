@@ -104,6 +104,7 @@ function sanitizeEventParticipants(actions, userMessage, logger = console) {
     }
     const action = {...rawAction};
     if (!("participant" in action)) return action;
+    if (action.type === "event_mutation") return action;
 
     const participant = action.type === "event" ?
       validateExplicitEventParticipant(action.participant, userMessage) :

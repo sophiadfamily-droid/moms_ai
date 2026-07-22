@@ -69,6 +69,7 @@ final class PendingEventMutationConfirmation {
   final EventMutationRequest request;
   final EventModel original;
   final EventModel proposed;
+  final String? participantIdentityEntityId;
   final String confirmationMessage;
   final DateTime createdAt;
   final DateTime expiresAt;
@@ -78,6 +79,7 @@ final class PendingEventMutationConfirmation {
     required this.request,
     required this.original,
     required this.proposed,
+    this.participantIdentityEntityId,
     required String confirmationMessage,
     required this.createdAt,
     required this.expiresAt,
@@ -85,6 +87,10 @@ final class PendingEventMutationConfirmation {
     if (!EntityIdentity.isValid(mutationId) ||
         !EntityIdentity.isValid(original.id) ||
         original.id != proposed.id ||
+        (request.operation == EventMutationOperation.replaceParticipant &&
+            !EntityIdentity.isValid(participantIdentityEntityId)) ||
+        (request.operation != EventMutationOperation.replaceParticipant &&
+            participantIdentityEntityId != null) ||
         this.confirmationMessage.isEmpty ||
         !expiresAt.isAfter(createdAt)) {
       throw const FormatException('invalid_event_mutation_confirmation');
@@ -92,6 +98,27 @@ final class PendingEventMutationConfirmation {
   }
 
   bool isExpiredAt(DateTime value) => !value.isBefore(expiresAt);
+}
+
+final class PendingEventParticipantMutationDraft {
+  final String actionDraftId;
+  final EventMutationRequest request;
+  final EventModel original;
+
+  PendingEventParticipantMutationDraft({
+    required this.actionDraftId,
+    required this.request,
+    required this.original,
+  }) {
+    if (!EntityIdentity.isValid(actionDraftId) ||
+        !EntityIdentity.isValid(original.id) ||
+        request.operation != EventMutationOperation.replaceParticipant ||
+        request.participant == null) {
+      throw const ConversationIdentityException(
+        'invalid_event_participant_mutation_draft',
+      );
+    }
+  }
 }
 
 final class ConversationIdentityException implements Exception {

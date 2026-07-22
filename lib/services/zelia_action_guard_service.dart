@@ -158,16 +158,29 @@ class ZeliaActionGuardService {
   static ZeliaActionGuardResult _guardEventMutation(
     Map<String, dynamic> source,
   ) {
-    const actionKeys = {'type', 'operation', 'target', 'changes'};
-    if (source.length != actionKeys.length ||
+    final operation = source['operation'];
+    final actionKeys = switch (operation) {
+      'update' => const {'type', 'operation', 'target', 'changes'},
+      'replace_participant' => const {
+          'type',
+          'operation',
+          'target',
+          'participant'
+        },
+      'remove_participant' => const {'type', 'operation', 'target'},
+      _ => const <String>{},
+    };
+    if (actionKeys.isEmpty ||
+        source.length != actionKeys.length ||
         source.keys.any((key) => !actionKeys.contains(key)) ||
-        source['operation'] != 'update' ||
         source['target'] is! Map ||
-        source['changes'] is! Map) {
+        (operation == 'update' && source['changes'] is! Map)) {
       return ZeliaActionGuardResult.rejected('invalid_event_mutation');
     }
     final targetMap = Map<String, dynamic>.from(source['target'] as Map);
-    final changesMap = Map<String, dynamic>.from(source['changes'] as Map);
+    final changesMap = operation == 'update'
+        ? Map<String, dynamic>.from(source['changes'] as Map)
+        : <String, dynamic>{};
     const targetKeys = {'title', 'date', 'time', 'category'};
     const changeKeys = {
       'title',
@@ -181,7 +194,7 @@ class ZeliaActionGuardService {
       'category',
     };
     if (targetMap.isEmpty ||
-        changesMap.isEmpty ||
+        (operation == 'update' && changesMap.isEmpty) ||
         targetMap.keys.any((key) => !targetKeys.contains(key)) ||
         changesMap.keys.any((key) => !changeKeys.contains(key))) {
       return ZeliaActionGuardResult.rejected('invalid_event_mutation');
@@ -229,25 +242,40 @@ class ZeliaActionGuardService {
               _normalizeTime(changeTime, []) != changeTime)) {
         throw const FormatException('invalid_event_mutation_temporal');
       }
-      final request = EventMutationRequest(
-        target: EventMutationTarget(
-          title: optionalText(targetMap, 'title'),
-          date: targetDate,
-          time: targetTime,
-          category: optionalText(targetMap, 'category'),
-        ),
-        changes: EventMutationChanges(
-          title: optionalText(changesMap, 'title'),
-          date: changeDate,
-          time: changeTime,
-          durationMinutes: optionalInteger('durationMinutes', 1, 1440),
-          travelGoMinutes: optionalInteger('travelGoMinutes', 0, 480),
-          travelBackMinutes: optionalInteger('travelBackMinutes', 0, 480),
-          marginMinutes: optionalInteger('marginMinutes', 0, 240),
-          notes: optionalText(changesMap, 'notes', allowEmpty: true),
-          category: optionalText(changesMap, 'category'),
-        ),
+      final target = EventMutationTarget(
+        title: optionalText(targetMap, 'title'),
+        date: targetDate,
+        time: targetTime,
+        category: optionalText(targetMap, 'category'),
       );
+      final request = switch (operation) {
+        'update' => EventMutationRequest.update(
+            target: target,
+            changes: EventMutationChanges(
+              title: optionalText(changesMap, 'title'),
+              date: changeDate,
+              time: changeTime,
+              durationMinutes: optionalInteger('durationMinutes', 1, 1440),
+              travelGoMinutes: optionalInteger('travelGoMinutes', 0, 480),
+              travelBackMinutes: optionalInteger('travelBackMinutes', 0, 480),
+              marginMinutes: optionalInteger('marginMinutes', 0, 240),
+              notes: optionalText(changesMap, 'notes', allowEmpty: true),
+              category: optionalText(changesMap, 'category'),
+            ),
+          ),
+        'replace_participant' => EventMutationRequest.replaceParticipant(
+            target: target,
+            participant: _validatedParticipant(
+                  source['participant'],
+                  actionType: 'event',
+                  corrections: <String>[],
+                ) ??
+                (throw const FormatException('invalid_event_participant')),
+          ),
+        'remove_participant' =>
+          EventMutationRequest.removeParticipant(target: target),
+        _ => throw const FormatException('invalid_event_mutation'),
+      };
       return ZeliaActionGuardResult.accepted(
         action: {'type': 'event_mutation', 'eventMutation': request},
       );

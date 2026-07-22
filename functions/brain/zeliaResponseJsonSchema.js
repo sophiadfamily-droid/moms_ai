@@ -9,20 +9,19 @@ const ACTION_TYPES = Object.freeze([
   "event_mutation",
 ]);
 
+const eventParticipantObjectSchema = Object.freeze({
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    label: {type: "string", minLength: 1, maxLength: 120},
+    entityType: {type: "string", enum: ["person"]},
+    evidence: {type: "string", enum: ["explicit_user_input"]},
+  },
+  required: ["label", "entityType", "evidence"],
+});
+
 const eventParticipantSchema = Object.freeze({
-  anyOf: [
-    {
-      type: "object",
-      additionalProperties: false,
-      properties: {
-        label: {type: "string", minLength: 1, maxLength: 120},
-        entityType: {type: "string", enum: ["person"]},
-        evidence: {type: "string", enum: ["explicit_user_input"]},
-      },
-      required: ["label", "entityType", "evidence"],
-    },
-    {type: "null"},
-  ],
+  anyOf: [eventParticipantObjectSchema, {type: "null"}],
 });
 
 const creationActionSchema = Object.freeze({
@@ -174,15 +173,40 @@ const eventMutationChangesSchema = Object.freeze({
 });
 
 const eventMutationActionSchema = Object.freeze({
-  type: "object",
-  additionalProperties: false,
-  properties: {
-    type: {type: "string", enum: ["event_mutation"]},
-    operation: {type: "string", enum: ["update"]},
-    target: eventMutationTargetSchema,
-    changes: eventMutationChangesSchema,
-  },
-  required: ["type", "operation", "target", "changes"],
+  anyOf: [
+    {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        type: {type: "string", enum: ["event_mutation"]},
+        operation: {type: "string", enum: ["update"]},
+        target: eventMutationTargetSchema,
+        changes: eventMutationChangesSchema,
+      },
+      required: ["type", "operation", "target", "changes"],
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        type: {type: "string", enum: ["event_mutation"]},
+        operation: {type: "string", enum: ["replace_participant"]},
+        target: eventMutationTargetSchema,
+        participant: eventParticipantObjectSchema,
+      },
+      required: ["type", "operation", "target", "participant"],
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        type: {type: "string", enum: ["event_mutation"]},
+        operation: {type: "string", enum: ["remove_participant"]},
+        target: eventMutationTargetSchema,
+      },
+      required: ["type", "operation", "target"],
+    },
+  ],
 });
 
 const actionSchema = Object.freeze({
@@ -244,6 +268,7 @@ module.exports = {
   eventMutationChangesSchema,
   eventMutationTargetSchema,
   eventParticipantSchema,
+  eventParticipantObjectSchema,
   memorySchema,
   zeliaResponseJsonSchema,
 };

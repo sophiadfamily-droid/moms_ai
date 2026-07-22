@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:moms_ai/models/event_mutation_models.dart';
 import 'package:moms_ai/services/zelia_action_guard_service.dart';
 
 void main() {
@@ -152,6 +153,58 @@ void main() {
         },
       ]) {
         expect(ZeliaActionGuardService.guard(action).isAccepted, false);
+      }
+    });
+
+    test('accepts closed participant replacement and removal mutations', () {
+      final replacement = ZeliaActionGuardService.guard({
+        'type': 'event_mutation',
+        'operation': 'replace_participant',
+        'target': {'date': '2026-07-23'},
+        'participant': {
+          'label': 'Person B',
+          'entityType': 'person',
+          'evidence': 'explicit_user_input',
+        },
+      });
+      final removal = ZeliaActionGuardService.guard({
+        'type': 'event_mutation',
+        'operation': 'remove_participant',
+        'target': {'date': '2026-07-23'},
+      });
+
+      expect(replacement.isAccepted, isTrue);
+      expect(
+        (replacement.action!['eventMutation'] as EventMutationRequest)
+            .operation,
+        EventMutationOperation.replaceParticipant,
+      );
+      expect(removal.isAccepted, isTrue);
+      expect(
+        (removal.action!['eventMutation'] as EventMutationRequest).operation,
+        EventMutationOperation.removeParticipant,
+      );
+    });
+
+    test('rejects malformed participant mutations', () {
+      for (final action in [
+        {
+          'type': 'event_mutation',
+          'operation': 'replace_participant',
+          'target': {'date': '2026-07-23'},
+        },
+        {
+          'type': 'event_mutation',
+          'operation': 'remove_participant',
+          'target': {'date': '2026-07-23'},
+          'participant': {
+            'label': 'Person B',
+            'entityType': 'person',
+            'evidence': 'explicit_user_input',
+          },
+        },
+      ]) {
+        expect(ZeliaActionGuardService.guard(action).isAccepted, isFalse);
       }
     });
 

@@ -138,7 +138,7 @@ _Fixture _fixture(
   final nowBox = [DateTime.utc(2026, 7, 22, 10)];
   late _Fixture fixture;
   final backend = _Backend(
-    EventMutationRequest(
+    EventMutationRequest.update(
       target: target ?? EventMutationTarget(date: '2026-07-23', time: '10:00'),
       changes: EventMutationChanges(time: '11:00'),
     ),
@@ -173,7 +173,7 @@ class _Backend implements ChatBackendClient {
   @override
   Future<ChatBackendResponse> send(ChatBackendRequest request) async {
     final target = this.request.target;
-    final changes = this.request.changes;
+    final changes = this.request.changes!;
     return ChatBackendResponse(
       reply: 'Mutation',
       actions: [

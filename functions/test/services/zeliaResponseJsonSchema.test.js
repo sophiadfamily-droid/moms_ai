@@ -118,7 +118,9 @@ test("uses strict schemas at every object level", () => {
   );
 
   assert.equal(creationActionSchema.additionalProperties, false);
-  assert.equal(eventMutationActionSchema.additionalProperties, false);
+  for (const variant of eventMutationActionSchema.anyOf) {
+    assert.equal(variant.additionalProperties, false);
+  }
 
   assert.equal(
       memorySchema.additionalProperties,
@@ -126,13 +128,20 @@ test("uses strict schemas at every object level", () => {
   );
 });
 
-test("defines a closed update-only event mutation action", () => {
-  assert.deepEqual(eventMutationActionSchema.required,
+test("defines closed event mutation operations", () => {
+  const [update, replace, remove] = eventMutationActionSchema.anyOf;
+  assert.deepEqual(update.required,
       ["type", "operation", "target", "changes"]);
-  assert.deepEqual(eventMutationActionSchema.properties.type.enum,
+  assert.deepEqual(update.properties.type.enum,
       ["event_mutation"]);
-  assert.deepEqual(eventMutationActionSchema.properties.operation.enum,
+  assert.deepEqual(update.properties.operation.enum,
       ["update"]);
+  assert.deepEqual(replace.required,
+      ["type", "operation", "target", "participant"]);
+  assert.deepEqual(replace.properties.operation.enum,
+      ["replace_participant"]);
+  assert.deepEqual(remove.required, ["type", "operation", "target"]);
+  assert.deepEqual(remove.properties.operation.enum, ["remove_participant"]);
   assert.equal(eventMutationTargetSchema.additionalProperties, false);
   assert.equal(eventMutationChangesSchema.additionalProperties, false);
   assert.equal("id" in eventMutationTargetSchema.properties, false);

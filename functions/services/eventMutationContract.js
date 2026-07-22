@@ -1,7 +1,10 @@
 const MAX_TITLE_LENGTH = 120;
 const MAX_CATEGORY_LENGTH = 80;
 const MAX_NOTES_LENGTH = 1000;
-const {comparisonText} = require("./eventParticipantContract");
+const {
+  comparisonText,
+  validateExplicitEventParticipant,
+} = require("./eventParticipantContract");
 
 const TARGET_KEYS = new Set(["title", "date", "time", "category"]);
 const CHANGE_KEYS = new Set([
@@ -69,10 +72,8 @@ function boundedInteger(value, minimum, maximum) {
  * @return {Object|null} mutation sûre ou null
  */
 function validateEventMutation(action, userMessage = "") {
-  if (!exactKeys(action, new Set(["type", "operation", "target", "changes"])) ||
-      action.type !== "event_mutation" || action.operation !== "update" ||
-      !exactKeys(action.target, TARGET_KEYS) ||
-      !exactKeys(action.changes, CHANGE_KEYS)) return null;
+  if (!action || action.type !== "event_mutation" ||
+      !exactKeys(action.target, TARGET_KEYS)) return null;
 
   const target = {};
   for (const [key, maximum] of Object.entries({
@@ -86,6 +87,48 @@ function validateEventMutation(action, userMessage = "") {
   if (Object.keys(target).length === 0 ||
       (target.date && !validDate(target.date)) ||
       (target.time && !validTime(target.time))) return null;
+  const message = comparisonText(userMessage);
+  const targetEvidence = [target.title, target.category]
+      .filter((value) => value)
+      .every((value) => (` ${message} `)
+          .includes(` ${comparisonText(value)} `));
+  if (!targetEvidence) return null;
+
+  if (action.operation === "replace_participant") {
+    if (!exactKeys(action, new Set([
+      "type", "operation", "target", "participant",
+    ]))) return null;
+    const participant = validateExplicitEventParticipant(
+        action.participant, userMessage);
+    const explicitReplacement = ["remplace", "remplacer", "change", "changer"]
+        .some((term) => (` ${message} `).includes(` ${term} `));
+    if (participant == null || !explicitReplacement) return null;
+    return {type: "event_mutation", operation: action.operation, target,
+      participant};
+  }
+
+  if (action.operation === "remove_participant") {
+    if (!exactKeys(action, new Set(["type", "operation", "target"]))) {
+      return null;
+    }
+    const explicitRemoval = ["retire", "retirer", "enleve", "enlever"]
+        .some((term) => (` ${message} `).includes(` ${term} `));
+    const participantSubject = ["participant", "personne"]
+        .some((term) => (` ${message} `).includes(` ${term} `));
+    const namedRemoval =
+      /\b(?:retire|enleve)\s+.+\s+(?:de|du)\s+/.test(message);
+    const deletesEvent = new RegExp(
+        "\\b(?:retire|enleve)\\s+" +
+        "(?:(?:le|la|mon|ma)\\s+)?(?:evenement|rendez vous)\\b",
+    ).test(message);
+    if (!explicitRemoval || deletesEvent ||
+        (!participantSubject && !namedRemoval)) return null;
+    return {type: "event_mutation", operation: action.operation, target};
+  }
+
+  if (action.operation !== "update" ||
+      !exactKeys(action, new Set(["type", "operation", "target", "changes"])) ||
+      !exactKeys(action.changes, CHANGE_KEYS)) return null;
 
   const changes = {};
   const textLimits = {title: MAX_TITLE_LENGTH, date: 10, time: 5,
@@ -106,7 +149,6 @@ function validateEventMutation(action, userMessage = "") {
   if ((changes.date && !validDate(changes.date)) ||
       (changes.time && !validTime(changes.time)) ||
       Object.keys(changes).length === 0) return null;
-  const message = comparisonText(userMessage);
   const hasExplicitMutation = [
     "decale", "deplacer", "deplace", "modifie", "modifier", "change",
     "changer", "avance", "avancer", "repousse", "repousser",

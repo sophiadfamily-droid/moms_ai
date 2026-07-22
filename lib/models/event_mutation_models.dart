@@ -1,3 +1,7 @@
+import 'event_participant.dart';
+
+enum EventMutationOperation { update, replaceParticipant, removeParticipant }
+
 final class EventMutationTarget {
   final String? title;
   final String? date;
@@ -50,10 +54,27 @@ final class EventMutationChanges {
 }
 
 final class EventMutationRequest {
+  final EventMutationOperation operation;
   final EventMutationTarget target;
-  final EventMutationChanges changes;
+  final EventMutationChanges? changes;
+  final EventParticipant? participant;
 
-  const EventMutationRequest({required this.target, required this.changes});
+  EventMutationRequest.update({
+    required this.target,
+    required EventMutationChanges this.changes,
+  })  : operation = EventMutationOperation.update,
+        participant = null;
+
+  EventMutationRequest.replaceParticipant({
+    required this.target,
+    required EventParticipant this.participant,
+  })  : operation = EventMutationOperation.replaceParticipant,
+        changes = null;
+
+  EventMutationRequest.removeParticipant({required this.target})
+      : operation = EventMutationOperation.removeParticipant,
+        changes = null,
+        participant = null;
 }
 
 final class EventMutationCandidateChoice {

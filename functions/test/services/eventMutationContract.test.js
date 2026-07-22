@@ -20,6 +20,68 @@ test("accepts a closed update mutation", () => {
   ), valid);
 });
 
+test("accepts explicit participant replacement and removal", () => {
+  const target = {title: "Rendez-vous médecin", date: "2026-07-23"};
+  const participant = {
+    label: "Person B",
+    entityType: "person",
+    evidence: "explicit_user_input",
+  };
+  assert.deepEqual(validateEventMutation({
+    type: "event_mutation",
+    operation: "replace_participant",
+    target,
+    participant,
+  }, "Remplace le participant par Person B dans mon Rendez-vous médecin"), {
+    type: "event_mutation",
+    operation: "replace_participant",
+    target,
+    participant,
+  });
+  assert.deepEqual(validateEventMutation({
+    type: "event_mutation",
+    operation: "remove_participant",
+    target,
+  }, "Retire le participant de mon Rendez-vous médecin"), {
+    type: "event_mutation",
+    operation: "remove_participant",
+    target,
+  });
+  assert.deepEqual(validateEventMutation({
+    type: "event_mutation",
+    operation: "remove_participant",
+    target,
+  }, "Enlève Person A de mon Rendez-vous médecin"), {
+    type: "event_mutation",
+    operation: "remove_participant",
+    target,
+  });
+});
+
+test("rejects malformed participant operations and implicit provenance", () => {
+  const target = {title: "Rendez-vous médecin"};
+  const participant = {label: "Person B", entityType: "person",
+    evidence: "explicit_user_input"};
+  for (const mutation of [
+    {type: "event_mutation", operation: "replace_participant", target},
+    {type: "event_mutation", operation: "replace_participant", target,
+      participant, changes: {}},
+    {type: "event_mutation", operation: "remove_participant", target,
+      participant},
+    {type: "event_mutation", operation: "remove_participant", target,
+      changes: {}},
+  ]) {
+    assert.equal(validateEventMutation(mutation,
+        "Remplace Person B dans mon Rendez-vous médecin"), null);
+  }
+  assert.equal(validateEventMutation({type: "event_mutation",
+    operation: "replace_participant", target, participant},
+  "Remplace-le dans mon Rendez-vous médecin"), null);
+  assert.equal(validateEventMutation({type: "event_mutation",
+    operation: "remove_participant", target},
+  "Supprime mon Rendez-vous médecin"), null);
+});
+
 test("rejects unknown operations, empty target and empty changes", () => {
   assert.equal(
       validateEventMutation({...valid, operation: "delete"}, "modifie"),

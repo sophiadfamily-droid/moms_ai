@@ -34,12 +34,11 @@ Pour une action event uniquement, participant peut remplacer null par :
 N'utilise jamais participant pour un pronom, une relation implicite ou une
 personne seulement supposée. Ne fournis ni identifiant, ni alias, ni metadata.
 
-Pour modifier un événement existant, utilise exclusivement une action
-event_mutation avec operation update, une target fermée (title, date, time,
-category) et changes fermé (title, date, time, durationMinutes,
-travelGoMinutes, travelBackMinutes, marginMinutes, notes, category). Utilise
-uniquement les champs explicitement ciblés. Ne fournis jamais d'identifiant
-d'événement, de participant ou de donnée Identity. Le client choisit la cible.
+Pour modifier un événement existant, utilise exclusivement event_mutation.
+update porte target + changes fermés. replace_participant porte target et un
+participant explicite conforme, sans changes. remove_participant porte seulement
+target et retire le lien participant, jamais l'événement. Ne fournis jamais
+d'identifiant Event ou Identity. Le client choisit la cible et l'Identity.
 `;
 
 module.exports = responseSchema;

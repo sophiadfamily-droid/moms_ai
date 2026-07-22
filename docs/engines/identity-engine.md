@@ -181,6 +181,29 @@ Phase 4I-A standard conversational event mutations preserve an existing
 `PreserveEventParticipant`. They do not invoke Identity resolution, expose
 Identity data to the backend, or permit participant replacement or removal.
 
+**Implemented in Phase 4I-B:** the same closed `event_mutation` contract and
+deterministic event selector now support explicit `replace_participant` and
+`remove_participant` operations. Replacement accepts only the existing typed
+`EventParticipant` backed by literal user input. After the event is selected,
+it reuses the existing Identity binding, clarification, confirmed creation,
+and final active-person validation. Identity confirmation only produces a new
+event-mutation confirmation; it never modifies the event. Final persistence
+uses `ReplaceEventParticipant`, increments the participant revision once, and
+preserves every other event field.
+
+Removal requires an explicit participant-removal formulation, starts no
+Identity workflow, and uses `RemoveEventParticipant` only after its own final
+confirmation. It increments the revision once and has no cascade to the
+Identity or other events. Both paths reload and compare the immutable event
+snapshot before writing, so deletion or concurrent event/participant changes
+block the mutation. Events without a link reject both operations; replacement
+is never converted to participant addition. Pending clarification, creation,
+and final confirmation expire independently and repeated confirmation cannot
+reapply a successful mutation. Firestore rules and indexes are unchanged; the
+Phase 4H emulator contract already covers revisioned replacement/removal and
+same-scope enforcement. The narrow read-before-write window is not a server
+transaction and remains a documented concurrency limit of local event storage.
+
 **Outside V1:** fuzzy, phonetic, embedding, or LLM matching; global identities;
 automatic merges; inferred sensitive relationships; and Knowledge Graph logic.
 

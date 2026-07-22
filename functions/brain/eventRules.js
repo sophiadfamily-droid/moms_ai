@@ -49,12 +49,17 @@ Trajet :
 MODIFICATION D'UN ÉVÉNEMENT EXISTANT
 - Si l'utilisatrice demande explicitement de décaler, déplacer, modifier ou
   changer un événement existant, retourne event_mutation et non event.
-- Fournis seulement operation update, les critères target explicitement
-  disponibles (title, date, time, category) et les champs changes demandés.
+- Pour une modification standard, fournis operation update, les critères target
+  explicitement disponibles et uniquement les champs changes demandés.
+- Pour remplacer un participant existant, utilise replace_participant avec
+  exactement target et un participant explicite conforme. Aucun changes.
+- Pour retirer uniquement le lien participant, utilise remove_participant avec
+  exactement target et seulement sur demande explicite. Aucun participant ni
+  changes. Ce n'est jamais une suppression d'événement.
 - Ne choisis jamais un événement, ne fournis jamais son ID et ne copie jamais
-  un participant ou une donnée Identity. Flutter sélectionne et confirme.
+  un ID Identity. Flutter sélectionne, résout l'Identity et confirme.
 - N'utilise pas event_mutation pour supprimer, dupliquer, modifier une série
-  récurrente ou changer un participant.
+  récurrente, ajouter un participant ou modifier une Identity.
 
 Exemples :
 "J'ai rendez-vous chez ma belle-mère demain à 20h"

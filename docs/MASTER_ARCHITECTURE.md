@@ -12,9 +12,10 @@ This document must evolve deliberately. It should change when ZELIA's mission, s
 
 ### Conversational event mutation foundation
 
-**Current state:** Phase 4I-A defines a closed `event_mutation` backend action
-containing only an `update` intent, structured target criteria, and requested
-changes. It never carries an event ID. The server removes malformed or
+**Current state:** Phases 4I-A and 4I-B define a closed `event_mutation` backend
+action containing `update`, `replace_participant`, or `remove_participant`,
+structured target criteria, and only the payload permitted by that operation.
+It never carries an event or Identity ID. The server removes malformed or
 ungrounded mutations; Flutter validates again and deterministically selects
 current events by normalized title, exact date, exact time, and normalized
 category.
@@ -25,9 +26,16 @@ numbered choice is resolved locally without an LLM. Final confirmation reloads
 the event and compares it with its immutable snapshot; disappearance,
 concurrent modification, or a protected-range conflict blocks the write.
 
-Only title, date, time, duration, outbound/return travel, margin, notes, and
-category can change. Recurrence, deletion, duplication, participants, Identity,
-and bulk updates remain excluded. Backend context contains no event ID, notes,
+Standard updates can change only title, date, time, duration, outbound/return
+travel, margin, notes, and category. Participant replacement reuses the typed
+explicit participant contract, then the existing Identity resolution,
+clarification, confirmed creation, binding, and final revalidation services.
+Participant removal is an explicit, separately confirmed link mutation and
+never touches the Identity. Both operations reuse the same event selector,
+pending system, concurrency snapshot, `EventMutationService`, and persistence
+boundary. An event without a participant cannot treat replacement as addition.
+Recurrence, event deletion, duplication, participant addition, and bulk updates
+remain excluded. Backend context contains no event ID, notes,
 account scope, Firestore metadata, participant link, or Identity data. Calendar
 growth will require a separate bounded context-window policy; this phase does
 not introduce unbounded semantic matching.
