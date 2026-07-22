@@ -7,6 +7,7 @@ import '../models/event_sync_models.dart';
 final class EventSyncJournal {
   static const String storageKey = 'zelia_event_sync_journal_v1';
   static const int maxOperations = 500;
+  static const int maxResolutionReceipts = 100;
 
   Future<List<PendingEventSyncOperation>> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -34,7 +35,19 @@ final class EventSyncJournal {
   }
 
   Future<void> save(List<PendingEventSyncOperation> operations) async {
-    final retained = operations.where((operation) => !operation.isTerminal);
+    final active = operations.where((operation) => !operation.isTerminal);
+    final receipts = active
+        .where((operation) =>
+            operation.state == EventSyncOperationState.resolved ||
+            operation.state == EventSyncOperationState.discarded)
+        .toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    final retained = [
+      ...active.where((operation) =>
+          operation.state != EventSyncOperationState.resolved &&
+          operation.state != EventSyncOperationState.discarded),
+      ...receipts.take(maxResolutionReceipts),
+    ];
     if (retained.length > maxOperations) {
       throw const FormatException('event_sync_journal_limit_reached');
     }
@@ -51,5 +64,15 @@ final class EventSyncJournal {
       return;
     }
     await save([...operations, operation]);
+  }
+
+  Future<void> replace(PendingEventSyncOperation operation) async {
+    final operations = await load();
+    final index = operations.indexWhere(
+      (item) => item.operationId == operation.operationId,
+    );
+    if (index < 0) throw const FormatException('event_sync_operation_missing');
+    operations[index] = operation;
+    await save(operations);
   }
 }

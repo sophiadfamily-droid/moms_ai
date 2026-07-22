@@ -41,7 +41,7 @@ void main() {
     });
     expect(EventSyncJournal().load(), throwsFormatException);
 
-    final unknown = valid.toJson()..['schemaVersion'] = 2;
+    final unknown = valid.toJson()..['schemaVersion'] = 3;
     expect(
       () => PendingEventSyncOperation.fromJson(unknown),
       throwsFormatException,
@@ -112,6 +112,32 @@ void main() {
     expect(second.status, EventSyncStatus.conflicts);
     expect(second.conflictCount, 1);
     expect(executions, 1);
+  });
+
+  test('five transient failures become an explicit terminal conflict',
+      () async {
+    final journal = EventSyncJournal();
+    await journal
+        .append(_operation('exhausted', EventSyncOperationType.create));
+    final service = EventSyncService(
+      journal: journal,
+      execute: (_) async => const EventMutationResult.persistenceFailure(),
+    );
+    for (var attempt = 0; attempt < 5; attempt++) {
+      await service.synchronize();
+    }
+    final operation = (await journal.load()).single;
+    expect(operation.state, EventSyncOperationState.conflict);
+    expect(operation.conflictType, EventSyncConflictType.retryExhausted);
+  });
+
+  test('version one journal entries remain readable', () {
+    final legacy = _operation('legacy', EventSyncOperationType.create).toJson()
+      ..['schemaVersion'] = 1
+      ..remove('resolutionState');
+    final restored = PendingEventSyncOperation.fromJson(legacy);
+    expect(restored.schemaVersion, 1);
+    expect(restored.resolutionState, EventConflictResolutionState.unresolved);
   });
 
   test('journal is closed, scoped and bounded', () async {
@@ -227,6 +253,7 @@ void main() {
     expect(operation.type, EventSyncOperationType.update);
     expect(operation.expectedEventRevision, 1);
     expect(operation.event?.eventRevision, 2);
+    expect(operation.baseEvent?.eventRevision, 1);
   });
 
   test('offline delete uses an explicit tombstone operation', () async {

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../models/event_model.dart';
+import '../models/event_sync_conflict.dart';
+import '../models/event_sync_models.dart';
 import '../services/event_service.dart';
 import '../services/event_mutation_result.dart';
 import '../services/event_mutation_service.dart';
@@ -35,6 +37,7 @@ class CalendarScreen extends StatefulWidget {
 
 class _CalendarScreenState extends State<CalendarScreen> {
   List<EventModel> events = [];
+  List<EventSyncConflict> syncConflicts = [];
 
   DateTime selectedDate = DateTime.now();
   DateTime visibleMonth = DateTime(
@@ -105,6 +108,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   Future<void> loadEvents() async {
     final loaded = await getEvents();
+    List<EventSyncConflict> conflicts;
+    try {
+      conflicts = await EventService.getSyncConflicts();
+    } catch (_) {
+      // Calendar remains usable before Firebase initialization and in tests.
+      conflicts = const [];
+    }
 
     loaded.sort((a, b) {
       final aValue = a.startDateTimeIso.isEmpty
@@ -120,9 +130,89 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
     setState(() {
       events = loaded;
+      syncConflicts = conflicts;
       loading = false;
     });
   }
+
+  Future<void> showNextSyncConflict() async {
+    if (syncConflicts.isEmpty) return;
+    final conflict = syncConflicts.first;
+    final decision = await showDialog<EventConflictResolutionDecision>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Modification à vérifier'),
+        content: const Text(
+          'Cet événement a changé ailleurs. Choisissez comment continuer.',
+        ),
+        actions: conflict.decisions
+            .map(
+              (item) => TextButton(
+                onPressed: () => Navigator.pop(context, item),
+                child: Text(_decisionLabel(item)),
+              ),
+            )
+            .toList(),
+      ),
+    );
+    if (decision == null || !mounted) return;
+    final requiresConfirmation =
+        decision == EventConflictResolutionDecision.retryAgainstLatest ||
+            decision == EventConflictResolutionDecision.recreateAsNew ||
+            decision == EventConflictResolutionDecision.retryDeletion;
+    var confirmed = !requiresConfirmation;
+    if (requiresConfirmation) {
+      confirmed = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Confirmer cette action ?'),
+              content: const Text(
+                'Zélia relira la dernière version avant toute écriture.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Annuler'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Confirmer'),
+                ),
+              ],
+            ),
+          ) ??
+          false;
+    }
+    if (!confirmed) return;
+    final result = await EventService.resolveSyncConflict(
+      conflictId: conflict.conflictId,
+      decision: decision,
+      confirmed: confirmed,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          result.status == EventConflictResolutionStatus.success
+              ? 'Le conflit a été traité.'
+              : 'Le conflit n’a pas pu être traité. Rechargez puis réessayez.',
+        ),
+      ),
+    );
+    await loadEvents();
+  }
+
+  String _decisionLabel(EventConflictResolutionDecision decision) =>
+      switch (decision) {
+        EventConflictResolutionDecision.keepCloud => 'Garder la version cloud',
+        EventConflictResolutionDecision.discardLocal => 'Abandonner localement',
+        EventConflictResolutionDecision.retryAgainstLatest => 'Reprendre',
+        EventConflictResolutionDecision.recreateAsNew => 'Recréer',
+        EventConflictResolutionDecision.cancelDeletion =>
+          'Annuler la suppression',
+        EventConflictResolutionDecision.retryDeletion =>
+          'Retenter la suppression',
+      };
 
   String formatIsoDate(DateTime date) {
     final year = date.year.toString();
@@ -1743,6 +1833,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 child: Column(
                   children: [
                     buildTopBar(),
+                    if (syncConflicts.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        child: ListTile(
+                          leading: const Icon(Icons.sync_problem_outlined),
+                          title: Text(
+                            '${syncConflicts.length} modification(s) à vérifier',
+                          ),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: showNextSyncConflict,
+                        ),
+                      ),
                     buildSegmentedControl(),
                     if (selectedView == 'Mois') ...[
                       buildMonthHeader(),

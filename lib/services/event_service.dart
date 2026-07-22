@@ -9,12 +9,14 @@ import '../core/identity/entity_matcher.dart';
 import '../core/identity/uuid_v7_entity_id_generator.dart';
 import '../models/event_model.dart';
 import '../models/event_sync_models.dart';
+import '../models/event_sync_conflict.dart';
 import 'cloud_event_service.dart';
 import 'auth_service.dart';
 import 'event_mutation_service.dart';
 import 'event_mutation_result.dart';
 import 'event_sync_journal.dart';
 import 'event_sync_service.dart';
+import 'event_conflict_resolution_service.dart';
 
 typedef EventCloudMutation = Future<EventMutationResult?> Function({
   required EventModel existing,
@@ -35,6 +37,16 @@ class EventService {
     execute: CloudEventService.executeSyncOperation,
   );
   static const EntityIdGenerator _syncIdGenerator = UuidV7EntityIdGenerator();
+  static final EventConflictResolutionService _conflictResolutionService =
+      EventConflictResolutionService(
+    journal: _syncJournal,
+    readCloud: CloudEventService.getEventById,
+    mutateCloud: CloudEventService.mutateEvent,
+    deleteCloud: CloudEventService.deleteEvent,
+    reconcileLocal: _reconcileLocalEvent,
+    createLocal: addEvent,
+    idGenerator: _syncIdGenerator,
+  );
 
   static final EntityMatcher<EventModel> _eventMatcher = EntityMatcher(
     idOf: (event) => event.id,
@@ -212,6 +224,7 @@ class EventService {
         await _enqueue(
           type: EventSyncOperationType.update,
           event: next,
+          baseEvent: current,
           expectedEventRevision: expectedEventRevision,
         );
       }
@@ -294,6 +307,49 @@ class EventService {
     return _syncService.synchronize();
   }
 
+  static Future<List<EventSyncConflict>> getSyncConflicts() {
+    final scope = AuthService.currentUserId;
+    if (scope == null || scope.isEmpty) return Future.value(const []);
+    return _conflictResolutionService.conflictsForScope(scope);
+  }
+
+  static Future<EventConflictResolutionResult> resolveSyncConflict({
+    required String conflictId,
+    required EventConflictResolutionDecision decision,
+    bool confirmed = false,
+  }) {
+    final scope = AuthService.currentUserId;
+    if (scope == null || scope.isEmpty) {
+      return Future.value(const EventConflictResolutionResult.scopeMismatch());
+    }
+    return _conflictResolutionService.resolve(
+      conflictId: conflictId,
+      accountScopeId: scope,
+      decision: decision,
+      confirmed: confirmed,
+    );
+  }
+
+  static Future<void> _reconcileLocalEvent(
+    String eventId,
+    EventModel? event,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getStringList(eventsKey) ?? const [];
+    final events =
+        stored.map((item) => EventModel.fromJson(jsonDecode(item))).toList();
+    final index = events.indexWhere((item) => item.id == eventId);
+    if (event == null) {
+      if (index >= 0) events.removeAt(index);
+    } else if (index < 0) {
+      events.add(event);
+    } else {
+      events[index] = event;
+    }
+    await _writeLocalEvents(events);
+    notifyEventsChanged();
+  }
+
   static Future<void> _syncCreation(
     EventModel event, {
     String? batchId,
@@ -321,6 +377,7 @@ class EventService {
   static Future<void> _enqueue({
     required EventSyncOperationType type,
     EventModel? event,
+    EventModel? baseEvent,
     String? eventId,
     int? expectedEventRevision,
     String? batchId,
@@ -340,6 +397,7 @@ class EventService {
         type: type,
         expectedEventRevision: expectedEventRevision,
         event: event,
+        baseEvent: baseEvent,
         batchId: batchId ?? operationId,
         createdAt: DateTime.now().toUtc(),
         state: EventSyncOperationState.pending,

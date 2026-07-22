@@ -100,6 +100,17 @@ class CloudEventService {
         .toList();
   }
 
+  static Future<EventModel?> getEventById(String eventId) async {
+    final ref = _eventsRef;
+    if (ref == null || !EntityIdentity.isValid(eventId)) return null;
+    final snapshot = await ref.doc(eventId).get();
+    if (!snapshot.exists) return null;
+    return eventFromDocument(
+      documentId: snapshot.id,
+      data: snapshot.data()!,
+    );
+  }
+
   static Future<EventMutationResult?> createEvent(EventModel event) async {
     final ref = _eventsRef;
     if (ref == null) return null;

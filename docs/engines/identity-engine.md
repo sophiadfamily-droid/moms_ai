@@ -229,6 +229,15 @@ replayed with both recorded revisions. A stale local operation conflicts with
 the newer cloud document and cannot restore an older participant. Event delete
 tombstones contain no Identity payload and never cascade to an Identity.
 
+**Phase 4L non-regression guarantee:** resolving an Event synchronization
+conflict never writes an Identity. Keeping cloud state, abandoning a local
+proposal, cancelling a deletion, recreating an Event, or retrying a deletion
+uses only Event boundaries. A standard update retry derives its delta from the
+recorded base Event and preserves the participant link currently present in the
+cloud; a legacy update without a safe base snapshot cannot be rebased. Event
+deletion remains non-cascading and recreation follows the existing duplication
+policy, which does not copy a participant link implicitly.
+
 **Outside V1:** fuzzy, phonetic, embedding, or LLM matching; global identities;
 automatic merges; inferred sensitive relationships; and Knowledge Graph logic.
 

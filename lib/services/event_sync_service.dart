@@ -85,8 +85,12 @@ final class EventSyncService {
           );
         case EventMutationStatus.persistenceFailure:
           operations[index] = inFlight.copyWith(
-            state: EventSyncOperationState.failed,
-            conflictType: EventSyncConflictType.persistenceFailure,
+            state: inFlight.attempts >= 5
+                ? EventSyncOperationState.conflict
+                : EventSyncOperationState.failed,
+            conflictType: inFlight.attempts >= 5
+                ? EventSyncConflictType.retryExhausted
+                : EventSyncConflictType.persistenceFailure,
           );
       }
       await _journal.save(operations);

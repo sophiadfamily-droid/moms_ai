@@ -11,6 +11,8 @@ enum EventSyncOperationState {
   conflict,
   failed,
   cancelled,
+  resolved,
+  discarded,
 }
 
 enum EventSyncConflictType {
@@ -21,10 +23,28 @@ enum EventSyncConflictType {
   invalidPayload,
   partialBatch,
   persistenceFailure,
+  retryExhausted,
+}
+
+enum EventConflictResolutionState {
+  unresolved,
+  resolving,
+  resolved,
+  discarded,
+  failed
+}
+
+enum EventConflictResolutionDecision {
+  keepCloud,
+  discardLocal,
+  retryAgainstLatest,
+  recreateAsNew,
+  cancelDeletion,
+  retryDeletion,
 }
 
 final class PendingEventSyncOperation {
-  static const int currentSchemaVersion = 1;
+  static const int currentSchemaVersion = 2;
 
   final String operationId;
   final String eventId;
@@ -32,12 +52,16 @@ final class PendingEventSyncOperation {
   final EventSyncOperationType type;
   final int? expectedEventRevision;
   final EventModel? event;
+  final EventModel? baseEvent;
   final String batchId;
   final DateTime createdAt;
   final int attempts;
   final EventSyncOperationState state;
   final EventSyncConflictType? conflictType;
   final int schemaVersion;
+  final EventConflictResolutionState resolutionState;
+  final EventConflictResolutionDecision? resolutionDecision;
+  final String? resolutionEventId;
 
   PendingEventSyncOperation({
     required this.operationId,
@@ -49,16 +73,23 @@ final class PendingEventSyncOperation {
     required this.state,
     this.expectedEventRevision,
     this.event,
+    this.baseEvent,
     this.attempts = 0,
     this.conflictType,
     this.schemaVersion = currentSchemaVersion,
+    this.resolutionState = EventConflictResolutionState.unresolved,
+    this.resolutionDecision,
+    this.resolutionEventId,
   }) {
     if (operationId.trim().isEmpty ||
         eventId.trim().isEmpty ||
         (accountScopeId != null && accountScopeId!.trim().isEmpty) ||
         batchId.trim().isEmpty ||
-        schemaVersion != currentSchemaVersion ||
+        (schemaVersion < 1 || schemaVersion > currentSchemaVersion) ||
         attempts < 0 ||
+        (resolutionEventId != null &&
+            (resolutionEventId!.trim().isEmpty ||
+                type != EventSyncOperationType.create)) ||
         ((type == EventSyncOperationType.update ||
                 type == EventSyncOperationType.delete) &&
             (expectedEventRevision == null || expectedEventRevision! < 0)) ||
@@ -67,6 +98,10 @@ final class PendingEventSyncOperation {
         (type == EventSyncOperationType.create && event?.eventRevision != 1) ||
         (type == EventSyncOperationType.update &&
             event?.eventRevision != expectedEventRevision! + 1) ||
+        (baseEvent != null &&
+            (type != EventSyncOperationType.update ||
+                baseEvent!.id != eventId ||
+                baseEvent!.eventRevision != expectedEventRevision)) ||
         (event != null && event!.id != eventId)) {
       throw const FormatException('invalid_event_sync_operation');
     }
@@ -81,6 +116,9 @@ final class PendingEventSyncOperation {
     EventSyncOperationState? state,
     EventSyncConflictType? conflictType,
     bool clearConflict = false,
+    EventConflictResolutionState? resolutionState,
+    EventConflictResolutionDecision? resolutionDecision,
+    String? resolutionEventId,
   }) {
     return PendingEventSyncOperation(
       operationId: operationId,
@@ -89,12 +127,16 @@ final class PendingEventSyncOperation {
       type: type,
       expectedEventRevision: expectedEventRevision,
       event: event,
+      baseEvent: baseEvent,
       batchId: batchId,
       createdAt: createdAt,
       attempts: attempts ?? this.attempts,
       state: state ?? this.state,
       conflictType: clearConflict ? null : conflictType ?? this.conflictType,
       schemaVersion: schemaVersion,
+      resolutionState: resolutionState ?? this.resolutionState,
+      resolutionDecision: resolutionDecision ?? this.resolutionDecision,
+      resolutionEventId: resolutionEventId ?? this.resolutionEventId,
     );
   }
 
@@ -107,11 +149,16 @@ final class PendingEventSyncOperation {
         if (expectedEventRevision != null)
           'expectedEventRevision': expectedEventRevision,
         if (event != null) 'event': event!.toJson(),
+        if (baseEvent != null) 'baseEvent': baseEvent!.toJson(),
         'batchId': batchId,
         'createdAt': createdAt.toUtc().toIso8601String(),
         'attempts': attempts,
         'state': state.name,
         if (conflictType != null) 'conflictType': conflictType!.name,
+        'resolutionState': resolutionState.name,
+        if (resolutionDecision != null)
+          'resolutionDecision': resolutionDecision!.name,
+        if (resolutionEventId != null) 'resolutionEventId': resolutionEventId,
       };
 
   factory PendingEventSyncOperation.fromJson(Map<String, dynamic> json) {
@@ -124,11 +171,15 @@ final class PendingEventSyncOperation {
         'type',
         'expectedEventRevision',
         'event',
+        'baseEvent',
         'batchId',
         'createdAt',
         'attempts',
         'state',
         'conflictType',
+        'resolutionState',
+        'resolutionDecision',
+        'resolutionEventId',
       };
       if (json.keys.any((key) => !allowedKeys.contains(key))) {
         throw const FormatException('invalid_event_sync_operation');
@@ -137,6 +188,7 @@ final class PendingEventSyncOperation {
       final state =
           EventSyncOperationState.values.byName(json['state'] as String);
       final rawEvent = json['event'];
+      final rawBaseEvent = json['baseEvent'];
       return PendingEventSyncOperation(
         operationId: json['operationId'] as String,
         eventId: json['eventId'] as String,
@@ -145,6 +197,9 @@ final class PendingEventSyncOperation {
         expectedEventRevision: json['expectedEventRevision'] as int?,
         event: rawEvent is Map
             ? EventModel.fromJson(Map<String, dynamic>.from(rawEvent))
+            : null,
+        baseEvent: rawBaseEvent is Map
+            ? EventModel.fromJson(Map<String, dynamic>.from(rawBaseEvent))
             : null,
         batchId: json['batchId'] as String,
         createdAt: DateTime.parse(json['createdAt'] as String).toUtc(),
@@ -155,6 +210,15 @@ final class PendingEventSyncOperation {
             : EventSyncConflictType.values
                 .byName(json['conflictType'] as String),
         schemaVersion: json['schemaVersion'] as int,
+        resolutionState: json['resolutionState'] == null
+            ? EventConflictResolutionState.unresolved
+            : EventConflictResolutionState.values
+                .byName(json['resolutionState'] as String),
+        resolutionDecision: json['resolutionDecision'] == null
+            ? null
+            : EventConflictResolutionDecision.values
+                .byName(json['resolutionDecision'] as String),
+        resolutionEventId: json['resolutionEventId'] as String?,
       );
     } catch (_) {
       throw const FormatException('invalid_event_sync_operation');

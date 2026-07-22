@@ -86,6 +86,27 @@ occurrence model cannot yet preserve independent exceptions with a strict
 all-or-nothing transaction. Such edits must remain blocked until their target
 occurrences and expected revisions can be frozen explicitly.
 
+### Explicit Event conflict resolution
+
+**Current state:** Phase 4L exposes retained synchronization conflicts through
+one typed application boundary. A conflict remains attached to its original
+operation, account scope and logical batch; it is never removed or replayed
+until an explicit closed decision is supplied. Creation conflicts permit cloud
+retention, local abandonment, or confirmed recreation with a new ID. Update
+conflicts permit cloud retention, local abandonment, or a confirmed rebase
+against a freshly read cloud document. Delete conflicts permit cloud retention,
+deletion cancellation, or a newly confirmed deletion against the latest
+revision. Scope conflicts never permit a write.
+
+The update rebase is deliberately field-delta based and exists only for journal
+entries that retain the original base event. Legacy V1 journal entries without
+that base cannot be force-rebased. This prevents a complete stale payload from
+overwriting unrelated concurrent cloud changes. Decisions that write require a
+separate confirmation, Firestore remains authoritative, and resolution receipts
+are retained in the same bounded journal to make repeated decisions idempotent.
+Batch conflicts remain child conflicts sharing a batch ID; successful children
+are never replayed and no aggregate decision hides an occurrence exception.
+
 ## 1. Vision
 
 ZELIA is a French-language AI assistant for the practical organization of personal and family life. It is designed to help a person understand, organize, remember, prioritize, and act on the realities of daily life without requiring the person to become a project manager for their own household.
