@@ -7,6 +7,31 @@ abstract final class FirestoreIdentitySerialization {
   static const int maximumDocumentIdLength = 128;
   static const int maximumAliasCount = 20;
 
+  static Map<String, Object?> toDocument({
+    required LifeEntity entity,
+    required int revision,
+  }) {
+    if (revision < 1) {
+      throw const IdentityRepositoryException('invalid_revision');
+    }
+    if (entity.aliases.length > maximumAliasCount) {
+      throw const IdentityRepositoryException(
+        'corrupt_identity_document',
+        field: 'aliases',
+      );
+    }
+    final aliasKeys = entity.aliases
+        .map((alias) => alias.comparisonKey)
+        .toSet()
+        .toList(growable: false)
+      ..sort();
+    return {
+      ...IdentitySerialization.toMap(entity),
+      'aliasComparisonKeys': aliasKeys,
+      'revision': revision,
+    };
+  }
+
   static LifeEntity fromDocument({
     required String documentId,
     required Map<String, Object?> data,

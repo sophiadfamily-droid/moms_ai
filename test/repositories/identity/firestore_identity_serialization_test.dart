@@ -45,6 +45,35 @@ void main() {
     expect(decoded.status, EntityStatus.active);
   });
 
+  test('writes the canonical document with deterministic derived fields', () {
+    final alias = EntityAlias.fromValue(
+      value: 'Person Alias',
+      kind: EntityAliasKind.explicit,
+      source: const EntitySource(type: EntitySourceType.user),
+      createdAt: createdAt,
+    );
+    final value = entity(aliases: [alias]);
+    final data = FirestoreIdentitySerialization.toDocument(
+      entity: value,
+      revision: 1,
+    );
+
+    expect(data['revision'], 1);
+    expect(data['aliasComparisonKeys'], [alias.comparisonKey]);
+    expect(data['createdAt'], '2026-01-01T00:00:00.000Z');
+    expect(data['updatedAt'], '2026-01-01T00:00:00.000Z');
+  });
+
+  test('write serialization rejects invalid revisions', () {
+    expect(
+      () => FirestoreIdentitySerialization.toDocument(
+        entity: entity(),
+        revision: 0,
+      ),
+      throwsRepositoryCode('invalid_revision'),
+    );
+  });
+
   test('accepts a historical document without revision', () {
     final value = entity();
     final data = document(value)..remove('revision');

@@ -520,7 +520,7 @@ IdentityResolutionRequest _pronounRequest(
 Matcher _applicationError(String code) => isA<IdentityApplicationException>()
     .having((error) => error.code, 'code', code);
 
-final class _SpyRepository implements IdentityRepository {
+final class _SpyRepository implements IdentityReadRepository {
   final FakeIdentityRepository _delegate = FakeIdentityRepository();
   int findCount = 0;
   int queryCount = 0;
@@ -535,7 +535,7 @@ final class _SpyRepository implements IdentityRepository {
     IdentityAccountScope scope,
     List<LifeEntity> entities,
   ) async {
-    await _delegate.saveAll(scope: scope, entities: entities);
+    await _delegate.seedAll(scope: scope, entities: entities);
   }
 
   void indexRelation(
@@ -594,23 +594,5 @@ final class _SpyRepository implements IdentityRepository {
       throw const IdentityRepositoryException('internal_name_or_alias');
     }
     return _delegate.queryCandidates(scope: scope, query: query);
-  }
-
-  @override
-  Future<void> save({
-    required IdentityAccountScope scope,
-    required LifeEntity entity,
-  }) async {
-    saveCount++;
-    await _delegate.save(scope: scope, entity: entity);
-  }
-
-  @override
-  Future<void> saveAll({
-    required IdentityAccountScope scope,
-    required List<LifeEntity> entities,
-  }) async {
-    saveAllCount++;
-    await _delegate.saveAll(scope: scope, entities: entities);
   }
 }

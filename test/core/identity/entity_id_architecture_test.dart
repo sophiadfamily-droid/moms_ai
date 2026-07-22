@@ -139,7 +139,7 @@ void main() {
         .whereType<File>()
         .where((file) => file.path.endsWith('.dart'))
         .where((file) =>
-            !file.path.endsWith('firestore_identity_read_repository.dart'))) {
+            !file.path.split('/').last.startsWith('firestore_identity_'))) {
       final source = file.readAsStringSync();
       for (final dependency in forbidden) {
         expect(source, isNot(contains(dependency)),

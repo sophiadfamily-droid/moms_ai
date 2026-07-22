@@ -50,6 +50,16 @@ Identity writes are explicitly denied by Firestore rules and absent from the
 concrete repository. Emulator and rules tests use a dedicated non-production
 project guard.
 
+**Implemented in Phase 4C:** a separate dormant `IdentityWriteRepository`
+defines explicit create-only, revision-checked update, and transactional logical
+deletion operations. The Firestore implementation injects its client, keeps
+account scope explicit, initializes revision one, increments exactly once, and
+rejects stale revisions, immutable-field changes, merge transitions, corrupt
+documents, and physical deletion. Firestore rules validate the version-one
+shape and repeat the ownership, revision, immutability, status, and hard-delete
+guards. Emulator coverage includes concurrent writers using the same expected
+revision.
+
 The Identity Engine is not applied to every chat message. Phases 3A through 3C
 create no identity or proposal, perform no Identity save, and have no
 concrete Firestore repository or production-persisted Identity data. Phase
@@ -62,6 +72,12 @@ Phase 4B is not composed into the production application and creates no
 Firestore data. It provides no creation, update, deletion, merge, migration,
 or backfill workflow. No persistent Identity source of truth is active until a
 later explicitly controlled write phase is implemented and deployed.
+
+Phase 4C remains infrastructure only. No production composition, conversational
+creation decision, user confirmation, profile projection, relation, merge,
+business-object link, migration, backfill, or deployment is included. The
+rules and transactional repository are exercised only against the guarded
+local emulator; application code cannot currently invoke Identity writes.
 
 **Outside V1:** fuzzy, phonetic, embedding, or LLM matching; global identities;
 automatic merges; inferred sensitive relationships; and Knowledge Graph logic.

@@ -9,6 +9,7 @@ import 'identity_repository_result.dart';
 
 final class FakeIdentityRepository implements IdentityRepository {
   final Map<IdentityAccountScope, Map<String, LifeEntity>> _entities = {};
+  final Map<IdentityAccountScope, Map<String, int>> _revisions = {};
   final Map<IdentityAccountScope, Map<String, Set<String>>> _relations = {};
 
   @override
@@ -54,32 +55,95 @@ final class FakeIdentityRepository implements IdentityRepository {
   }
 
   @override
-  Future<void> save({
+  Future<RevisionedIdentity> create({
     required IdentityAccountScope scope,
     required LifeEntity entity,
   }) async {
+    IdentityWriteValidator.validateCreate(entity);
+    if (_entities[scope]?[entity.id] != null) {
+      throw const IdentityRepositoryException('identity_already_exists');
+    }
     final next = Map<String, LifeEntity>.of(_entities[scope] ?? const {});
     next[entity.id] = entity;
     _entities[scope] = next;
+    final revisions = Map<String, int>.of(_revisions[scope] ?? const {});
+    revisions[entity.id] = 1;
+    _revisions[scope] = revisions;
+    return RevisionedIdentity(entity: entity, revision: 1);
   }
 
   @override
-  Future<void> saveAll({
+  Future<RevisionedIdentity> update({
+    required IdentityAccountScope scope,
+    required LifeEntity entity,
+    required int expectedRevision,
+  }) async {
+    final current = _entities[scope]?[entity.id];
+    if (current == null) {
+      throw const IdentityRepositoryException('identity_not_found');
+    }
+    final revision = _revisions[scope]?[entity.id];
+    if (revision != expectedRevision) {
+      throw const IdentityRepositoryException('revision_conflict');
+    }
+    IdentityWriteValidator.validateUpdate(
+      current: current,
+      next: entity,
+      expectedRevision: expectedRevision,
+    );
+    final next = Map<String, LifeEntity>.of(_entities[scope] ?? const {});
+    next[entity.id] = entity;
+    _entities[scope] = next;
+    final revisions = Map<String, int>.of(_revisions[scope] ?? const {});
+    revisions[entity.id] = revision! + 1;
+    _revisions[scope] = revisions;
+    return RevisionedIdentity(entity: entity, revision: revision + 1);
+  }
+
+  @override
+  Future<RevisionedIdentity> softDelete({
+    required IdentityAccountScope scope,
+    required String entityId,
+    required int expectedRevision,
+    required DateTime updatedAt,
+  }) async {
+    final current = _entities[scope]?[entityId];
+    if (current == null) {
+      throw const IdentityRepositoryException('identity_not_found');
+    }
+    final revision = _revisions[scope]?[entityId];
+    if (revision != expectedRevision) {
+      throw const IdentityRepositoryException('revision_conflict');
+    }
+    final deleted = IdentityWriteValidator.deletedEntity(
+      current: current,
+      updatedAt: updatedAt,
+    );
+    final next = Map<String, LifeEntity>.of(_entities[scope] ?? const {});
+    next[entityId] = deleted;
+    _entities[scope] = next;
+    final revisions = Map<String, int>.of(_revisions[scope] ?? const {});
+    revisions[entityId] = revision! + 1;
+    _revisions[scope] = revisions;
+    return RevisionedIdentity(entity: deleted, revision: revision + 1);
+  }
+
+  Future<void> seedAll({
     required IdentityAccountScope scope,
     required List<LifeEntity> entities,
   }) async {
     final ids = <String>{};
-    for (final entity in entities) {
-      if (!ids.add(entity.id)) {
-        throw const IdentityRepositoryException('atomic_write_rejected',
-            field: 'entities', causeCode: 'duplicate_entity_id');
-      }
+    if (entities.any((entity) => !ids.add(entity.id))) {
+      throw const IdentityRepositoryException('duplicate_entity_id');
     }
     final next = Map<String, LifeEntity>.of(_entities[scope] ?? const {});
+    final revisions = Map<String, int>.of(_revisions[scope] ?? const {});
     for (final entity in entities) {
       next[entity.id] = entity;
+      revisions[entity.id] = 1;
     }
     _entities[scope] = next;
+    _revisions[scope] = revisions;
   }
 
   void indexRelation({

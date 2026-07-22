@@ -29,13 +29,19 @@ void runIdentityRepositoryContract(
       accountB = IdentityAccountScope('account-b');
     });
 
-    test('saves, reads and replaces one logical entity by ID', () async {
-      await repository.save(scope: accountA, entity: entity());
-      await repository.save(
+    test('creates, reads and revision-updates one entity', () async {
+      final created =
+          await repository.create(scope: accountA, entity: entity());
+      final updated = await repository.update(
         scope: accountA,
-        entity: entity(label: 'Person Updated'),
+        entity: entity(
+          label: 'Person Updated',
+          updatedAt: date.add(const Duration(minutes: 1)),
+        ),
+        expectedRevision: created.revision,
       );
 
+      expect(updated.revision, 2);
       expect(
           (await repository.findById(scope: accountA, entityId: 'entity-1'))
               ?.canonicalLabel,
@@ -45,8 +51,10 @@ void runIdentityRepositoryContract(
     });
 
     test('strictly separates accounts for identical IDs', () async {
-      await repository.save(scope: accountA, entity: entity(label: 'Person A'));
-      await repository.save(scope: accountB, entity: entity(label: 'Person B'));
+      await repository.create(
+          scope: accountA, entity: entity(label: 'Person A'));
+      await repository.create(
+          scope: accountB, entity: entity(label: 'Person B'));
 
       expect(
           (await repository.findById(scope: accountA, entityId: 'entity-1'))
@@ -58,11 +66,10 @@ void runIdentityRepositoryContract(
           'Person B');
     });
 
-    test('saveAll writes all validated entities', () async {
-      await repository.saveAll(
-        scope: accountA,
-        entities: [entity(), entity(id: 'entity-2', label: 'Person B')],
-      );
+    test('creates several independently validated entities', () async {
+      await repository.create(scope: accountA, entity: entity());
+      await repository.create(
+          scope: accountA, entity: entity(id: 'entity-2', label: 'Person B'));
 
       final result = await repository.findByIds(
         scope: accountA,
@@ -72,20 +79,19 @@ void runIdentityRepositoryContract(
       expect(() => result.add(entity(id: 'entity-3')), throwsUnsupportedError);
     });
 
-    test('saveAll rejects duplicates atomically', () async {
-      await repository.save(scope: accountA, entity: entity(id: 'existing'));
-
+    test('create refuses an existing identity without overwriting', () async {
+      await repository.create(scope: accountA, entity: entity(id: 'existing'));
       await expectLater(
-        repository.saveAll(
+        repository.create(
           scope: accountA,
-          entities: [entity(id: 'new'), entity(id: 'new', label: 'Other')],
+          entity: entity(id: 'existing', label: 'Other'),
         ),
-        throwsA(repositoryError('atomic_write_rejected')),
+        throwsA(repositoryError('identity_already_exists')),
       );
       expect(
-          await repository.findById(scope: accountA, entityId: 'new'), isNull);
-      expect(await repository.findById(scope: accountA, entityId: 'existing'),
-          isNotNull);
+          (await repository.findById(scope: accountA, entityId: 'existing'))
+              ?.canonicalLabel,
+          'Person A');
     });
 
     test('findByIds validates limits, IDs and duplicates', () async {
@@ -109,11 +115,12 @@ void runIdentityRepositoryContract(
 
     test('candidate queries are bounded, stable and retain ambiguity',
         () async {
-      await repository.saveAll(scope: accountA, entities: [
-        entity(id: 'entity-2', label: 'Shared'),
-        entity(id: 'entity-1', label: 'Shared'),
-        entity(id: 'entity-3', label: 'Other'),
-      ]);
+      await repository.create(
+          scope: accountA, entity: entity(id: 'entity-2', label: 'Shared'));
+      await repository.create(
+          scope: accountA, entity: entity(id: 'entity-1', label: 'Shared'));
+      await repository.create(
+          scope: accountA, entity: entity(id: 'entity-3', label: 'Other'));
       final query = IdentityRepositoryQuery.byComparisonKey(
         comparisonKey: 'shared',
         candidateLimit: 1,
@@ -131,7 +138,7 @@ void runIdentityRepositoryContract(
 
     test('does not mutate source lists', () async {
       final entities = [entity()];
-      await repository.saveAll(scope: accountA, entities: entities);
+      await repository.create(scope: accountA, entity: entities.single);
       entities.clear();
 
       expect(await repository.findById(scope: accountA, entityId: 'entity-1'),
@@ -149,6 +156,7 @@ LifeEntity entity({
   EntityType type = EntityType.person,
   EntityStatus status = EntityStatus.active,
   String? mergedIntoEntityId,
+  DateTime? updatedAt,
 }) =>
     LifeEntity.fromLabel(
       id: id,
@@ -157,7 +165,7 @@ LifeEntity entity({
       status: status,
       source: source,
       createdAt: date,
-      updatedAt: date,
+      updatedAt: updatedAt ?? date,
       mergedIntoEntityId: mergedIntoEntityId,
     );
 

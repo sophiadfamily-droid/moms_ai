@@ -372,7 +372,7 @@ final class _FixedIdGenerator implements EntityIdGenerator {
   String generate() => value;
 }
 
-final class _ReadSpyRepository implements IdentityRepository {
+final class _ReadSpyRepository implements IdentityReadRepository {
   final FakeIdentityRepository _delegate = FakeIdentityRepository();
   int writeCalls = 0;
   bool failReads = false;
@@ -381,7 +381,7 @@ final class _ReadSpyRepository implements IdentityRepository {
     IdentityAccountScope scope,
     List<LifeEntity> entities,
   ) =>
-      _delegate.saveAll(scope: scope, entities: entities);
+      _delegate.seedAll(scope: scope, entities: entities);
 
   @override
   Future<LifeEntity?> findById({
@@ -408,22 +408,6 @@ final class _ReadSpyRepository implements IdentityRepository {
   }) {
     if (failReads) throw const IdentityRepositoryException('read_failed');
     return _delegate.queryCandidates(scope: scope, query: query);
-  }
-
-  @override
-  Future<void> save({
-    required IdentityAccountScope scope,
-    required LifeEntity entity,
-  }) async {
-    writeCalls++;
-  }
-
-  @override
-  Future<void> saveAll({
-    required IdentityAccountScope scope,
-    required List<LifeEntity> entities,
-  }) async {
-    writeCalls++;
   }
 }
 

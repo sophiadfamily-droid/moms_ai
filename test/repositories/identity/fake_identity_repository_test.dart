@@ -108,7 +108,7 @@ void main() {
 
     test('matches canonical labels and aliases without choosing a winner',
         () async {
-      await repository.saveAll(scope: accountA, entities: [
+      await repository.seedAll(scope: accountA, entities: [
         _entity(id: 'entity-2', label: 'Shared'),
         _entity(id: 'entity-1', aliases: [_alias('Shared')]),
       ]);
@@ -121,7 +121,7 @@ void main() {
     });
 
     test('filters types and statuses only when explicitly requested', () async {
-      await repository.saveAll(scope: accountA, entities: [
+      await repository.seedAll(scope: accountA, entities: [
         _entity(id: 'active'),
         _entity(id: 'inactive', status: EntityStatus.inactive),
         _entity(id: 'deleted', status: EntityStatus.deleted),
@@ -156,15 +156,17 @@ void main() {
 
     test('uses referenceDate only to safely prefilter temporal aliases',
         () async {
-      await repository.save(
+      await repository.seedAll(
         scope: accountA,
-        entity: _entity(aliases: [
-          _alias(
-            'Temporary',
-            kind: EntityAliasKind.temporary,
-            validUntil: date.subtract(const Duration(days: 1)),
-          ),
-        ]),
+        entities: [
+          _entity(aliases: [
+            _alias(
+              'Temporary',
+              kind: EntityAliasKind.temporary,
+              validUntil: date.subtract(const Duration(days: 1)),
+            ),
+          ])
+        ],
       );
       final withoutDate = await repository.queryCandidates(
         scope: accountA,
@@ -184,10 +186,10 @@ void main() {
     });
 
     test('keeps alias and relation indexes isolated by account', () async {
-      await repository.save(scope: accountA, entity: _entity());
-      await repository.save(
+      await repository.seedAll(scope: accountA, entities: [_entity()]);
+      await repository.seedAll(
         scope: accountB,
-        entity: _entity(aliases: const []),
+        entities: [_entity(aliases: const [])],
       );
       repository.indexRelation(
           scope: accountA, relationKey: 'workplace', entityId: 'entity-1');
@@ -214,7 +216,7 @@ void main() {
     });
 
     test('returns a deterministic type, label and ID order', () async {
-      await repository.saveAll(scope: accountA, entities: [
+      await repository.seedAll(scope: accountA, entities: [
         _entity(id: 'place-b', label: 'Place B', type: EntityType.place),
         _entity(id: 'person-b', label: 'Person B'),
         _entity(id: 'person-a-2', label: 'Person A'),
@@ -231,11 +233,12 @@ void main() {
 
     test('query-by-IDs remains scoped and does not resolve candidates',
         () async {
-      await repository.saveAll(scope: accountA, entities: [
+      await repository.seedAll(scope: accountA, entities: [
         _entity(id: 'entity-2'),
         _entity(id: 'entity-1'),
       ]);
-      await repository.save(scope: accountB, entity: _entity(id: 'entity-3'));
+      await repository
+          .seedAll(scope: accountB, entities: [_entity(id: 'entity-3')]);
 
       final result = await repository.queryCandidates(
         scope: accountA,

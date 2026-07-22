@@ -11,12 +11,72 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
+    function hasValidIdentityShape(entityId) {
+      let data = request.resource.data;
+      return data.keys().hasOnly([
+          'id', 'type', 'canonicalLabel', 'normalizedLabel', 'aliases',
+          'aliasComparisonKeys', 'status', 'source', 'createdAt', 'updatedAt',
+          'metadata', 'schemaVersion', 'revision'
+        ])
+        && data.keys().hasAll([
+          'id', 'type', 'canonicalLabel', 'normalizedLabel', 'aliases',
+          'aliasComparisonKeys', 'status', 'source', 'createdAt', 'updatedAt',
+          'metadata', 'schemaVersion', 'revision'
+        ])
+        && data.id == entityId
+        && data.id is string
+        && data.type in [
+          'person', 'place', 'organization', 'household', 'group', 'activity',
+          'vehicle', 'pet', 'product'
+        ]
+        && data.canonicalLabel is string
+        && data.canonicalLabel.size() > 0
+        && data.canonicalLabel.size() <= 200
+        && data.normalizedLabel is string
+        && data.normalizedLabel.size() > 0
+        && data.normalizedLabel.size() <= 200
+        && data.aliases is list
+        && data.aliases.size() <= 20
+        && data.aliasComparisonKeys is list
+        && data.aliasComparisonKeys.size() <= 20
+        && data.source is map
+        && data.metadata is map
+        && data.createdAt is string
+        && data.updatedAt is string
+        && data.schemaVersion == 1
+        && data.revision is int
+        && data.revision > 0;
+    }
+
+    function isValidIdentityCreate(entityId) {
+      return hasValidIdentityShape(entityId)
+        && request.resource.data.status in ['active', 'inactive']
+        && request.resource.data.revision == 1
+        && request.resource.data.createdAt == request.resource.data.updatedAt;
+    }
+
+    function isValidIdentityUpdate(entityId) {
+      let next = request.resource.data;
+      let previous = resource.data;
+      return hasValidIdentityShape(entityId)
+        && previous.status in ['active', 'inactive']
+        && next.status in ['active', 'inactive', 'deleted']
+        && next.id == previous.id
+        && next.type == previous.type
+        && next.createdAt == previous.createdAt
+        && next.schemaVersion == previous.schemaVersion
+        && next.revision == previous.revision + 1
+        && next.updatedAt != previous.updatedAt;
+    }
+
     match /users/{userId} {
       allow read, write: if isOwner(userId);
 
       match /identities/{entityId} {
         allow read: if isOwner(userId);
-        allow create, update, delete: if false;
+        allow create: if isOwner(userId) && isValidIdentityCreate(entityId);
+        allow update: if isOwner(userId) && isValidIdentityUpdate(entityId);
+        allow delete: if false;
       }
 
       match /{collection}/{document=**} {
