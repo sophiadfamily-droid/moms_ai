@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../models/user_profile.dart';
+import '../services/identity/identity_production_services.dart';
 
 import 'home_screen.dart';
 import 'chat_screen.dart';
@@ -18,6 +19,7 @@ class MainNavigation extends StatefulWidget {
     ValueChanged<UserProfile> onSave,
   )? profileScreenBuilder;
   final List<Widget>? testScreens;
+  final IdentityProductionServices? identityServices;
 
   const MainNavigation({
     super.key,
@@ -25,6 +27,7 @@ class MainNavigation extends StatefulWidget {
     this.onProfileUpdated,
     this.profileScreenBuilder,
     this.testScreens,
+    this.identityServices,
   });
 
   @override
@@ -87,6 +90,7 @@ class _MainNavigationState extends State<MainNavigation> {
           ChatScreen(
             profile: currentProfile,
             initialAssistantMessage: zeliaSuggestionMessage,
+            identityServices: widget.identityServices,
           ),
           const CalendarScreen(),
           TasksScreen(

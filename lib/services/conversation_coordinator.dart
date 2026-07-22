@@ -1,6 +1,9 @@
 import '../models/conversation_models.dart';
 import '../models/event_model.dart';
 import '../models/event_participant.dart';
+import '../core/identity/entity_id_generator.dart';
+import '../core/identity/entity_reference.dart';
+import '../core/identity/entity_types.dart';
 import '../models/life_context/memory_context.dart';
 import '../models/memory_lifecycle.dart';
 import '../models/memory_lifecycle_state.dart';
@@ -16,6 +19,7 @@ import 'identity/identity_application_service.dart';
 import 'identity/identity_action_binding_service.dart';
 import 'identity/identity_clarification_service.dart';
 import 'identity/identity_creation_service.dart';
+import '../repositories/identity/identity_read_repository.dart';
 import 'zelia_action_guard_service.dart';
 import 'zelia_response_builder.dart';
 
@@ -36,11 +40,14 @@ class ConversationCoordinator {
   final IdentityActionBindingService identityActionBindingService;
   final IdentityApplicationService? identityApplicationService;
   final IdentityCreationService? identityCreationService;
+  final IdentityAccountScope? identityAccountScope;
+  final EntityIdGenerator _actionDraftIdGenerator;
 
   ConversationState _state = const ConversationState();
   bool _isSending = false;
   bool _isResolvingPendingAction = false;
   final Map<String, PendingIdentityActionBinding> _identityActionBindings = {};
+  final Map<String, PendingEventIdentityDraft> _eventIdentityDrafts = {};
 
   ConversationCoordinator({
     required this.backend,
@@ -53,6 +60,8 @@ class ConversationCoordinator {
     IdentityActionBindingService? identityActionBindingService,
     this.identityApplicationService,
     this.identityCreationService,
+    this.identityAccountScope,
+    EntityIdGenerator? actionDraftIdGenerator,
   })  : _memoryLifecycleRepository = memoryLifecycleRepository,
         identityClarificationService = identityClarificationService ??
             IdentityClarificationService(
@@ -61,13 +70,16 @@ class ConversationCoordinator {
         identityActionBindingService = identityActionBindingService ??
             IdentityActionBindingService(
               idGenerator: UuidV7EntityIdGenerator(),
-            );
+            ),
+        _actionDraftIdGenerator =
+            actionDraftIdGenerator ?? UuidV7EntityIdGenerator();
 
   ConversationState get state => _state;
 
   void setPendingEventConfirmation(
     EventModel? event, {
     EventParticipant? participant,
+    String? participantIdentityEntityId,
   }) {
     if (event == null) {
       _state = _state.copyWith(
@@ -82,8 +94,58 @@ class ConversationCoordinator {
       pendingAction: PendingConversationAction.eventConfirmation(
         event,
         eventParticipant: participant,
+        participantIdentityEntityId: participantIdentityEntityId,
       ),
     );
+  }
+
+  Future<PendingConversationResolution> beginEventParticipantIdentity({
+    required EventModel event,
+    required EventParticipant participant,
+    required String confirmationMessage,
+  }) async {
+    final scope = identityAccountScope;
+    if (scope == null ||
+        participant.entityType != EventParticipantEntityType.person ||
+        participant.evidence != EventParticipantEvidence.explicitUserInput) {
+      return const PendingConversationResolution(
+        'L’identité du participant ne peut pas être vérifiée pour le moment.',
+      );
+    }
+    final draftId = _actionDraftIdGenerator.generate();
+    final draft = PendingEventIdentityDraft(
+      actionDraftId: draftId,
+      event: event,
+      participant: participant,
+      confirmationMessage: confirmationMessage,
+    );
+    _eventIdentityDrafts[draftId] = draft;
+    const source = EntitySource(type: EntitySourceType.user);
+    final reference = EntityReference.text(
+      value: participant.label,
+      kind: EntityReferenceKind.genericLabel,
+      expectedType: EntityType.person,
+      source: source,
+    );
+    final request = IdentityResolutionRequest(
+      scope: scope,
+      reference: reference,
+    );
+    final resolution = await beginIdentityActionBinding(
+      request: request,
+      continuation: IdentityActionContinuation(
+        actionKind: IdentityActionKind.event,
+        actionDraftId: draftId,
+        target: IdentityActionTarget.eventParticipant,
+      ),
+      creationRequest: IdentityCreationRequest(
+        scope: scope,
+        entityType: EntityType.person,
+        canonicalLabel: participant.label,
+        source: source,
+      ),
+    );
+    return _resumeEventDraft(resolution);
   }
 
   void setPendingMemoryConfirmation(
@@ -284,11 +346,11 @@ class ConversationCoordinator {
     if (result.status != IdentityClarificationStatus.stillAmbiguous) {
       _clearPendingAction();
     }
-    return PendingConversationResolution(
+    return _resumeEventDraft(PendingConversationResolution(
       result.followUpMessage,
       identityClarificationResult: result,
       identityActionBindingResult: bindingResult,
-    );
+    ));
   }
 
   Future<PendingConversationResolution?> resolvePendingIdentityCreation({
@@ -332,14 +394,52 @@ class ConversationCoordinator {
           phase: ConversationPhase.awaitingActionConfirmation,
         );
       }
-      return PendingConversationResolution(
+      return _resumeEventDraft(PendingConversationResolution(
         result.followUpMessage,
         identityCreationResult: result,
         identityActionBindingResult: bindingResult,
-      );
+      ));
     } finally {
       _isResolvingPendingAction = false;
     }
+  }
+
+  PendingConversationResolution _resumeEventDraft(
+    PendingConversationResolution resolution,
+  ) {
+    final bindingResult = resolution.identityActionBindingResult;
+    if (bindingResult == null) return resolution;
+    final draft = _eventIdentityDrafts[bindingResult.actionDraftId];
+    if (draft == null) return resolution;
+
+    if (bindingResult.status == IdentityActionBindingStatus.attached) {
+      _eventIdentityDrafts.remove(bindingResult.actionDraftId);
+      setPendingEventConfirmation(
+        draft.event,
+        participant: draft.participant,
+        participantIdentityEntityId: bindingResult.resolvedEntityId,
+      );
+      final prefix = resolution.identityCreationResult?.status ==
+                  IdentityCreationStatus.created ||
+              resolution.identityClarificationResult?.status ==
+                  IdentityClarificationStatus.resolved
+          ? '${resolution.message}\n\n'
+          : '';
+      return PendingConversationResolution(
+        '$prefix${draft.confirmationMessage}',
+        identityCreationResult: resolution.identityCreationResult,
+        identityClarificationResult: resolution.identityClarificationResult,
+        identityActionBindingResult: bindingResult,
+      );
+    }
+
+    if (bindingResult.status == IdentityActionBindingStatus.cancelled ||
+        bindingResult.status == IdentityActionBindingStatus.expired ||
+        bindingResult.status == IdentityActionBindingStatus.invalid ||
+        bindingResult.status == IdentityActionBindingStatus.alreadyApplied) {
+      _eventIdentityDrafts.remove(bindingResult.actionDraftId);
+    }
+    return resolution;
   }
 
   Future<PendingConversationResolution?> resolvePendingEventConfirmation({

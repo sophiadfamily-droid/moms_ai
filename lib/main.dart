@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'firebase_options.dart';
 import 'theme/app_theme.dart';
@@ -16,6 +17,8 @@ import 'models/user_profile.dart';
 
 import 'services/storage_service.dart';
 import 'services/notification_service.dart';
+import 'services/auth_service.dart';
+import 'services/identity/identity_production_services.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -50,6 +53,15 @@ class _ZeliaAppState extends State<ZeliaApp> {
   String partnerName = "";
 
   List<ChildProfile> children = [];
+
+  IdentityProductionServices? buildIdentityServices() {
+    final accountId = AuthService.currentUserId;
+    if (accountId == null || accountId.trim().isEmpty) return null;
+    return IdentityProductionServices.create(
+      firestore: FirebaseFirestore.instance,
+      accountId: accountId,
+    );
+  }
 
   @override
   void initState() {
@@ -240,6 +252,7 @@ class _ZeliaAppState extends State<ZeliaApp> {
       currentScreen = MainNavigation(
         profile: currentProfile(),
         onProfileUpdated: updateSavedProfile,
+        identityServices: buildIdentityServices(),
       );
     } else {
       switch (currentStep) {
@@ -312,6 +325,7 @@ class _ZeliaAppState extends State<ZeliaApp> {
           currentScreen = MainNavigation(
             profile: currentProfile(),
             onProfileUpdated: updateSavedProfile,
+            identityServices: buildIdentityServices(),
           );
       }
     }

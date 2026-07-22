@@ -126,6 +126,25 @@ final class PendingIdentityActionBinding {
   }
 }
 
+final class PendingEventIdentityDraft {
+  final String actionDraftId;
+  final EventModel event;
+  final EventParticipant participant;
+  final String confirmationMessage;
+
+  PendingEventIdentityDraft({
+    required this.actionDraftId,
+    required this.event,
+    required this.participant,
+    required String confirmationMessage,
+  }) : confirmationMessage = confirmationMessage.trim() {
+    if (!EntityIdentity.isValid(actionDraftId) ||
+        this.confirmationMessage.isEmpty) {
+      throw const ConversationIdentityException('invalid_event_identity_draft');
+    }
+  }
+}
+
 enum IdentityActionBindingStatus {
   attached,
   pendingClarification,
@@ -382,6 +401,7 @@ class PendingConversationAction {
   final PendingConversationActionType type;
   final EventModel? _event;
   final EventParticipant? eventParticipant;
+  final String? participantIdentityEntityId;
   final String? proposalId;
   final MemoryLifecycleAction? expectedMemoryAction;
   final DateTime? createdAt;
@@ -391,6 +411,7 @@ class PendingConversationAction {
   const PendingConversationAction.eventConfirmation(
     EventModel this._event, {
     this.eventParticipant,
+    this.participantIdentityEntityId,
   })  : type = PendingConversationActionType.eventConfirmation,
         proposalId = null,
         expectedMemoryAction = null,
@@ -405,6 +426,7 @@ class PendingConversationAction {
   })  : type = PendingConversationActionType.memoryConfirmation,
         _event = null,
         eventParticipant = null,
+        participantIdentityEntityId = null,
         identityClarification = null,
         identityCreation = null;
 
@@ -413,6 +435,7 @@ class PendingConversationAction {
   )   : type = PendingConversationActionType.identityClarification,
         _event = null,
         eventParticipant = null,
+        participantIdentityEntityId = null,
         proposalId = null,
         expectedMemoryAction = null,
         createdAt = null,
@@ -423,6 +446,7 @@ class PendingConversationAction {
   )   : type = PendingConversationActionType.identityCreation,
         _event = null,
         eventParticipant = null,
+        participantIdentityEntityId = null,
         proposalId = null,
         expectedMemoryAction = null,
         createdAt = null,

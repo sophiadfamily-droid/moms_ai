@@ -34,12 +34,14 @@ import '../services/chat_backend_client.dart';
 import '../services/chat_backend_client_factory.dart';
 import '../services/conversation_context_service.dart';
 import '../services/conversation_coordinator.dart';
+import '../services/identity/identity_production_services.dart';
 
 class ChatScreen extends StatefulWidget {
   final UserProfile profile;
   final String? initialAssistantMessage;
   final ChatBackendClient? backendClient;
   final ConversationContextProvider? conversationContextProvider;
+  final IdentityProductionServices? identityServices;
 
   const ChatScreen({
     super.key,
@@ -47,6 +49,7 @@ class ChatScreen extends StatefulWidget {
     this.initialAssistantMessage,
     this.backendClient,
     this.conversationContextProvider,
+    this.identityServices,
   });
 
   @override
@@ -99,6 +102,9 @@ class _ChatScreenState extends State<ChatScreen> {
       backend: backend,
       contextProvider: widget.conversationContextProvider ??
           const DefaultConversationContextProvider(),
+      identityApplicationService: widget.identityServices?.applicationService,
+      identityCreationService: widget.identityServices?.creationService,
+      identityAccountScope: widget.identityServices?.scope,
     );
     currentConversationId = DateTime.now().millisecondsSinceEpoch.toString();
 
@@ -2223,10 +2229,20 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     if (result.pendingConfirmationEvent != null) {
-      conversationCoordinator.setPendingEventConfirmation(
-        result.pendingConfirmationEvent,
-        participant: result.eventParticipant,
-      );
+      final participant = result.eventParticipant;
+      if (participant == null) {
+        conversationCoordinator.setPendingEventConfirmation(
+          result.pendingConfirmationEvent,
+        );
+      } else {
+        final resolution =
+            await conversationCoordinator.beginEventParticipantIdentity(
+          event: result.pendingConfirmationEvent!,
+          participant: participant,
+          confirmationMessage: result.message,
+        );
+        return resolution.message;
+      }
     }
 
     if (result.pendingSmartPlanningTask != null) {

@@ -30,7 +30,16 @@ void main() {
     expect(files, isNotEmpty);
     for (final file in files) {
       final source = file.readAsStringSync();
-      for (final dependency in forbidden) {
+      final isProductionComposition = file.path.endsWith(
+        'identity_production_services.dart',
+      );
+      final forbiddenForFile = isProductionComposition
+          ? forbidden.where(
+              (dependency) =>
+                  dependency != 'firebase' && dependency != 'cloud_firestore',
+            )
+          : forbidden;
+      for (final dependency in forbiddenForFile) {
         expect(
           source,
           isNot(contains(dependency)),

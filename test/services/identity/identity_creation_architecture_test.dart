@@ -32,10 +32,9 @@ void main() {
     expect(coordinator, isNot(contains('FirestoreIdentityWriteRepository')));
   });
 
-  test('Firestore Identity writing remains absent from production roots', () {
+  test('Firestore Identity repositories remain absent from screens', () {
     final root = _repositoryRoot();
     for (final path in [
-      '${root.path}/lib/main.dart',
       '${root.path}/lib/screens',
     ]) {
       final target =
@@ -52,6 +51,21 @@ void main() {
         expect(source, isNot(contains('IdentityCreationService')));
       }
     }
+  });
+
+  test('production composition is isolated in the approved composition seam',
+      () {
+    final root = _repositoryRoot();
+    final composition = File(
+      '${root.path}/lib/services/identity/identity_production_services.dart',
+    ).readAsStringSync();
+    final main = File('${root.path}/lib/main.dart').readAsStringSync();
+
+    expect(composition, contains('FirestoreIdentityReadRepository'));
+    expect(composition, contains('FirestoreIdentityWriteRepository'));
+    expect(main, contains('IdentityProductionServices'));
+    expect(main, isNot(contains('FirestoreIdentityReadRepository')));
+    expect(main, isNot(contains('FirestoreIdentityWriteRepository')));
   });
 }
 

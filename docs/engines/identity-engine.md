@@ -82,6 +82,15 @@ case, accent, apostrophe, punctuation, and whitespace normalization. Pronouns,
 closed relational expressions, invalid shapes, non-event uses, and unproven
 labels are removed without rejecting the otherwise valid event action.
 
+**Implemented in Phase 4F:** the production composition root now injects the
+scoped Firestore Identity read/write boundaries into the existing application,
+clarification, creation, binding, and conversation services. Only a validated
+typed event participant can start resolution, after the event draft has passed
+its normal information collection and initial conflict checks. The immutable
+draft is suspended in the coordinator, then resumed at the distinct event
+confirmation after direct resolution, explicit clarification, or confirmed
+creation.
+
 The Identity Engine is not applied to every chat message. Phases 3A through 3C
 create no identity or proposal, perform no Identity save, and have no
 concrete Firestore repository or production-persisted Identity data. Phase
@@ -121,6 +130,14 @@ neither legal identity nor semantic intent: it deliberately does not resolve,
 clarify, create, or persist an Identity. The participant remains outside
 `EventModel` and Firestore, Identity services remain absent from production
 composition, and the existing event confirmation behavior is unchanged.
+
+Phase 4F activates only the single `eventParticipant` path. Identity refusal,
+expiration, invalid scope, or repository failure never confirms or creates the
+event. The resolved ID remains conversation state only: `EventModel`, event
+Firestore documents, tasks, shopping, memory, profile, planning, and backend
+contracts are unchanged. Identity confirmation and event confirmation remain
+separate user decisions; no migration, backfill, merge, relation, push, or
+deployment is included.
 
 **Outside V1:** fuzzy, phonetic, embedding, or LLM matching; global identities;
 automatic merges; inferred sensitive relationships; and Knowledge Graph logic.
