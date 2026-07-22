@@ -67,6 +67,13 @@ ID and label/alias recheck followed by `IdentityWriteRepository.create`.
 Cancellation, ambiguity, expiration, duplicates, and repository failures write
 nothing and never produce a success message.
 
+**Implemented in Phase 4E:** the existing `eventParticipant` action-binding
+entry point can route a typed resolution result into the confirmed creation
+workflow. Resolved identities still attach directly, ambiguity still uses the
+existing clarification, and only `notFound` with an explicit compatible
+creation request can create a pending proposal. A successful creation attaches
+the new stable ID to the in-memory draft binding without executing the event.
+
 The Identity Engine is not applied to every chat message. Phases 3A through 3C
 create no identity or proposal, perform no Identity save, and have no
 concrete Firestore repository or production-persisted Identity data. Phase
@@ -93,6 +100,13 @@ free text or backend/LLM output, create aliases or relations, modify existing
 identities, merge, delete, migrate, backfill, or connect identities to business
 models. A caller must first provide a validated structured request and a typed
 `notFound` resolution result.
+
+Phase 4E is limited to the explicitly invoked in-memory event-participant
+binding API. It is not composed into the UI or global message flow and does not
+inspect backend/LLM output or free conversation for names. Missing, mismatched,
+relational, pronominal, explicit-ID, unknown-type, empty-label, or unknown-source
+creation data cannot start a proposal. Tasks, shopping, memory, profile, and
+all persistent business links remain excluded.
 
 **Outside V1:** fuzzy, phonetic, embedding, or LLM matching; global identities;
 automatic merges; inferred sensitive relationships; and Knowledge Graph logic.

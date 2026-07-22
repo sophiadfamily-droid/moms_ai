@@ -67,6 +67,16 @@ final class IdentityActionBindingService {
     );
   }
 
+  IdentityActionBindingResult pendingCreation(
+    PendingIdentityActionBinding binding,
+  ) {
+    return _result(
+      binding,
+      IdentityActionBindingStatus.pendingCreation,
+      'identity_creation_required',
+    );
+  }
+
   IdentityActionBindingResult alreadyApplied(
     PendingIdentityActionBinding binding,
   ) {
@@ -130,6 +140,44 @@ final class IdentityActionBindingService {
           binding,
           IdentityActionBindingStatus.invalid,
           'identity_clarification_invalid',
+        ),
+    };
+  }
+
+  IdentityActionBindingResult applyCreation({
+    required PendingIdentityActionBinding binding,
+    required IdentityCreationResult creationResult,
+  }) {
+    if (binding.isApplied) return _alreadyApplied(binding);
+    return switch (creationResult.status) {
+      IdentityCreationStatus.created => _attach(
+          binding,
+          creationResult.createdEntityId!,
+          'identity_attached_after_creation',
+        ),
+      IdentityCreationStatus.stillPending ||
+      IdentityCreationStatus.repositoryFailure =>
+        _result(
+          binding,
+          IdentityActionBindingStatus.pendingCreation,
+          'identity_creation_pending',
+        ),
+      IdentityCreationStatus.cancelled => _result(
+          binding,
+          IdentityActionBindingStatus.cancelled,
+          'identity_creation_cancelled',
+        ),
+      IdentityCreationStatus.expired => _result(
+          binding,
+          IdentityActionBindingStatus.expired,
+          'identity_creation_expired',
+        ),
+      IdentityCreationStatus.alreadyExists ||
+      IdentityCreationStatus.invalid =>
+        _result(
+          binding,
+          IdentityActionBindingStatus.invalid,
+          'identity_creation_not_attached',
         ),
     };
   }

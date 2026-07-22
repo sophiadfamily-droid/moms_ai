@@ -141,6 +141,7 @@ class ConversationCoordinator {
   Future<PendingConversationResolution> beginIdentityActionBinding({
     required IdentityResolutionRequest request,
     required IdentityActionContinuation continuation,
+    IdentityCreationRequest? creationRequest,
   }) async {
     final bindingKey = _identityBindingKey(
       accountScopeId: request.scope.accountId,
@@ -182,6 +183,27 @@ class ConversationCoordinator {
     }
 
     final applicationResult = await applicationService.resolve(request);
+    final creationService = identityCreationService;
+    if (applicationResult.status == IdentityApplicationStatus.notFound &&
+        creationRequest != null &&
+        creationService != null &&
+        creationRequest.supports(request)) {
+      final pending = creationService.propose(
+        applicationResult: applicationResult,
+        request: creationRequest,
+        actionBinding: binding,
+      );
+      final bindingResult =
+          identityActionBindingService.pendingCreation(binding);
+      _state = _state.copyWith(
+        phase: ConversationPhase.awaitingActionConfirmation,
+        pendingAction: PendingConversationAction.identityCreation(pending),
+      );
+      return PendingConversationResolution(
+        creationService.question(pending),
+        identityActionBindingResult: bindingResult,
+      );
+    }
     var bindingResult = identityActionBindingService.fromApplicationResult(
       binding: binding,
       applicationResult: applicationResult,
@@ -282,6 +304,19 @@ class ConversationCoordinator {
         answer: answer,
         referenceDate: referenceDate,
       );
+      final actionBinding = pendingAction.identityCreation!.actionBinding;
+      final bindingResult = actionBinding == null
+          ? null
+          : identityActionBindingService.applyCreation(
+              binding: actionBinding,
+              creationResult: result,
+            );
+      if (bindingResult?.status == IdentityActionBindingStatus.attached) {
+        _identityActionBindings[_identityBindingKey(
+          accountScopeId: actionBinding!.accountScopeId,
+          continuation: actionBinding.continuation,
+        )] = bindingResult!.binding;
+      }
       if (result.status != IdentityCreationStatus.stillPending &&
           result.status != IdentityCreationStatus.repositoryFailure) {
         _clearPendingAction();
@@ -293,6 +328,7 @@ class ConversationCoordinator {
       return PendingConversationResolution(
         result.followUpMessage,
         identityCreationResult: result,
+        identityActionBindingResult: bindingResult,
       );
     } finally {
       _isResolvingPendingAction = false;
@@ -412,6 +448,8 @@ class ConversationCoordinator {
       return ConversationOutcome(
         reply: creationResolution.message,
         identityCreationResult: creationResolution.identityCreationResult,
+        identityActionBindingResult:
+            creationResolution.identityActionBindingResult,
       );
     }
     final identityResolution = await resolvePendingIdentityClarification(
@@ -633,6 +671,8 @@ class ConversationCoordinator {
         'L’identité est rattachée au brouillon de l’événement.',
       IdentityActionBindingStatus.pendingClarification =>
         'Une clarification est nécessaire.',
+      IdentityActionBindingStatus.pendingCreation =>
+        'Une confirmation de création est nécessaire.',
       IdentityActionBindingStatus.cancelled =>
         'Le rattachement de l’identité est annulé.',
       IdentityActionBindingStatus.expired =>

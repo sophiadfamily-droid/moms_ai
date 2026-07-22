@@ -28,6 +28,22 @@ final class IdentityCreationRequest {
       throw const ConversationIdentityException('invalid_creation_request');
     }
   }
+
+  bool supports(IdentityResolutionRequest resolutionRequest) {
+    if (scope != resolutionRequest.scope ||
+        resolutionRequest.reference.expectedType != null &&
+            resolutionRequest.reference.expectedType != entityType) {
+      return false;
+    }
+    final reference = resolutionRequest.reference;
+    if (reference.kind != EntityReferenceKind.canonicalLabel &&
+        reference.kind != EntityReferenceKind.alias &&
+        reference.kind != EntityReferenceKind.genericLabel) {
+      return false;
+    }
+    return reference.comparisonKey ==
+        EntityNormalizer.comparisonKey(canonicalLabel);
+  }
 }
 
 final class IdentityCreationService {
@@ -62,6 +78,7 @@ final class IdentityCreationService {
   PendingIdentityCreation propose({
     required IdentityApplicationResult applicationResult,
     required IdentityCreationRequest request,
+    PendingIdentityActionBinding? actionBinding,
   }) {
     if (applicationResult.status != IdentityApplicationStatus.notFound) {
       throw const ConversationIdentityException(
@@ -78,6 +95,7 @@ final class IdentityCreationService {
       createdAt: createdAt,
       expiresAt: createdAt.add(_validity),
       accountScopeId: request.scope.accountId,
+      actionBinding: actionBinding,
     );
   }
 

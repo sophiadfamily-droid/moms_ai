@@ -21,6 +21,7 @@ import 'package:moms_ai/services/identity/identity_action_binding_service.dart';
 import 'package:moms_ai/services/identity/identity_application_models.dart';
 import 'package:moms_ai/services/identity/identity_application_service.dart';
 import 'package:moms_ai/services/identity/identity_clarification_service.dart';
+import 'package:moms_ai/services/identity/identity_creation_service.dart';
 
 void main() {
   group('event participant action binding', () {
@@ -30,6 +31,7 @@ void main() {
       final result = await fixture.coordinator.beginIdentityActionBinding(
         request: _idRequest(fixture.scope, 'entity-1'),
         continuation: _continuation(),
+        creationRequest: _creationRequest(fixture.scope, 'Person A'),
       );
 
       expect(
@@ -85,6 +87,7 @@ void main() {
           expectedType: EntityType.place,
         ),
         continuation: _continuation(actionDraftId: 'event-draft-type'),
+        creationRequest: _creationRequest(fixture.scope, 'Person A'),
       );
       fixture.repository.failReads = true;
       final failed = await fixture.coordinator.beginIdentityActionBinding(
@@ -103,6 +106,133 @@ void main() {
       expect(fixture.repository.writeCalls, 0);
     });
 
+    test('notFound starts creation only with compatible explicit facts',
+        () async {
+      final fixture = await _fixture(const []);
+      final request = _textRequest(fixture.scope, 'Person A');
+      final started = await fixture.coordinator.beginIdentityActionBinding(
+        request: request,
+        continuation: _continuation(),
+        creationRequest: _creationRequest(fixture.scope, 'Person A'),
+      );
+
+      expect(
+        started.identityActionBindingResult?.status,
+        IdentityActionBindingStatus.pendingCreation,
+      );
+      expect(
+        fixture.coordinator.state.pendingAction?.type,
+        PendingConversationActionType.identityCreation,
+      );
+      expect(
+        fixture.coordinator.state.pendingAction?.identityCreation?.actionBinding
+            ?.continuation.actionDraftId,
+        'event-draft-1',
+      );
+      expect(fixture.repository.writeCalls, 0);
+
+      final absentFacts = await (await _fixture(const []))
+          .coordinator
+          .beginIdentityActionBinding(
+            request: request,
+            continuation: _continuation(actionDraftId: 'event-draft-2'),
+          );
+      expect(
+        absentFacts.identityActionBindingResult?.status,
+        IdentityActionBindingStatus.invalid,
+      );
+    });
+
+    test('mismatched creation facts never start a proposal', () async {
+      final fixture = await _fixture(const []);
+      final result = await fixture.coordinator.beginIdentityActionBinding(
+        request: _textRequest(fixture.scope, 'Person A'),
+        continuation: _continuation(),
+        creationRequest: _creationRequest(fixture.scope, 'Person B'),
+      );
+
+      expect(result.identityActionBindingResult?.status,
+          IdentityActionBindingStatus.invalid);
+      expect(fixture.coordinator.state.pendingAction, isNull);
+      expect(fixture.repository.writeCalls, 0);
+    });
+
+    test('confirmed creation attaches the draft without executing its action',
+        () async {
+      final fixture = await _fixture(const []);
+      await fixture.coordinator.beginIdentityActionBinding(
+        request: _textRequest(fixture.scope, 'Person A'),
+        continuation: _continuation(),
+        creationRequest: _creationRequest(fixture.scope, 'Person A'),
+      );
+      var actionCalls = 0;
+
+      final outcome = await fixture.coordinator.send(
+        input: ConversationInput(message: 'oui', profile: _profile()),
+        executeAction: (_) async {
+          actionCalls++;
+          return const ConversationActionOutcome();
+        },
+      );
+
+      expect(outcome?.identityCreationResult?.status,
+          IdentityCreationStatus.created);
+      expect(outcome?.identityActionBindingResult?.status,
+          IdentityActionBindingStatus.attached);
+      expect(outcome?.identityActionBindingResult?.resolvedEntityId,
+          'entity-created');
+      expect(
+          outcome?.identityActionBindingResult?.actionDraftId, 'event-draft-1');
+      expect(fixture.repository.writeCalls, 1);
+      expect(actionCalls, 0);
+      expect(fixture.backend.calls, 0);
+      expect(fixture.context.buildCalls, 0);
+      final repeated = await fixture.coordinator.beginIdentityActionBinding(
+        request: _textRequest(fixture.scope, 'Person A'),
+        continuation: _continuation(),
+        creationRequest: _creationRequest(fixture.scope, 'Person A'),
+      );
+      expect(repeated.identityActionBindingResult?.status,
+          IdentityActionBindingStatus.alreadyApplied);
+      expect(fixture.repository.writeCalls, 1);
+    });
+
+    test('creation refusal, ambiguity, and expiration execute no action',
+        () async {
+      for (final answer in ['non', 'peut-être']) {
+        final fixture = await _fixture(const []);
+        await fixture.coordinator.beginIdentityActionBinding(
+          request: _textRequest(fixture.scope, 'Person A'),
+          continuation: _continuation(),
+          creationRequest: _creationRequest(fixture.scope, 'Person A'),
+        );
+        final outcome = await fixture.coordinator.send(
+          input: ConversationInput(message: answer, profile: _profile()),
+          executeAction: (_) async => throw StateError('must not execute'),
+        );
+        expect(fixture.repository.writeCalls, 0);
+        expect(fixture.backend.calls, 0);
+        expect(outcome?.identityActionBindingResult?.resolvedEntityId, isNull);
+      }
+
+      var clock = now;
+      final expired = await _fixture(const [], now: () => clock);
+      await expired.coordinator.beginIdentityActionBinding(
+        request: _textRequest(expired.scope, 'Person A'),
+        continuation: _continuation(),
+        creationRequest: _creationRequest(expired.scope, 'Person A'),
+      );
+      clock = now.add(const Duration(minutes: 15));
+      final outcome = await expired.coordinator.send(
+        input: ConversationInput(message: 'oui', profile: _profile()),
+        executeAction: (_) async => throw StateError('must not execute'),
+      );
+      expect(outcome?.identityCreationResult?.status,
+          IdentityCreationStatus.expired);
+      expect(expired.repository.writeCalls, 0);
+      expect(expired.backend.calls, 0);
+    });
+
     test('keeps a continuation through ambiguity and attaches after selection',
         () async {
       final fixture = await _fixture([
@@ -112,6 +242,7 @@ void main() {
       final started = await fixture.coordinator.beginIdentityActionBinding(
         request: _textRequest(fixture.scope, 'Shared'),
         continuation: _continuation(),
+        creationRequest: _creationRequest(fixture.scope, 'Shared'),
       );
 
       expect(
@@ -268,6 +399,12 @@ Future<_Fixture> _fixture(
     identityActionBindingService: const IdentityActionBindingService(
       idGenerator: _FixedIdGenerator('binding-1'),
     ),
+    identityCreationService: IdentityCreationService(
+      readRepository: repository,
+      writeRepository: repository,
+      idGenerator: _CreationIdGenerator(),
+      now: now ?? () => IdentityActionBindingTestClock.value,
+    ),
   );
   return _Fixture(
     scope: scope,
@@ -308,6 +445,17 @@ IdentityResolutionRequest _textRequest(
         expectedType: EntityType.person,
         source: source,
       ),
+    );
+
+IdentityCreationRequest _creationRequest(
+  IdentityAccountScope scope,
+  String label,
+) =>
+    IdentityCreationRequest(
+      scope: scope,
+      entityType: EntityType.person,
+      canonicalLabel: label,
+      source: source,
     );
 
 IdentityActionContinuation _continuation({
@@ -372,7 +520,14 @@ final class _FixedIdGenerator implements EntityIdGenerator {
   String generate() => value;
 }
 
-final class _ReadSpyRepository implements IdentityReadRepository {
+final class _CreationIdGenerator implements EntityIdGenerator {
+  var _index = 0;
+
+  @override
+  String generate() => ['proposal-created', 'entity-created'][_index++];
+}
+
+final class _ReadSpyRepository implements IdentityRepository {
   final FakeIdentityRepository _delegate = FakeIdentityRepository();
   int writeCalls = 0;
   bool failReads = false;
@@ -409,6 +564,32 @@ final class _ReadSpyRepository implements IdentityReadRepository {
     if (failReads) throw const IdentityRepositoryException('read_failed');
     return _delegate.queryCandidates(scope: scope, query: query);
   }
+
+  @override
+  Future<RevisionedIdentity> create({
+    required IdentityAccountScope scope,
+    required LifeEntity entity,
+  }) {
+    writeCalls++;
+    return _delegate.create(scope: scope, entity: entity);
+  }
+
+  @override
+  Future<RevisionedIdentity> softDelete({
+    required IdentityAccountScope scope,
+    required String entityId,
+    required int expectedRevision,
+    required DateTime updatedAt,
+  }) =>
+      throw UnimplementedError();
+
+  @override
+  Future<RevisionedIdentity> update({
+    required IdentityAccountScope scope,
+    required LifeEntity entity,
+    required int expectedRevision,
+  }) =>
+      throw UnimplementedError();
 }
 
 final class _FakeBackend implements ChatBackendClient {

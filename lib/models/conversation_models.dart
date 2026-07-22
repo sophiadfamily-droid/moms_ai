@@ -128,6 +128,7 @@ final class PendingIdentityActionBinding {
 enum IdentityActionBindingStatus {
   attached,
   pendingClarification,
+  pendingCreation,
   cancelled,
   expired,
   invalid,
@@ -258,6 +259,7 @@ final class PendingIdentityCreation {
   final DateTime createdAt;
   final DateTime expiresAt;
   final String accountScopeId;
+  final PendingIdentityActionBinding? actionBinding;
 
   PendingIdentityCreation({
     required this.proposalId,
@@ -268,6 +270,7 @@ final class PendingIdentityCreation {
     required this.createdAt,
     required this.expiresAt,
     required String accountScopeId,
+    this.actionBinding,
   })  : canonicalLabel = canonicalLabel.trim(),
         accountScopeId = accountScopeId.trim() {
     if (!EntityIdentity.isValid(proposalId) ||
@@ -281,6 +284,10 @@ final class PendingIdentityCreation {
     }
     if (this.accountScopeId.isEmpty) {
       throw const ConversationIdentityException('invalid_account_scope');
+    }
+    if (actionBinding != null &&
+        actionBinding!.accountScopeId != this.accountScopeId) {
+      throw const ConversationIdentityException('binding_scope_mismatch');
     }
     if (!expiresAt.isAfter(createdAt)) {
       throw const ConversationIdentityException('invalid_expiration_date');

@@ -240,6 +240,48 @@ void main() {
       expect(result.diagnosticCode, isNot(contains('Person')));
     });
   });
+
+  group('confirmed creation application', () {
+    test('attaches only a successfully created identity', () {
+      final result = _service().applyCreation(
+        binding: _binding(),
+        creationResult: IdentityCreationResult(
+          status: IdentityCreationStatus.created,
+          proposalId: 'proposal-1',
+          createdEntityId: 'entity-created',
+          diagnosticCode: 'identity_created',
+          followUpMessage: 'Created',
+        ),
+      );
+
+      expect(result.status, IdentityActionBindingStatus.attached);
+      expect(result.resolvedEntityId, 'entity-created');
+      expect(result.actionDraftId, 'event-draft-1');
+    });
+
+    test('keeps pending or terminal creation results unresolved', () {
+      for (final status in [
+        IdentityCreationStatus.stillPending,
+        IdentityCreationStatus.repositoryFailure,
+        IdentityCreationStatus.cancelled,
+        IdentityCreationStatus.expired,
+        IdentityCreationStatus.alreadyExists,
+        IdentityCreationStatus.invalid,
+      ]) {
+        final result = _service().applyCreation(
+          binding: _binding(),
+          creationResult: IdentityCreationResult(
+            status: status,
+            proposalId: 'proposal-1',
+            diagnosticCode: 'creation_${status.name}',
+            followUpMessage: 'Result',
+          ),
+        );
+        expect(result.resolvedEntityId, isNull);
+        expect(result.binding.isApplied, isFalse);
+      }
+    });
+  });
 }
 
 final now = DateTime.utc(2026, 7, 21, 10);
