@@ -4,17 +4,17 @@ import '../../core/identity/entity_resolution.dart';
 import '../../core/identity/entity_types.dart';
 import '../../core/identity/identity_engine.dart';
 import '../../core/identity/life_entity.dart';
-import '../../repositories/identity/identity_repository.dart';
+import '../../repositories/identity/identity_read_repository.dart';
 import '../../repositories/identity/identity_repository_query.dart';
 import 'identity_application_models.dart';
 
 final class IdentityApplicationService {
-  final IdentityRepository _repository;
+  final IdentityReadRepository _repository;
   final IdentityEngine _engine;
   final DateTime Function() _now;
 
   IdentityApplicationService({
-    required IdentityRepository repository,
+    required IdentityReadRepository repository,
     required IdentityEngine engine,
     DateTime Function()? now,
   })  : _repository = repository,

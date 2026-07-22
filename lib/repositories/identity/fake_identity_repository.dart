@@ -161,11 +161,3 @@ final class FakeIdentityRepository implements IdentityRepository {
     }
   }
 }
-
-int compareIdentityEntities(LifeEntity first, LifeEntity second) {
-  final typeComparison = first.type.index.compareTo(second.type.index);
-  if (typeComparison != 0) return typeComparison;
-  final labelComparison = first.comparisonKey.compareTo(second.comparisonKey);
-  if (labelComparison != 0) return labelComparison;
-  return first.id.compareTo(second.id);
-}

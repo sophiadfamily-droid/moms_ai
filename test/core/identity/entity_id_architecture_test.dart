@@ -120,8 +120,7 @@ void main() {
     }
   });
 
-  test('identity repository boundary has no framework or application imports',
-      () {
+  test('pure identity repository boundary has no framework imports', () {
     final repositoryDirectory = Directory(
       '${repositoryRoot.path}/lib/repositories/identity',
     );
@@ -138,7 +137,9 @@ void main() {
     for (final file in repositoryDirectory
         .listSync(recursive: true)
         .whereType<File>()
-        .where((file) => file.path.endsWith('.dart'))) {
+        .where((file) => file.path.endsWith('.dart'))
+        .where((file) =>
+            !file.path.endsWith('firestore_identity_read_repository.dart'))) {
       final source = file.readAsStringSync();
       for (final dependency in forbidden) {
         expect(source, isNot(contains(dependency)),

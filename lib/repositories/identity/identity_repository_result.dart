@@ -1,7 +1,7 @@
 import 'dart:collection';
 
 import '../../core/identity/life_entity.dart';
-import 'identity_repository.dart';
+import 'identity_read_repository.dart';
 
 final class IdentityRepositoryQueryResult {
   final List<LifeEntity> _entities;

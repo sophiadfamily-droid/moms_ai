@@ -14,8 +14,13 @@ service cloud.firestore {
     match /users/{userId} {
       allow read, write: if isOwner(userId);
 
-      match /{document=**} {
-        allow read, write: if isOwner(userId);
+      match /identities/{entityId} {
+        allow read: if isOwner(userId);
+        allow create, update, delete: if false;
+      }
+
+      match /{collection}/{document=**} {
+        allow read, write: if isOwner(userId) && collection != 'identities';
       }
     }
 

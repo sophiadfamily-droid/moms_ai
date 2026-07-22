@@ -40,6 +40,16 @@ Identity reference may be represented in a future business object. The
 contract stores only entity ID, entity type, and schema version; corrupt or
 future persisted values produce typed, non-sensitive read results.
 
+**Implemented in Phase 4B:** a dormant, explicitly scoped Firestore read
+boundary supports bounded lookup by ID, canonical normalized label, and the
+derived `aliasComparisonKeys` index under
+`users/{userId}/identities/{entityId}`. It validates every document through
+the canonical Identity codec, preserves the twenty-candidate limit and
+deterministic ordering, and maps Firestore failures to safe repository codes.
+Identity writes are explicitly denied by Firestore rules and absent from the
+concrete repository. Emulator and rules tests use a dedicated non-production
+project guard.
+
 The Identity Engine is not applied to every chat message. Phases 3A through 3C
 create no identity or proposal, perform no Identity save, and have no
 concrete Firestore repository or production-persisted Identity data. Phase
@@ -47,6 +57,11 @@ concrete Firestore repository or production-persisted Identity data. Phase
 backend model uses it; it performs no Firestore write and creates no active
 business link. No index, migration, profile seeding, location binding, task
 binding, or shopping binding is implemented.
+
+Phase 4B is not composed into the production application and creates no
+Firestore data. It provides no creation, update, deletion, merge, migration,
+or backfill workflow. No persistent Identity source of truth is active until a
+later explicitly controlled write phase is implemented and deployed.
 
 **Outside V1:** fuzzy, phonetic, embedding, or LLM matching; global identities;
 automatic merges; inferred sensitive relationships; and Knowledge Graph logic.

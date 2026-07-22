@@ -3,7 +3,7 @@ import 'dart:collection';
 import '../../core/identity/entity_identity.dart';
 import '../../core/identity/entity_normalizer.dart';
 import '../../core/identity/entity_types.dart';
-import 'identity_repository.dart';
+import 'identity_read_repository.dart';
 
 final class IdentityRepositoryQuery {
   static const int maximumCandidateLimit = 20;
