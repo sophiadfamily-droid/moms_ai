@@ -107,6 +107,7 @@ class DefaultConversationContextProvider
         'endTime': event.endTime,
         'endDateTimeIso': event.endDateTimeIso,
         'durationMinutes': event.durationMinutes,
+        'category': event.category,
       };
     }).toList();
 

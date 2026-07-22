@@ -5,6 +5,7 @@ import '../core/identity/entity_reference.dart';
 import '../core/identity/entity_types.dart';
 import 'chat_backend_request.dart';
 import 'event_model.dart';
+import 'event_mutation_models.dart';
 import 'event_participant.dart';
 import 'memory_lifecycle_state.dart';
 import 'user_profile.dart';
@@ -31,6 +32,66 @@ enum PendingConversationActionType {
   identityClarification,
   identityCreation,
   memoryConfirmation,
+  eventTargetClarification,
+  eventMutationConfirmation,
+}
+
+final class PendingEventTargetClarification {
+  final String clarificationId;
+  final EventMutationRequest request;
+  final List<EventModel> _candidates;
+  final DateTime createdAt;
+  final DateTime expiresAt;
+
+  PendingEventTargetClarification({
+    required this.clarificationId,
+    required this.request,
+    required List<EventModel> candidates,
+    required this.createdAt,
+    required this.expiresAt,
+  }) : _candidates = List.unmodifiable(candidates) {
+    if (!EntityIdentity.isValid(clarificationId) ||
+        _candidates.length < 2 ||
+        _candidates.length > 10 ||
+        _candidates.any((event) => !EntityIdentity.isValid(event.id)) ||
+        !expiresAt.isAfter(createdAt)) {
+      throw const FormatException('invalid_event_target_clarification');
+    }
+  }
+
+  List<EventModel> get candidates => UnmodifiableListView(_candidates);
+
+  bool isExpiredAt(DateTime value) => !value.isBefore(expiresAt);
+}
+
+final class PendingEventMutationConfirmation {
+  final String mutationId;
+  final EventMutationRequest request;
+  final EventModel original;
+  final EventModel proposed;
+  final String confirmationMessage;
+  final DateTime createdAt;
+  final DateTime expiresAt;
+
+  PendingEventMutationConfirmation({
+    required this.mutationId,
+    required this.request,
+    required this.original,
+    required this.proposed,
+    required String confirmationMessage,
+    required this.createdAt,
+    required this.expiresAt,
+  }) : confirmationMessage = confirmationMessage.trim() {
+    if (!EntityIdentity.isValid(mutationId) ||
+        !EntityIdentity.isValid(original.id) ||
+        original.id != proposed.id ||
+        this.confirmationMessage.isEmpty ||
+        !expiresAt.isAfter(createdAt)) {
+      throw const FormatException('invalid_event_mutation_confirmation');
+    }
+  }
+
+  bool isExpiredAt(DateTime value) => !value.isBefore(expiresAt);
 }
 
 final class ConversationIdentityException implements Exception {
@@ -407,6 +468,8 @@ class PendingConversationAction {
   final DateTime? createdAt;
   final PendingIdentityClarification? identityClarification;
   final PendingIdentityCreation? identityCreation;
+  final PendingEventTargetClarification? eventTargetClarification;
+  final PendingEventMutationConfirmation? eventMutationConfirmation;
 
   const PendingConversationAction.eventConfirmation(
     EventModel this._event, {
@@ -417,7 +480,9 @@ class PendingConversationAction {
         expectedMemoryAction = null,
         createdAt = null,
         identityClarification = null,
-        identityCreation = null;
+        identityCreation = null,
+        eventTargetClarification = null,
+        eventMutationConfirmation = null;
 
   const PendingConversationAction.memoryConfirmation({
     required this.proposalId,
@@ -428,7 +493,9 @@ class PendingConversationAction {
         eventParticipant = null,
         participantIdentityEntityId = null,
         identityClarification = null,
-        identityCreation = null;
+        identityCreation = null,
+        eventTargetClarification = null,
+        eventMutationConfirmation = null;
 
   const PendingConversationAction.identityClarification(
     PendingIdentityClarification this.identityClarification,
@@ -439,7 +506,9 @@ class PendingConversationAction {
         proposalId = null,
         expectedMemoryAction = null,
         createdAt = null,
-        identityCreation = null;
+        identityCreation = null,
+        eventTargetClarification = null,
+        eventMutationConfirmation = null;
 
   const PendingConversationAction.identityCreation(
     PendingIdentityCreation this.identityCreation,
@@ -450,7 +519,35 @@ class PendingConversationAction {
         proposalId = null,
         expectedMemoryAction = null,
         createdAt = null,
-        identityClarification = null;
+        identityClarification = null,
+        eventTargetClarification = null,
+        eventMutationConfirmation = null;
+
+  const PendingConversationAction.eventTargetClarification(
+    PendingEventTargetClarification this.eventTargetClarification,
+  )   : type = PendingConversationActionType.eventTargetClarification,
+        _event = null,
+        eventParticipant = null,
+        participantIdentityEntityId = null,
+        proposalId = null,
+        expectedMemoryAction = null,
+        createdAt = null,
+        identityClarification = null,
+        identityCreation = null,
+        eventMutationConfirmation = null;
+
+  const PendingConversationAction.eventMutationConfirmation(
+    PendingEventMutationConfirmation this.eventMutationConfirmation,
+  )   : type = PendingConversationActionType.eventMutationConfirmation,
+        _event = null,
+        eventParticipant = null,
+        participantIdentityEntityId = null,
+        proposalId = null,
+        expectedMemoryAction = null,
+        createdAt = null,
+        identityClarification = null,
+        identityCreation = null,
+        eventTargetClarification = null;
 
   EventModel get event => _event!;
 }

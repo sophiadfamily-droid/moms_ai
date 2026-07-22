@@ -1,7 +1,12 @@
-const ACTION_TYPES = Object.freeze([
+const CREATION_ACTION_TYPES = Object.freeze([
   "shopping",
   "task",
   "event",
+]);
+
+const ACTION_TYPES = Object.freeze([
+  ...CREATION_ACTION_TYPES,
+  "event_mutation",
 ]);
 
 const eventParticipantSchema = Object.freeze({
@@ -20,13 +25,13 @@ const eventParticipantSchema = Object.freeze({
   ],
 });
 
-const actionSchema = Object.freeze({
+const creationActionSchema = Object.freeze({
   type: "object",
   additionalProperties: false,
   properties: {
     type: {
       type: "string",
-      enum: ACTION_TYPES,
+      enum: CREATION_ACTION_TYPES,
     },
     title: {
       type: "string",
@@ -139,6 +144,51 @@ const actionSchema = Object.freeze({
   ],
 });
 
+const eventMutationTargetSchema = Object.freeze({
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    title: {type: "string", maxLength: 120},
+    date: {type: "string"},
+    time: {type: "string"},
+    category: {type: "string", maxLength: 80},
+  },
+  required: [],
+});
+
+const eventMutationChangesSchema = Object.freeze({
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    title: {type: "string", maxLength: 120},
+    date: {type: "string"},
+    time: {type: "string"},
+    durationMinutes: {type: "integer", minimum: 1, maximum: 1440},
+    travelGoMinutes: {type: "integer", minimum: 0, maximum: 480},
+    travelBackMinutes: {type: "integer", minimum: 0, maximum: 480},
+    marginMinutes: {type: "integer", minimum: 0, maximum: 240},
+    notes: {type: "string", maxLength: 1000},
+    category: {type: "string", maxLength: 80},
+  },
+  required: [],
+});
+
+const eventMutationActionSchema = Object.freeze({
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    type: {type: "string", enum: ["event_mutation"]},
+    operation: {type: "string", enum: ["update"]},
+    target: eventMutationTargetSchema,
+    changes: eventMutationChangesSchema,
+  },
+  required: ["type", "operation", "target", "changes"],
+});
+
+const actionSchema = Object.freeze({
+  anyOf: [creationActionSchema, eventMutationActionSchema],
+});
+
 const memorySchema = Object.freeze({
   type: "object",
   additionalProperties: false,
@@ -187,7 +237,12 @@ const zeliaResponseJsonSchema = Object.freeze({
 
 module.exports = {
   ACTION_TYPES,
+  CREATION_ACTION_TYPES,
   actionSchema,
+  creationActionSchema,
+  eventMutationActionSchema,
+  eventMutationChangesSchema,
+  eventMutationTargetSchema,
   eventParticipantSchema,
   memorySchema,
   zeliaResponseJsonSchema,

@@ -46,6 +46,16 @@ Trajet :
 - Si le rendez-vous implique probablement un déplacement, laisse Flutter demander le trajet ensuite.
 - Si c'est à domicile, par téléphone, en visio ou en ligne, le trajet peut être 0.
 
+MODIFICATION D'UN ÉVÉNEMENT EXISTANT
+- Si l'utilisatrice demande explicitement de décaler, déplacer, modifier ou
+  changer un événement existant, retourne event_mutation et non event.
+- Fournis seulement operation update, les critères target explicitement
+  disponibles (title, date, time, category) et les champs changes demandés.
+- Ne choisis jamais un événement, ne fournis jamais son ID et ne copie jamais
+  un participant ou une donnée Identity. Flutter sélectionne et confirme.
+- N'utilise pas event_mutation pour supprimer, dupliquer, modifier une série
+  récurrente ou changer un participant.
+
 Exemples :
 "J'ai rendez-vous chez ma belle-mère demain à 20h"
 = event title "Rendez-vous chez belle-mère", date vraie date, time "20:00"

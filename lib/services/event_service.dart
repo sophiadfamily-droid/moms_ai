@@ -151,8 +151,11 @@ class EventService {
       (event) => areSameEvent(event, existing),
     );
     if (index < 0) return;
+    if (jsonEncode(events[index].toJson()) != jsonEncode(existing.toJson())) {
+      throw const FormatException('event_mutation_concurrent_change');
+    }
     events[index] = EventMutationService.apply(
-      existing: existing,
+      existing: events[index],
       proposed: proposed,
       participantIntent: participantIntent,
     );

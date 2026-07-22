@@ -10,6 +10,28 @@ Statements labeled **Current state** describe behavior verified in the repositor
 
 This document must evolve deliberately. It should change when ZELIA's mission, system boundaries, architectural ownership, safety model, or long-term direction changes—not whenever a service is renamed or refactored.
 
+### Conversational event mutation foundation
+
+**Current state:** Phase 4I-A defines a closed `event_mutation` backend action
+containing only an `update` intent, structured target criteria, and requested
+changes. It never carries an event ID. The server removes malformed or
+ungrounded mutations; Flutter validates again and deterministically selects
+current events by normalized title, exact date, exact time, and normalized
+category.
+
+Zero matches do not create an event. One stable-ID match creates a typed
+confirmation. Multiple matches create a bounded, expiring clarification whose
+numbered choice is resolved locally without an LLM. Final confirmation reloads
+the event and compares it with its immutable snapshot; disappearance,
+concurrent modification, or a protected-range conflict blocks the write.
+
+Only title, date, time, duration, outbound/return travel, margin, notes, and
+category can change. Recurrence, deletion, duplication, participants, Identity,
+and bulk updates remain excluded. Backend context contains no event ID, notes,
+account scope, Firestore metadata, participant link, or Identity data. Calendar
+growth will require a separate bounded context-window policy; this phase does
+not introduce unbounded semantic matching.
+
 ## 1. Vision
 
 ZELIA is a French-language AI assistant for the practical organization of personal and family life. It is designed to help a person understand, organize, remember, prioritize, and act on the realities of daily life without requiring the person to become a project manager for their own household.

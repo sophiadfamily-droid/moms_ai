@@ -176,6 +176,11 @@ the current client therefore uses differential cloud rewrites instead of
 delete-and-recreate. Supporting arbitrary obsolete clients would require a
 server-owned mutation endpoint or an independently versioned event protocol.
 
+Phase 4I-A standard conversational event mutations preserve an existing
+`participantIdentity` and its lifecycle revision through
+`PreserveEventParticipant`. They do not invoke Identity resolution, expose
+Identity data to the backend, or permit participant replacement or removal.
+
 **Outside V1:** fuzzy, phonetic, embedding, or LLM matching; global identities;
 automatic merges; inferred sensitive relationships; and Knowledge Graph logic.
 

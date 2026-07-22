@@ -1,6 +1,7 @@
 import '../models/conversation_models.dart';
 import '../models/event_model.dart';
 import '../models/event_participant.dart';
+import '../models/event_mutation_models.dart';
 import '../core/identity/entity_id_generator.dart';
 import '../core/identity/entity_reference.dart';
 import '../core/identity/entity_types.dart';
@@ -20,6 +21,8 @@ import 'identity/identity_action_binding_service.dart';
 import 'identity/identity_clarification_service.dart';
 import 'identity/identity_creation_service.dart';
 import 'identity/event_participant_identity_validation_service.dart';
+import 'event_conversation_mutation_service.dart';
+import 'event_target_selector.dart';
 import '../repositories/identity/identity_read_repository.dart';
 import 'zelia_action_guard_service.dart';
 import 'zelia_response_builder.dart';
@@ -45,6 +48,8 @@ class ConversationCoordinator {
   final EventParticipantIdentityValidationService?
       eventParticipantIdentityValidationService;
   final EntityIdGenerator _actionDraftIdGenerator;
+  final EventConversationMutationService eventConversationMutationService;
+  final DateTime Function() _clock;
 
   ConversationState _state = const ConversationState();
   bool _isSending = false;
@@ -66,6 +71,8 @@ class ConversationCoordinator {
     this.identityAccountScope,
     this.eventParticipantIdentityValidationService,
     EntityIdGenerator? actionDraftIdGenerator,
+    EventConversationMutationService? eventConversationMutationService,
+    DateTime Function()? clock,
   })  : _memoryLifecycleRepository = memoryLifecycleRepository,
         identityClarificationService = identityClarificationService ??
             IdentityClarificationService(
@@ -76,7 +83,10 @@ class ConversationCoordinator {
               idGenerator: UuidV7EntityIdGenerator(),
             ),
         _actionDraftIdGenerator =
-            actionDraftIdGenerator ?? UuidV7EntityIdGenerator();
+            actionDraftIdGenerator ?? UuidV7EntityIdGenerator(),
+        eventConversationMutationService = eventConversationMutationService ??
+            EventConversationMutationService(),
+        _clock = clock ?? DateTime.now;
 
   ConversationState get state => _state;
 
@@ -446,6 +456,202 @@ class ConversationCoordinator {
     return resolution;
   }
 
+  Future<PendingConversationResolution> beginEventMutation(
+    EventMutationRequest request,
+  ) async {
+    if (_state.pendingAction != null) {
+      return const PendingConversationResolution(
+        'Une autre confirmation est déjà en attente.',
+        diagnosticCode: 'pending_action_exists',
+      );
+    }
+    final selection = await eventConversationMutationService.select(request);
+    switch (selection.status) {
+      case EventTargetSelectionStatus.notFound:
+        return const PendingConversationResolution(
+          'Je ne trouve pas cet événement. Peux-tu préciser le titre, '
+          'la date ou l’heure ?',
+          diagnosticCode: 'event_target_not_found',
+        );
+      case EventTargetSelectionStatus.invalid:
+        return const PendingConversationResolution(
+          'Cet événement ne peut pas être modifié de façon sûre.',
+          diagnosticCode: 'event_target_invalid',
+        );
+      case EventTargetSelectionStatus.ambiguous:
+        final now = _clock().toUtc();
+        final pending = PendingEventTargetClarification(
+          clarificationId: _actionDraftIdGenerator.generate(),
+          request: request,
+          candidates: selection.candidates,
+          createdAt: now,
+          expiresAt: now.add(const Duration(minutes: 15)),
+        );
+        _state = _state.copyWith(
+          phase: ConversationPhase.awaitingActionConfirmation,
+          pendingAction:
+              PendingConversationAction.eventTargetClarification(pending),
+        );
+        return PendingConversationResolution(
+          _eventTargetQuestion(pending),
+          diagnosticCode: selection.diagnosticCode,
+        );
+      case EventTargetSelectionStatus.selected:
+        return _beginEventMutationConfirmation(
+          request: request,
+          original: selection.selected!,
+        );
+    }
+  }
+
+  Future<PendingConversationResolution?> resolvePendingEventMutation({
+    required String answer,
+  }) async {
+    final pending = _state.pendingAction;
+    if (pending == null) return null;
+    if (pending.type ==
+        PendingConversationActionType.eventTargetClarification) {
+      final clarification = pending.eventTargetClarification!;
+      if (clarification.isExpiredAt(_clock().toUtc())) {
+        _clearPendingAction();
+        return const PendingConversationResolution(
+          'Cette sélection a expiré. Reformule ta demande.',
+          diagnosticCode: 'event_target_clarification_expired',
+        );
+      }
+      final classified = answerClassifier.classify(answer);
+      if (classified == ConversationAnswer.negative) {
+        _clearPendingAction();
+        return const PendingConversationResolution(
+          'D’accord, je ne modifie aucun événement.',
+          diagnosticCode: 'event_target_clarification_cancelled',
+        );
+      }
+      final index = _choiceIndex(answer, clarification.candidates.length);
+      if (index == null) {
+        return const PendingConversationResolution(
+          'Indique simplement le numéro de l’événement, ou réponds non.',
+          diagnosticCode: 'event_target_clarification_ambiguous',
+        );
+      }
+      _clearPendingAction();
+      return _beginEventMutationConfirmation(
+        request: clarification.request,
+        original: clarification.candidates[index],
+      );
+    }
+    if (pending.type !=
+        PendingConversationActionType.eventMutationConfirmation) {
+      return null;
+    }
+    final confirmation = pending.eventMutationConfirmation!;
+    if (confirmation.isExpiredAt(_clock().toUtc())) {
+      _clearPendingAction();
+      return const PendingConversationResolution(
+        'Cette modification a expiré. Aucun événement n’a été modifié.',
+        diagnosticCode: 'event_mutation_expired',
+      );
+    }
+    final classified = answerClassifier.classify(answer);
+    if (classified == ConversationAnswer.ambiguous) {
+      return const PendingConversationResolution(
+        'Réponds simplement oui pour modifier cet événement, ou non pour annuler.',
+        diagnosticCode: 'event_mutation_confirmation_ambiguous',
+      );
+    }
+    if (classified == ConversationAnswer.negative) {
+      _clearPendingAction();
+      return const PendingConversationResolution(
+        'D’accord, je ne modifie pas cet événement.',
+        diagnosticCode: 'event_mutation_cancelled',
+      );
+    }
+    if (_isResolvingPendingAction) return null;
+    _isResolvingPendingAction = true;
+    _state = _state.copyWith(phase: ConversationPhase.executingAction);
+    try {
+      final result = await eventConversationMutationService.execute(
+        original: confirmation.original,
+        proposed: confirmation.proposed,
+      );
+      if (result.status == EventMutationExecutionStatus.updated) {
+        _clearPendingAction();
+        return const PendingConversationResolution(
+          'C’est fait, l’événement a été modifié.',
+          diagnosticCode: 'event_mutation_updated',
+        );
+      }
+      _clearPendingAction();
+      final message = result.status == EventMutationExecutionStatus.conflict
+          ? 'Je n’ai pas modifié l’événement, car le nouveau créneau est en conflit.'
+          : 'L’événement a changé ou n’est plus disponible. Je ne l’ai pas modifié.';
+      return PendingConversationResolution(
+        message,
+        diagnosticCode: result.diagnosticCode,
+      );
+    } finally {
+      _isResolvingPendingAction = false;
+    }
+  }
+
+  PendingConversationResolution _beginEventMutationConfirmation({
+    required EventMutationRequest request,
+    required EventModel original,
+  }) {
+    final proposed = eventConversationMutationService.propose(
+      original,
+      request.changes,
+    );
+    final now = _clock().toUtc();
+    final message = _eventMutationConfirmationMessage(original, proposed);
+    _state = _state.copyWith(
+      phase: ConversationPhase.awaitingActionConfirmation,
+      pendingAction: PendingConversationAction.eventMutationConfirmation(
+        PendingEventMutationConfirmation(
+          mutationId: _actionDraftIdGenerator.generate(),
+          request: request,
+          original: original,
+          proposed: proposed,
+          confirmationMessage: message,
+          createdAt: now,
+          expiresAt: now.add(const Duration(minutes: 15)),
+        ),
+      ),
+    );
+    return PendingConversationResolution(
+      message,
+      diagnosticCode: 'event_mutation_confirmation_required',
+    );
+  }
+
+  String _eventTargetQuestion(PendingEventTargetClarification pending) {
+    final lines = <String>[
+      'J’ai trouvé plusieurs événements. Lequel veux-tu modifier ?'
+    ];
+    for (var index = 0; index < pending.candidates.length; index++) {
+      final event = pending.candidates[index];
+      lines.add('${index + 1}. ${event.title} — ${event.date} à ${event.time}');
+    }
+    return lines.join('\n');
+  }
+
+  static int? _choiceIndex(String answer, int length) {
+    final match = RegExp(r'\d+').firstMatch(answer.trim());
+    if (match == null) return null;
+    final value = int.tryParse(match.group(0) ?? '');
+    if (value == null || value < 1 || value > length) return null;
+    return value - 1;
+  }
+
+  static String _eventMutationConfirmationMessage(
+    EventModel original,
+    EventModel proposed,
+  ) {
+    return 'Je vais modifier « ${original.title} » du ${original.date} à '
+        '${original.time} vers le ${proposed.date} à ${proposed.time}. '
+        'Confirmer ?';
+  }
+
   Future<PendingConversationResolution?> resolvePendingEventConfirmation({
     required String answer,
     required bool Function(String value) isPositiveAnswer,
@@ -585,6 +791,12 @@ class ConversationCoordinator {
     required ConversationInput input,
     required ConversationActionExecutor executeAction,
   }) async {
+    final eventMutationResolution = await resolvePendingEventMutation(
+      answer: input.message,
+    );
+    if (eventMutationResolution != null) {
+      return ConversationOutcome(reply: eventMutationResolution.message);
+    }
     final creationResolution = await resolvePendingIdentityCreation(
       answer: input.message,
     );
@@ -649,6 +861,14 @@ class ConversationCoordinator {
 
         final action = guarded.action!;
         final type = action['type']?.toString() ?? '';
+        if (type == 'event_mutation' &&
+            action['eventMutation'] is EventMutationRequest) {
+          final mutation = await beginEventMutation(
+            action['eventMutation'] as EventMutationRequest,
+          );
+          actionMessages.add(mutation.message);
+          continue;
+        }
         final title = action['title']?.toString() ?? '';
         if (type == 'shopping' && title.isNotEmpty) shoppingTitles.add(title);
         if (type == 'task' && title.isNotEmpty) taskTitles.add(title);

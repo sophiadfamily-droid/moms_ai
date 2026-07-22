@@ -1,4 +1,5 @@
 import '../models/event_participant.dart';
+import '../models/event_mutation_models.dart';
 
 class ZeliaActionGuardResult {
   final bool isAccepted;
@@ -44,6 +45,7 @@ class ZeliaActionGuardService {
     'shopping',
     'task',
     'event',
+    'event_mutation',
   };
 
   static ZeliaActionGuardResult guard(dynamic rawAction) {
@@ -57,6 +59,10 @@ class ZeliaActionGuardService {
     final type = _normalizeType(source['type']);
     if (!supportedTypes.contains(type)) {
       return ZeliaActionGuardResult.rejected('unsupported_action_type');
+    }
+
+    if (type == 'event_mutation') {
+      return _guardEventMutation(source);
     }
 
     final title = _cleanText(source['title']);
@@ -147,6 +153,107 @@ class ZeliaActionGuardService {
       action: normalized,
       corrections: corrections,
     );
+  }
+
+  static ZeliaActionGuardResult _guardEventMutation(
+    Map<String, dynamic> source,
+  ) {
+    const actionKeys = {'type', 'operation', 'target', 'changes'};
+    if (source.length != actionKeys.length ||
+        source.keys.any((key) => !actionKeys.contains(key)) ||
+        source['operation'] != 'update' ||
+        source['target'] is! Map ||
+        source['changes'] is! Map) {
+      return ZeliaActionGuardResult.rejected('invalid_event_mutation');
+    }
+    final targetMap = Map<String, dynamic>.from(source['target'] as Map);
+    final changesMap = Map<String, dynamic>.from(source['changes'] as Map);
+    const targetKeys = {'title', 'date', 'time', 'category'};
+    const changeKeys = {
+      'title',
+      'date',
+      'time',
+      'durationMinutes',
+      'travelGoMinutes',
+      'travelBackMinutes',
+      'marginMinutes',
+      'notes',
+      'category',
+    };
+    if (targetMap.isEmpty ||
+        changesMap.isEmpty ||
+        targetMap.keys.any((key) => !targetKeys.contains(key)) ||
+        changesMap.keys.any((key) => !changeKeys.contains(key))) {
+      return ZeliaActionGuardResult.rejected('invalid_event_mutation');
+    }
+    String? optionalText(
+      Map<String, dynamic> map,
+      String key, {
+      bool allowEmpty = false,
+    }) {
+      if (!map.containsKey(key)) return null;
+      if (map[key] is! String) {
+        throw const FormatException('invalid_event_mutation_text');
+      }
+      final value = _cleanText(map[key]);
+      if (!allowEmpty && value.isEmpty) {
+        throw const FormatException('invalid_event_mutation_text');
+      }
+      return value;
+    }
+
+    int? optionalInteger(String key, int minimum, int maximum) {
+      if (!changesMap.containsKey(key)) return null;
+      if (changesMap[key] is! int) {
+        throw const FormatException('invalid_event_mutation_number');
+      }
+      final value = changesMap[key] as int;
+      if (value < minimum || value > maximum) {
+        throw const FormatException('invalid_event_mutation_number');
+      }
+      return value;
+    }
+
+    try {
+      final targetDate = optionalText(targetMap, 'date');
+      final targetTime = optionalText(targetMap, 'time');
+      final changeDate = optionalText(changesMap, 'date');
+      final changeTime = optionalText(changesMap, 'time');
+      if ((targetDate != null &&
+              _normalizeDate(targetDate, []) != targetDate) ||
+          (targetTime != null &&
+              _normalizeTime(targetTime, []) != targetTime) ||
+          (changeDate != null &&
+              _normalizeDate(changeDate, []) != changeDate) ||
+          (changeTime != null &&
+              _normalizeTime(changeTime, []) != changeTime)) {
+        throw const FormatException('invalid_event_mutation_temporal');
+      }
+      final request = EventMutationRequest(
+        target: EventMutationTarget(
+          title: optionalText(targetMap, 'title'),
+          date: targetDate,
+          time: targetTime,
+          category: optionalText(targetMap, 'category'),
+        ),
+        changes: EventMutationChanges(
+          title: optionalText(changesMap, 'title'),
+          date: changeDate,
+          time: changeTime,
+          durationMinutes: optionalInteger('durationMinutes', 1, 1440),
+          travelGoMinutes: optionalInteger('travelGoMinutes', 0, 480),
+          travelBackMinutes: optionalInteger('travelBackMinutes', 0, 480),
+          marginMinutes: optionalInteger('marginMinutes', 0, 240),
+          notes: optionalText(changesMap, 'notes', allowEmpty: true),
+          category: optionalText(changesMap, 'category'),
+        ),
+      );
+      return ZeliaActionGuardResult.accepted(
+        action: {'type': 'event_mutation', 'eventMutation': request},
+      );
+    } on FormatException {
+      return ZeliaActionGuardResult.rejected('invalid_event_mutation');
+    }
   }
 
   static EventParticipant? _validatedParticipant(

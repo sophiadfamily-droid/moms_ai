@@ -13,6 +13,7 @@ const {
 const {generateZeliaResponse} = require("./openaiService");
 const {routeModel} = require("./modelRouterService");
 const {sanitizeEventParticipants} = require("./eventParticipantContract");
+const {sanitizeEventMutations} = require("./eventMutationContract");
 
 const OPENAI_TIMEOUT_MS = 22000;
 
@@ -160,7 +161,10 @@ ${buildBrainContext()}
 
   return {
     reply: parsed.reply || "C'est noté 💕",
-    actions: sanitizeEventParticipants(parsed.actions, message, logger),
+    actions: sanitizeEventMutations(
+        sanitizeEventParticipants(parsed.actions, message, logger),
+        message,
+        logger),
     memories: parsed.memories || [],
   };
 }

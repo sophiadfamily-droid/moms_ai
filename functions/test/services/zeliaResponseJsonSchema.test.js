@@ -3,7 +3,12 @@ const test = require("node:test");
 
 const {
   ACTION_TYPES,
+  CREATION_ACTION_TYPES,
   actionSchema,
+  creationActionSchema,
+  eventMutationActionSchema,
+  eventMutationChangesSchema,
+  eventMutationTargetSchema,
   memorySchema,
   eventParticipantSchema,
   zeliaResponseJsonSchema,
@@ -12,8 +17,9 @@ const {
 test("defines the supported action types", () => {
   assert.deepEqual(
       ACTION_TYPES,
-      ["shopping", "task", "event"],
+      ["shopping", "task", "event", "event_mutation"],
   );
+  assert.deepEqual(CREATION_ACTION_TYPES, ["shopping", "task", "event"]);
 });
 
 test("requires every top-level response field", () => {
@@ -33,11 +39,14 @@ test("defines actions as a strict array of action objects", () => {
 
   assert.equal(actions.type, "array");
   assert.equal(actions.items, actionSchema);
-  assert.equal(actionSchema.additionalProperties, false);
+  assert.deepEqual(actionSchema.anyOf, [
+    creationActionSchema,
+    eventMutationActionSchema,
+  ]);
 });
 
 test("requires the separate travel fields", () => {
-  const requiredFields = new Set(actionSchema.required);
+  const requiredFields = new Set(creationActionSchema.required);
 
   assert.equal(requiredFields.has("travelMinutes"), true);
   assert.equal(requiredFields.has("travelGoMinutes"), true);
@@ -49,7 +58,7 @@ test("requires the separate travel fields", () => {
 });
 
 test("requires recurring, task, and shopping compatibility fields", () => {
-  const requiredFields = new Set(actionSchema.required);
+  const requiredFields = new Set(creationActionSchema.required);
 
   assert.equal(requiredFields.has("recurringUntil"), true);
   assert.equal(requiredFields.has("isImportant"), true);
@@ -61,11 +70,14 @@ test("requires recurring, task, and shopping compatibility fields", () => {
 });
 
 test("defines a closed nullable event participant contract", () => {
-  const requiredFields = new Set(actionSchema.required);
+  const requiredFields = new Set(creationActionSchema.required);
   const objectSchema = eventParticipantSchema.anyOf[0];
 
   assert.equal(requiredFields.has("participant"), true);
-  assert.equal(actionSchema.properties.participant, eventParticipantSchema);
+  assert.equal(
+      creationActionSchema.properties.participant,
+      eventParticipantSchema,
+  );
   assert.equal(objectSchema.additionalProperties, false);
   assert.deepEqual(
       objectSchema.required,
@@ -105,13 +117,25 @@ test("uses strict schemas at every object level", () => {
       false,
   );
 
-  assert.equal(
-      actionSchema.additionalProperties,
-      false,
-  );
+  assert.equal(creationActionSchema.additionalProperties, false);
+  assert.equal(eventMutationActionSchema.additionalProperties, false);
 
   assert.equal(
       memorySchema.additionalProperties,
       false,
   );
+});
+
+test("defines a closed update-only event mutation action", () => {
+  assert.deepEqual(eventMutationActionSchema.required,
+      ["type", "operation", "target", "changes"]);
+  assert.deepEqual(eventMutationActionSchema.properties.type.enum,
+      ["event_mutation"]);
+  assert.deepEqual(eventMutationActionSchema.properties.operation.enum,
+      ["update"]);
+  assert.equal(eventMutationTargetSchema.additionalProperties, false);
+  assert.equal(eventMutationChangesSchema.additionalProperties, false);
+  assert.equal("id" in eventMutationTargetSchema.properties, false);
+  assert.equal("participantIdentity" in eventMutationChangesSchema.properties,
+      false);
 });

@@ -117,6 +117,44 @@ void main() {
       expect(result.action!['recurringWeekday'], 3);
     });
 
+    test('accepts only a closed typed event mutation', () {
+      final result = ZeliaActionGuardService.guard({
+        'type': 'event_mutation',
+        'operation': 'update',
+        'target': {'title': 'Médecin', 'date': '2026-07-23'},
+        'changes': {'time': '11:00'},
+      });
+      expect(result.isAccepted, true);
+      expect(result.action!['type'], 'event_mutation');
+      expect(result.action!['eventMutation'], isNotNull);
+      expect(result.action, isNot(contains('id')));
+    });
+
+    test('rejects empty, unknown and forbidden event mutations', () {
+      for (final action in [
+        {
+          'type': 'event_mutation',
+          'operation': 'delete',
+          'target': {'title': 'Médecin'},
+          'changes': {'time': '11:00'},
+        },
+        {
+          'type': 'event_mutation',
+          'operation': 'update',
+          'target': <String, dynamic>{},
+          'changes': {'time': '11:00'},
+        },
+        {
+          'type': 'event_mutation',
+          'operation': 'update',
+          'target': {'id': 'event-1'},
+          'changes': {'participantIdentity': 'forbidden'},
+        },
+      ]) {
+        expect(ZeliaActionGuardService.guard(action).isAccepted, false);
+      }
+    });
+
     test('removes event-only fields from shopping actions', () {
       final result = ZeliaActionGuardService.guard({
         'type': 'shopping',
