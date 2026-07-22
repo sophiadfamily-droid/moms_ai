@@ -46,6 +46,7 @@ void main() {
       'entity_resolution.dart',
       'entity_normalizer.dart',
       'identity_engine.dart',
+      'persisted_identity_link.dart',
     ]) {
       expect(
           File('${identityDirectory.path}/$domainFile').existsSync(), isTrue);
@@ -104,6 +105,19 @@ void main() {
     expect(source, isNot(contains('class BaseEntity')));
     expect(source, isNot(contains('repositories/identity')));
     expect(source, isNot(contains('identity_repository')));
+  });
+
+  test('persisted Identity link is not integrated into business models', () {
+    for (final relativePath in [
+      'lib/models/event_model.dart',
+      'lib/models/task_model.dart',
+      'lib/models/shopping_item_model.dart',
+    ]) {
+      final source =
+          File('${repositoryRoot.path}/$relativePath').readAsStringSync();
+      expect(source, isNot(contains('PersistedIdentityLink')));
+      expect(source, isNot(contains('participantIdentity')));
+    }
   });
 
   test('identity repository boundary has no framework or application imports',

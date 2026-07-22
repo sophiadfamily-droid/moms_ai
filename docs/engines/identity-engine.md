@@ -34,12 +34,19 @@ temporarily to an in-memory conversation draft for the single
 continuation through clarification. Selection enriches the draft binding only;
 it never creates the event or resumes an irreversible action automatically.
 
-The Identity Engine is not applied to every chat message. Phases 3A and 3B
-and 3C create no identity or proposal, perform no Identity save, and have no
-concrete Firestore repository or production-persisted Identity data. The event,
-task, and shopping models contain no Identity reference. No index, migration,
-profile seeding, location binding, task binding, or shopping binding is
-implemented.
+**Implemented in Phase 3D-A:** the pure `PersistedIdentityLink` value contract
+and its defensive, framework-independent map codec define how a resolved
+Identity reference may be represented in a future business object. The
+contract stores only entity ID, entity type, and schema version; corrupt or
+future persisted values produce typed, non-sensitive read results.
+
+The Identity Engine is not applied to every chat message. Phases 3A through 3C
+create no identity or proposal, perform no Identity save, and have no
+concrete Firestore repository or production-persisted Identity data. Phase
+3D-A is a dormant contract only: no event, task, shopping, conversation, or
+backend model uses it; it performs no Firestore write and creates no active
+business link. No index, migration, profile seeding, location binding, task
+binding, or shopping binding is implemented.
 
 **Outside V1:** fuzzy, phonetic, embedding, or LLM matching; global identities;
 automatic merges; inferred sensitive relationships; and Knowledge Graph logic.
