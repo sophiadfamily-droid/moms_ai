@@ -28,10 +28,18 @@ identities, with a typed pending state, deterministic numbered or exact-label
 selection, stable entity IDs, cancellation, and a fifteen-minute expiration.
 The LLM never selects a candidate and no business action resumes automatically.
 
+**Implemented in Phase 3C:** a resolved existing person identity can be attached
+temporarily to an in-memory conversation draft for the single
+`eventParticipant` role. Ambiguous resolutions retain a minimal typed
+continuation through clarification. Selection enriches the draft binding only;
+it never creates the event or resumes an irreversible action automatically.
+
 The Identity Engine is not applied to every chat message. Phases 3A and 3B
-create no identity or proposal, perform no Identity save, and have no concrete
-Firestore repository or production-persisted Identity data. No index,
-migration, profile seeding, or application-model integration is implemented.
+and 3C create no identity or proposal, perform no Identity save, and have no
+concrete Firestore repository or production-persisted Identity data. The event,
+task, and shopping models contain no Identity reference. No index, migration,
+profile seeding, location binding, task binding, or shopping binding is
+implemented.
 
 **Outside V1:** fuzzy, phonetic, embedding, or LLM matching; global identities;
 automatic merges; inferred sensitive relationships; and Knowledge Graph logic.

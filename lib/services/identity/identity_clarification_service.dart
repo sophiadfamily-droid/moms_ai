@@ -32,6 +32,7 @@ final class IdentityClarificationService {
   PendingIdentityClarification create({
     required IdentityApplicationResult applicationResult,
     required IdentityResolutionRequest request,
+    PendingIdentityActionBinding? actionBinding,
   }) {
     if (applicationResult.status != IdentityApplicationStatus.ambiguous &&
         applicationResult.status !=
@@ -58,6 +59,7 @@ final class IdentityClarificationService {
       createdAt: createdAt,
       expiresAt: createdAt.add(_validity),
       accountScopeId: request.scope.accountId,
+      actionBinding: actionBinding,
     );
   }
 

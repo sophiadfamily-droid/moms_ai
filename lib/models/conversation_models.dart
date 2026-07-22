@@ -56,6 +56,128 @@ final class IdentityClarificationChoice {
   }
 }
 
+enum IdentityActionKind { event }
+
+enum IdentityActionTarget { eventParticipant }
+
+final class IdentityActionContinuation {
+  final IdentityActionKind actionKind;
+  final String actionDraftId;
+  final IdentityActionTarget target;
+
+  IdentityActionContinuation({
+    required this.actionKind,
+    required this.actionDraftId,
+    required this.target,
+  }) {
+    if (!EntityIdentity.isValid(actionDraftId)) {
+      throw const ConversationIdentityException('invalid_action_draft_id');
+    }
+    if (actionKind == IdentityActionKind.event &&
+        target != IdentityActionTarget.eventParticipant) {
+      throw const ConversationIdentityException('incompatible_action_target');
+    }
+  }
+}
+
+final class PendingIdentityActionBinding {
+  final String bindingId;
+  final String accountScopeId;
+  final IdentityActionContinuation continuation;
+  final String? clarificationId;
+  final String? resolvedEntityId;
+
+  PendingIdentityActionBinding({
+    required this.bindingId,
+    required String accountScopeId,
+    required this.continuation,
+    this.clarificationId,
+    this.resolvedEntityId,
+  }) : accountScopeId = accountScopeId.trim() {
+    if (!EntityIdentity.isValid(bindingId)) {
+      throw const ConversationIdentityException('invalid_binding_id');
+    }
+    if (this.accountScopeId.isEmpty) {
+      throw const ConversationIdentityException('invalid_account_scope');
+    }
+    if (clarificationId != null && !EntityIdentity.isValid(clarificationId)) {
+      throw const ConversationIdentityException('invalid_clarification_id');
+    }
+    if (resolvedEntityId != null && !EntityIdentity.isValid(resolvedEntityId)) {
+      throw const ConversationIdentityException('invalid_resolved_entity_id');
+    }
+  }
+
+  bool get isApplied => resolvedEntityId != null;
+
+  PendingIdentityActionBinding copyWith({
+    String? clarificationId,
+    String? resolvedEntityId,
+  }) {
+    return PendingIdentityActionBinding(
+      bindingId: bindingId,
+      accountScopeId: accountScopeId,
+      continuation: continuation,
+      clarificationId: clarificationId ?? this.clarificationId,
+      resolvedEntityId: resolvedEntityId ?? this.resolvedEntityId,
+    );
+  }
+}
+
+enum IdentityActionBindingStatus {
+  attached,
+  pendingClarification,
+  cancelled,
+  expired,
+  invalid,
+  alreadyApplied,
+}
+
+final class IdentityActionBindingResult {
+  final IdentityActionBindingStatus status;
+  final String bindingId;
+  final String actionDraftId;
+  final IdentityActionTarget target;
+  final String? resolvedEntityId;
+  final String diagnosticCode;
+  final PendingIdentityActionBinding binding;
+
+  IdentityActionBindingResult({
+    required this.status,
+    required this.bindingId,
+    required this.actionDraftId,
+    required this.target,
+    this.resolvedEntityId,
+    required this.diagnosticCode,
+    required this.binding,
+  }) {
+    final hasResolvedId = EntityIdentity.isValid(resolvedEntityId);
+    if (status == IdentityActionBindingStatus.attached && !hasResolvedId) {
+      throw const ConversationIdentityException(
+        'attached_binding_requires_entity',
+      );
+    }
+    if (status == IdentityActionBindingStatus.attached &&
+        binding.resolvedEntityId != resolvedEntityId) {
+      throw const ConversationIdentityException(
+        'attached_result_binding_mismatch',
+      );
+    }
+    if (status != IdentityActionBindingStatus.attached &&
+        resolvedEntityId != null) {
+      throw const ConversationIdentityException(
+        'unattached_binding_cannot_contain_entity',
+      );
+    }
+    if (bindingId != binding.bindingId ||
+        actionDraftId != binding.continuation.actionDraftId ||
+        target != binding.continuation.target ||
+        diagnosticCode.trim().isEmpty) {
+      throw const ConversationIdentityException('invalid_binding_result');
+    }
+  }
+}
+
 final class PendingIdentityClarification {
   final String clarificationId;
   final EntityReference reference;
@@ -63,6 +185,7 @@ final class PendingIdentityClarification {
   final DateTime createdAt;
   final DateTime expiresAt;
   final String accountScopeId;
+  final PendingIdentityActionBinding? actionBinding;
 
   PendingIdentityClarification({
     required this.clarificationId,
@@ -71,6 +194,7 @@ final class PendingIdentityClarification {
     required this.createdAt,
     required this.expiresAt,
     required String accountScopeId,
+    this.actionBinding,
   })  : _candidateChoices = List.unmodifiable(candidateChoices),
         accountScopeId = accountScopeId.trim() {
     if (!EntityIdentity.isValid(clarificationId)) {
@@ -78,6 +202,10 @@ final class PendingIdentityClarification {
     }
     if (this.accountScopeId.isEmpty) {
       throw const ConversationIdentityException('invalid_account_scope');
+    }
+    if (actionBinding != null &&
+        actionBinding!.accountScopeId != this.accountScopeId) {
+      throw const ConversationIdentityException('binding_scope_mismatch');
     }
     if (!expiresAt.isAfter(createdAt)) {
       throw const ConversationIdentityException('invalid_expiration_date');
@@ -96,6 +224,20 @@ final class PendingIdentityClarification {
 
   bool isExpiredAt(DateTime referenceDate) =>
       !referenceDate.isBefore(expiresAt);
+
+  PendingIdentityClarification withActionBinding(
+    PendingIdentityActionBinding binding,
+  ) {
+    return PendingIdentityClarification(
+      clarificationId: clarificationId,
+      reference: reference,
+      candidateChoices: _candidateChoices,
+      createdAt: createdAt,
+      expiresAt: expiresAt,
+      accountScopeId: accountScopeId,
+      actionBinding: binding,
+    );
+  }
 }
 
 enum IdentityClarificationStatus {
@@ -216,20 +358,24 @@ class ConversationOutcome {
   final String reply;
   final ChatBackendRequest? request;
   final IdentityClarificationResult? identityClarificationResult;
+  final IdentityActionBindingResult? identityActionBindingResult;
 
   const ConversationOutcome({
     required this.reply,
     this.request,
     this.identityClarificationResult,
+    this.identityActionBindingResult,
   });
 }
 
 class PendingConversationResolution {
   final String message;
   final IdentityClarificationResult? identityClarificationResult;
+  final IdentityActionBindingResult? identityActionBindingResult;
 
   const PendingConversationResolution(
     this.message, {
     this.identityClarificationResult,
+    this.identityActionBindingResult,
   });
 }

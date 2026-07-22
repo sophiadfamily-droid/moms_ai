@@ -11,6 +11,8 @@ import 'memory_confirmation_copy.dart';
 import 'memory_lifecycle_engine.dart';
 import 'memory_lifecycle_repository.dart';
 import 'identity/identity_application_models.dart';
+import 'identity/identity_application_service.dart';
+import 'identity/identity_action_binding_service.dart';
 import 'identity/identity_clarification_service.dart';
 import 'zelia_action_guard_service.dart';
 import 'zelia_response_builder.dart';
@@ -29,10 +31,13 @@ class ConversationCoordinator {
   final ConversationAnswerClassifier answerClassifier;
   final MemoryConfirmationCopy memoryCopy;
   final IdentityClarificationService identityClarificationService;
+  final IdentityActionBindingService identityActionBindingService;
+  final IdentityApplicationService? identityApplicationService;
 
   ConversationState _state = const ConversationState();
   bool _isSending = false;
   bool _isResolvingPendingAction = false;
+  final Map<String, PendingIdentityActionBinding> _identityActionBindings = {};
 
   ConversationCoordinator({
     required this.backend,
@@ -42,9 +47,15 @@ class ConversationCoordinator {
     this.answerClassifier = const ConversationAnswerClassifier(),
     this.memoryCopy = const MemoryConfirmationCopy(),
     IdentityClarificationService? identityClarificationService,
+    IdentityActionBindingService? identityActionBindingService,
+    this.identityApplicationService,
   })  : _memoryLifecycleRepository = memoryLifecycleRepository,
         identityClarificationService = identityClarificationService ??
             IdentityClarificationService(
+              idGenerator: UuidV7EntityIdGenerator(),
+            ),
+        identityActionBindingService = identityActionBindingService ??
+            IdentityActionBindingService(
               idGenerator: UuidV7EntityIdGenerator(),
             );
 
@@ -105,6 +116,89 @@ class ConversationCoordinator {
     );
   }
 
+  Future<PendingConversationResolution> beginIdentityActionBinding({
+    required IdentityResolutionRequest request,
+    required IdentityActionContinuation continuation,
+  }) async {
+    final bindingKey = _identityBindingKey(
+      accountScopeId: request.scope.accountId,
+      continuation: continuation,
+    );
+    final existingBinding = _identityActionBindings[bindingKey];
+    if (existingBinding?.isApplied == true) {
+      final result =
+          identityActionBindingService.alreadyApplied(existingBinding!);
+      return PendingConversationResolution(
+        _bindingMessage(result.status),
+        identityActionBindingResult: result,
+      );
+    }
+    final binding = identityActionBindingService.create(
+      accountScopeId: request.scope.accountId,
+      continuation: continuation,
+    );
+    if (_state.pendingAction != null) {
+      final result = identityActionBindingService.invalid(
+        binding: binding,
+        diagnosticCode: 'pending_action_exists',
+      );
+      return PendingConversationResolution(
+        'Une autre confirmation est déjà en attente.',
+        identityActionBindingResult: result,
+      );
+    }
+    final applicationService = identityApplicationService;
+    if (applicationService == null) {
+      final result = identityActionBindingService.invalid(
+        binding: binding,
+        diagnosticCode: 'identity_service_unavailable',
+      );
+      return PendingConversationResolution(
+        'L’identité ne peut pas être vérifiée pour le moment.',
+        identityActionBindingResult: result,
+      );
+    }
+
+    final applicationResult = await applicationService.resolve(request);
+    var bindingResult = identityActionBindingService.fromApplicationResult(
+      binding: binding,
+      applicationResult: applicationResult,
+    );
+    if (bindingResult.status !=
+        IdentityActionBindingStatus.pendingClarification) {
+      if (bindingResult.status == IdentityActionBindingStatus.attached) {
+        _identityActionBindings[bindingKey] = bindingResult.binding;
+      }
+      return PendingConversationResolution(
+        _bindingMessage(bindingResult.status),
+        identityActionBindingResult: bindingResult,
+      );
+    }
+
+    var pending = identityClarificationService.create(
+      applicationResult: applicationResult,
+      request: request,
+      actionBinding: binding,
+    );
+    final linkedBinding = identityActionBindingService.linkClarification(
+      binding: binding,
+      clarificationId: pending.clarificationId,
+    );
+    pending = pending.withActionBinding(linkedBinding);
+    bindingResult = identityActionBindingService.fromApplicationResult(
+      binding: linkedBinding,
+      applicationResult: applicationResult,
+    );
+    _state = _state.copyWith(
+      phase: ConversationPhase.awaitingActionConfirmation,
+      pendingAction: PendingConversationAction.identityClarification(pending),
+    );
+    return PendingConversationResolution(
+      identityClarificationService.question(pending),
+      identityActionBindingResult: bindingResult,
+    );
+  }
+
   Future<PendingConversationResolution?> resolvePendingIdentityClarification({
     required String answer,
     DateTime? referenceDate,
@@ -121,12 +215,28 @@ class ConversationCoordinator {
       answer: answer,
       referenceDate: referenceDate,
     );
+    final actionBinding = pending.actionBinding;
+    final bindingResult = actionBinding == null
+        ? null
+        : identityActionBindingService.applyClarification(
+            binding: actionBinding,
+            clarificationResult: result,
+            bindingId: actionBinding.bindingId,
+            clarificationId: pending.clarificationId,
+          );
+    if (bindingResult?.status == IdentityActionBindingStatus.attached) {
+      _identityActionBindings[_identityBindingKey(
+        accountScopeId: actionBinding!.accountScopeId,
+        continuation: actionBinding.continuation,
+      )] = bindingResult!.binding;
+    }
     if (result.status != IdentityClarificationStatus.stillAmbiguous) {
       _clearPendingAction();
     }
     return PendingConversationResolution(
       result.followUpMessage,
       identityClarificationResult: result,
+      identityActionBindingResult: bindingResult,
     );
   }
 
@@ -244,6 +354,8 @@ class ConversationCoordinator {
         reply: identityResolution.message,
         identityClarificationResult:
             identityResolution.identityClarificationResult,
+        identityActionBindingResult:
+            identityResolution.identityActionBindingResult,
       );
     }
     if (_isSending) return null;
@@ -445,5 +557,34 @@ class ConversationCoordinator {
       phase: ConversationPhase.idle,
       clearPendingAction: true,
     );
+  }
+
+  String _bindingMessage(IdentityActionBindingStatus status) {
+    return switch (status) {
+      IdentityActionBindingStatus.attached =>
+        'L’identité est rattachée au brouillon de l’événement.',
+      IdentityActionBindingStatus.pendingClarification =>
+        'Une clarification est nécessaire.',
+      IdentityActionBindingStatus.cancelled =>
+        'Le rattachement de l’identité est annulé.',
+      IdentityActionBindingStatus.expired =>
+        'Le rattachement de l’identité a expiré.',
+      IdentityActionBindingStatus.invalid =>
+        'L’identité ne peut pas être rattachée à ce brouillon.',
+      IdentityActionBindingStatus.alreadyApplied =>
+        'L’identité est déjà rattachée à ce brouillon.',
+    };
+  }
+
+  String _identityBindingKey({
+    required String accountScopeId,
+    required IdentityActionContinuation continuation,
+  }) {
+    return [
+      accountScopeId,
+      continuation.actionKind.name,
+      continuation.actionDraftId,
+      continuation.target.name,
+    ].join('|');
   }
 }
