@@ -6,6 +6,7 @@ import 'package:moms_ai/models/event_mutation_models.dart';
 import 'package:moms_ai/models/event_participant_identity_link.dart';
 import 'package:moms_ai/services/event_conversation_mutation_service.dart';
 import 'package:moms_ai/services/event_mutation_service.dart';
+import 'package:moms_ai/services/event_mutation_result.dart';
 
 void main() {
   test('proposes every allowed change while preserving Identity', () {
@@ -48,9 +49,13 @@ void main() {
       write: (
           {required existing,
           required proposed,
+          required expectedEventRevision,
           required participantIntent}) async {
         writes++;
         intent = participantIntent;
+        return EventMutationResult.success(
+          proposed.copyWith(eventRevision: expectedEventRevision + 1),
+        );
       },
     );
     final result = await service.execute(
@@ -83,6 +88,7 @@ void main() {
       write: ({
         required existing,
         required proposed,
+        required expectedEventRevision,
         required participantIntent,
       }) async =>
           fail('conflicting mutation must not write'),

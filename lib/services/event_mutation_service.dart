@@ -59,6 +59,7 @@ abstract final class EventMutationService {
 
   static EventModel duplicate(EventModel source) => source.copyWith(
         clearId: true,
+        eventRevision: 1,
         clearParticipantIdentity: true,
         participantIdentityRevision: 0,
       );

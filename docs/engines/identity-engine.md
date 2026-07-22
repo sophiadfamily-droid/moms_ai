@@ -201,8 +201,26 @@ is never converted to participant addition. Pending clarification, creation,
 and final confirmation expire independently and repeated confirmation cannot
 reapply a successful mutation. Firestore rules and indexes are unchanged; the
 Phase 4H emulator contract already covers revisioned replacement/removal and
-same-scope enforcement. The narrow read-before-write window is not a server
-transaction and remains a documented concurrency limit of local event storage.
+same-scope enforcement.
+
+**Implemented in Phase 4J:** events also carry a global `eventRevision`,
+independent from `participantIdentityRevision`. Modern creation and independent
+recurrence occurrences start at one; a historical missing field reads as zero
+and the first modern mutation writes one. Standard, participant-replacement,
+and participant-removal mutations all require the caller's expected revision
+and increment it exactly once. Participant replacement/removal additionally
+increment only their separate participant lifecycle revision.
+
+`CloudEventService` applies existing-event mutations through a Firestore
+document transaction. It reads and validates the persisted revision before
+writing, making a stale retry or two-device race fail with a stable conflict
+instead of last-write-wins. Firestore Rules independently require
+`previous + 1` and reject missing, unchanged, regressed, or skipped revisions.
+Calendar edits use the same revisioned boundary as conversation; full
+collection synchronization may create, delete, or retain identical documents
+but cannot overwrite a changed existing document. Local-only SharedPreferences
+storage compares and increments within the process, without claiming
+interprocess or multi-device guarantees.
 
 **Outside V1:** fuzzy, phonetic, embedding, or LLM matching; global identities;
 automatic merges; inferred sensitive relationships; and Knowledge Graph logic.

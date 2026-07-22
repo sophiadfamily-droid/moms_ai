@@ -10,6 +10,18 @@ import '../core/identity/uuid_v7_entity_id_generator.dart';
 import '../models/event_model.dart';
 import 'cloud_event_service.dart';
 import 'event_mutation_service.dart';
+import 'event_mutation_result.dart';
+
+typedef EventCloudMutation = Future<EventMutationResult?> Function({
+  required EventModel existing,
+  required EventModel proposed,
+  required int expectedEventRevision,
+});
+
+typedef EventCloudDeletion = Future<EventMutationResult?> Function({
+  required EventModel existing,
+  required int expectedEventRevision,
+});
 
 class EventService {
   static const String eventsKey = "zelia_events";
@@ -46,6 +58,7 @@ class EventService {
       existing: existing,
       proposed: events,
     );
+    _validateFullRewriteRevisions(existing: existing, proposed: reconciled);
 
     final encoded = reconciled
         .map(
@@ -140,26 +153,104 @@ class EventService {
     await saveEvents(events);
   }
 
-  static Future<void> mutateEvent({
+  static Future<EventMutationResult> mutateEvent({
     required EventModel existing,
     required EventModel proposed,
+    required int expectedEventRevision,
     EventParticipantMutationIntent participantIntent =
         const PreserveEventParticipant(),
+    EventCloudMutation cloudMutate = CloudEventService.mutateEvent,
   }) async {
     final events = await getEvents();
     final index = events.indexWhere(
       (event) => areSameEvent(event, existing),
     );
-    if (index < 0) return;
-    if (jsonEncode(events[index].toJson()) != jsonEncode(existing.toJson())) {
-      throw const FormatException('event_mutation_concurrent_change');
+    if (index < 0) return const EventMutationResult.notFound();
+    final current = events[index];
+    if (expectedEventRevision < 0 ||
+        current.eventRevision != expectedEventRevision) {
+      return const EventMutationResult.revisionConflict();
     }
-    events[index] = EventMutationService.apply(
-      existing: events[index],
-      proposed: proposed,
-      participantIntent: participantIntent,
+    try {
+      final next = EventMutationService.apply(
+        existing: current,
+        proposed: proposed,
+        participantIntent: participantIntent,
+      ).copyWith(eventRevision: current.eventRevision + 1);
+      final cloudResult = await cloudMutate(
+        existing: current,
+        proposed: next,
+        expectedEventRevision: expectedEventRevision,
+      );
+      if (cloudResult != null &&
+          cloudResult.status != EventMutationStatus.success) {
+        return cloudResult;
+      }
+      events[index] = next;
+      await _writeLocalEvents(events);
+      notifyEventsChanged();
+      return EventMutationResult.success(next);
+    } on FormatException {
+      return const EventMutationResult.invalid();
+    } catch (_) {
+      return const EventMutationResult.persistenceFailure();
+    }
+  }
+
+  static Future<EventMutationResult> deleteEvent({
+    required EventModel existing,
+    required int expectedEventRevision,
+    EventCloudDeletion cloudDelete = CloudEventService.deleteEvent,
+  }) async {
+    final events = await getEvents();
+    final index = events.indexWhere((event) => areSameEvent(event, existing));
+    if (index < 0) return const EventMutationResult.notFound();
+    if (events[index].eventRevision != expectedEventRevision) {
+      return const EventMutationResult.revisionConflict();
+    }
+    try {
+      final cloudResult = await cloudDelete(
+        existing: events[index],
+        expectedEventRevision: expectedEventRevision,
+      );
+      if (cloudResult != null &&
+          cloudResult.status != EventMutationStatus.success) {
+        return cloudResult;
+      }
+      final removed = events.removeAt(index);
+      await _writeLocalEvents(events);
+      notifyEventsChanged();
+      return EventMutationResult.success(removed);
+    } catch (_) {
+      return const EventMutationResult.persistenceFailure();
+    }
+  }
+
+  static Future<void> _writeLocalEvents(List<EventModel> events) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+      eventsKey,
+      events.map((event) => jsonEncode(event.toJson())).toList(),
     );
-    await saveEvents(events);
+  }
+
+  static void _validateFullRewriteRevisions({
+    required List<EventModel> existing,
+    required List<EventModel> proposed,
+  }) {
+    final proposedById = {
+      for (final event in proposed)
+        if (EntityIdentity.isValid(event.id)) event.id!: event,
+    };
+    for (final current in existing) {
+      if (!EntityIdentity.isValid(current.id)) continue;
+      final next = proposedById[current.id];
+      if (next == null) continue;
+      if (jsonEncode(current.toJson()) == jsonEncode(next.toJson())) continue;
+      if (next.eventRevision != current.eventRevision + 1) {
+        throw const FormatException('event_mutation_revision_required');
+      }
+    }
   }
 
   static Future<void> duplicateEvent(
@@ -176,9 +267,11 @@ class EventService {
     EventModel event,
     EntityIdGenerator idGenerator,
   ) {
-    if (EntityIdentity.isValid(event.id)) return event;
+    final creation =
+        event.eventRevision == 1 ? event : event.copyWith(eventRevision: 1);
+    if (EntityIdentity.isValid(creation.id)) return creation;
     final generatedId = idGenerator.generate();
-    return event.copyWith(id: generatedId);
+    return creation.copyWith(id: generatedId);
   }
 
   static bool areSameEvent(EventModel first, EventModel second) {
@@ -374,6 +467,7 @@ class EventService {
       occurrences.add(
         baseEvent.copyWith(
           clearId: true,
+          eventRevision: 1,
           date: date,
           time: time,
           startDateTimeIso: "${date}T$time:00",

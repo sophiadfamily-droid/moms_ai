@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../models/event_model.dart';
 import '../services/event_service.dart';
+import '../services/event_mutation_result.dart';
+import '../services/event_mutation_service.dart';
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({
@@ -9,12 +11,24 @@ class CalendarScreen extends StatefulWidget {
     this.loadEventsForTest,
     this.addEventForTest,
     this.updateEventsForTest,
+    this.mutateEventForTest,
+    this.deleteEventForTest,
     this.eventsVersionForTest,
   });
 
   final Future<List<EventModel>> Function()? loadEventsForTest;
   final Future<void> Function(EventModel event)? addEventForTest;
   final Future<void> Function(List<EventModel> events)? updateEventsForTest;
+  final Future<EventMutationResult> Function({
+    required EventModel existing,
+    required EventModel proposed,
+    required int expectedEventRevision,
+    required EventParticipantMutationIntent participantIntent,
+  })? mutateEventForTest;
+  final Future<EventMutationResult> Function({
+    required EventModel existing,
+    required int expectedEventRevision,
+  })? deleteEventForTest;
   final ValueNotifier<int>? eventsVersionForTest;
 
   @override
@@ -53,6 +67,34 @@ class _CalendarScreenState extends State<CalendarScreen> {
   Future<void> updateEvents(List<EventModel> updatedEvents) {
     return widget.updateEventsForTest?.call(updatedEvents) ??
         EventService.updateEvents(updatedEvents);
+  }
+
+  Future<EventMutationResult> mutateEvent({
+    required EventModel existing,
+    required EventModel proposed,
+  }) {
+    return widget.mutateEventForTest?.call(
+          existing: existing,
+          proposed: proposed,
+          expectedEventRevision: existing.eventRevision,
+          participantIntent: const PreserveEventParticipant(),
+        ) ??
+        EventService.mutateEvent(
+          existing: existing,
+          proposed: proposed,
+          expectedEventRevision: existing.eventRevision,
+        );
+  }
+
+  Future<EventMutationResult> deleteEvent(EventModel event) {
+    return widget.deleteEventForTest?.call(
+          existing: event,
+          expectedEventRevision: event.eventRevision,
+        ) ??
+        EventService.deleteEvent(
+          existing: event,
+          expectedEventRevision: event.eventRevision,
+        );
   }
 
   @override
@@ -359,14 +401,26 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
     if (choice == null) return;
 
-    if (choice == 'series' && isRecurring) {
-      events.removeWhere(
-          (item) => item.parentRecurringId == event.parentRecurringId);
-    } else {
-      events.removeWhere((item) => EventService.areSameEvent(item, event));
+    final targets = choice == 'series' && isRecurring
+        ? events
+            .where((item) => item.parentRecurringId == event.parentRecurringId)
+            .toList(growable: false)
+        : [event];
+    for (final target in targets) {
+      final result = await deleteEvent(target);
+      if (result.status != EventMutationStatus.success) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                "Cet événement a changé. Rechargez l'agenda puis réessayez.",
+              ),
+            ),
+          );
+        }
+        return;
+      }
     }
-
-    await updateEvents(events);
 
     if (!mounted) return;
 
@@ -1174,13 +1228,21 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                 }
 
                                 if (isEdit) {
-                                  final index = events.indexWhere(
-                                    (item) =>
-                                        EventService.areSameEvent(item, event),
+                                  final result = await mutateEvent(
+                                    existing: event,
+                                    proposed: updatedEvent,
                                   );
-                                  if (index != -1) {
-                                    events[index] = updatedEvent;
-                                    await updateEvents(events);
+                                  if (result.status !=
+                                          EventMutationStatus.success &&
+                                      context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          "Cet événement a changé. Rechargez l'agenda puis réessayez.",
+                                        ),
+                                      ),
+                                    );
+                                    return;
                                   }
                                 } else {
                                   await addEvent(updatedEvent);

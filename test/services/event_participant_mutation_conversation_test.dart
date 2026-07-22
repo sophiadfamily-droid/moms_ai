@@ -20,6 +20,7 @@ import 'package:moms_ai/services/conversation_context_service.dart';
 import 'package:moms_ai/services/conversation_coordinator.dart';
 import 'package:moms_ai/services/event_conversation_mutation_service.dart';
 import 'package:moms_ai/services/event_mutation_service.dart';
+import 'package:moms_ai/services/event_mutation_result.dart';
 import 'package:moms_ai/services/identity/event_participant_identity_validation_service.dart';
 import 'package:moms_ai/services/identity/identity_action_binding_service.dart';
 import 'package:moms_ai/services/identity/identity_application_service.dart';
@@ -158,6 +159,7 @@ void main() {
     final expected = Map<String, dynamic>.from(original)
       ..remove('participantIdentity');
     expected['participantIdentityRevision'] = 2;
+    expected['eventRevision'] = 2;
     expect(next, expected);
     expect(
       (await fixture.repository.findById(
@@ -311,6 +313,7 @@ Future<_Fixture> _fixture(
       write: (
           {required existing,
           required proposed,
+          required expectedEventRevision,
           required participantIntent}) async {
         fixture.writes++;
         final index = events.indexWhere((value) => value.id == existing.id);
@@ -319,6 +322,10 @@ Future<_Fixture> _fixture(
           proposed: proposed,
           participantIntent: participantIntent,
         );
+        events[index] = events[index].copyWith(
+          eventRevision: expectedEventRevision + 1,
+        );
+        return EventMutationResult.success(events[index]);
       },
     ),
   );

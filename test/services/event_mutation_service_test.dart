@@ -6,6 +6,7 @@ import 'package:moms_ai/core/identity/persisted_identity_link.dart';
 import 'package:moms_ai/models/event_model.dart';
 import 'package:moms_ai/models/event_participant_identity_link.dart';
 import 'package:moms_ai/services/event_mutation_service.dart';
+import 'package:moms_ai/services/event_mutation_result.dart';
 import 'package:moms_ai/services/event_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -114,7 +115,7 @@ void main() {
       EventService.eventsKey: [jsonEncode(existing.toJson())],
     });
     await EventService.saveEvents([
-      _event(link: null).copyWith(title: 'Legacy edit'),
+      _event(link: null).copyWith(title: 'Legacy edit', eventRevision: 2),
     ]);
     var stored = await _storedEvents();
     expect(stored.single.participantIdentity, originalLink);
@@ -123,7 +124,7 @@ void main() {
       existing: stored.single,
       proposed: stored.single,
       participantIntent: const RemoveEventParticipant(),
-    );
+    ).copyWith(eventRevision: stored.single.eventRevision + 1);
     await EventService.saveEvents([removed]);
     stored = await _storedEvents();
     expect(stored.single.participantIdentity, isNull);
@@ -145,6 +146,91 @@ void main() {
     await EventService.updateEvents([other]);
     expect((await _storedEvents()).map((event) => event.id), ['event-2']);
     expect(originalLink.identity.entityId, 'identity-1');
+  });
+
+  test('local mutation enforces revision and makes retry idempotent', () async {
+    final existing = _event(link: originalLink);
+    SharedPreferences.setMockInitialValues({
+      EventService.eventsKey: [jsonEncode(existing.toJson())],
+    });
+
+    final first = await EventService.mutateEvent(
+      existing: existing,
+      proposed: existing.copyWith(title: 'Updated'),
+      expectedEventRevision: 1,
+      cloudMutate: ({
+        required existing,
+        required proposed,
+        required expectedEventRevision,
+      }) async =>
+          null,
+    );
+    expect(first.status, EventMutationStatus.success);
+    expect(first.event?.eventRevision, 2);
+    expect(first.event?.participantIdentityRevision, 1);
+
+    final retry = await EventService.mutateEvent(
+      existing: existing,
+      proposed: existing.copyWith(title: 'Updated again'),
+      expectedEventRevision: 1,
+      cloudMutate: ({
+        required existing,
+        required proposed,
+        required expectedEventRevision,
+      }) async =>
+          null,
+    );
+    expect(retry.status, EventMutationStatus.revisionConflict);
+    final stored = await _storedEvents();
+    expect(stored.single.title, 'Updated');
+    expect(stored.single.eventRevision, 2);
+  });
+
+  test('historical event starts at revision zero and mutates to one', () async {
+    final legacy = _event(link: null).toJson()..remove('eventRevision');
+    final restored = EventModel.fromJson(legacy);
+    expect(restored.eventRevision, 0);
+    SharedPreferences.setMockInitialValues({
+      EventService.eventsKey: [jsonEncode(legacy)],
+    });
+    final result = await EventService.mutateEvent(
+      existing: restored,
+      proposed: restored.copyWith(notes: 'Modernized'),
+      expectedEventRevision: 0,
+      cloudMutate: ({
+        required existing,
+        required proposed,
+        required expectedEventRevision,
+      }) async =>
+          null,
+    );
+    expect(result.status, EventMutationStatus.success);
+    expect(result.event?.eventRevision, 1);
+  });
+
+  test('deletion checks the persisted revision before removing locally',
+      () async {
+    final existing = _event(link: originalLink);
+    SharedPreferences.setMockInitialValues({
+      EventService.eventsKey: [jsonEncode(existing.toJson())],
+    });
+    final conflict = await EventService.deleteEvent(
+      existing: existing,
+      expectedEventRevision: 0,
+      cloudDelete:
+          ({required existing, required expectedEventRevision}) async => null,
+    );
+    expect(conflict.status, EventMutationStatus.revisionConflict);
+    expect(await _storedEvents(), hasLength(1));
+
+    final deleted = await EventService.deleteEvent(
+      existing: existing,
+      expectedEventRevision: 1,
+      cloudDelete:
+          ({required existing, required expectedEventRevision}) async => null,
+    );
+    expect(deleted.status, EventMutationStatus.success);
+    expect(await _storedEvents(), isEmpty);
   });
 }
 

@@ -23,12 +23,14 @@ void main() {
     }
   });
 
-  test('cloud collection rewrite is differential', () {
+  test('cloud mutations are transactional and rewrites cannot overwrite', () {
     final source = File(
       'lib/services/cloud_event_service.dart',
     ).readAsStringSync();
-    expect(source, contains('desiredIds'));
-    expect(source, contains('if (!desiredIds.contains(doc.id))'));
+    expect(source, contains('runTransaction'));
+    expect(source, contains('transaction.get(document)'));
+    expect(source, contains('transaction.update(document, data)'));
+    expect(source, contains('event_mutation_revision_required'));
   });
 
   test('screens do not access Identity repositories directly', () {

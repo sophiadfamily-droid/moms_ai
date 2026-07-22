@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:moms_ai/models/event_model.dart';
 import 'package:moms_ai/screens/calendar_screen.dart';
+import 'package:moms_ai/services/event_mutation_result.dart';
 
 String isoDate(DateTime date) {
   final year = date.year.toString();
@@ -21,6 +22,19 @@ Widget buildCalendar({
       loadEventsForTest: () async => List<EventModel>.from(initialEvents),
       addEventForTest: (_) async {},
       updateEventsForTest: onUpdate ?? (_) async {},
+      mutateEventForTest: ({
+        required existing,
+        required proposed,
+        required expectedEventRevision,
+        required participantIntent,
+      }) async {
+        await onUpdate?.call([
+          proposed.copyWith(eventRevision: expectedEventRevision + 1),
+        ]);
+        return EventMutationResult.success(
+          proposed.copyWith(eventRevision: expectedEventRevision + 1),
+        );
+      },
     ),
   );
 }
@@ -120,6 +134,7 @@ void main() {
       expect(saved.departureContext, 'home');
       expect(saved.arrivalContext, 'home');
       expect(saved.id, 'event-stable-id');
+      expect(saved.eventRevision, 2);
     },
   );
 }

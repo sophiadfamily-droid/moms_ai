@@ -100,6 +100,10 @@ service cloud.firestore {
         : (data.keys().hasAny(['participantIdentity']) ? 1 : 0);
     }
 
+    function eventRevision(data) {
+      return data.keys().hasAny(['eventRevision']) ? data.eventRevision : 0;
+    }
+
     function hasValidEventParticipantLifecycle(userId) {
       let data = request.resource.data;
       let hasLink = data.keys().hasAny(['participantIdentity']);
@@ -119,6 +123,8 @@ service cloud.firestore {
       let hasLink = data.keys().hasAny(['participantIdentity']);
       let revision = eventParticipantRevision(data);
       return hasValidEventParticipantLifecycle(userId)
+        && eventRevision(data) is int
+        && eventRevision(data) == 1
         && ((hasLink && revision == 1) || (!hasLink && revision == 0));
     }
 
@@ -131,7 +137,11 @@ service cloud.firestore {
       let nextLink = request.resource.data.keys().hasAny(['participantIdentity'])
         ? request.resource.data.participantIdentity
         : null;
+      let previousEventRevision = eventRevision(resource.data);
+      let nextEventRevision = eventRevision(request.resource.data);
       return hasValidEventParticipantLifecycle(userId)
+        && nextEventRevision is int
+        && nextEventRevision == previousEventRevision + 1
         && (
           (nextLink == previousLink && nextRevision == previousRevision)
           || (nextLink != previousLink && nextRevision == previousRevision + 1)

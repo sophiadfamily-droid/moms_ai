@@ -97,11 +97,11 @@ try {
 
   await succeeds(setDoc(
     doc(owner, 'users/account-a/events/event-a'),
-    {title: 'Unrelated collection remains available'},
+    {title: 'Unrelated collection remains available', eventRevision: 1},
   ));
   await fails(setDoc(
     doc(other, 'users/account-a/events/event-b'),
-    {title: 'Cross-account write remains denied'},
+    {title: 'Cross-account write remains denied', eventRevision: 1},
   ));
   const participantIdentity = {
     entityId: 'valid',
@@ -112,47 +112,49 @@ try {
   };
   await succeeds(setDoc(
     doc(owner, 'users/account-a/events/event-with-identity'),
-    {title: 'Event', participantIdentity, participantIdentityRevision: 1},
+    {title: 'Event', eventRevision: 1, participantIdentity, participantIdentityRevision: 1},
   ));
   await succeeds(getDoc(
     doc(owner, 'users/account-a/events/event-with-identity'),
   ));
   await succeeds(updateDoc(
     doc(owner, 'users/account-a/events/event-with-identity'),
-    {title: 'Updated event'},
+    {title: 'Updated event', eventRevision: 2},
   ));
   await fails(updateDoc(
     doc(owner, 'users/account-a/events/event-with-identity'),
-    {participantIdentity: {...participantIdentity, role: 'owner'}},
+    {participantIdentity: {...participantIdentity, role: 'owner'}, eventRevision: 3},
   ));
   await fails(updateDoc(
     doc(owner, 'users/account-a/events/event-with-identity'),
-    {participantIdentity: deleteField()},
+    {participantIdentity: deleteField(), eventRevision: 3},
   ));
   await succeeds(updateDoc(
     doc(owner, 'users/account-a/events/event-with-identity'),
     {
       participantIdentity: deleteField(),
       participantIdentityRevision: 2,
+      eventRevision: 3,
     },
   ));
   await succeeds(updateDoc(
     doc(owner, 'users/account-a/events/event-with-identity'),
-    {title: 'Updated after explicit removal'},
+    {title: 'Updated after explicit removal', eventRevision: 4},
   ));
   await fails(updateDoc(
     doc(owner, 'users/account-a/events/event-with-identity'),
-    {participantIdentityRevision: deleteField()},
+    {participantIdentityRevision: deleteField(), eventRevision: 5},
   ));
   await succeeds(setDoc(
     doc(owner, 'users/account-a/events/event-replacement'),
-    {title: 'Event', participantIdentity, participantIdentityRevision: 1},
+    {title: 'Event', eventRevision: 1, participantIdentity, participantIdentityRevision: 1},
   ));
   await succeeds(updateDoc(
     doc(owner, 'users/account-a/events/event-replacement'),
     {
       participantIdentity: {...participantIdentity, entityId: 'replacement'},
       participantIdentityRevision: 2,
+      eventRevision: 2,
     },
   ));
   await fails(updateDoc(
@@ -164,23 +166,24 @@ try {
         accountScopeId: 'account-b',
       },
       participantIdentityRevision: 3,
+      eventRevision: 3,
     },
   ));
   await fails(setDoc(
     doc(owner, 'users/account-a/events/event-invalid-role'),
-    {title: 'Event', participantIdentity: {...participantIdentity, role: 'owner'}},
+    {title: 'Event', eventRevision: 1, participantIdentity: {...participantIdentity, role: 'owner'}},
   ));
   await fails(setDoc(
     doc(owner, 'users/account-a/events/event-extra-link-field'),
-    {title: 'Event', participantIdentity: {...participantIdentity, label: 'Private'}},
+    {title: 'Event', eventRevision: 1, participantIdentity: {...participantIdentity, label: 'Private'}},
   ));
   await fails(setDoc(
     doc(owner, 'users/account-a/events/event-empty-identity'),
-    {title: 'Event', participantIdentity: {...participantIdentity, entityId: ''}},
+    {title: 'Event', eventRevision: 1, participantIdentity: {...participantIdentity, entityId: ''}},
   ));
   await fails(setDoc(
     doc(owner, 'users/account-a/events/event-long-identity'),
-    {title: 'Event', participantIdentity: {...participantIdentity, entityId: 'a'.repeat(201)}},
+    {title: 'Event', eventRevision: 1, participantIdentity: {...participantIdentity, entityId: 'a'.repeat(201)}},
   ));
   await environment.withSecurityRulesDisabled(async (context) => {
     await setDoc(
@@ -192,6 +195,7 @@ try {
     doc(owner, 'users/account-a/events/event-foreign-identity'),
     {
       title: 'Event',
+      eventRevision: 1,
       participantIdentity: {
         ...participantIdentity,
         entityId: 'foreign',
@@ -201,33 +205,72 @@ try {
   ));
   await fails(setDoc(
     doc(guest, 'users/account-a/events/event-guest'),
-    {title: 'Event', participantIdentity},
+    {title: 'Event', eventRevision: 1, participantIdentity},
   ));
   await succeeds(updateDoc(
     doc(owner, 'users/account-a/events/event-a'),
-    {title: 'Historical event remains editable'},
+    {title: 'Updated modern event', eventRevision: 2},
+  ));
+  await environment.withSecurityRulesDisabled(async (context) => {
+    await setDoc(
+      doc(context.firestore(), 'users/account-a/events/event-historical'),
+      {title: 'Historical event'},
+    );
+  });
+  await succeeds(updateDoc(
+    doc(owner, 'users/account-a/events/event-historical'),
+    {title: 'Historical event remains editable', eventRevision: 1},
   ));
   await succeeds(setDoc(
     doc(owner, 'users/account-a/events/event-batch-1'),
-    {title: 'Batch 1', participantIdentity, participantIdentityRevision: 1},
+    {title: 'Batch 1', eventRevision: 1, participantIdentity, participantIdentityRevision: 1},
   ));
   await succeeds(setDoc(
     doc(owner, 'users/account-a/events/event-batch-2'),
-    {title: 'Batch 2', participantIdentity, participantIdentityRevision: 1},
+    {title: 'Batch 2', eventRevision: 1, participantIdentity, participantIdentityRevision: 1},
   ));
   const eventBatch = writeBatch(owner);
   eventBatch.update(
     doc(owner, 'users/account-a/events/event-batch-1'),
-    {title: 'Batch 1 updated'},
+    {title: 'Batch 1 updated', eventRevision: 2},
   );
   eventBatch.update(
     doc(owner, 'users/account-a/events/event-batch-2'),
-    {title: 'Batch 2 updated'},
+    {title: 'Batch 2 updated', eventRevision: 2},
   );
   await succeeds(eventBatch.commit());
+  await fails(setDoc(
+    doc(owner, 'users/account-a/events/event-revision-zero'),
+    {title: 'Invalid revision', eventRevision: 0},
+  ));
+  const revisionedEvent = doc(owner, 'users/account-a/events/event-revisioned');
+  await succeeds(setDoc(revisionedEvent, {title: 'Revisioned', eventRevision: 1}));
+  await fails(updateDoc(revisionedEvent, {title: 'Same', eventRevision: 1}));
+  await fails(updateDoc(revisionedEvent, {title: 'Jump', eventRevision: 3}));
+  await fails(updateDoc(revisionedEvent, {title: 'Missing', eventRevision: deleteField()}));
+  await succeeds(updateDoc(revisionedEvent, {title: 'Next', eventRevision: 2}));
+  const mutateEventAtRevisionOne = (title) => runTransaction(
+    owner,
+    async (transaction) => {
+      const snapshot = await transaction.get(revisionedEvent);
+      if (snapshot.data().eventRevision !== 2) {
+        throw new Error('event_revision_conflict');
+      }
+      transaction.update(revisionedEvent, {title, eventRevision: 3});
+    },
+  );
+  const eventConcurrentResults = await Promise.allSettled([
+    mutateEventAtRevisionOne('Concurrent A'),
+    mutateEventAtRevisionOne('Concurrent B'),
+  ]);
+  if (eventConcurrentResults.filter((result) => result.status === 'fulfilled').length !== 1 ||
+      eventConcurrentResults.filter((result) => result.status === 'rejected').length !== 1) {
+    throw new Error('Concurrent Event revision guard failed');
+  }
+  checks++;
   await succeeds(setDoc(
     doc(owner, 'users/account-a/events/event-delete'),
-    {title: 'Delete', participantIdentity, participantIdentityRevision: 1},
+    {title: 'Delete', eventRevision: 1, participantIdentity, participantIdentityRevision: 1},
   ));
   await fails(deleteDoc(
     doc(other, 'users/account-a/events/event-delete'),

@@ -23,8 +23,10 @@ category.
 Zero matches do not create an event. One stable-ID match creates a typed
 confirmation. Multiple matches create a bounded, expiring clarification whose
 numbered choice is resolved locally without an LLM. Final confirmation reloads
-the event and compares it with its immutable snapshot; disappearance,
-concurrent modification, or a protected-range conflict blocks the write.
+the event and compares it with its immutable snapshot; persistence also checks
+the expected `eventRevision` at the document boundary. Firestore mutations use
+a transaction, so disappearance, concurrent modification, retry, or a
+protected-range conflict cannot silently overwrite a newer event.
 
 Standard updates can change only title, date, time, duration, outbound/return
 travel, margin, notes, and category. Participant replacement reuses the typed
@@ -39,6 +41,15 @@ remain excluded. Backend context contains no event ID, notes,
 account scope, Firestore metadata, participant link, or Identity data. Calendar
 growth will require a separate bounded context-window policy; this phase does
 not introduce unbounded semantic matching.
+
+Modern events start at `eventRevision` one. Historical documents without the
+field read as revision zero and their first modern mutation performs `0 → 1`.
+Every later mutation performs exactly `n → n + 1`; Firestore Rules enforce the
+same protocol. This global revision is distinct from
+`participantIdentityRevision`, which changes only when the participant link is
+replaced or removed. Calendar and conversational edits share the same mutation
+boundary. SharedPreferences applies the same compare-and-increment contract,
+but cannot provide Firestore's multi-process transactional guarantee.
 
 ## 1. Vision
 

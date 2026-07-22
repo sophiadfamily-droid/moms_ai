@@ -3,13 +3,15 @@ import 'dart:convert';
 import '../models/event_model.dart';
 import '../models/event_mutation_models.dart';
 import 'event_mutation_service.dart';
+import 'event_mutation_result.dart';
 import 'event_service.dart';
 import 'event_target_selector.dart';
 
 typedef EventMutationLoader = Future<List<EventModel>> Function();
-typedef EventMutationWriter = Future<void> Function({
+typedef EventMutationWriter = Future<EventMutationResult> Function({
   required EventModel existing,
   required EventModel proposed,
+  required int expectedEventRevision,
   required EventParticipantMutationIntent participantIntent,
 });
 
@@ -114,11 +116,26 @@ final class EventConversationMutationService {
       );
     }
     try {
-      await _write(
+      final writeResult = await _write(
         existing: current,
         proposed: proposed,
+        expectedEventRevision: original.eventRevision,
         participantIntent: participantIntent,
       );
+      if (writeResult.status == EventMutationStatus.notFound) {
+        return const EventMutationExecutionResult(
+          EventMutationExecutionStatus.notFound,
+          'event_mutation_target_disappeared',
+        );
+      }
+      if (writeResult.status != EventMutationStatus.success) {
+        return EventMutationExecutionResult(
+          writeResult.status == EventMutationStatus.revisionConflict
+              ? EventMutationExecutionStatus.concurrentChange
+              : EventMutationExecutionStatus.invalid,
+          writeResult.diagnosticCode,
+        );
+      }
       return const EventMutationExecutionResult(
         EventMutationExecutionStatus.updated,
         'event_mutation_updated',

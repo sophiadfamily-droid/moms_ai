@@ -45,6 +45,7 @@ class EventModel {
   final int recurringWeekday;
   final String recurringUntil;
   final String parentRecurringId;
+  final int eventRevision;
   final EventParticipantIdentityLink? participantIdentity;
   final int participantIdentityRevision;
 
@@ -72,10 +73,14 @@ class EventModel {
     this.recurringWeekday = 0,
     this.recurringUntil = "",
     this.parentRecurringId = "",
+    this.eventRevision = 1,
     this.participantIdentity,
     int? participantIdentityRevision,
   }) : participantIdentityRevision = participantIdentityRevision ??
             (participantIdentity == null ? 0 : 1) {
+    if (eventRevision < 0) {
+      throw const FormatException('invalid_event_revision');
+    }
     if (this.participantIdentityRevision < 0 ||
         (participantIdentity != null && this.participantIdentityRevision < 1) ||
         (participantIdentity == null &&
@@ -130,6 +135,7 @@ class EventModel {
     int? recurringWeekday,
     String? recurringUntil,
     String? parentRecurringId,
+    int? eventRevision,
     EventParticipantIdentityLink? participantIdentity,
     bool clearParticipantIdentity = false,
     int? participantIdentityRevision,
@@ -166,6 +172,7 @@ class EventModel {
       recurringWeekday: recurringWeekday ?? this.recurringWeekday,
       recurringUntil: recurringUntil ?? this.recurringUntil,
       parentRecurringId: parentRecurringId ?? this.parentRecurringId,
+      eventRevision: eventRevision ?? this.eventRevision,
       participantIdentity: nextParticipantIdentity,
       participantIdentityRevision: nextParticipantIdentityRevision,
     );
@@ -196,6 +203,7 @@ class EventModel {
       "recurringWeekday": recurringWeekday,
       "recurringUntil": recurringUntil,
       "parentRecurringId": parentRecurringId,
+      "eventRevision": eventRevision,
       if (participantIdentity != null)
         "participantIdentity": participantIdentity!.toJson(),
       if (participantIdentityRevision > 0)
@@ -243,9 +251,19 @@ class EventModel {
           int.tryParse(json["recurringWeekday"]?.toString() ?? "0") ?? 0,
       recurringUntil: json["recurringUntil"] ?? "",
       parentRecurringId: json["parentRecurringId"] ?? "",
+      eventRevision: _eventRevisionFromJson(json),
       participantIdentity: _participantIdentityFromJson(json),
       participantIdentityRevision: _participantIdentityRevisionFromJson(json),
     );
+  }
+
+  static int _eventRevisionFromJson(Map<String, dynamic> json) {
+    if (!json.containsKey('eventRevision')) return 0;
+    final revision = json['eventRevision'];
+    if (revision is! int || revision < 0) {
+      throw const FormatException('invalid_event_revision');
+    }
+    return revision;
   }
 
   static EventParticipantIdentityLink? _participantIdentityFromJson(
