@@ -60,6 +60,13 @@ shape and repeat the ownership, revision, immutability, status, and hard-delete
 guards. Emulator coverage includes concurrent writers using the same expected
 revision.
 
+**Implemented in Phase 4D:** a controlled application-level creation workflow
+can turn an explicit structured `notFound` result into a bounded, expiring
+conversation proposal. Only an explicit positive answer triggers a fresh exact
+ID and label/alias recheck followed by `IdentityWriteRepository.create`.
+Cancellation, ambiguity, expiration, duplicates, and repository failures write
+nothing and never produce a success message.
+
 The Identity Engine is not applied to every chat message. Phases 3A through 3C
 create no identity or proposal, perform no Identity save, and have no
 concrete Firestore repository or production-persisted Identity data. Phase
@@ -78,6 +85,14 @@ creation decision, user confirmation, profile projection, relation, merge,
 business-object link, migration, backfill, or deployment is included. The
 rules and transactional repository are exercised only against the guarded
 local emulator; application code cannot currently invoke Identity writes.
+
+Phase 4D reuses the single typed pending-action state in
+`ConversationCoordinator`, but remains explicitly injectable and absent from
+the production composition root and screens. It does not infer proposals from
+free text or backend/LLM output, create aliases or relations, modify existing
+identities, merge, delete, migrate, backfill, or connect identities to business
+models. A caller must first provide a validated structured request and a typed
+`notFound` resolution result.
 
 **Outside V1:** fuzzy, phonetic, embedding, or LLM matching; global identities;
 automatic merges; inferred sensitive relationships; and Knowledge Graph logic.

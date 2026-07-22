@@ -28,6 +28,7 @@ class ConversationInput {
 enum PendingConversationActionType {
   eventConfirmation,
   identityClarification,
+  identityCreation,
   memoryConfirmation,
 }
 
@@ -248,6 +249,91 @@ enum IdentityClarificationStatus {
   invalid,
 }
 
+final class PendingIdentityCreation {
+  final String proposalId;
+  final String entityId;
+  final EntityType entityType;
+  final String canonicalLabel;
+  final EntitySource source;
+  final DateTime createdAt;
+  final DateTime expiresAt;
+  final String accountScopeId;
+
+  PendingIdentityCreation({
+    required this.proposalId,
+    required this.entityId,
+    required this.entityType,
+    required String canonicalLabel,
+    required this.source,
+    required this.createdAt,
+    required this.expiresAt,
+    required String accountScopeId,
+  })  : canonicalLabel = canonicalLabel.trim(),
+        accountScopeId = accountScopeId.trim() {
+    if (!EntityIdentity.isValid(proposalId) ||
+        !EntityIdentity.isValid(entityId)) {
+      throw const ConversationIdentityException('invalid_creation_id');
+    }
+    if (entityType == EntityType.unknown ||
+        source.type == EntitySourceType.unknown ||
+        this.canonicalLabel.isEmpty) {
+      throw const ConversationIdentityException('invalid_creation_data');
+    }
+    if (this.accountScopeId.isEmpty) {
+      throw const ConversationIdentityException('invalid_account_scope');
+    }
+    if (!expiresAt.isAfter(createdAt)) {
+      throw const ConversationIdentityException('invalid_expiration_date');
+    }
+  }
+
+  bool isExpiredAt(DateTime referenceDate) =>
+      !referenceDate.isBefore(expiresAt);
+}
+
+enum IdentityCreationStatus {
+  created,
+  stillPending,
+  cancelled,
+  expired,
+  alreadyExists,
+  invalid,
+  repositoryFailure,
+}
+
+final class IdentityCreationResult {
+  final IdentityCreationStatus status;
+  final String proposalId;
+  final String? createdEntityId;
+  final String diagnosticCode;
+  final String followUpMessage;
+
+  IdentityCreationResult({
+    required this.status,
+    required this.proposalId,
+    this.createdEntityId,
+    required this.diagnosticCode,
+    required this.followUpMessage,
+  }) {
+    final hasEntityId = EntityIdentity.isValid(createdEntityId);
+    if (status == IdentityCreationStatus.created && !hasEntityId) {
+      throw const ConversationIdentityException(
+        'created_result_requires_entity',
+      );
+    }
+    if (status != IdentityCreationStatus.created && createdEntityId != null) {
+      throw const ConversationIdentityException(
+        'uncreated_result_cannot_contain_entity',
+      );
+    }
+    if (!EntityIdentity.isValid(proposalId) ||
+        diagnosticCode.trim().isEmpty ||
+        followUpMessage.trim().isEmpty) {
+      throw const ConversationIdentityException('invalid_creation_result');
+    }
+  }
+}
+
 final class IdentityClarificationResult {
   final IdentityClarificationStatus status;
   final String? resolvedEntityId;
@@ -291,13 +377,15 @@ class PendingConversationAction {
   final MemoryLifecycleAction? expectedMemoryAction;
   final DateTime? createdAt;
   final PendingIdentityClarification? identityClarification;
+  final PendingIdentityCreation? identityCreation;
 
   const PendingConversationAction.eventConfirmation(EventModel this._event)
       : type = PendingConversationActionType.eventConfirmation,
         proposalId = null,
         expectedMemoryAction = null,
         createdAt = null,
-        identityClarification = null;
+        identityClarification = null,
+        identityCreation = null;
 
   const PendingConversationAction.memoryConfirmation({
     required this.proposalId,
@@ -305,7 +393,8 @@ class PendingConversationAction {
     required this.expectedMemoryAction,
   })  : type = PendingConversationActionType.memoryConfirmation,
         _event = null,
-        identityClarification = null;
+        identityClarification = null,
+        identityCreation = null;
 
   const PendingConversationAction.identityClarification(
     PendingIdentityClarification this.identityClarification,
@@ -313,7 +402,17 @@ class PendingConversationAction {
         _event = null,
         proposalId = null,
         expectedMemoryAction = null,
-        createdAt = null;
+        createdAt = null,
+        identityCreation = null;
+
+  const PendingConversationAction.identityCreation(
+    PendingIdentityCreation this.identityCreation,
+  )   : type = PendingConversationActionType.identityCreation,
+        _event = null,
+        proposalId = null,
+        expectedMemoryAction = null,
+        createdAt = null,
+        identityClarification = null;
 
   EventModel get event => _event!;
 }
@@ -359,12 +458,14 @@ class ConversationOutcome {
   final ChatBackendRequest? request;
   final IdentityClarificationResult? identityClarificationResult;
   final IdentityActionBindingResult? identityActionBindingResult;
+  final IdentityCreationResult? identityCreationResult;
 
   const ConversationOutcome({
     required this.reply,
     this.request,
     this.identityClarificationResult,
     this.identityActionBindingResult,
+    this.identityCreationResult,
   });
 }
 
@@ -372,10 +473,12 @@ class PendingConversationResolution {
   final String message;
   final IdentityClarificationResult? identityClarificationResult;
   final IdentityActionBindingResult? identityActionBindingResult;
+  final IdentityCreationResult? identityCreationResult;
 
   const PendingConversationResolution(
     this.message, {
     this.identityClarificationResult,
     this.identityActionBindingResult,
+    this.identityCreationResult,
   });
 }

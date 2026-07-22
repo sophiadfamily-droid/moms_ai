@@ -14,11 +14,13 @@ import 'package:moms_ai/models/memory_lifecycle.dart';
 import 'package:moms_ai/models/memory_lifecycle_state.dart';
 import 'package:moms_ai/models/user_profile.dart';
 import 'package:moms_ai/repositories/identity/identity_repository.dart';
+import 'package:moms_ai/repositories/identity/fake_identity_repository.dart';
 import 'package:moms_ai/services/chat_backend_client.dart';
 import 'package:moms_ai/services/conversation_context_service.dart';
 import 'package:moms_ai/services/conversation_coordinator.dart';
 import 'package:moms_ai/services/identity/identity_application_models.dart';
 import 'package:moms_ai/services/identity/identity_clarification_service.dart';
+import 'package:moms_ai/services/identity/identity_creation_service.dart';
 
 void main() {
   group('ConversationCoordinator Identity clarification', () {
@@ -215,6 +217,113 @@ void main() {
       );
     });
   });
+
+  group('ConversationCoordinator Identity creation', () {
+    test('stores a proposal without writing and confirms exactly once',
+        () async {
+      final fixture = _creationFixture();
+      final started = fixture.coordinator.beginIdentityCreation(
+        applicationResult: _notFoundResult(),
+        request: _creationRequest(),
+      );
+
+      expect(started?.message, contains('Person A'));
+      expect(
+        fixture.coordinator.state.pendingAction?.type,
+        PendingConversationActionType.identityCreation,
+      );
+      expect(
+        await fixture.repository.findById(
+          scope: IdentityAccountScope('account-a'),
+          entityId: 'entity-new',
+        ),
+        isNull,
+      );
+
+      final outcome = await fixture.coordinator.send(
+        input: ConversationInput(message: 'oui', profile: _profile()),
+        executeAction: (_) async => throw StateError('must not execute'),
+      );
+      expect(
+        outcome?.identityCreationResult?.status,
+        IdentityCreationStatus.created,
+      );
+      expect(outcome?.reply, contains('bien été enregistrée'));
+      expect(fixture.backend.calls, 0);
+      expect(fixture.context.buildCalls, 0);
+      expect(fixture.coordinator.state.pendingAction, isNull);
+      expect(
+        await fixture.repository.findById(
+          scope: IdentityAccountScope('account-a'),
+          entityId: 'entity-new',
+        ),
+        isNotNull,
+      );
+      expect(
+        await fixture.coordinator.resolvePendingIdentityCreation(answer: 'oui'),
+        isNull,
+      );
+    });
+
+    test('ambiguous response stays pending and refusal writes nothing',
+        () async {
+      final fixture = _creationFixture();
+      fixture.coordinator.beginIdentityCreation(
+        applicationResult: _notFoundResult(),
+        request: _creationRequest(),
+      );
+
+      final ambiguous = await fixture.coordinator.send(
+        input: ConversationInput(message: 'peut-être', profile: _profile()),
+        executeAction: (_) async => const ConversationActionOutcome(),
+      );
+      expect(
+        ambiguous?.identityCreationResult?.status,
+        IdentityCreationStatus.stillPending,
+      );
+      expect(fixture.coordinator.state.pendingAction, isNotNull);
+
+      final refused = await fixture.coordinator.send(
+        input: ConversationInput(message: 'non', profile: _profile()),
+        executeAction: (_) async => const ConversationActionOutcome(),
+      );
+      expect(
+        refused?.identityCreationResult?.status,
+        IdentityCreationStatus.cancelled,
+      );
+      expect(fixture.coordinator.state.pendingAction, isNull);
+      expect(
+        await fixture.repository.findById(
+          scope: IdentityAccountScope('account-a'),
+          entityId: 'entity-new',
+        ),
+        isNull,
+      );
+      expect(fixture.backend.calls, 0);
+    });
+
+    test('a normal mention cannot initiate Identity creation', () async {
+      final fixture = _creationFixture();
+      final outcome = await fixture.coordinator.send(
+        input: ConversationInput(
+          message: 'J’ai parlé avec Person A',
+          profile: _profile(),
+        ),
+        executeAction: (_) async => const ConversationActionOutcome(),
+      );
+
+      expect(outcome?.reply, 'Backend');
+      expect(outcome?.identityCreationResult, isNull);
+      expect(fixture.coordinator.state.pendingAction, isNull);
+      expect(
+        await fixture.repository.findById(
+          scope: IdentityAccountScope('account-a'),
+          entityId: 'entity-new',
+        ),
+        isNull,
+      );
+    });
+  });
 }
 
 final now = DateTime.utc(2026, 7, 21, 10);
@@ -251,6 +360,18 @@ IdentityApplicationResult _ambiguousResult() =>
         signals: const [EntityMatchSignal.multipleCandidates],
         reasonCode: 'multiple_candidates',
       ),
+    );
+
+IdentityApplicationResult _notFoundResult() =>
+    IdentityApplicationResult.fromResolution(
+      EntityResolution.notFound(reasonCode: 'not_found'),
+    );
+
+IdentityCreationRequest _creationRequest() => IdentityCreationRequest(
+      scope: IdentityAccountScope('account-a'),
+      entityType: EntityType.person,
+      canonicalLabel: 'Person A',
+      source: source,
     );
 
 IdentityResolutionRequest _identityRequest() => IdentityResolutionRequest(
@@ -294,6 +415,13 @@ EventModel _event() => EventModel(
 final class _FakeIdGenerator implements EntityIdGenerator {
   @override
   String generate() => 'clarification-1';
+}
+
+final class _CreationIdGenerator implements EntityIdGenerator {
+  var _index = 0;
+
+  @override
+  String generate() => ['proposal-new', 'entity-new'][_index++];
 }
 
 final class _FakeBackend implements ChatBackendClient {
@@ -343,4 +471,39 @@ final class _CoordinatorFixture {
     required this.backend,
     required this.context,
   });
+}
+
+final class _CreationFixture {
+  final ConversationCoordinator coordinator;
+  final FakeIdentityRepository repository;
+  final _FakeBackend backend;
+  final _FakeContext context;
+
+  const _CreationFixture({
+    required this.coordinator,
+    required this.repository,
+    required this.backend,
+    required this.context,
+  });
+}
+
+_CreationFixture _creationFixture() {
+  final repository = FakeIdentityRepository();
+  final backend = _FakeBackend();
+  final context = _FakeContext();
+  return _CreationFixture(
+    repository: repository,
+    backend: backend,
+    context: context,
+    coordinator: ConversationCoordinator(
+      backend: backend,
+      contextProvider: context,
+      identityCreationService: IdentityCreationService(
+        readRepository: repository,
+        writeRepository: repository,
+        idGenerator: _CreationIdGenerator(),
+        now: () => now,
+      ),
+    ),
+  );
 }

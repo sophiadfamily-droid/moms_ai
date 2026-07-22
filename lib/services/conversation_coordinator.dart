@@ -14,6 +14,7 @@ import 'identity/identity_application_models.dart';
 import 'identity/identity_application_service.dart';
 import 'identity/identity_action_binding_service.dart';
 import 'identity/identity_clarification_service.dart';
+import 'identity/identity_creation_service.dart';
 import 'zelia_action_guard_service.dart';
 import 'zelia_response_builder.dart';
 
@@ -33,6 +34,7 @@ class ConversationCoordinator {
   final IdentityClarificationService identityClarificationService;
   final IdentityActionBindingService identityActionBindingService;
   final IdentityApplicationService? identityApplicationService;
+  final IdentityCreationService? identityCreationService;
 
   ConversationState _state = const ConversationState();
   bool _isSending = false;
@@ -49,6 +51,7 @@ class ConversationCoordinator {
     IdentityClarificationService? identityClarificationService,
     IdentityActionBindingService? identityActionBindingService,
     this.identityApplicationService,
+    this.identityCreationService,
   })  : _memoryLifecycleRepository = memoryLifecycleRepository,
         identityClarificationService = identityClarificationService ??
             IdentityClarificationService(
@@ -85,7 +88,9 @@ class ConversationCoordinator {
     if (_state.pendingAction?.type ==
             PendingConversationActionType.eventConfirmation ||
         _state.pendingAction?.type ==
-            PendingConversationActionType.identityClarification) {
+            PendingConversationActionType.identityClarification ||
+        _state.pendingAction?.type ==
+            PendingConversationActionType.identityCreation) {
       return;
     }
     _state = _state.copyWith(
@@ -114,6 +119,23 @@ class ConversationCoordinator {
     return PendingConversationResolution(
       identityClarificationService.question(pending),
     );
+  }
+
+  PendingConversationResolution? beginIdentityCreation({
+    required IdentityApplicationResult applicationResult,
+    required IdentityCreationRequest request,
+  }) {
+    final service = identityCreationService;
+    if (_state.pendingAction != null || service == null) return null;
+    final pending = service.propose(
+      applicationResult: applicationResult,
+      request: request,
+    );
+    _state = _state.copyWith(
+      phase: ConversationPhase.awaitingActionConfirmation,
+      pendingAction: PendingConversationAction.identityCreation(pending),
+    );
+    return PendingConversationResolution(service.question(pending));
   }
 
   Future<PendingConversationResolution> beginIdentityActionBinding({
@@ -240,6 +262,43 @@ class ConversationCoordinator {
     );
   }
 
+  Future<PendingConversationResolution?> resolvePendingIdentityCreation({
+    required String answer,
+    DateTime? referenceDate,
+  }) async {
+    final pendingAction = _state.pendingAction;
+    final service = identityCreationService;
+    if (pendingAction == null ||
+        pendingAction.type != PendingConversationActionType.identityCreation ||
+        service == null) {
+      return null;
+    }
+    if (_isResolvingPendingAction) return null;
+    _isResolvingPendingAction = true;
+    _state = _state.copyWith(phase: ConversationPhase.executingAction);
+    try {
+      final result = await service.process(
+        pending: pendingAction.identityCreation!,
+        answer: answer,
+        referenceDate: referenceDate,
+      );
+      if (result.status != IdentityCreationStatus.stillPending &&
+          result.status != IdentityCreationStatus.repositoryFailure) {
+        _clearPendingAction();
+      } else {
+        _state = _state.copyWith(
+          phase: ConversationPhase.awaitingActionConfirmation,
+        );
+      }
+      return PendingConversationResolution(
+        result.followUpMessage,
+        identityCreationResult: result,
+      );
+    } finally {
+      _isResolvingPendingAction = false;
+    }
+  }
+
   Future<PendingConversationResolution?> resolvePendingEventConfirmation({
     required String answer,
     required bool Function(String value) isPositiveAnswer,
@@ -346,6 +405,15 @@ class ConversationCoordinator {
     required ConversationInput input,
     required ConversationActionExecutor executeAction,
   }) async {
+    final creationResolution = await resolvePendingIdentityCreation(
+      answer: input.message,
+    );
+    if (creationResolution != null) {
+      return ConversationOutcome(
+        reply: creationResolution.message,
+        identityCreationResult: creationResolution.identityCreationResult,
+      );
+    }
     final identityResolution = await resolvePendingIdentityClarification(
       answer: input.message,
     );
