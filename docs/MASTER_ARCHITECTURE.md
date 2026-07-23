@@ -332,9 +332,9 @@ account-scoped HumanModel legacy payload; arbitrary memories are not routines.
 
 The older synchronous profile/memory projection remains solely as a
 compatibility input to current conversation and planning consumers. LC.1 does
-not send the canonical multi-domain snapshot to OpenAI. LC.2 will calculate
-cross-domain relationships and consequences; LC.3 will define the final
-bounded, filtered consumer projection.
+not send the canonical multi-domain snapshot to OpenAI. LC.2 calculates
+cross-domain relationships and technical consequences, while LC.3 owns the
+bounded, filtered projections described below.
 
 **LC.2 relation layer.** `LifeContextRelationEngine.build` is the only
 canonical relation-graph builder. Its sole input is one validated LC.1
@@ -379,9 +379,52 @@ it never recommends, prioritizes, moves, or writes anything.
 Historical, future, rejected, proposed, inferred, and needs-confirmation
 records remain distinguishable. Rejected records are never active. All graph
 construction and traversals validate scope, references, duplicates, periods,
-versions, rule registration, depth, and visit bounds. LC.3 will define the
-filtered consumer projection; priority and decision engines remain later,
-separate phases.
+versions, rule registration, depth, and visit bounds.
+
+**LC.3 consumer projections.** `LifeContextProjectionEngine.build` is the
+single projection boundary. It accepts only one validated LC.1 snapshot, its
+optional matching LC.2 graph, and a closed versioned consumer contract. It
+never reads a repository, persists a projection, calls a model provider, or
+writes a domain. Conversation and Planning use different contracts rather
+than receiving a universal life payload.
+
+Each contract fixes its purpose, allowed sections and sensitivity levels,
+global and per-section budgets, temporal window, freshness policy,
+confirmation policy, relation depth/count, item count, and truncation policy.
+Unknown purposes, invalid or absent budgets, future schema versions, and
+unclassified facts fail closed. Budget cost is the deterministic count of one
+unit per item plus one per typed fact. Selection is stable: confirmation,
+freshness, and technical identifier are used without urgency, importance,
+emotion, text analysis, or recommendation. An item is included whole or
+omitted; global and section omission counts and truncation warnings remain
+explicit.
+
+The closed sensitivity taxonomy is technical, ordinary personal, private
+personal, sensitive, and highly sensitive. Unclassified fields are excluded.
+Highly sensitive data is forbidden in this phase. Medical notes, allergies,
+blood group, doctor and emergency-contact data, authentication material,
+secrets, full addresses, arbitrary JSON, the retained legacy payload, raw
+Firestore documents, complete source models, snapshot, and graph are never
+projected. Free Event, Task, or Routine text is available only to the
+Conversation contract, normalized and hard-bounded; Planning receives
+temporal facts, travel, margins, recurrence, sync/conflict state, revisions,
+and explicit temporal responsibilities without names or notes.
+
+Every projected section preserves fresh, stale, empty, unavailable, corrupt,
+or unsupported state. Required missing domains fail explicitly; allowed stale
+or partial inputs remain marked rather than becoming false empty lists.
+Rejected facts are always excluded, uncertain facts require contract
+permission, inferred facts retain provenance, and history is opt-in.
+Relations are bounded and never expand the complete LC.2 graph.
+
+Compatibility adapters translate the Conversation projection into the
+existing `ChatBackendRequest` shape and the Planning projection into typed
+temporal facts. They never serialize LC.1, LC.2, or `UserProfile` wholesale.
+The current production conversation and planning workflows retain their
+legacy paths until their dedicated migrations; LC.3 adds no second
+multi-domain reader and does not silently send an additional context to
+OpenAI. Memory policy, priority, final conversation orchestration, and
+planning decisions remain separate later phases.
 
 ### 7.3 Profile Engine
 

@@ -200,6 +200,96 @@ void main() {
       );
     }
   });
+
+  test('LC.3 has one bounded snapshot-and-graph projection boundary', () {
+    final productionFiles = Directory('lib')
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where((file) => file.path.endsWith('.dart'))
+        .toList();
+    final builders = productionFiles.where(
+      (file) => file.readAsStringSync().contains(
+            'LifeContextProjection build({',
+          ),
+    );
+    expect(builders, hasLength(1));
+    expect(
+      builders.single.path,
+      endsWith(
+        'services/life_context/life_context_projection_engine.dart',
+      ),
+    );
+
+    final projectionEngine = builders.single.readAsStringSync();
+    for (final forbidden in [
+      'cloud_firestore',
+      'firebase',
+      'SharedPreferences',
+      'package:openai',
+      'openai_service',
+      'EventService',
+      'TaskService',
+      'HumanModelService',
+      'Repository',
+      'ChatScreen',
+      'write(',
+      'save(',
+      'delete(',
+      'set(',
+      'update(',
+      'LifeContextSnapshot.toJson',
+      'LifeContextGraph.toJson',
+      'UserProfile.toJson',
+    ]) {
+      expect(
+        projectionEngine,
+        isNot(contains(forbidden)),
+        reason: 'LC.3 contains forbidden dependency $forbidden.',
+      );
+    }
+    expect(projectionEngine, contains('required LifeContextSnapshot snapshot'));
+    expect(
+      projectionEngine,
+      contains('required LifeContextConsumerContract contract'),
+    );
+    expect(projectionEngine, contains('LifeContextGraph? graph'));
+    expect(projectionEngine, contains('globalBudget'));
+    expect(projectionEngine, contains('sectionBudgets'));
+  });
+
+  test('LC.3 contracts are closed, sensitive by default, and not persisted',
+      () {
+    final projectionModel =
+        File('lib/models/life_context/life_context_projection.dart')
+            .readAsStringSync();
+    final compatibility = File(
+      'lib/services/life_context/'
+      'life_context_projection_compatibility.dart',
+    ).readAsStringSync();
+
+    expect(projectionModel, contains('LifeContextConsumerPurpose'));
+    expect(projectionModel, contains('highlySensitive'));
+    expect(projectionModel, contains('globalBudget'));
+    expect(projectionModel, contains('sectionBudgets'));
+    expect(projectionModel, isNot(contains('ConsumerPurpose.custom')));
+    expect(projectionModel, isNot(contains('unlimited')));
+    expect(compatibility, isNot(contains('snapshot.toJson')));
+    expect(compatibility, isNot(contains('graph.toJson')));
+    expect(compatibility, isNot(contains('UserProfile')));
+
+    for (final file in Directory('lib')
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where((file) =>
+            file.path.contains('/repositories/') ||
+            file.path.contains('/screens/'))) {
+      expect(
+        file.readAsStringSync(),
+        isNot(contains('LifeContextProjectionEngine')),
+        reason: '${file.path} must not construct or persist LC.3.',
+      );
+    }
+  });
 }
 
 Directory _repositoryRoot() {
