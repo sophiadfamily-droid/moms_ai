@@ -49,6 +49,10 @@ abstract final class LifeContextProjectionFactKeys {
   static const category = 'category';
   static const sourceNodeId = 'sourceNodeId';
   static const targetNodeId = 'targetNodeId';
+  static const actionRequired = 'actionRequired';
+  static const importance = 'importance';
+  static const urgency = 'urgency';
+  static const flexibility = 'flexibility';
 
   static const all = {
     displayName,
@@ -72,6 +76,10 @@ abstract final class LifeContextProjectionFactKeys {
     category,
     sourceNodeId,
     targetNodeId,
+    actionRequired,
+    importance,
+    urgency,
+    flexibility,
   };
 }
 

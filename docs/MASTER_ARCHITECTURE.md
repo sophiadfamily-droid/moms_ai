@@ -501,9 +501,50 @@ collect required facts
 
 ### 7.7 Priority Engine
 
-**Current state:** Rule-based priority, time urgency, task scoring, ordering, and suggestions exist and are consumed by home and task screens. The public product contract for scores and thresholds is not yet fully documented or tested.
+**Current state (V1-R.1):** `PriorityEngine` is the canonical deterministic
+scoring boundary. It consumes `PriorityCandidate` values built only from a
+validated LC.3 projection. A separate bounded input may carry confirmed LC.2
+technical consequences at depth exactly one. It does not read repositories,
+persist scores, call OpenAI, write a domain, recommend an action, or alter
+planning.
 
-**Planned architecture:** Priority combines explicit importance, deadlines, domain impact, time sensitivity, and life context through explainable deterministic rules. It ranks work; it does not silently execute or reschedule it.
+Formula version 1 normalizes every positive dimension to `[0, 1]` and produces
+a score bounded to `[0, 100]`. Its centralized weights are urgency 25%,
+explicit importance 25%, deadline pressure 25%, effort 5%, explicit
+flexibility 10%, and confirmed direct impact 10%. Data quality applies a
+separate uncertainty penalty of at most 10%. Effort is neutral on its own and
+only changes deadline pressure when both duration and remaining time are
+structured; short work is therefore not automatically favored.
+
+Missing deadline, effort, importance, flexibility, impact, or freshness stays
+explicit. Neutral values permit partial scoring but never become fabricated
+facts. Deadline thresholds are versioned and evaluated in UTC. Scores preserve
+component provenance, confidence, missing-data codes, and technical reason
+codes; user-facing explanations remain R.3.
+
+Ranking is bounded and deterministic: final score descending, deadline
+ascending, rigidity, confirmation, freshness, then stable technical ID. It
+never uses a visible label, Firestore order, family situation, gender, marital
+status, children, work/personal category, medical data, or text keywords.
+
+The adapter creates active Task candidates from LC.3. It creates an Event
+preparation or Routine occurrence only when an explicit structured
+`actionRequired` marker exists; a Routine additionally needs a dated
+occurrence. Fixed Events without an action, Human facts, and free Memory never
+become candidates. The present LC.3 schema does not yet emit those action
+markers, so production extraction currently yields Task candidates only.
+
+**Legacy transition debt:** `AiPriorityService`,
+`PriorityEngineService`, `TimePriorityService`, and
+`SmartPlanningService.priorityScore` still drive existing Home, Tasks, and
+smart-planning behavior. They contain text/category keyword rules and
+historical fixed bonuses. R.1 deliberately does not switch visible ordering;
+their removal and product activation require a controlled migration to the
+LC.3 adapter. They are not canonical R.1 inputs or implementations.
+
+**Next boundaries:** R.2 may propagate explicit dependency chains with its own
+bounds. R.3 may translate existing score components into short user-facing
+explanations. Neither concern belongs to formula version 1.
 
 ### 7.8 Reasoning Engine
 
