@@ -993,3 +993,17 @@ The UI deliberately allows homonyms and unlinked people. Any future operation
 that binds or replaces an Identity must continue through the existing Identity
 application and confirmation contracts; it is not an implicit side effect of
 HM.3.
+
+## LC.1 read-only Identity projection
+
+The canonical Life Context Identity adapter reads only
+`PersistedIdentityLink` values already attached to scoped `HumanPerson`
+records. Its projection contains the human-person ID, stable entity ID, entity
+type, and confirmation state. A person without a link is valid and produces no
+invented Identity.
+
+The adapter does not enumerate the Identity repository, copy labels or private
+metadata, resolve homonyms, or call any Identity write service. Life Context
+therefore consumes stable identity without becoming a second Identity system.
+Repository lookup and identity mutation remain owned by the existing Identity
+application boundaries.

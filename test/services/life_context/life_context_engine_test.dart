@@ -9,7 +9,7 @@ void main() {
   final generatedAt = DateTime.utc(2026, 7, 20, 12);
 
   group('LifeContextEngine', () {
-    test('upgrades a legacy profile projection to schema version 3', () {
+    test('upgrades a legacy profile projection to the current schema', () {
       final currentSnapshot = const UserProfileLifeContextMapper().map(
         profile: _profile(),
         generatedAt: generatedAt,

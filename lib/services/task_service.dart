@@ -8,6 +8,7 @@ import '../core/identity/entity_identity.dart';
 import '../core/identity/entity_matcher.dart';
 import '../core/identity/uuid_v7_entity_id_generator.dart';
 import '../models/task_model.dart';
+import 'auth_service.dart';
 import 'cloud_task_service.dart';
 import 'app_diagnostics.dart';
 
@@ -81,6 +82,20 @@ class TaskService {
     }
 
     return localTasks;
+  }
+
+  /// Read-only, account-bound source for Life Context projections.
+  ///
+  /// The legacy local task cache is not account-scoped, so it is never exposed
+  /// through this boundary.
+  static Future<List<TaskModel>> getTasksForLifeContext(
+    String accountScopeId,
+  ) async {
+    if (accountScopeId.trim().isEmpty ||
+        AuthService.currentUserId != accountScopeId) {
+      throw const FormatException('task_account_scope_mismatch');
+    }
+    return CloudTaskService.getTasks();
   }
 
   static Future<void> addTask(

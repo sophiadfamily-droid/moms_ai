@@ -11,7 +11,7 @@ void main() {
   const mapper = UserProfileLifeContextMapper();
   final generatedAt = DateTime.utc(2026, 7, 20, 10, 30);
 
-  group('LifeContextSnapshot v3', () {
+  group('LifeContextSnapshot current schema', () {
     test('can represent a minimal immutable snapshot', () {
       final snapshot = LifeContextSnapshot(
         generatedAt: generatedAt,
@@ -32,7 +32,10 @@ void main() {
         constraints: const ConstraintContext(),
       );
 
-      expect(snapshot.schemaVersion, 3);
+      expect(
+        snapshot.schemaVersion,
+        LifeContextSnapshot.currentSchemaVersion,
+      );
       expect(snapshot.generatedAt, same(generatedAt));
       expect(snapshot.identity.firstName, isNull);
       expect(snapshot.household.children, isEmpty);
@@ -46,7 +49,10 @@ void main() {
       final snapshot =
           mapper.map(profile: _completeProfile(), generatedAt: generatedAt);
 
-      expect(snapshot.schemaVersion, 3);
+      expect(
+        snapshot.schemaVersion,
+        LifeContextSnapshot.currentSchemaVersion,
+      );
       expect(snapshot.generatedAt, same(generatedAt));
       expect(snapshot.identity.firstName?.value, 'Sophia');
       expect(snapshot.identity.birthDate?.value, '01/01/1990');

@@ -150,6 +150,40 @@ class EventService {
     return localEvents;
   }
 
+  /// Read-only, account-bound source for Life Context projections.
+  ///
+  /// Deliberately avoids the legacy unscoped local cache and every sync/write
+  /// side effect. Offline callers receive an explicit unavailable section from
+  /// the adapter rather than data that could belong to a previous account.
+  static Future<List<EventModel>> getEventsForLifeContext(
+    String accountScopeId,
+  ) async {
+    if (accountScopeId.trim().isEmpty ||
+        AuthService.currentUserId != accountScopeId) {
+      throw const FormatException('event_account_scope_mismatch');
+    }
+    return CloudEventService.getEvents();
+  }
+
+  static Future<Map<String, String>> getEventSyncStatesForLifeContext(
+    String accountScopeId,
+  ) async {
+    if (accountScopeId.trim().isEmpty ||
+        AuthService.currentUserId != accountScopeId) {
+      throw const FormatException('event_account_scope_mismatch');
+    }
+    final conflicts = await getSyncConflicts();
+    return {
+      for (final conflict in conflicts)
+        conflict.eventId:
+            conflict.resolutionState == EventConflictResolutionState.resolved ||
+                    conflict.resolutionState ==
+                        EventConflictResolutionState.discarded
+                ? 'resolved'
+                : 'conflict',
+    };
+  }
+
   static Future<void> addEvent(
     EventModel event, {
     EntityIdGenerator idGenerator = const UuidV7EntityIdGenerator(),

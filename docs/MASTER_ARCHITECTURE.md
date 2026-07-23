@@ -304,11 +304,37 @@ An engine is a cohesive domain capability with explicit inputs, outputs, invaria
 
 ### 7.2 Life Context Engine
 
-**Planned architecture.** The Life Context Engine will provide a bounded, typed view of the user's relevant reality. It will reconcile profile data, durable memory, current instructions, time context, routines, and known constraints while preserving provenance and precedence.
+**LC.1 implemented foundation.** `LifeContextEngine.buildCanonicalSnapshot`
+is the single multi-domain construction boundary. Five injected, read-only
+adapters project HumanModel, confirmed Identity links, Event, Task, and the
+currently structured legacy Routine source. Each domain keeps ownership and
+persistence of its own records; Life Context is reconstructible and is never a
+second database.
 
-It must not become a second database or silently invent facts. Planning, priority, reasoning, and notification capabilities should consume its projections rather than independently interpreting the same raw context.
+The canonical snapshot schema is version 4 and each new domain section starts
+at section schema version 1. It contains an authenticated internal
+account scope, a random non-personal snapshot ID, generation time, global
+complete/partial/unavailable state, typed domain sections, and source metadata.
+Metadata distinguishes available, stale, empty, unavailable, unsupported,
+corrupt, and account-mismatched data, with read time, optional revision,
+sync state, locality, and bounded item count. Independent adapters load in
+parallel with a bounded timeout; a non-essential domain failure produces an
+explicit partial snapshot rather than a false empty list.
 
-Life Context remains the first shared authoritative context projection. Its implementation follows extraction of the typed conversation workflow boundary; it does not own conversational state.
+HumanModel remains the human source of truth and its retained legacy payload is
+never serialized into the canonical snapshot. Identity projection contains
+only stable links already attached to HumanPerson records; no repository-wide
+identity export or mutation occurs. Event and Task use account-bound read-only
+service methods. Their historical unscoped local caches are deliberately not
+used by LC.1 because that could mix accounts. Routine currently adapts only
+explicit `personalActivities` and school time ranges retained in the
+account-scoped HumanModel legacy payload; arbitrary memories are not routines.
+
+The older synchronous profile/memory projection remains solely as a
+compatibility input to current conversation and planning consumers. LC.1 does
+not send the canonical multi-domain snapshot to OpenAI. LC.2 will calculate
+cross-domain relationships and consequences; LC.3 will define the final
+bounded, filtered consumer projection.
 
 ### 7.3 Profile Engine
 
