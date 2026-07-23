@@ -546,6 +546,65 @@ LC.3 adapter. They are not canonical R.1 inputs or implementations.
 bounds. R.3 may translate existing score components into short user-facing
 explanations. Neither concern belongs to formula version 1.
 
+#### V1-R.2 — Propagation des dépendances explicites
+
+`PriorityPropagationEngine` ajoute une projection reconstructible au-dessus du
+classement direct R.1 et du graphe LC.2. Il ne construit aucun graphe et ne lit
+aucun domaine : son entrée est exclusivement `PriorityRanking` plus
+`LifeContextGraph`. Le compte et le snapshot doivent correspondre.
+
+Une relation LC.2 ne propage jamais une priorité. Seules les arêtes
+`LifeContextDependency`, orientées `prérequis → dépendant`, sont considérées.
+L’influence circule dans le sens contrôlé `dépendant → prérequis` : le score
+direct d’un élément dépendant peut renforcer le prérequis qui le bloque ou
+qu’il requiert. Le dépendant ne reçoit pas automatiquement le score du
+prérequis et aucune arête inverse n’est inventée.
+
+Le registre R.2 version 1 est fermé :
+
+| Type LC.2 | Propagation | Coefficient |
+|---|---:|---:|
+| `requires` | oui | 0,20 |
+| `blocks` | oui | 0,25 |
+| `follows` | oui, profondeur 2 maximum | 0,10 |
+| `explicitUserDependency` | oui | 0,20 |
+| `belongsTo` | non | 0 |
+| `scheduledBy` | non | 0 |
+| `generatedFrom` | non | 0 |
+| `custom` | non supporté | 0 |
+
+La formule est
+`scoreDirectSource × coefficientType × facteurProfondeur × facteurConfirmation × facteurFraîcheur`.
+Les facteurs de profondeur sont 1,00, 0,50 et 0,25 aux profondeurs 1, 2 et 3.
+Une influence est plafonnée à 12 points, les cinq principales influences d’un
+candidat sont retenues, et leur somme est plafonnée à 25 points. Le score
+ajusté reste dans `[0, 100]`; le score direct R.1 reste conservé séparément.
+
+Par défaut, une dépendance confirmée utilise un facteur 1. Une dépendance
+inférée n’est utilisable que si sa règle LC.2 est enregistrée et reçoit un
+facteur 0,50. Les états proposé, à confirmer, rejeté et historique ne
+propagent pas. Une source périmée reçoit un facteur 0,50 et une fraîcheur
+inconnue un facteur 0,25 avec état `unavailable`; une structure corrompue est
+refusée par les validateurs LC.2/R.2.
+
+Les parcours sont limités à trois niveaux, 100 nœuds et 200 arêtes. Les arêtes
+et chemins sont dédupliqués. Les cycles de dépendances sont repris de
+`LifeContextGraphQuery`, signalés, puis coupés lorsque le parcours rencontrerait
+un nœud déjà présent dans le chemin. Une relation cyclique ordinaire n’est pas
+un cycle de priorité. Un impact direct R.1 portant déjà la même règle et le
+même prérequis n’est pas recompensé par R.2.
+
+Le classement ajusté utilise successivement score ajusté, score direct,
+échéance, rigidité, confirmation, fraîcheur et identifiant technique. Il reste
+borné et indépendant de l’ordre d’entrée. Aucun titre, nom, foyer, genre,
+relation familiale, catégorie professionnelle, mémoire libre ou donnée de
+santé n’entre dans l’association ou la formule.
+
+R.2 n’est pas activé dans les listes visibles. Les moteurs historiques restent
+la dette de migration déjà décrite par R.1. R.3 pourra transformer les chemins,
+composants et codes techniques en explications utilisateur ; R.2 ne produit
+aucune recommandation ni phrase finale.
+
 ### 7.8 Reasoning Engine
 
 **Current state:** Reasoning is distributed across profile reasoning, memory reasoning, planning services, prompt context, and model selection. There is no single verified general-purpose Reasoning Engine.
