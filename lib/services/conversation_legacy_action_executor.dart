@@ -7,13 +7,26 @@ import 'event_confirmation_service.dart';
 import 'event_service.dart';
 import 'notification_service.dart';
 import 'planner_engine_service.dart';
+import 'smart_planning_continuation_coordinator.dart';
 
 final class ConversationLegacyActionExecutor {
-  const ConversationLegacyActionExecutor({required this.coordinator});
+  const ConversationLegacyActionExecutor({
+    required this.coordinator,
+    this.smartPlanning,
+  });
 
   final ConversationCoordinator coordinator;
+  final SmartPlanningContinuationCoordinator? smartPlanning;
 
-  Future<ConversationOutcome?> resolvePending(String answer) async {
+  Future<ConversationOutcome?> resolvePending(
+    String answer,
+    int sessionGeneration,
+  ) async {
+    final planningResolution = await smartPlanning?.resolve(
+      answer,
+      sessionGeneration: sessionGeneration,
+    );
+    if (planningResolution != null) return planningResolution;
     final eventResolution = await coordinator.resolvePendingEventConfirmation(
       answer: answer,
       isPositiveAnswer: PlannerEngineService.isPositiveAnswer,
@@ -47,6 +60,7 @@ final class ConversationLegacyActionExecutor {
   Future<ConversationActionOutcome> execute(
     Map<String, dynamic> action,
     String userMessage,
+    int sessionGeneration,
   ) async {
     final result = await ActionHandlerService.handleAction(
       action: action,
@@ -76,9 +90,16 @@ final class ConversationLegacyActionExecutor {
       }
     }
     final pendingTask = result.pendingSmartPlanningTask;
-    final planningTitle = pendingTask?['task'] is TaskModel
-        ? (pendingTask!['task'] as TaskModel).title
-        : null;
+    final task = pendingTask?['task'];
+    final planningTitle = task is TaskModel ? task.title : null;
+    if (task is TaskModel && smartPlanning != null) {
+      smartPlanning!.beginTaskPlanning(
+        task: task,
+        originalMessage:
+            pendingTask?['originalMessage']?.toString() ?? userMessage,
+        sessionGeneration: sessionGeneration,
+      );
+    }
     return ConversationActionOutcome(
       message: result.message,
       planningTitle: planningTitle,

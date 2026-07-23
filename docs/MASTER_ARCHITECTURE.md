@@ -306,6 +306,16 @@ validated response pipeline, response guards, Event mutations, Identity and
 Memory confirmations and their domain continuations. The session controller
 does not replace or duplicate these rules.
 
+`SmartPlanningContinuationCoordinator` closes the historical multi-step
+Planning gap. It owns one immutable, schema-1 continuation bound to the session
+generation. Closed types represent planning consent, duration, outbound and
+return travel, slot choice, confirmation and bounded alternative search.
+Typed fields replace every former pending `Map` from `ChatScreen`: Task,
+grouped Tasks, proposal options, selected option, proposal, margin and travel
+durations. The coordinator delegates availability, protected periods,
+revalidation, conflicts and Event persistence to the existing Planning/Event
+services; it is not a second Planning Engine.
+
 `ChatScreen` is now a passive Flutter presentation. It owns only text, focus,
 scroll and voice controllers, renders the immutable state, consumes effects
 and dispatches closed UI intentions. It does not construct a backend request,
@@ -731,7 +741,9 @@ preserves the LC.3 compatibility boundary. The callable client remains an
 injectable gateway. `ConversationCoordinator` applies the existing guards and
 delegates only validated actions. `ConversationLegacyActionExecutor` keeps the
 legacy Task, Shopping and Event application path outside the widget while the
-domain services continue to own persistence and confirmation.
+domain services continue to own persistence and confirmation. When a Task
+creates the historical Smart Planning prompt, the executor starts a typed
+continuation instead of retaining a free-form map.
 
 The public session state contains only a random technical session identifier,
 bounded visible messages, phase, recoverable error copy, pending presence and
@@ -760,6 +772,20 @@ tardive ne peut alors ni ajouter de message ni exécuter une continuation.
 Le retry backend est limité à une tentative et ne recrée pas le message
 utilisateur. L’annulation reste logique : elle ne promet pas d’interrompre le
 callable déjà parti.
+
+Les continuations Smart Planning restent volontairement en mémoire : elles
+survivent aux rebuilds de l’écran parce qu’elles appartiennent au contrôleur,
+mais pas au redémarrage du processus. Elles expirent après deux heures, sont
+invalidées lors d’un changement de compte ou de génération, et sont nettoyées
+après succès, refus ou expiration. Un `mutationId` technique protège l’action
+finale contre une double confirmation.
+
+La preuve d’équivalence couvre les anciens parcours : consentement de
+planification, validation de durée, trajets aller/retour, demande explicite de
+créneau, choix parmi trois options, récapitulatif, revalidation avant écriture,
+alternative après conflit et recherche par tranches bornées de quatorze jours.
+Les marges, périodes protégées et conflits continuent d’être calculés par les
+services Planning existants.
 
 Les erreurs backend sont transformées par le catalogue sûr existant et seuls
 code, étape, retryabilité et corrélation technique sont diagnostiqués. Les

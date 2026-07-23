@@ -22,6 +22,10 @@ void main() {
       'LifeContextProjectionEngine',
       'ActionHandlerService',
       'ConversationCoordinator(',
+      'SmartPlanningService',
+      'pendingSmartPlanning',
+      'pendingPlanningProposal',
+      'Map<String, dynamic>? pending',
       'buildRequest(',
     ]) {
       expect(source, isNot(contains(forbidden)), reason: forbidden);
@@ -62,6 +66,31 @@ void main() {
           (file) => file
               .readAsStringSync()
               .contains('final class ConversationSessionController'),
+        );
+    expect(definitions, hasLength(1));
+  });
+
+  test('Smart Planning continuation boundary is typed and unique', () {
+    final model =
+        File('lib/models/smart_planning_continuation.dart').readAsStringSync();
+    final coordinator = File(
+      'lib/services/smart_planning_continuation_coordinator.dart',
+    ).readAsStringSync();
+    expect(model, contains('sessionGeneration'));
+    expect(model, contains('UnmodifiableListView'));
+    expect(model, isNot(contains('Map<String, dynamic>?')));
+    expect(coordinator, isNot(contains('BuildContext')));
+    expect(coordinator, isNot(contains('Widget')));
+    expect(coordinator, contains('SmartPlanningContinuationCoordinator'));
+
+    final definitions = Directory('lib')
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where((file) => file.path.endsWith('.dart'))
+        .where(
+          (file) => file
+              .readAsStringSync()
+              .contains('final class SmartPlanningContinuationCoordinator'),
         );
     expect(definitions, hasLength(1));
   });

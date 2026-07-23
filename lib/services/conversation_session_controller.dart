@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../models/conversation_models.dart';
 import '../models/conversation_session_models.dart';
+import '../models/smart_planning_continuation.dart';
 import '../models/user_profile.dart';
 import 'app_diagnostics.dart';
 import 'chat_backend_client.dart';
@@ -11,15 +12,24 @@ import 'conversation_context_service.dart';
 import 'conversation_coordinator.dart';
 import 'conversation_legacy_action_executor.dart';
 import 'identity/identity_production_services.dart';
+import 'smart_planning_continuation_coordinator.dart';
 
 typedef ConversationSessionActionExecutor = Future<ConversationActionOutcome>
     Function(
   Map<String, dynamic> action,
   String userMessage,
+  int sessionGeneration,
 );
 typedef ConversationPendingResolver = Future<ConversationOutcome?> Function(
   String answer,
+  int sessionGeneration,
 );
+typedef ConversationSessionInvalidator = void Function(
+  UserProfile profile,
+  int sessionGeneration,
+);
+typedef ConversationApplicationPendingPhase = ConversationSessionPhase?
+    Function();
 
 abstract interface class ConversationMessageStore {
   Future<void> save({
@@ -54,6 +64,8 @@ final class ConversationSessionController extends ChangeNotifier {
     required ConversationCoordinator coordinator,
     ConversationSessionActionExecutor? executeAction,
     ConversationPendingResolver? resolvePending,
+    ConversationSessionInvalidator? invalidateSession,
+    ConversationApplicationPendingPhase? applicationPendingPhase,
     ConversationMessageStore messageStore =
         const DefaultConversationMessageStore(),
     ChatBackendClient? ownedBackend,
@@ -65,6 +77,8 @@ final class ConversationSessionController extends ChangeNotifier {
         _executeAction = executeAction ??
             ConversationLegacyActionExecutor(coordinator: coordinator).execute,
         _resolvePending = resolvePending,
+        _invalidateSession = invalidateSession,
+        _applicationPendingPhase = applicationPendingPhase,
         _messageStore = messageStore,
         _ownedBackend = ownedBackend,
         _clock = clock ?? DateTime.now,
@@ -99,13 +113,35 @@ final class ConversationSessionController extends ChangeNotifier {
       eventParticipantIdentityValidationService:
           identityServices?.eventParticipantValidation,
     );
-    final legacyExecutor =
-        ConversationLegacyActionExecutor(coordinator: coordinator);
+    final smartPlanningGateway =
+        ProductionSmartPlanningContinuationGateway(profile);
+    final smartPlanning = SmartPlanningContinuationCoordinator(
+      gateway: smartPlanningGateway,
+    );
+    final legacyExecutor = ConversationLegacyActionExecutor(
+      coordinator: coordinator,
+      smartPlanning: smartPlanning,
+    );
     final controller = ConversationSessionController(
       profile: profile,
       coordinator: coordinator,
       executeAction: executeAction ?? legacyExecutor.execute,
       resolvePending: legacyExecutor.resolvePending,
+      invalidateSession: (nextProfile, _) {
+        smartPlanning.invalidate();
+        smartPlanningGateway.updateProfile(nextProfile);
+      },
+      applicationPendingPhase: () {
+        final active = smartPlanning.active;
+        if (active == null) return null;
+        return switch (active.step) {
+          SmartPlanningContinuationStep.planningConsent ||
+          SmartPlanningContinuationStep.confirmation ||
+          SmartPlanningContinuationStep.alternativeConfirmation =>
+            ConversationSessionPhase.awaitingConfirmation,
+          _ => ConversationSessionPhase.awaitingClarification,
+        };
+      },
       ownedBackend: backendClient == null ? backend : null,
       initialAssistantMessage:
           "Coucou 💕 Moi c'est Zelia. Je suis là pour t'aider à organiser ton quotidien ✨",
@@ -118,6 +154,8 @@ final class ConversationSessionController extends ChangeNotifier {
   final ConversationCoordinator _coordinator;
   final ConversationSessionActionExecutor _executeAction;
   final ConversationPendingResolver? _resolvePending;
+  final ConversationSessionInvalidator? _invalidateSession;
+  final ConversationApplicationPendingPhase? _applicationPendingPhase;
   final ConversationMessageStore _messageStore;
   final ChatBackendClient? _ownedBackend;
   final DateTime Function() _clock;
@@ -193,11 +231,11 @@ final class ConversationSessionController extends ChangeNotifier {
       ),
     );
     try {
-      final pendingOutcome = await _resolvePending?.call(text);
+      final pendingOutcome = await _resolvePending?.call(text, generation);
       final outcome = pendingOutcome ??
           await _coordinator.send(
             input: ConversationInput(message: text, profile: _profile),
-            executeAction: (action) => _executeAction(action, text),
+            executeAction: (action) => _executeAction(action, text, generation),
           );
       if (!_isCurrent(requestId, generation) || outcome == null) return;
       _setState(
@@ -207,12 +245,15 @@ final class ConversationSessionController extends ChangeNotifier {
       }
       _appendMessage(ConversationMessageRole.assistant, outcome.reply);
       if (!_isCurrent(requestId, generation)) return;
-      final pending = _coordinator.state.pendingAction != null;
+      final applicationPhase = _applicationPendingPhase?.call();
+      final pending =
+          _coordinator.state.pendingAction != null || applicationPhase != null;
       _setState(
         _state.copyWith(
-          phase: pending
-              ? _pendingPhase(_coordinator.state.pendingAction!.type)
-              : ConversationSessionPhase.ready,
+          phase: applicationPhase ??
+              (_coordinator.state.pendingAction != null
+                  ? _pendingPhase(_coordinator.state.pendingAction!.type)
+                  : ConversationSessionPhase.ready),
           clearCurrentRequest: true,
           retryAvailable: false,
           hasPendingAction: pending,
@@ -276,10 +317,12 @@ final class ConversationSessionController extends ChangeNotifier {
   void changeAccount(UserProfile profile) {
     if (_disposed || identical(profile, _profile)) return;
     _profile = profile;
+    final generation = _state.sessionGeneration + 1;
+    _invalidateSession?.call(profile, generation);
     _setState(
       ConversationSessionState(
         sessionId: _idGenerator(),
-        sessionGeneration: _state.sessionGeneration + 1,
+        sessionGeneration: generation,
         phase: ConversationSessionPhase.ready,
         messages: const [],
         effects: const [],

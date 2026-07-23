@@ -148,7 +148,7 @@ final class _Harness {
     controller = ConversationSessionController(
       profile: _profile(),
       coordinator: coordinator,
-      executeAction: (_, __) async => const ConversationActionOutcome(),
+      executeAction: (_, __, ___) async => const ConversationActionOutcome(),
       messageStore: store,
       idGenerator: () => 'technical-${++id}',
       clock: () => DateTime.utc(2026, 7, 23),
