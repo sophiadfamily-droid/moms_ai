@@ -1085,7 +1085,29 @@ Repository work must comply with `AGENTS.md`. At the constitutional level:
 
 Historical files, generated files, configuration snapshots, and similarly named engines must not be treated as authoritative without verifying their live role.
 
-## 23. Change policy for this document
+## 23. Mémoire synchronisée et révisionnée (V1-M.2)
+
+La mémoire suit désormais le même invariant de concurrence que HumanModel :
+Firestore est la référence partagée, le local est le dernier état valide et
+une file bornée, et le legacy reste une lecture de compatibilité. Politique et
+souvenirs ont des révisions monotones, des mutations idempotentes et des
+écritures transactionnelles avec révision attendue. Aucun appareil ne peut
+écraser silencieusement une révision plus récente.
+
+La politique est synchronisée séparément des souvenirs et revalidée au moment
+de chaque envoi. La pause et le consentement santé restent prioritaires sur une
+ancienne intention hors ligne. Les conflits sont fermés, persistés localement
+et non assimilés à un succès; les retries, reçus, conflits, cache et pagination
+sont bornés. L’expiration historise sans suppression physique.
+
+Le bootstrap restaure un nouvel appareil depuis le cloud, conserve les
+mutations locales admissibles et invalide toute référence active au changement
+de compte. Life Context ne reçoit que les métadonnées bornées de
+synchronisation et les souvenirs autorisés par M.1/LC.3. Conversation ne voit
+ni file ni conflit, et Planning ne reçoit aucune mémoire libre. Les parcours
+visibles de bibliothèque, correction et suppression relèvent de M.3.
+
+## 24. Change policy for this document
 
 Change this document when:
 
@@ -1109,7 +1131,7 @@ Do not change this document solely because:
 
 Every change must be based on the verified repository and must preserve the distinction between current state and planned architecture.
 
-## 24. Definition of architectural readiness
+## 25. Definition of architectural readiness
 
 A ZELIA capability is architecturally ready when:
 
@@ -1127,7 +1149,7 @@ A ZELIA capability is architecturally ready when:
 
 Code existing in the repository does not by itself make an engine architecturally ready. Conversely, a planned engine should not be implemented as a broad new subsystem until its prerequisites and ownership are clear.
 
-## 25. Enduring direction
+## 26. Enduring direction
 
 ZELIA should grow by deepening trust, context, and deterministic coordination—not by accumulating disconnected “smart” features.
 

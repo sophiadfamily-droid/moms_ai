@@ -5,6 +5,8 @@ import '../../models/life_context/life_context_domains.dart';
 import '../../models/task_model.dart';
 import '../../models/user_profile.dart';
 import '../../models/memory_policy.dart';
+import '../../models/memory_sync.dart';
+import '../memory_sync_local_repository.dart';
 import 'life_context_adapter.dart';
 import 'life_context_memory_projection.dart';
 
@@ -24,6 +26,9 @@ typedef MemoryContextLoader = Future<List<Map<String, dynamic>>> Function(
   String accountScopeId,
 );
 typedef MemoryPolicyContextLoader = Future<MemoryPolicy> Function(
+  String accountScopeId,
+);
+typedef MemorySyncStateLoader = Future<MemorySyncLocalState?> Function(
   String accountScopeId,
 );
 
@@ -656,14 +661,17 @@ final class MemoryLifeContextAdapter implements LifeContextDomainAdapter {
   const MemoryLifeContextAdapter({
     required MemoryContextLoader loadMemories,
     required MemoryPolicyContextLoader loadPolicy,
+    MemorySyncStateLoader? loadSyncState,
     LifeContextMemoryProjection projection =
         const HistoricalMemoryContextProjection(),
   })  : _loadMemories = loadMemories,
         _loadPolicy = loadPolicy,
+        _loadSyncState = loadSyncState,
         _projection = projection;
 
   final MemoryContextLoader _loadMemories;
   final MemoryPolicyContextLoader _loadPolicy;
+  final MemorySyncStateLoader? _loadSyncState;
   final LifeContextMemoryProjection _projection;
 
   @override
@@ -683,6 +691,7 @@ final class MemoryLifeContextAdapter implements LifeContextDomainAdapter {
       policy.validate();
       final raw = await _loadMemories(request.accountScopeId);
       final context = _projection.project(raw);
+      final syncState = await _loadSyncState?.call(request.accountScopeId);
       final memories = context.memories
           .map(
             (memory) => MemoryContextItem(
@@ -715,14 +724,24 @@ final class MemoryLifeContextAdapter implements LifeContextDomainAdapter {
           LifeContextFreshness.current,
           false,
           memories.length,
+          revision: syncState?.policy?.policyRevision,
           syncStatus: policy.generalMode == MemoryGeneralMode.paused
               ? 'paused'
-              : 'available',
+              : syncState?.syncStatus.name ?? 'available',
         ),
         policyGeneralMode: policy.generalMode.name,
         policyHealthMode: policy.healthMode.name,
         policyConfigured:
             policy.changeSource == MemoryPolicyChangeSource.explicitUserSetting,
+        pendingCount: syncState?.mutations
+                .where((mutation) =>
+                    mutation.state != MemoryMutationState.completed &&
+                    mutation.state != MemoryMutationState.abandoned)
+                .length ??
+            0,
+        hasConflicts: syncState?.conflicts.isNotEmpty ?? false,
+        policySynchronized: syncState?.syncStatus == MemorySyncStatus.synced,
+        hasLastValidState: syncState != null,
         memories: memories,
       );
     } on MemoryPolicyException {

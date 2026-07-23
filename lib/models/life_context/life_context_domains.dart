@@ -452,12 +452,20 @@ final class MemoryDomainSection extends LifeContextDomainSection {
     required this.policyGeneralMode,
     required this.policyHealthMode,
     required this.policyConfigured,
+    this.pendingCount = 0,
+    this.hasConflicts = false,
+    this.policySynchronized = false,
+    this.hasLastValidState = false,
     List<MemoryContextItem> memories = const [],
   }) : memories = UnmodifiableListView(memories);
 
   final String policyGeneralMode;
   final String policyHealthMode;
   final bool policyConfigured;
+  final int pendingCount;
+  final bool hasConflicts;
+  final bool policySynchronized;
+  final bool hasLastValidState;
   final List<MemoryContextItem> memories;
 
   @override
@@ -467,6 +475,10 @@ final class MemoryDomainSection extends LifeContextDomainSection {
         'policyGeneralMode': policyGeneralMode,
         'policyHealthMode': policyHealthMode,
         'policyConfigured': policyConfigured,
+        'pendingCount': pendingCount,
+        'hasConflicts': hasConflicts,
+        'policySynchronized': policySynchronized,
+        'hasLastValidState': hasLastValidState,
         'memories': memories.map((item) => item.toJson()).toList(),
       };
 }

@@ -208,9 +208,65 @@ target of a late reply. Durable pending confirmation recovery, multiple queued
 memory proposals, localization resources, and a complete memory-management UI
 remain outside V1.
 
+## M.2 — Révisions, hors ligne et continuité multiappareil
+
+Firestore est la référence partagée validée. La politique canonique réside
+dans `users/{uid}/private/memoryPolicy`; les souvenirs restent dans
+`users/{uid}/memories/{memoryId}` afin de préserver la collection historique.
+Chaque document canonique porte un schéma v1, un `accountScopeId` égal au
+propriétaire du chemin, une révision monotone, un `lastMutationId`, des
+timestamps serveur et les statuts fermés définis par M.1. Les mises à jour sont
+transactionnelles et exigent `expectedRevision`; elles effectuent exactement
+N vers N+1. Une suppression physique directe est refusée.
+
+Le stockage local versionné conserve, par compte, le dernier état valide, la
+politique et ses révisions, jusqu’à 500 souvenirs, 50 mutations, 25 conflits
+et 100 reçus d’idempotence, ainsi qu’une sauvegarde précédente. La priorité de
+lecture est : cloud validé, cache local validé, adaptateur legacy, absence
+explicite. Une version future ou une corruption n’est jamais transformée en
+liste vide. Les anciennes clés et les anciens documents ne sont ni supprimés
+ni réécrits aveuglément.
+
+Une mutation structurée contient un identifiant idempotent, la cible, son
+`expectedRevision`, le type fermé, la politique observée, la classification
+santé, la tentative et la prochaine échéance. La file est ordonnée et bornée.
+Seules des mises à jour locales compatibles d’une même cible peuvent être
+coalescées; aucun texte, contradiction, compte ou catégorie santé/générale
+n’est fusionné. Les retries sont bornés à cinq tentatives avec backoff
+exponentiel plafonné à cinq minutes et horloge injectable.
+
+La politique est relue avant l’envoi. Une pause bloque toute nouvelle création;
+la désactivation santé bloque les mutations santé; le passage à un mode plus
+permissif ne confirme jamais rétroactivement une proposition. Les conflits de
+révision, contenu, confirmation, politique, expiration, suppression, domaine
+structuré, scope, version et corruption sont explicites et ne sont jamais
+présentés comme synchronisés. La résolution technique permet de garder le
+distant, abandonner la mutation, demander une décision ou réessayer une seule
+fois contre la dernière révision après revalidation complète. Aucun merge de
+texte libre et aucun last-write-wins ne sont autorisés.
+
+`validUntil` décrit la validité, `expiresAt` le seuil d’expiration,
+`expired` le cycle de vie, et un tombstone éventuel une suppression logique :
+ces notions restent distinctes. L’expiration est évaluée à la lecture et peut
+être matérialisée par une mutation idempotente; elle n’efface pas l’historique
+et une ancienne mutation ne la réactive pas.
+
+Le bootstrap restaure politique et pages mémoire (100 documents par page,
+500 au maximum), préserve la file locale, traite les expirations et isole tout
+changement de compte. Un nouvel appareil ou une réinstallation reconnectée au
+même compte reprend les identifiants cloud. La liaison d’un compte anonyme
+préserve ce contrat parce que Firebase conserve le même UID. Hors ligne, le
+dernier état local valide reste lisible sans prétendre être synchronisé.
+
+Life Context expose seulement les compteurs bornés, la fraîcheur, la révision
+de politique, l’état de synchronisation et la présence de conflits; ni la file,
+ni les conflits complets, ni les reçus ne sont projetés. Conversation continue
+d’utiliser la projection M.1/LC.3 et Planning continue d’exclure toute mémoire
+libre. La bibliothèque, la correction et les suppressions visibles restent
+réservées à M.3.
+
 ## Deliberately deferred
 
-- revisioned offline and multi-device policy/memory synchronization (M.2);
 - complete library, correction, individual deletion, and detailed explanation
   UI (M.3);
 - general contradiction and entity-resolution engines;

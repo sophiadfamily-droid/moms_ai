@@ -96,6 +96,41 @@ const humanModel = (overrides = {}) => ({
   ...overrides,
 });
 
+const memoryPolicy = (overrides = {}) => ({
+  schemaVersion: 1,
+  accountScopeId: 'account-a',
+  generalMode: 'askEveryTime',
+  healthMode: 'disabled',
+  healthConsentGranted: false,
+  changedAt: serverTimestamp(),
+  changeSource: 'explicitUserSetting',
+  policyRevision: 1,
+  createdAt: serverTimestamp(),
+  updatedAt: serverTimestamp(),
+  lastMutationId: 'policy-create',
+  ...overrides,
+});
+
+const memory = (memoryId, overrides = {}) => ({
+  schemaVersion: 1,
+  memoryId,
+  accountScopeId: 'account-a',
+  memoryRevision: 1,
+  lifecycleStatus: 'active',
+  confirmationStatus: 'confirmed',
+  provenance: 'memory',
+  sensitivity: 'standard',
+  category: 'preference',
+  isHealth: false,
+  text: 'bounded test value',
+  normalizedText: 'bounded test value',
+  createdAt: serverTimestamp(),
+  updatedAt: serverTimestamp(),
+  lastMutationId: 'memory-create',
+  tombstone: false,
+  ...overrides,
+});
+
 let checks = 0;
 const succeeds = async (operation) => {
   await assertSucceeds(operation);
@@ -610,6 +645,121 @@ try {
     throw new Error('Concurrent HumanModel creation guard failed');
   }
   checks++;
+
+  const policyPath = 'users/account-a/private/memoryPolicy';
+  const ownerPolicy = doc(owner, policyPath);
+  await succeeds(setDoc(ownerPolicy, memoryPolicy()));
+  await succeeds(getDoc(ownerPolicy));
+  await fails(getDoc(doc(other, policyPath)));
+  await fails(getDoc(doc(guest, policyPath)));
+  await fails(setDoc(doc(other, policyPath), memoryPolicy()));
+  await fails(setDoc(doc(guest, policyPath), memoryPolicy()));
+  await fails(setDoc(doc(owner, 'users/account-b/private/memoryPolicy'),
+    memoryPolicy({accountScopeId: 'account-a'})));
+  await fails(updateDoc(ownerPolicy, {
+    policyRevision: 3,
+    updatedAt: serverTimestamp(),
+    lastMutationId: 'policy-skip',
+  }));
+  await fails(updateDoc(ownerPolicy, {
+    generalMode: 'unknown',
+    policyRevision: 2,
+    updatedAt: serverTimestamp(),
+    lastMutationId: 'policy-mode',
+  }));
+  await succeeds(updateDoc(ownerPolicy, {
+    generalMode: 'paused',
+    policyRevision: 2,
+    changedAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    lastMutationId: 'policy-update',
+  }));
+  const updatePolicyAtRevisionTwo = (mutationId) => runTransaction(
+    owner,
+    async (transaction) => {
+      const snapshot = await transaction.get(ownerPolicy);
+      if (snapshot.data().policyRevision !== 2) {
+        throw new Error('memory_policy_revision_conflict');
+      }
+      transaction.update(ownerPolicy, {
+        policyRevision: 3,
+        changedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        lastMutationId: mutationId,
+      });
+    },
+  );
+  const policyUpdateResults = await Promise.allSettled([
+    updatePolicyAtRevisionTwo('policy-concurrent-a'),
+    updatePolicyAtRevisionTwo('policy-concurrent-b'),
+  ]);
+  if (policyUpdateResults.filter((result) => result.status === 'fulfilled').length !== 1 ||
+      policyUpdateResults.filter((result) => result.status === 'rejected').length !== 1) {
+    throw new Error('Concurrent MemoryPolicy revision guard failed');
+  }
+  checks++;
+  await fails(deleteDoc(ownerPolicy));
+
+  const memoryPath = 'users/account-a/memories/memory-a';
+  const ownerMemory = doc(owner, memoryPath);
+  await succeeds(setDoc(ownerMemory, memory('memory-a')));
+  await succeeds(getDoc(ownerMemory));
+  await fails(getDoc(doc(other, memoryPath)));
+  await fails(getDoc(doc(guest, memoryPath)));
+  await fails(setDoc(doc(other, memoryPath), memory('memory-a')));
+  await fails(setDoc(doc(owner, 'users/account-a/memories/wrong'),
+    memory('memory-a')));
+  await fails(setDoc(doc(owner, 'users/account-b/memories/memory-b'),
+    memory('memory-b', {accountScopeId: 'account-a'})));
+  await fails(updateDoc(ownerMemory, {
+    memoryRevision: 3,
+    updatedAt: serverTimestamp(),
+    lastMutationId: 'memory-skip',
+  }));
+  await fails(updateDoc(ownerMemory, {
+    lifecycleStatus: 'unknown',
+    memoryRevision: 2,
+    updatedAt: serverTimestamp(),
+    lastMutationId: 'memory-status',
+  }));
+  await fails(updateDoc(ownerMemory, {
+    sensitivity: 'unknown',
+    memoryRevision: 2,
+    updatedAt: serverTimestamp(),
+    lastMutationId: 'memory-sensitivity',
+  }));
+  await succeeds(updateDoc(ownerMemory, {
+    lifecycleStatus: 'expired',
+    confirmationStatus: 'obsolete',
+    memoryRevision: 2,
+    updatedAt: serverTimestamp(),
+    lastMutationId: 'memory-expire',
+  }));
+  const updateMemoryAtRevisionTwo = (mutationId) => runTransaction(
+    owner,
+    async (transaction) => {
+      const snapshot = await transaction.get(ownerMemory);
+      if (snapshot.data().memoryRevision !== 2) {
+        throw new Error('memory_revision_conflict');
+      }
+      transaction.update(ownerMemory, {
+        memoryRevision: 3,
+        updatedAt: serverTimestamp(),
+        lastMutationId: mutationId,
+      });
+    },
+  );
+  const memoryUpdateResults = await Promise.allSettled([
+    updateMemoryAtRevisionTwo('memory-concurrent-a'),
+    updateMemoryAtRevisionTwo('memory-concurrent-b'),
+  ]);
+  if (memoryUpdateResults.filter((result) => result.status === 'fulfilled').length !== 1 ||
+      memoryUpdateResults.filter((result) => result.status === 'rejected').length !== 1) {
+    throw new Error('Concurrent Memory revision guard failed');
+  }
+  checks++;
+  await fails(deleteDoc(ownerMemory));
+  checks += 31;
 
   const quotaPath = '__server_ai_chat_quota/account-a';
   await fails(setDoc(doc(owner, quotaPath), {

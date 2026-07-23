@@ -25,6 +25,7 @@ final class _MemorySettingsScreenState extends State<MemorySettingsScreen> {
   bool _loading = true;
   bool _saving = false;
   String? _errorMessage;
+  String? _syncMessage;
 
   @override
   void initState() {
@@ -64,6 +65,7 @@ final class _MemorySettingsScreenState extends State<MemorySettingsScreen> {
     setState(() {
       _saving = true;
       _errorMessage = null;
+      _syncMessage = null;
     });
     try {
       final transition = const MemoryPolicyEngine().transition(
@@ -73,11 +75,18 @@ final class _MemorySettingsScreenState extends State<MemorySettingsScreen> {
         explicitHealthConsent: _healthMode == MemoryHealthMode.enabled,
         changedAt: DateTime.now(),
       );
-      await service.save(transition.current);
+      final status = await service.save(transition.current);
       if (!mounted) return;
       setState(() {
         _policy = transition.current;
         _saving = false;
+        _syncMessage = switch (status) {
+          MemoryPolicySaveStatus.synced => null,
+          MemoryPolicySaveStatus.pendingSync =>
+            'Réglages enregistrés sur cet appareil. Synchronisation en attente.',
+          MemoryPolicySaveStatus.conflict =>
+            'Ces réglages ont changé sur un autre appareil. La version la plus restrictive reste appliquée.',
+        };
       });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Réglages de mémoire enregistrés.')),
@@ -155,6 +164,13 @@ final class _MemorySettingsScreenState extends State<MemorySettingsScreen> {
                           color: Theme.of(context).colorScheme.error,
                         ),
                       ),
+                    ),
+                  ],
+                  if (_syncMessage != null) ...[
+                    const SizedBox(height: 12),
+                    Semantics(
+                      liveRegion: true,
+                      child: Text(_syncMessage!),
                     ),
                   ],
                   const SizedBox(height: 20),

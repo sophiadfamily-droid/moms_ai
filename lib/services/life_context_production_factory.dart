@@ -7,6 +7,8 @@ import 'life_context/life_context_engine.dart';
 import 'memory_policy_service.dart';
 import 'memory_service.dart';
 import 'task_service.dart';
+import 'memory_sync_local_repository.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 abstract final class LifeContextProductionFactory {
   static Future<LifeContextEngine> create() async {
@@ -14,6 +16,8 @@ abstract final class LifeContextProductionFactory {
     final memoryPolicyService = await MemoryPolicyService.local(
       currentAccountScopeId: () => AuthService.currentUserId,
     );
+    final memorySyncLocal =
+        MemorySyncLocalRepository(await SharedPreferences.getInstance());
     Future<HumanModelLocalState?> loadHuman(String scope) =>
         humanService.loadState(scope);
 
@@ -30,6 +34,7 @@ abstract final class LifeContextProductionFactory {
         RoutineLifeContextAdapter(loadHuman: loadHuman),
         MemoryLifeContextAdapter(
           loadMemories: MemoryService.getMemoriesForLifeContext,
+          loadSyncState: memorySyncLocal.load,
           loadPolicy: (scope) async {
             if (AuthService.currentUserId != scope) {
               throw StateError('memory_account_mismatch');

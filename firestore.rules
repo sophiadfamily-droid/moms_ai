@@ -212,6 +212,108 @@ service cloud.firestore {
         && next.updatedAt == request.time;
     }
 
+    function hasValidMemoryPolicyShape(userId) {
+      let data = request.resource.data;
+      return data.keys().hasOnly([
+          'schemaVersion', 'accountScopeId', 'generalMode', 'healthMode',
+          'healthConsentGranted', 'changedAt', 'changeSource',
+          'policyRevision', 'createdAt', 'updatedAt',
+          'explicitHealthConsentAt', 'lastMutationId'
+        ])
+        && data.keys().hasAll([
+          'schemaVersion', 'accountScopeId', 'generalMode', 'healthMode',
+          'healthConsentGranted', 'changedAt', 'changeSource',
+          'policyRevision', 'createdAt', 'updatedAt', 'lastMutationId'
+        ])
+        && data.schemaVersion == 1
+        && data.accountScopeId == userId
+        && data.generalMode in ['automatic', 'askEveryTime', 'paused']
+        && data.healthMode in ['disabled', 'askEveryTime', 'enabled']
+        && data.healthConsentGranted is bool
+        && (data.healthMode != 'enabled' || data.healthConsentGranted == true)
+        && (data.healthMode != 'enabled'
+          || (data.keys().hasAny(['explicitHealthConsentAt'])
+            && data.explicitHealthConsentAt is timestamp))
+        && (!data.keys().hasAny(['explicitHealthConsentAt'])
+          || data.explicitHealthConsentAt is timestamp)
+        && data.changeSource in ['explicitUserSetting', 'restrictiveDefault']
+        && data.changedAt is timestamp
+        && data.policyRevision is int
+        && data.policyRevision > 0
+        && data.lastMutationId is string
+        && data.lastMutationId.size() > 0
+        && data.lastMutationId.size() <= 128;
+    }
+
+    function isValidMemoryShape(userId, memoryId) {
+      let data = request.resource.data;
+      return data.keys().hasOnly([
+          'schemaVersion', 'memoryId', 'accountScopeId', 'memoryRevision',
+          'lifecycleStatus', 'confirmationStatus', 'provenance',
+          'sensitivity', 'category', 'isHealth', 'text', 'normalizedText',
+          'createdAt', 'updatedAt', 'validFrom', 'validUntil', 'expiresAt',
+          'structuredDomain', 'structuredReferenceId', 'lastMutationId',
+          'tombstone', 'semanticType', 'importance', 'lifecycleState',
+          'confirmedAt', 'rejectedAt', 'deletedAt', 'replacedByMemoryId',
+          'supersedesMemoryId', 'lifecycleHistory'
+        ])
+        && data.keys().hasAll([
+          'schemaVersion', 'memoryId', 'accountScopeId', 'memoryRevision',
+          'lifecycleStatus', 'confirmationStatus', 'provenance',
+          'sensitivity', 'category', 'isHealth', 'text', 'normalizedText',
+          'createdAt', 'updatedAt', 'lastMutationId', 'tombstone'
+        ])
+        && data.schemaVersion == 1
+        && data.memoryId == memoryId
+        && data.accountScopeId == userId
+        && data.memoryRevision is int
+        && data.memoryRevision > 0
+        && data.lifecycleStatus in [
+          'proposed', 'confirmed', 'rejected', 'active', 'superseded',
+          'obsolete', 'deleted', 'expired'
+        ]
+        && data.confirmationStatus in [
+          'unconfirmed', 'confirmed', 'inferred', 'rejected', 'obsolete'
+        ]
+        && data.provenance in [
+          'profile', 'memory', 'event', 'routine', 'currentInstruction',
+          'derived'
+        ]
+        && data.sensitivity in ['standard', 'sensitive']
+        && data.category is string
+        && data.category.size() <= 100
+        && data.isHealth is bool
+        && (!data.isHealth || data.sensitivity == 'sensitive')
+        && data.text is string
+        && data.text.size() > 0
+        && data.text.size() <= 4000
+        && data.normalizedText is string
+        && data.normalizedText.size() > 0
+        && data.normalizedText.size() <= 4000
+        && (!data.keys().hasAny(['validFrom']) || data.validFrom is timestamp)
+        && (!data.keys().hasAny(['validUntil']) || data.validUntil is timestamp)
+        && (!data.keys().hasAny(['expiresAt']) || data.expiresAt is timestamp)
+        && (!data.keys().hasAny(['confirmedAt']) || data.confirmedAt is timestamp)
+        && (!data.keys().hasAny(['rejectedAt']) || data.rejectedAt is timestamp)
+        && (!data.keys().hasAny(['deletedAt']) || data.deletedAt is timestamp)
+        && (!data.keys().hasAny(['semanticType'])
+          || data.semanticType in [
+            'preference', 'goal', 'identity', 'obligation',
+            'timeConstraint', 'routine', 'health', 'context'
+          ])
+        && (!data.keys().hasAny(['importance'])
+          || (data.importance is int
+            && data.importance >= 0
+            && data.importance <= 5))
+        && (!data.keys().hasAny(['lifecycleHistory'])
+          || (data.lifecycleHistory is list
+            && data.lifecycleHistory.size() <= 100))
+        && data.lastMutationId is string
+        && data.lastMutationId.size() > 0
+        && data.lastMutationId.size() <= 128
+        && data.tombstone is bool;
+    }
+
     match /users/{userId} {
       allow read, write: if isOwner(userId);
 
@@ -242,11 +344,49 @@ service cloud.firestore {
         allow delete: if false;
       }
 
+      match /private/memoryPolicy {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId)
+          && hasValidMemoryPolicyShape(userId)
+          && request.resource.data.policyRevision == 1
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.updatedAt == request.time;
+        allow update: if isOwner(userId)
+          && hasValidMemoryPolicyShape(userId)
+          && request.resource.data.accountScopeId == resource.data.accountScopeId
+          && request.resource.data.schemaVersion == resource.data.schemaVersion
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.policyRevision == resource.data.policyRevision + 1
+          && request.resource.data.lastMutationId != resource.data.lastMutationId
+          && request.resource.data.updatedAt == request.time;
+        allow delete: if false;
+      }
+
+      match /memories/{memoryId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId)
+          && isValidMemoryShape(userId, memoryId)
+          && request.resource.data.memoryRevision == 1
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.updatedAt == request.time;
+        allow update: if isOwner(userId)
+          && isValidMemoryShape(userId, memoryId)
+          && request.resource.data.accountScopeId == resource.data.accountScopeId
+          && request.resource.data.memoryId == resource.data.memoryId
+          && request.resource.data.schemaVersion == resource.data.schemaVersion
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.memoryRevision == resource.data.memoryRevision + 1
+          && request.resource.data.lastMutationId != resource.data.lastMutationId
+          && request.resource.data.updatedAt == request.time;
+        allow delete: if false;
+      }
+
       match /{collection}/{document=**} {
         allow read, write: if isOwner(userId)
           && collection != 'identities'
           && collection != 'events'
-          && collection != 'private';
+          && collection != 'private'
+          && collection != 'memories';
       }
     }
 

@@ -1,8 +1,16 @@
 import 'dart:convert';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/identity/uuid_v7_entity_id_generator.dart';
 import '../models/memory_policy.dart';
+import '../models/memory_sync.dart';
+import 'memory_sync_cloud_repository.dart';
+import 'memory_sync_local_repository.dart';
+import 'memory_sync_service.dart';
+
+enum MemoryPolicySaveStatus { synced, pendingSync, conflict }
 
 abstract interface class MemoryPolicyRepository {
   Future<MemoryPolicy?> load(String accountScopeId);
@@ -53,24 +61,46 @@ final class MemoryPolicyService {
     required this.repository,
     required this.currentAccountScopeId,
     this.now = DateTime.now,
-  });
+    MemorySyncService? syncService,
+    UuidV7EntityIdGenerator idGenerator = const UuidV7EntityIdGenerator(),
+  })  : _syncService = syncService,
+        _idGenerator = idGenerator;
 
   final MemoryPolicyRepository repository;
   final String? Function() currentAccountScopeId;
   final DateTime Function() now;
+  final MemorySyncService? _syncService;
+  final UuidV7EntityIdGenerator _idGenerator;
 
   static Future<MemoryPolicyService> local({
     required String? Function() currentAccountScopeId,
-  }) async =>
-      MemoryPolicyService(
-        repository: SharedPreferencesMemoryPolicyRepository(
-          await SharedPreferences.getInstance(),
-        ),
-        currentAccountScopeId: currentAccountScopeId,
-      );
+  }) async {
+    final preferences = await SharedPreferences.getInstance();
+    final sync = MemorySyncService(
+      local: MemorySyncLocalRepository(preferences),
+      cloud: FirestoreMemorySyncRepository(
+        firestore: FirebaseFirestore.instance,
+        currentUid: currentAccountScopeId,
+      ),
+      currentScope: currentAccountScopeId,
+    );
+    return MemoryPolicyService(
+      repository: SharedPreferencesMemoryPolicyRepository(preferences),
+      currentAccountScopeId: currentAccountScopeId,
+      syncService: sync,
+    );
+  }
 
   Future<MemoryPolicy> load() async {
     final scope = _scope();
+    if (_syncService != null) {
+      final bootstrap = await _syncService.bootstrap();
+      final syncedPolicy = bootstrap.state.policy?.policy;
+      if (syncedPolicy != null) {
+        await repository.save(syncedPolicy);
+        return syncedPolicy;
+      }
+    }
     return await repository.load(scope) ??
         MemoryPolicy.restrictiveDefault(
           accountScopeId: scope,
@@ -78,12 +108,25 @@ final class MemoryPolicyService {
         );
   }
 
-  Future<void> save(MemoryPolicy policy) async {
+  Future<MemoryPolicySaveStatus> save(MemoryPolicy policy) async {
     final scope = _scope();
     if (policy.accountScopeId != scope) {
       throw const MemoryPolicyException('memory_policy_account_mismatch');
     }
     await repository.save(policy);
+    final sync = _syncService;
+    if (sync == null) return MemoryPolicySaveStatus.pendingSync;
+    await sync.bootstrap();
+    await sync.queuePolicy(
+      policy: policy,
+      mutationId: _idGenerator.generate(),
+    );
+    final state = await sync.synchronize();
+    return switch (state.syncStatus) {
+      MemorySyncStatus.synced => MemoryPolicySaveStatus.synced,
+      MemorySyncStatus.conflict => MemoryPolicySaveStatus.conflict,
+      _ => MemoryPolicySaveStatus.pendingSync,
+    };
   }
 
   String _scope() {

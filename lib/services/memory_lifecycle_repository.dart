@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/memory_lifecycle.dart';
 import '../models/memory_lifecycle_state.dart';
 import '../models/life_context/memory_context.dart';
+import '../models/life_context/life_context_provenance.dart';
 import 'auth_service.dart';
 import 'life_context/life_context_memory_projection.dart';
 
@@ -91,32 +92,56 @@ final class FirestoreMemoryLifecycleRepository
   ) async {
     final ref = _memoriesRef();
     if (ref == null) return;
-    await ref.doc(proposal.id).set(
-          MemoryLifecycleFirestoreSerializer.proposal(
-            proposal,
-            mutation,
-          ),
-          SetOptions(merge: true),
-        );
+    final uid = AuthService.currentUserId!;
+    final reference = ref.doc(proposal.id);
+    await _firestore.runTransaction((transaction) async {
+      final current = await transaction.get(reference);
+      final mutationId = mutation.record.idempotencyKey;
+      if (current.exists) {
+        if (current.data()?['lastMutationId'] == mutationId) return;
+        throw StateError('memory_revision_conflict');
+      }
+      transaction.set(
+        reference,
+        MemoryLifecycleFirestoreSerializer.proposal(
+          proposal,
+          mutation,
+          accountScopeId: uid,
+        ),
+      );
+    });
   }
 
   @override
   Future<void> applyMutations(List<MemoryLifecycleMutation> mutations) async {
     final ref = _memoriesRef();
     if (ref == null || mutations.isEmpty) return;
-    final batch = _firestore.batch();
     final grouped = <String, List<MemoryLifecycleMutation>>{};
     for (final mutation in mutations) {
       grouped.putIfAbsent(mutation.memoryId, () => []).add(mutation);
     }
     for (final entry in grouped.entries) {
-      batch.set(
-        ref.doc(entry.key),
-        MemoryLifecycleFirestoreSerializer.mutations(entry.value),
-        SetOptions(merge: true),
-      );
+      final reference = ref.doc(entry.key);
+      await _firestore.runTransaction((transaction) async {
+        final current = await transaction.get(reference);
+        final data = current.data();
+        if (!current.exists || data == null) {
+          throw StateError('memory_not_found');
+        }
+        final revision = data['memoryRevision'];
+        if (revision is! int || revision < 1) {
+          throw StateError('memory_legacy_requires_migration');
+        }
+        final mutationId = entry.value.last.record.idempotencyKey;
+        if (data['lastMutationId'] == mutationId) return;
+        transaction.update(reference, {
+          ...MemoryLifecycleFirestoreSerializer.mutations(entry.value),
+          'memoryRevision': revision + 1,
+          'lastMutationId': mutationId,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      });
     }
-    await batch.commit();
   }
 }
 
@@ -125,33 +150,43 @@ final class MemoryLifecycleFirestoreSerializer {
 
   static Map<String, dynamic> proposal(
     MemoryProposal proposal,
-    MemoryLifecycleMutation mutation,
-  ) =>
+    MemoryLifecycleMutation mutation, {
+    String accountScopeId = 'test-scope',
+  }) =>
       {
+        'schemaVersion': 1,
+        'memoryId': proposal.id,
+        'accountScopeId': accountScopeId,
+        'memoryRevision': 1,
         'text': proposal.text,
         'normalizedText': proposal.normalizedText,
         'category': proposal.category,
         'semanticType': proposal.semanticType.name,
         'importance': proposal.importance,
-        'sensitivity': proposal.sensitivity.name,
-        'source': proposal.source,
-        'createdAt': proposal.proposedAt,
-        'updatedAt': proposal.proposedAt,
+        'sensitivity': const {'health', 'medical', 'sante'}
+                .contains(proposal.category.trim().toLowerCase())
+            ? 'sensitive'
+            : proposal.sensitivity.name,
+        'provenance': LifeContextSourceType.memory.name,
+        'isHealth': const {'health', 'medical', 'sante'}
+            .contains(proposal.category.trim().toLowerCase()),
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
         'confirmationStatus': 'unconfirmed',
         'lifecycleState': mutation.newState.name,
-        'confirmationRequired': proposal.confirmationRequired,
-        if (proposal.potentiallyReplacesMemoryId != null)
-          'potentiallyReplacesMemoryId': proposal.potentiallyReplacesMemoryId,
+        'lifecycleStatus': mutation.newState.name,
+        'lastMutationId': mutation.record.idempotencyKey,
+        'tombstone': false,
         if (proposal.validFrom != null) 'validFrom': proposal.validFrom,
         if (proposal.validUntil != null) 'validUntil': proposal.validUntil,
         if (proposal.expiresAt != null) 'expiresAt': proposal.expiresAt,
-        if (proposal.evidence != null) 'evidence': proposal.evidence,
-        if (proposal.confidence != null) 'confidence': proposal.confidence,
         'lifecycleHistory': [mutation.record.toJson()],
       };
 
   static Map<String, dynamic> mutation(MemoryLifecycleMutation mutation) => {
         'lifecycleState': mutation.newState.name,
+        'lifecycleStatus': mutation.newState.name,
+        'tombstone': mutation.newState == MemoryLifecycleState.deleted,
         if (mutation.newState == MemoryLifecycleState.confirmed ||
             mutation.newState == MemoryLifecycleState.active)
           'confirmationStatus': 'confirmed',
@@ -161,7 +196,6 @@ final class MemoryLifecycleFirestoreSerializer {
             mutation.newState == MemoryLifecycleState.superseded ||
             mutation.newState == MemoryLifecycleState.expired)
           'confirmationStatus': 'obsolete',
-        'updatedAt': mutation.record.occurredAt,
         if (mutation.confirmedAt != null) 'confirmedAt': mutation.confirmedAt,
         if (mutation.rejectedAt != null) 'rejectedAt': mutation.rejectedAt,
         if (mutation.deletedAt != null) 'deletedAt': mutation.deletedAt,
