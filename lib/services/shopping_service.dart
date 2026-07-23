@@ -14,6 +14,7 @@ import 'auth_service.dart';
 import 'app_diagnostics.dart';
 import 'revisioned_cloud_repositories.dart';
 import 'revisioned_domain_sync_service.dart';
+import 'revisioned_action_ledger_observer.dart';
 
 class ShoppingService {
   static const String shoppingKey = "shopping_items";
@@ -170,27 +171,33 @@ class ShoppingService {
           !existing.isTombstone &&
               jsonEncode(existing.item.toJson()) !=
                   jsonEncode(entry.value.toJson())) {
-        await _sync.apply(scope, mutation);
+        await RevisionedActionLedgerObserver.shopping(
+          scope,
+          mutation,
+          () => _sync.apply(scope, mutation),
+        );
       }
     }
     for (final existing in current.where(
       (value) =>
           !value.isTombstone && !proposedById.containsKey(value.entityId),
     )) {
-      await _sync.apply(
+      final mutation = ShoppingMutation(
+        mutationId: mutationIds.generate(),
+        targetId: existing.entityId,
+        expectedRevision: existing.revision,
+        createdAt: DateTime.now().toUtc(),
+        attempt: 0,
+        nextRetryAt: null,
+        state: RevisionedMutationState.queued,
+        type: ShoppingMutationType.removeItem,
+        item: existing.item,
+        clearGeneration: existing.clearGeneration,
+      );
+      await RevisionedActionLedgerObserver.shopping(
         scope,
-        ShoppingMutation(
-          mutationId: mutationIds.generate(),
-          targetId: existing.entityId,
-          expectedRevision: existing.revision,
-          createdAt: DateTime.now().toUtc(),
-          attempt: 0,
-          nextRetryAt: null,
-          state: RevisionedMutationState.queued,
-          type: ShoppingMutationType.removeItem,
-          item: existing.item,
-          clearGeneration: existing.clearGeneration,
-        ),
+        mutation,
+        () => _sync.apply(scope, mutation),
       );
     }
   }

@@ -8,6 +8,8 @@ import '../core/identity/entity_identity.dart';
 import '../core/identity/entity_matcher.dart';
 import '../core/identity/uuid_v7_entity_id_generator.dart';
 import '../models/event_model.dart';
+import '../models/action_autonomy_policy.dart';
+import '../models/action_ledger.dart';
 import '../models/event_sync_models.dart';
 import '../models/event_sync_conflict.dart';
 import 'cloud_event_service.dart';
@@ -18,6 +20,7 @@ import 'event_mutation_invariant_service.dart';
 import 'event_sync_journal.dart';
 import 'event_sync_service.dart';
 import 'event_conflict_resolution_service.dart';
+import 'event_action_ledger_observer.dart';
 import 'profile_reasoning_service.dart';
 import 'storage_service.dart';
 
@@ -50,6 +53,7 @@ class EventService {
     createLocal: addEvent,
     validateMutation: _validateConflictMutation,
     idGenerator: _syncIdGenerator,
+    ledgerObserver: _traceConflictResolution,
   );
 
   static final EntityMatcher<EventModel> _eventMatcher = EntityMatcher(
@@ -187,13 +191,37 @@ class EventService {
   static Future<void> addEvent(
     EventModel event, {
     EntityIdGenerator idGenerator = const UuidV7EntityIdGenerator(),
+    String? mutationId,
+    String? batchId,
   }) async {
     final events = await getEvents();
 
     final created = _withIdForCreation(event, idGenerator);
-    events.add(created);
-    await _writeLocalEvents(events);
-    await _syncCreation(created);
+    final logicalMutationId = mutationId ?? _syncIdGenerator.generate();
+    await EventActionLedgerObserver.trace<bool>(
+      mutationId: logicalMutationId,
+      eventId: created.id!,
+      expectedRevision: 0,
+      actionType: ActionType.createEvent,
+      operationType: 'createEvent',
+      undoStrategy: ActionUndoStrategy.undoCreateEvent,
+      dispatch: () async {
+        events.add(created);
+        await _writeLocalEvents(events);
+        final result = await _syncCreation(
+          created,
+          operationId: logicalMutationId,
+          batchId: batchId,
+        );
+        return EventLedgerDispatchResult(
+          result.status == EventMutationStatus.success
+              ? EventLedgerDispatchStatus.succeeded
+              : EventLedgerDispatchStatus.pendingSync,
+          value: true,
+          revision: created.eventRevision,
+        );
+      },
+    );
     notifyEventsChanged();
   }
 
@@ -201,18 +229,15 @@ class EventService {
     List<EventModel> newEvents, {
     EntityIdGenerator idGenerator = const UuidV7EntityIdGenerator(),
   }) async {
-    final events = await getEvents();
-
-    final created = newEvents
-        .map((event) => _withIdForCreation(event, idGenerator))
-        .toList(growable: false);
-    events.addAll(created);
-    await _writeLocalEvents(events);
     final batchId = _syncIdGenerator.generate();
-    for (final event in created) {
-      await _syncCreation(event, batchId: batchId);
+    for (final event in newEvents) {
+      await addEvent(
+        event,
+        idGenerator: idGenerator,
+        mutationId: _syncIdGenerator.generate(),
+        batchId: batchId,
+      );
     }
-    notifyEventsChanged();
   }
 
   static Future<void> updateEvents(
@@ -228,6 +253,106 @@ class EventService {
     EventParticipantMutationIntent participantIntent =
         const PreserveEventParticipant(),
     EventCloudMutation cloudMutate = CloudEventService.mutateEvent,
+    String? mutationId,
+  }) {
+    final logicalMutationId = mutationId ?? _syncIdGenerator.generate();
+    final changesParticipant = participantIntent is! PreserveEventParticipant;
+    final changesRecurrence =
+        !changesParticipant && _recurrenceChanged(existing, proposed);
+    return EventActionLedgerObserver.trace<EventMutationResult>(
+      mutationId: logicalMutationId,
+      eventId: existing.id ?? proposed.id ?? '',
+      expectedRevision: expectedEventRevision,
+      actionType: changesParticipant
+          ? ActionType.modifyParticipant
+          : changesRecurrence
+              ? ActionType.modifyRecurrence
+              : ActionType.updateEvent,
+      operationType: changesParticipant
+          ? 'modifyParticipant'
+          : changesRecurrence
+              ? 'modifyRecurrence'
+              : 'updateEvent',
+      undoStrategy: changesParticipant
+          ? ActionUndoStrategy.undoParticipantChange
+          : changesRecurrence
+              ? ActionUndoStrategy.irreversible
+              : ActionUndoStrategy.undoUpdateEvent,
+      dispatch: () async {
+        final result = await _mutateEvent(
+          existing: existing,
+          proposed: proposed,
+          expectedEventRevision: expectedEventRevision,
+          participantIntent: participantIntent,
+          cloudMutate: cloudMutate,
+          mutationId: logicalMutationId,
+        );
+        return EventLedgerDispatchResult(
+          _ledgerStatus(result.status),
+          value: result,
+          revision: result.event?.eventRevision,
+        );
+      },
+    );
+  }
+
+  static bool _recurrenceChanged(EventModel existing, EventModel proposed) =>
+      existing.isRecurring != proposed.isRecurring ||
+      existing.recurringType != proposed.recurringType ||
+      existing.recurringWeekday != proposed.recurringWeekday ||
+      existing.recurringUntil != proposed.recurringUntil ||
+      existing.parentRecurringId != proposed.parentRecurringId;
+
+  static Future<EventConflictResolutionResult> _traceConflictResolution({
+    required PendingEventSyncOperation operation,
+    required EventConflictResolutionDecision decision,
+    required Future<EventConflictResolutionResult> Function() dispatch,
+  }) async {
+    final recreate = decision == EventConflictResolutionDecision.recreateAsNew;
+    final remote = recreate
+        ? null
+        : await CloudEventService.getEventById(operation.eventId);
+    final mutationId = 'resolve:${operation.operationId}:${decision.name}';
+    return EventActionLedgerObserver.trace<EventConflictResolutionResult>(
+      mutationId: mutationId,
+      eventId: recreate
+          ? operation.resolutionEventId ?? operation.eventId
+          : operation.eventId,
+      expectedRevision: remote?.eventRevision ?? 0,
+      actionType:
+          recreate ? ActionType.createEvent : ActionType.resolveEventConflict,
+      operationType: 'resolveEventConflict',
+      undoStrategy: recreate
+          ? ActionUndoStrategy.undoCreateEvent
+          : ActionUndoStrategy.irreversible,
+      dispatch: () async {
+        final result = await dispatch();
+        final status = switch (result.status) {
+          EventConflictResolutionStatus.success =>
+            EventLedgerDispatchStatus.succeeded,
+          EventConflictResolutionStatus.cloudChangedAgain ||
+          EventConflictResolutionStatus.planningConflict =>
+            EventLedgerDispatchStatus.conflict,
+          EventConflictResolutionStatus.persistenceFailure =>
+            EventLedgerDispatchStatus.pendingSync,
+          _ => EventLedgerDispatchStatus.failed,
+        };
+        return EventLedgerDispatchResult(
+          status,
+          value: result,
+          revision: result.event?.eventRevision,
+        );
+      },
+    );
+  }
+
+  static Future<EventMutationResult> _mutateEvent({
+    required EventModel existing,
+    required EventModel proposed,
+    required int expectedEventRevision,
+    required EventParticipantMutationIntent participantIntent,
+    required EventCloudMutation cloudMutate,
+    required String mutationId,
   }) async {
     final events = await getEvents();
     final index = events.indexWhere(
@@ -264,9 +389,21 @@ class EventService {
           event: next,
           baseEvent: current,
           expectedEventRevision: expectedEventRevision,
+          operationId: mutationId,
         );
       }
       notifyEventsChanged();
+      if (cloudResult != null &&
+          cloudResult.status == EventMutationStatus.success) {
+        await _enqueue(
+          type: EventSyncOperationType.update,
+          event: next,
+          baseEvent: current,
+          expectedEventRevision: expectedEventRevision,
+          operationId: mutationId,
+          state: EventSyncOperationState.applied,
+        );
+      }
       return EventMutationResult.success(next);
     } on FormatException {
       return const EventMutationResult.invalid();
@@ -280,6 +417,39 @@ class EventService {
     required int expectedEventRevision,
     EventCloudDeletion cloudDelete = CloudEventService.deleteEvent,
     String? batchId,
+    String? mutationId,
+  }) {
+    final logicalMutationId = mutationId ?? _syncIdGenerator.generate();
+    return EventActionLedgerObserver.trace<EventMutationResult>(
+      mutationId: logicalMutationId,
+      eventId: existing.id ?? '',
+      expectedRevision: expectedEventRevision,
+      actionType: ActionType.deleteEvent,
+      operationType: 'deleteEvent',
+      undoStrategy: ActionUndoStrategy.undoDeleteEvent,
+      dispatch: () async {
+        final result = await _deleteEvent(
+          existing: existing,
+          expectedEventRevision: expectedEventRevision,
+          cloudDelete: cloudDelete,
+          batchId: batchId,
+          mutationId: logicalMutationId,
+        );
+        return EventLedgerDispatchResult(
+          _ledgerStatus(result.status),
+          value: result,
+          revision: result.event?.eventRevision,
+        );
+      },
+    );
+  }
+
+  static Future<EventMutationResult> _deleteEvent({
+    required EventModel existing,
+    required int expectedEventRevision,
+    required EventCloudDeletion cloudDelete,
+    required String? batchId,
+    required String mutationId,
   }) async {
     final events = await getEvents();
     final index = events.indexWhere((event) => areSameEvent(event, existing));
@@ -306,9 +476,20 @@ class EventService {
           eventId: removed.id,
           expectedEventRevision: expectedEventRevision,
           batchId: batchId,
+          operationId: mutationId,
         );
       }
       notifyEventsChanged();
+      if (cloudResult != null &&
+          cloudResult.status == EventMutationStatus.success) {
+        await _enqueue(
+          type: EventSyncOperationType.delete,
+          eventId: removed.id,
+          expectedEventRevision: expectedEventRevision,
+          operationId: mutationId,
+          state: EventSyncOperationState.applied,
+        );
+      }
       return EventMutationResult.success(removed);
     } catch (_) {
       return const EventMutationResult.persistenceFailure();
@@ -340,6 +521,22 @@ class EventService {
       events.map((event) => jsonEncode(event.toJson())).toList(),
     );
   }
+
+  static EventLedgerDispatchStatus _ledgerStatus(
+    EventMutationStatus status,
+  ) =>
+      switch (status) {
+        EventMutationStatus.success => EventLedgerDispatchStatus.succeeded,
+        EventMutationStatus.persistenceFailure =>
+          EventLedgerDispatchStatus.pendingSync,
+        EventMutationStatus.revisionConflict ||
+        EventMutationStatus.alreadyExists ||
+        EventMutationStatus.scopeMismatch =>
+          EventLedgerDispatchStatus.conflict,
+        EventMutationStatus.notFound ||
+        EventMutationStatus.invalidMutation =>
+          EventLedgerDispatchStatus.failed,
+      };
 
   static Future<EventSyncResult> synchronizePendingEvents() {
     return _syncService.synchronize();
@@ -414,9 +611,10 @@ class EventService {
     );
   }
 
-  static Future<void> _syncCreation(
+  static Future<EventMutationResult> _syncCreation(
     EventModel event, {
     String? batchId,
+    String? operationId,
   }) async {
     EventMutationResult? result;
     try {
@@ -430,12 +628,21 @@ class EventService {
         type: EventSyncOperationType.create,
         event: event,
         batchId: batchId,
+        operationId: operationId,
       );
-      return;
+      return result ?? const EventMutationResult.persistenceFailure();
     }
     if (result.status != EventMutationStatus.success) {
       throw const FormatException('event_sync_creation_conflict');
     }
+    await _enqueue(
+      type: EventSyncOperationType.create,
+      event: event,
+      batchId: batchId,
+      operationId: operationId,
+      state: EventSyncOperationState.applied,
+    );
+    return result;
   }
 
   static Future<void> _enqueue({
@@ -445,8 +652,10 @@ class EventService {
     String? eventId,
     int? expectedEventRevision,
     String? batchId,
+    String? operationId,
+    EventSyncOperationState state = EventSyncOperationState.pending,
   }) {
-    final operationId = _syncIdGenerator.generate();
+    final resolvedOperationId = operationId ?? _syncIdGenerator.generate();
     String? accountScopeId;
     try {
       accountScopeId = AuthService.currentUserId;
@@ -455,16 +664,16 @@ class EventService {
     }
     return _syncJournal.append(
       PendingEventSyncOperation(
-        operationId: operationId,
+        operationId: resolvedOperationId,
         eventId: event?.id ?? eventId ?? '',
         accountScopeId: accountScopeId,
         type: type,
         expectedEventRevision: expectedEventRevision,
         event: event,
         baseEvent: baseEvent,
-        batchId: batchId ?? operationId,
+        batchId: batchId ?? resolvedOperationId,
         createdAt: DateTime.now().toUtc(),
-        state: EventSyncOperationState.pending,
+        state: state,
       ),
     );
   }

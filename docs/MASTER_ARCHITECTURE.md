@@ -1549,8 +1549,88 @@ Y.1.
 
 Y.2 reste nécessaire pour Routine et Documents. Y.3/Y.4 restent nécessaires
 pour les protocoles d’export et la convergence multiappareil plus générale.
-A.2 reste reportée : Y.1 fournit des références techniques stables et des
-reçus d’idempotence, mais ne crée ni ledger d’actions, ni replay, ni undo.
+Y.1 fournit à A.2 les références techniques stables et reçus d’idempotence
+nécessaires, sans confondre journal de synchronisation et ledger d’audit.
+
+## 25. Ledger d’actions et undo réversible (V1-A.2)
+
+Le ledger A.2 est un historique d’audit borné des mutations. Il ne remplace
+aucune source de vérité métier et ne duplique aucun journal de synchronisation.
+Une entrée relie un type d’action, une décision A.1, un `mutationId`, une
+référence métier minimale, la révision attendue et le résultat réel. Aucun
+message, prompt, contexte, document source ou modèle métier complet n’y est
+conservé.
+
+Le cycle fermé est : proposition ou autorisation, dispatch, puis résultat
+`completed`, `pendingSync`, conflit, résultat inconnu ou échec. Un succès ne
+peut être enregistré qu’après le résultat du service métier. Le même
+`mutationId` désigne une seule entrée logique ; une réutilisation divergente
+est refusée. Les écritures cloud suivent une révision propre au ledger et les
+écritures locales account-scoped conservent une sauvegarde précédente.
+
+Le stockage local conserve au plus 100 entrées actives et 400 entrées
+historiques dans 1 Mio, avec pages de 50 maximum. Le chemin cloud privé est
+`users/{uid}/actionLedger/{ledgerEntryId}`. Les règles imposent le propriétaire,
+une création en révision 1, N → N+1, une transition autorisée, l’identité
+immuable de l’action et l’interdiction de suppression physique.
+
+### Undo
+
+Un undo est une nouvelle action et possède son propre `mutationId` et une
+nouvelle entrée liée à l’entrée initiale. `ActionUndoEngine` vérifie de façon
+pure le compte, A.1 courant, la policy du domaine, la confirmation, la date
+limite et surtout l’égalité entre révision courante et révision résultante.
+Une divergence produit `targetChanged`, jamais un overwrite.
+
+Les stratégies Task, Shopping, Event, Profile et Memory ne peuvent être
+activées que lorsqu’un adaptateur révisionné fournit un inverse minimal et
+borné. `clearList`, `deleteAllMemory`, Identity et Routine restent
+explicitement non annulables automatiquement. HumanModel reste auditable mais
+nécessite une résolution manuelle tant que son service ne fournit pas un
+inverse fermé. MemoryPolicy et le consentement santé restent prioritaires.
+
+Pour Event, seule la création possède aujourd’hui un inverse démontré sûr :
+une nouvelle mutation de suppression révisionnée, si l’Event n’a pas changé.
+Les updates, changements de participant, règles de récurrence et suppressions
+restent audités mais `notUndoable` tant qu’aucun patch inverse fermé ne capture
+exactement l’ancien état nécessaire. L’application ne reconstruit jamais un
+Event complet depuis le ledger, ne supprime aucune Identity et ne restaure
+aucune série ou occurrence par supposition.
+
+Les écritures conversationnelles historiques de
+`MemoryLifecycleRepository` sont enveloppées par
+`LedgeredMemoryLifecycleRepository`. La proposition, la confirmation,
+l’activation et le rejet créent l’entrée avant le dispatch, réutilisent
+l’idempotencyKey M.3 comme `mutationId`, puis enregistrent uniquement le
+résultat réel. `MemoryLibraryService` reste la façade des corrections,
+archives, restaurations et tombstones ; `MemorySyncService` reste propriétaire
+de son journal, y compris des expirations déterministes désormais observées
+comme `pendingSync`. Cette observation ne duplique ni MemoryPolicy ni le
+protocole M.2/M.3.
+
+Le mode Suggestions exige une confirmation fraîche pour la mutation inverse ;
+le mode Pause autorise la consultation mais bloque l’undo et toute reprise.
+Hors ligne, un undo ne peut être annoncé comme terminé : il reste
+`undoPendingSync` uniquement si le domaine accepte la mutation révisionnée.
+
+### Réconciliation et interface
+
+Le bootstrap rapproche les versions locales et cloud par identifiant et
+`mutationId`. Une entrée incomplète ne constitue jamais une autorisation de
+rejouer l’action métier. Les résultats inconnus doivent être rapprochés avec
+les reçus du domaine ; aucun replay général ou destructif n’existe.
+
+L’écran « Historique des actions » affiche une projection française bornée :
+domaine, origine, date, état et disponibilité de l’annulation. Les identifiants,
+révisions, patches et codes internes ne sont jamais affichés. A.3 reste
+responsable d’une éventuelle harmonisation générale des confirmations. Routine
+et Documents restent reportés à Y.2.
+
+Le bouton « Annuler » n’est rendu que pour une entrée `undoAvailable`. Une
+opération irréversible ou sans inverse sûr affiche une explication simple et
+ne peut pas atteindre `ActionUndoCoordinator`. Une capacité conditionnelle
+redevient indisponible dès que la révision, A.1, MemoryPolicy, la santé ou le
+tombstone ne correspondent plus.
 
 La suppression globale est renforcée, paginée par lots de 20, reprenable et
 isolée au compte authentifié. Hors ligne, elle demeure pending. Les mémoires
@@ -1562,7 +1642,7 @@ pas actives, Conversation reconstruit une projection bornée et Planning ne
 reçoit toujours aucune mémoire libre. Les conflits restent explicites sans
 merge automatique ni exposition de révision.
 
-## 25. Change policy for this document
+## 26. Change policy for this document
 
 Change this document when:
 
@@ -1586,7 +1666,7 @@ Do not change this document solely because:
 
 Every change must be based on the verified repository and must preserve the distinction between current state and planned architecture.
 
-## 26. Definition of architectural readiness
+## 27. Definition of architectural readiness
 
 A ZELIA capability is architecturally ready when:
 
@@ -1604,7 +1684,7 @@ A ZELIA capability is architecturally ready when:
 
 Code existing in the repository does not by itself make an engine architecturally ready. Conversely, a planned engine should not be implemented as a broad new subsystem until its prerequisites and ownership are clear.
 
-## 27. Enduring direction
+## 28. Enduring direction
 
 ZELIA should grow by deepening trust, context, and deterministic coordination—not by accumulating disconnected “smart” features.
 

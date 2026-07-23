@@ -18,6 +18,9 @@ import 'life_context/life_context_projection_engine.dart';
 import 'life_context_production_factory.dart';
 import 'memory_lifecycle_engine.dart';
 import 'memory_lifecycle_repository.dart';
+import 'ledgered_memory_lifecycle_repository.dart';
+import 'action_ledger_service.dart';
+import 'action_autonomy_policy_service.dart';
 import 'memory_policy_engine.dart';
 import 'memory_policy_service.dart';
 import 'memory_proposal_factory.dart';
@@ -161,8 +164,21 @@ class DefaultConversationContextProvider
   }
 
   @override
-  MemoryLifecycleRepository get memoryLifecycleRepository =>
-      _memoryLifecycleRepository ?? FirestoreMemoryLifecycleRepository();
+  MemoryLifecycleRepository get memoryLifecycleRepository {
+    final injected = _memoryLifecycleRepository;
+    if (injected != null) return injected;
+    return LedgeredMemoryLifecycleRepository(
+      delegate: FirestoreMemoryLifecycleRepository(),
+      ledger: ActionLedgerService.production(),
+      loadAutonomyPolicy: () async {
+        final service = await ActionAutonomyPolicyService.local(
+          currentAccountScopeId: () => AuthService.currentUserId,
+        );
+        return service.load();
+      },
+      loadMemoryPolicy: _policy,
+    );
+  }
 
   @override
   Future<MemoryConfirmationRequest?> proposeUserMemory(String message) async {
@@ -206,8 +222,7 @@ class DefaultConversationContextProvider
     required String source,
   }) async {
     try {
-      final repository =
-          _memoryLifecycleRepository ?? FirestoreMemoryLifecycleRepository();
+      final repository = memoryLifecycleRepository;
       final proposalId = await repository.allocateProposalId();
       if (proposalId == null || proposalId.isEmpty) return null;
       final proposedAt = DateTime.now();

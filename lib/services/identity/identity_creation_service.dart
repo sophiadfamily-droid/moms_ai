@@ -3,10 +3,13 @@ import '../../core/identity/entity_normalizer.dart';
 import '../../core/identity/entity_types.dart';
 import '../../core/identity/life_entity.dart';
 import '../../models/conversation_models.dart';
+import '../../models/action_autonomy_policy.dart';
+import '../../models/action_ledger.dart';
 import '../../repositories/identity/identity_read_repository.dart';
 import '../../repositories/identity/identity_repository_query.dart';
 import '../../repositories/identity/identity_write_repository.dart';
 import '../conversation_answer_classifier.dart';
+import '../action_ledger_service.dart';
 import 'identity_application_models.dart';
 
 final class IdentityCreationRequest {
@@ -55,6 +58,8 @@ final class IdentityCreationService {
   final ConversationAnswerClassifier _answerClassifier;
   final DateTime Function() _now;
   final Duration _validity;
+  final ActionLedgerService? _ledger;
+  final Future<ActionAutonomyPolicy> Function()? _policyLoader;
 
   IdentityCreationService({
     required IdentityReadRepository readRepository,
@@ -62,12 +67,16 @@ final class IdentityCreationService {
     required EntityIdGenerator idGenerator,
     ConversationAnswerClassifier answerClassifier =
         const ConversationAnswerClassifier(),
+    ActionLedgerService? ledger,
+    Future<ActionAutonomyPolicy> Function()? policyLoader,
     DateTime Function()? now,
     Duration validity = defaultValidity,
   })  : _readRepository = readRepository,
         _writeRepository = writeRepository,
         _idGenerator = idGenerator,
         _answerClassifier = answerClassifier,
+        _ledger = ledger,
+        _policyLoader = policyLoader,
         _now = now ?? DateTime.now,
         _validity = validity {
     if (validity <= Duration.zero) {
@@ -166,10 +175,57 @@ final class IdentityCreationService {
         createdAt: evaluatedAt,
         updatedAt: evaluatedAt,
       );
+      final ledger = _ledger;
+      ActionLedgerEntry? ledgerEntry;
+      if (ledger != null) {
+        final policy = await _policyLoader!();
+        ledgerEntry = await ledger.begin(
+          mutationId: pending.proposalId,
+          actionType: ActionType.createIdentity,
+          domain: ActionLedgerDomain.identity,
+          origin: ActionOrigin.explicitUserConfirmation,
+          riskLevel: ActionRiskLevel.sensitiveMutation,
+          policyMode: policy.mode,
+          policyVersion: policy.schemaVersion,
+          target: ActionTargetReference(
+            domain: ActionLedgerDomain.identity,
+            entityType: 'identity',
+            entityId: pending.entityId,
+            operationType: 'createIdentity',
+            revisionBefore: 0,
+            tombstoneBefore: false,
+            patchType: 'identityCreate',
+            undoStrategy: ActionUndoStrategy.identityNotSupported,
+          ),
+          undoCapability: const ActionUndoCapability(
+            type: ActionUndoCapabilityType.unsupportedDomain,
+            strategy: ActionUndoStrategy.identityNotSupported,
+            reasonCode: 'undo_identity_not_supported',
+            confirmationRequired: true,
+            currentRevisionRequired: true,
+            domain: ActionLedgerDomain.identity,
+            riskLevel: ActionRiskLevel.sensitiveMutation,
+          ),
+          correlationId: 'ledger-${pending.proposalId}',
+          provenance: 'identity_creation_service',
+        );
+        ledgerEntry = await ledger.markDispatching(
+          ledgerEntry,
+          transitionMutationId: '${pending.proposalId}:dispatch',
+        );
+      }
       final created = await _writeRepository.create(
         scope: scope,
         entity: entity,
       );
+      if (ledgerEntry != null) {
+        await ledger!.recordResult(
+          ledgerEntry,
+          outcome: ActionOutcome.completed,
+          transitionMutationId: '${pending.proposalId}:result',
+          resultRevision: created.revision,
+        );
+      }
       return IdentityCreationResult(
         status: IdentityCreationStatus.created,
         proposalId: pending.proposalId,

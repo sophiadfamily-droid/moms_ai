@@ -297,6 +297,102 @@ service cloud.firestore {
         && data.projectionProvenance in ['profileOwned', 'legacyCloud'];
     }
 
+    function hasValidActionLedger(userId, ledgerEntryId) {
+      let data = request.resource.data;
+      return data.keys().hasOnly([
+          'schemaVersion', 'ledgerEntryId', 'accountScopeId', 'actionType',
+          'actionDomain', 'actionOrigin', 'riskLevel', 'policyModeObserved',
+          'policyVersionObserved', 'sessionGeneration', 'requestId',
+          'pendingActionId', 'mutationId', 'targetReference',
+          'expectedRevision', 'resultRevision', 'status', 'outcome',
+          'createdAt', 'authorizedAt', 'dispatchedAt', 'completedAt',
+          'updatedAt', 'undoCapability', 'parentLedgerEntryId',
+          'causationLedgerEntryId', 'correlationId', 'provenance',
+          'errorCode', 'ledgerRevision', 'lastMutationId', 'inversePatch'
+        ])
+        && data.keys().hasAll([
+          'schemaVersion', 'ledgerEntryId', 'accountScopeId', 'actionType',
+          'actionDomain', 'actionOrigin', 'riskLevel', 'policyModeObserved',
+          'policyVersionObserved', 'mutationId', 'targetReference',
+          'expectedRevision', 'status', 'outcome', 'createdAt', 'updatedAt',
+          'undoCapability', 'correlationId', 'provenance', 'ledgerRevision',
+          'lastMutationId'
+        ])
+        && data.schemaVersion == 1
+        && data.ledgerEntryId == ledgerEntryId
+        && data.accountScopeId == userId
+        && data.ledgerEntryId is string
+        && data.ledgerEntryId.size() > 0
+        && data.ledgerEntryId.size() <= 200
+        && data.mutationId is string
+        && data.mutationId.size() > 0
+        && data.mutationId.size() <= 200
+        && data.targetReference is map
+        && data.targetReference.size() <= 11
+        && data.undoCapability is map
+        && data.undoCapability.size() <= 8
+        && (!data.keys().hasAny(['inversePatch'])
+          || (data.inversePatch is map
+            && data.inversePatch.keys().hasOnly([
+              'type', 'entries', 'title', 'category', 'isDone', 'createdAt',
+              'isImportant', 'dueDate', 'notes', 'planning', 'priority',
+              'wasTombstone', 'isBought', 'isUrgent', 'section',
+              'clearGeneration', 'text', 'normalizedText',
+              'lifecycleStatus', 'confirmationStatus', 'isHealth'
+            ])
+            && data.inversePatch.type in ['task', 'shopping', 'profile', 'memory']
+            && (!data.inversePatch.keys().hasAny(['entries'])
+              || (data.inversePatch.entries is list
+                && data.inversePatch.entries.size() <= 32))))
+        && data.expectedRevision is int
+        && data.expectedRevision >= 0
+        && data.ledgerRevision is int
+        && data.ledgerRevision > 0
+        && data.lastMutationId is string
+        && data.lastMutationId.size() > 0
+        && data.lastMutationId.size() <= 200
+        && data.status in [
+          'proposed', 'awaitingConfirmation', 'authorized', 'dispatching',
+          'pendingSync', 'succeeded', 'failed', 'conflict',
+          'blockedByPolicy', 'cancelled', 'expired', 'undoAvailable',
+          'undoRequested', 'undoDispatching', 'undone', 'undoPendingSync',
+          'undoConflict', 'undoFailed', 'notUndoable'
+        ]
+        && data.outcome in [
+          'completed', 'pendingSync', 'rejected', 'conflict',
+          'validationFailure', 'policyBlocked', 'cancelled', 'unknownResult',
+          'technicalFailure'
+        ];
+    }
+
+    function validActionLedgerTransition(previous, next) {
+      return
+        (previous.status == 'proposed'
+          && next.status in ['awaitingConfirmation', 'authorized',
+            'blockedByPolicy', 'cancelled', 'expired'])
+        || (previous.status == 'awaitingConfirmation'
+          && next.status in ['authorized', 'blockedByPolicy', 'cancelled',
+            'expired'])
+        || (previous.status == 'authorized'
+          && next.status in ['dispatching', 'blockedByPolicy', 'cancelled'])
+        || (previous.status == 'dispatching'
+          && next.status in ['pendingSync', 'succeeded', 'failed', 'conflict'])
+        || (previous.status == 'pendingSync'
+          && next.status in ['succeeded', 'failed', 'conflict'])
+        || (previous.status == 'succeeded'
+          && next.status in ['undoAvailable', 'notUndoable'])
+        || (previous.status == 'undoAvailable'
+          && next.status in ['undoRequested', 'expired'])
+        || (previous.status == 'undoRequested'
+          && next.status in ['undoDispatching', 'blockedByPolicy',
+            'undoConflict', 'undoFailed'])
+        || (previous.status == 'undoDispatching'
+          && next.status in ['undone', 'undoPendingSync', 'undoConflict',
+            'undoFailed'])
+        || (previous.status == 'undoPendingSync'
+          && next.status in ['undone', 'undoConflict', 'undoFailed']);
+    }
+
     function hasValidMemoryPolicyShape(userId) {
       let data = request.resource.data;
       return data.keys().hasOnly([
@@ -436,6 +532,30 @@ service cloud.firestore {
         allow delete: if false;
       }
 
+      match /actionLedger/{ledgerEntryId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId)
+          && hasValidActionLedger(userId, ledgerEntryId)
+          && request.resource.data.ledgerRevision == 1
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.updatedAt == request.time;
+        allow update: if isOwner(userId)
+          && hasValidActionLedger(userId, ledgerEntryId)
+          && request.resource.data.accountScopeId == resource.data.accountScopeId
+          && request.resource.data.ledgerEntryId == resource.data.ledgerEntryId
+          && request.resource.data.actionType == resource.data.actionType
+          && request.resource.data.actionDomain == resource.data.actionDomain
+          && request.resource.data.actionOrigin == resource.data.actionOrigin
+          && request.resource.data.mutationId == resource.data.mutationId
+          && request.resource.data.targetReference == resource.data.targetReference
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.ledgerRevision == resource.data.ledgerRevision + 1
+          && request.resource.data.lastMutationId != resource.data.lastMutationId
+          && validActionLedgerTransition(resource.data, request.resource.data)
+          && request.resource.data.updatedAt == request.time;
+        allow delete: if false;
+      }
+
       match /private/profile {
         allow read: if isOwner(userId);
         allow create: if isOwner(userId)
@@ -515,6 +635,7 @@ service cloud.firestore {
           && collection != 'events'
           && collection != 'tasks'
           && collection != 'shopping_items'
+          && collection != 'actionLedger'
           && collection != 'private'
           && collection != 'memories';
       }

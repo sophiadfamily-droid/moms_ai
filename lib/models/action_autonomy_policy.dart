@@ -15,6 +15,7 @@ enum ActionType {
   readMemory,
   explainPriority,
   inspectProfile,
+  updateProfile,
   proposeEvent,
   createEvent,
   updateEvent,

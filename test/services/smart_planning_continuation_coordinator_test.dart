@@ -309,7 +309,8 @@ final class _FakeGateway implements SmartPlanningContinuationGateway {
   int proposalCanSucceedAfter = 0;
 
   @override
-  Future<void> addEvent(EventModel event) async => addedEvents.add(event);
+  Future<void> addEvent(EventModel event, {String? mutationId}) async =>
+      addedEvents.add(event);
 
   @override
   Future<SmartPlanningProposal> buildProposal({

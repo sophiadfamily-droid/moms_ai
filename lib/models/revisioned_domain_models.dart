@@ -10,6 +10,7 @@ enum TaskMutationType {
   reopenTask,
   archiveTask,
   deleteTask,
+  restoreTask,
 }
 
 enum ShoppingMutationType {

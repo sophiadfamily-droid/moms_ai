@@ -7,6 +7,24 @@ import '../models/life_context/life_context_provenance.dart';
 import 'auth_service.dart';
 import 'life_context/life_context_memory_projection.dart';
 
+final class MemoryLifecycleTechnicalReceipt {
+  const MemoryLifecycleTechnicalReceipt({
+    required this.revision,
+    required this.lastMutationId,
+    required this.tombstone,
+  });
+
+  final int revision;
+  final String? lastMutationId;
+  final bool tombstone;
+}
+
+abstract interface class MemoryLifecycleReceiptReader {
+  Future<MemoryLifecycleTechnicalReceipt?> readTechnicalReceipt(
+    String memoryId,
+  );
+}
+
 abstract interface class MemoryLifecycleRepository {
   Future<String?> allocateProposalId();
 
@@ -26,7 +44,7 @@ abstract interface class MemoryLifecycleRepository {
 }
 
 final class FirestoreMemoryLifecycleRepository
-    implements MemoryLifecycleRepository {
+    implements MemoryLifecycleRepository, MemoryLifecycleReceiptReader {
   final FirebaseFirestore _firestore;
 
   FirestoreMemoryLifecycleRepository({FirebaseFirestore? firestore})
@@ -83,6 +101,27 @@ final class FirestoreMemoryLifecycleRepository
         ])
         .memories
         .single;
+  }
+
+  @override
+  Future<MemoryLifecycleTechnicalReceipt?> readTechnicalReceipt(
+    String memoryId,
+  ) async {
+    final ref = _memoriesRef();
+    if (ref == null || memoryId.trim().isEmpty) return null;
+    final document = await ref.doc(memoryId).get();
+    final data = document.data();
+    if (!document.exists || data == null) return null;
+    final revision = data['memoryRevision'];
+    if (revision is! int || revision < 1) {
+      throw const FormatException('memory_revision_invalid');
+    }
+    return MemoryLifecycleTechnicalReceipt(
+      revision: revision,
+      lastMutationId:
+          data['lastMutationId'] is String ? data['lastMutationId'] : null,
+      tombstone: data['tombstone'] == true,
+    );
   }
 
   @override

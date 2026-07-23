@@ -105,7 +105,7 @@ final class TaskRevisionSyncService {
       }
     } else if (existing == null ||
         existing.revision != mutation.expectedRevision ||
-        existing.isTombstone) {
+        existing.isTombstone && mutation.type != TaskMutationType.restoreTask) {
       return _conflict(scope, mutation, existing?.revision ?? 0);
     }
     final now = (_now ?? DateTime.now)().toUtc();
@@ -127,7 +127,11 @@ final class TaskRevisionSyncService {
             lastMutationId: mutation.mutationId,
             syncStatus: RevisionedSyncStatus.queued,
             isTombstone: mutation.type == TaskMutationType.deleteTask ||
-                mutation.type == TaskMutationType.archiveTask,
+                    mutation.type == TaskMutationType.archiveTask
+                ? true
+                : mutation.type == TaskMutationType.restoreTask
+                    ? false
+                    : existing.isTombstone,
           );
     await _local.saveTasks(scope, [
       ...local.where((item) => item.entityId != mutation.targetId),
@@ -362,7 +366,8 @@ final class ShoppingRevisionSyncService {
       }
     } else if (existing == null ||
         existing.revision != mutation.expectedRevision ||
-        existing.isTombstone ||
+        existing.isTombstone &&
+            mutation.type != ShoppingMutationType.restoreItem ||
         mutation.clearGeneration < existing.clearGeneration) {
       return _conflict(scope, mutation, existing?.revision ?? 0);
     }

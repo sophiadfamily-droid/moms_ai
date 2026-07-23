@@ -43,6 +43,7 @@ final class ActionAutonomyActionRegistry {
     ActionType.correctMemory,
     ActionType.createPerson,
     ActionType.updatePerson,
+    ActionType.updateProfile,
     ActionType.createIdentity,
     ActionType.linkIdentity,
     ActionType.modifyRelationship,

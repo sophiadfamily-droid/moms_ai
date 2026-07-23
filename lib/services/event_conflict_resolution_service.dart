@@ -26,6 +26,12 @@ typedef EventConflictLocalReconciler = Future<void> Function(
 typedef EventConflictLocalCreator = Future<void> Function(EventModel event);
 typedef EventConflictMutationValidator = Future<EventMutationInvariantResult>
     Function({required EventModel existing, required EventModel proposed});
+typedef EventConflictLedgerObserver = Future<EventConflictResolutionResult>
+    Function({
+  required PendingEventSyncOperation operation,
+  required EventConflictResolutionDecision decision,
+  required Future<EventConflictResolutionResult> Function() dispatch,
+});
 
 final class EventConflictResolutionService {
   final EventSyncJournal _journal;
@@ -36,6 +42,7 @@ final class EventConflictResolutionService {
   final EventConflictLocalCreator _createLocal;
   final EventConflictMutationValidator _validateMutation;
   final EntityIdGenerator _idGenerator;
+  final EventConflictLedgerObserver? _ledgerObserver;
   final Set<String> _active = {};
 
   EventConflictResolutionService({
@@ -47,6 +54,7 @@ final class EventConflictResolutionService {
     required EventConflictMutationValidator validateMutation,
     required EntityIdGenerator idGenerator,
     EventSyncJournal? journal,
+    EventConflictLedgerObserver? ledgerObserver,
   })  : _readCloud = readCloud,
         _mutateCloud = mutateCloud,
         _deleteCloud = deleteCloud,
@@ -54,6 +62,7 @@ final class EventConflictResolutionService {
         _createLocal = createLocal,
         _validateMutation = validateMutation,
         _idGenerator = idGenerator,
+        _ledgerObserver = ledgerObserver,
         _journal = journal ?? EventSyncJournal();
 
   Future<List<EventSyncConflict>> conflictsForScope(
@@ -131,7 +140,16 @@ final class EventConflictResolutionService {
                 : operation.resolutionEventId,
       );
       await _journal.replace(resolvingOperation);
-      final result = await _apply(resolvingOperation, decision);
+      final observer = _ledgerObserver;
+      final result = observer == null ||
+              !writesCloud ||
+              decision == EventConflictResolutionDecision.recreateAsNew
+          ? await _apply(resolvingOperation, decision)
+          : await observer(
+              operation: resolvingOperation,
+              decision: decision,
+              dispatch: () => _apply(resolvingOperation, decision),
+            );
       if (result.status == EventConflictResolutionStatus.success) {
         await _journal.replace(resolvingOperation.copyWith(
           state: decision == EventConflictResolutionDecision.discardLocal

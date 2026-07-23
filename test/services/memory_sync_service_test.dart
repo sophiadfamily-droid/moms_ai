@@ -149,6 +149,44 @@ void main() {
     expect(memory.tombstone, isFalse);
   });
 
+  test('expiration active passe par un observateur avant la file M.3',
+      () async {
+    final local = await _local();
+    await local.save(
+      MemorySyncLocalState(
+        accountScopeId: 'account-a',
+        memories: [
+          _memory(now).copyWith(expiresAt: now),
+        ],
+      ),
+    );
+    var observed = false;
+    var dispatched = false;
+    final service = MemorySyncService(
+      local: local,
+      cloud: _Cloud(),
+      currentScope: () => 'account-a',
+      now: () => now,
+      expirationObserver: ({
+        required current,
+        required updated,
+        required mutation,
+        required dispatch,
+      }) async {
+        observed = true;
+        expect(dispatched, isFalse);
+        expect(mutation.mutationId, 'expire:memory-1:1');
+        expect(updated.lifecycleStatus, MemoryLifecycleState.expired);
+        await dispatch();
+        dispatched = true;
+      },
+    );
+    final state = await service.materializeExpirations();
+    expect(observed, isTrue);
+    expect(dispatched, isTrue);
+    expect(state.mutations.single.type, MemoryMutationType.expireMemory);
+  });
+
   test('file, reçus, cache et comptes sont strictement bornés', () async {
     expect(
       () => MemorySyncLocalState(

@@ -1,8 +1,16 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 import '../../core/identity/entity_id_generator.dart';
 import '../../core/identity/uuid_v7_entity_id_generator.dart';
 import '../../models/human/human_model.dart';
 import '../../models/human/human_model_persistence.dart';
 import '../../models/user_profile.dart';
+import '../../models/action_autonomy_policy.dart';
+import '../../models/action_ledger.dart';
+import '../action_autonomy_policy_service.dart';
+import '../action_ledger_repository.dart';
+import '../action_ledger_service.dart';
+import '../auth_service.dart';
 import '../storage_service.dart';
 import 'human_model_service.dart';
 import 'human_model_user_profile_projection_service.dart';
@@ -38,16 +46,35 @@ final class HumanModelEditResult {
 final class HumanModelEditService {
   HumanModelEditService({
     required HumanModelService humanModelService,
+    ActionLedgerService? ledger,
+    Future<ActionAutonomyPolicy> Function()? policyLoader,
     EntityIdGenerator idGenerator = const UuidV7EntityIdGenerator(),
   })  : _humanModelService = humanModelService,
+        _ledger = ledger,
+        _policyLoader = policyLoader,
         _idGenerator = idGenerator;
 
-  static Future<HumanModelEditService> createProduction() async =>
-      HumanModelEditService(
-        humanModelService: await HumanModelService.createProduction(),
-      );
+  static Future<HumanModelEditService> createProduction() async {
+    final policy = await ActionAutonomyPolicyService.local(
+      currentAccountScopeId: () => AuthService.currentUserId,
+    );
+    return HumanModelEditService(
+      humanModelService: await HumanModelService.createProduction(),
+      ledger: ActionLedgerService(
+        local: const LocalActionLedgerRepository(),
+        cloud: FirestoreActionLedgerRepository(
+          firestore: FirebaseFirestore.instance,
+          currentUid: () => AuthService.currentUserId,
+        ),
+        currentScope: () => AuthService.currentUserId,
+      ),
+      policyLoader: policy.load,
+    );
+  }
 
   final HumanModelService _humanModelService;
+  final ActionLedgerService? _ledger;
+  final Future<ActionAutonomyPolicy> Function()? _policyLoader;
   final EntityIdGenerator _idGenerator;
 
   Future<HumanModelLocalState?> load(String accountScopeId) =>
@@ -111,12 +138,68 @@ final class HumanModelEditService {
     }
 
     try {
+      final mutationId = _idGenerator.generate();
+      final ledger = _ledger;
+      ActionLedgerEntry? ledgerEntry;
+      if (ledger != null) {
+        final policy = await _policyLoader!();
+        ledgerEntry = await ledger.begin(
+          mutationId: mutationId,
+          actionType: ActionType.updatePerson,
+          domain: ActionLedgerDomain.humanModel,
+          origin: ActionOrigin.explicitUserRequest,
+          riskLevel: ActionRiskLevel.sensitiveMutation,
+          policyMode: policy.mode,
+          policyVersion: policy.schemaVersion,
+          target: ActionTargetReference(
+            domain: ActionLedgerDomain.humanModel,
+            entityType: 'humanModel',
+            entityId: 'human-model',
+            operationType: 'updateHumanModel',
+            revisionBefore: current.knownCloudRevision!,
+            tombstoneBefore: false,
+            patchType: 'humanModelTypedEdit',
+            undoStrategy: ActionUndoStrategy.manualHumanModelResolution,
+          ),
+          undoCapability: const ActionUndoCapability(
+            type: ActionUndoCapabilityType.unsupportedDomain,
+            strategy: ActionUndoStrategy.manualHumanModelResolution,
+            reasonCode: 'undo_human_model_requires_resolution',
+            confirmationRequired: true,
+            currentRevisionRequired: true,
+            domain: ActionLedgerDomain.humanModel,
+            riskLevel: ActionRiskLevel.sensitiveMutation,
+          ),
+          correlationId: 'ledger-$mutationId',
+          provenance: 'human_model_edit_service',
+        );
+        ledgerEntry = await ledger.markDispatching(
+          ledgerEntry,
+          transitionMutationId: '$mutationId:dispatch',
+        );
+      }
       final result = await _humanModelService.saveCanonical(
         proposed: proposed,
         expectedRevision: current.knownCloudRevision!,
-        mutationId: _idGenerator.generate(),
+        mutationId: mutationId,
       );
-      return _mapWriteResult(result, accountScopeId, proposed);
+      final mapped = await _mapWriteResult(result, accountScopeId, proposed);
+      if (ledgerEntry != null) {
+        await ledger!.recordResult(
+          ledgerEntry,
+          outcome: switch (mapped.status) {
+            HumanModelEditStatus.success => ActionOutcome.completed,
+            HumanModelEditStatus.pendingSync ||
+            HumanModelEditStatus.networkUnavailable =>
+              ActionOutcome.pendingSync,
+            HumanModelEditStatus.revisionConflict => ActionOutcome.conflict,
+            _ => ActionOutcome.validationFailure,
+          },
+          transitionMutationId: '$mutationId:result',
+          resultRevision: mapped.state?.knownCloudRevision,
+        );
+      }
+      return mapped;
     } on Object {
       return HumanModelEditResult(
         status: HumanModelEditStatus.storageFailure,

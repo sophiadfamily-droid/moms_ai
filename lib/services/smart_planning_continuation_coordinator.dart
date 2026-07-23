@@ -44,7 +44,7 @@ abstract interface class SmartPlanningContinuationGateway {
 
   Future<EventModel?> conflict(EventModel event);
 
-  Future<void> addEvent(EventModel event);
+  Future<void> addEvent(EventModel event, {String? mutationId});
 }
 
 typedef SmartPlanningAutonomyPolicyLoader = Future<ActionAutonomyPolicy>
@@ -123,8 +123,8 @@ final class ProductionSmartPlanningContinuationGateway
       EventService.getOverlapConflict(candidate: event);
 
   @override
-  Future<void> addEvent(EventModel event) async {
-    await EventService.addEvent(event);
+  Future<void> addEvent(EventModel event, {String? mutationId}) async {
+    await EventService.addEvent(event, mutationId: mutationId);
     await NotificationService.showNotification(
       title: 'Créneau réservé 📅',
       body: event.title,
@@ -630,7 +630,7 @@ final class SmartPlanningContinuationCoordinator {
     }
     final finalBlocked = await _authorizeFinalExecution(continuation);
     if (finalBlocked != null) return finalBlocked;
-    await _gateway.addEvent(event);
+    await _gateway.addEvent(event, mutationId: mutationId);
     _completedMutationIds.add(mutationId);
     if (_completedMutationIds.length > maximumCompletedMutationReceipts) {
       _completedMutationIds.remove(_completedMutationIds.first);

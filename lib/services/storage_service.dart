@@ -10,6 +10,7 @@ import 'auth_service.dart';
 import 'app_diagnostics.dart';
 import 'revisioned_cloud_repositories.dart';
 import 'revisioned_domain_sync_service.dart';
+import 'revisioned_action_ledger_observer.dart';
 
 class StorageService {
   static const String userProfileKey = "user_profile";
@@ -61,22 +62,24 @@ class StorageService {
       if (scope != null) {
         final current = await _sync.bootstrap(scope);
         final mutationId = idGenerator.generate();
-        final result = await _sync.apply(
+        final mutation = ProfileMutation(
+          mutationId: mutationId,
+          targetId: RevisionedProfileState.entityId,
+          expectedRevision: current?.revision ?? 0,
+          createdAt: DateTime.now().toUtc(),
+          attempt: 0,
+          nextRetryAt: null,
+          state: RevisionedMutationState.queued,
+          type: current == null
+              ? ProfileMutationType.updateCompatibilityProjection
+              : ProfileMutationType.updateProfileFields,
+          changedFields: ProfileFieldOwnership.profileOwnedFields,
+          profile: persistedProfile,
+        );
+        final result = await RevisionedActionLedgerObserver.profile(
           scope,
-          ProfileMutation(
-            mutationId: mutationId,
-            targetId: RevisionedProfileState.entityId,
-            expectedRevision: current?.revision ?? 0,
-            createdAt: DateTime.now().toUtc(),
-            attempt: 0,
-            nextRetryAt: null,
-            state: RevisionedMutationState.queued,
-            type: current == null
-                ? ProfileMutationType.updateCompatibilityProjection
-                : ProfileMutationType.updateProfileFields,
-            changedFields: ProfileFieldOwnership.profileOwnedFields,
-            profile: persistedProfile,
-          ),
+          mutation,
+          () => _sync.apply(scope, mutation),
         );
         if (!result.isRealSuccess &&
             result.status != RevisionedCloudWriteStatus.unavailable) {

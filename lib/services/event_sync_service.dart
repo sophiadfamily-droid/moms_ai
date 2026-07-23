@@ -103,12 +103,19 @@ final class EventSyncService {
     final retainedFailures = operations
         .where((operation) => operation.state == EventSyncOperationState.failed)
         .length;
+    final retainedPending = operations
+        .where(
+          (operation) =>
+              operation.state == EventSyncOperationState.pending ||
+              operation.state == EventSyncOperationState.inFlight,
+        )
+        .length;
     return EventSyncResult(
       status: retainedConflicts > 0
           ? EventSyncStatus.conflicts
           : retainedFailures > 0
               ? EventSyncStatus.failed
-              : operations.isEmpty
+              : retainedPending == 0
                   ? EventSyncStatus.synchronized
                   : EventSyncStatus.pending,
       appliedCount: applied,

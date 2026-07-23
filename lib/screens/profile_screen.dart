@@ -13,6 +13,7 @@ import 'auth/auth_screen.dart';
 import 'human_profile_screen.dart';
 import 'memory_settings_screen.dart';
 import 'action_autonomy_settings_screen.dart';
+import 'action_history_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final UserProfile profile;
@@ -3556,6 +3557,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Navigator.of(context).push(
               MaterialPageRoute<void>(
                 builder: (_) => const ActionAutonomySettingsScreen(),
+              ),
+            );
+          },
+          showChevron: true,
+        ),
+        buildDivider(),
+        buildProfileRow(
+          icon: Icons.history,
+          label: 'Historique des actions',
+          value: 'Consulter les modifications et leur état',
+          iconColor: textSoft,
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const ActionHistoryScreen(),
               ),
             );
           },

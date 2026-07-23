@@ -8,6 +8,10 @@ import '../../repositories/identity/identity_read_repository.dart';
 import 'identity_application_service.dart';
 import 'identity_creation_service.dart';
 import 'event_participant_identity_validation_service.dart';
+import '../action_ledger_repository.dart';
+import '../action_ledger_service.dart';
+import '../auth_service.dart';
+import '../action_autonomy_policy_service.dart';
 
 final class IdentityProductionServices {
   final IdentityAccountScope scope;
@@ -43,6 +47,18 @@ final class IdentityProductionServices {
         readRepository: readRepository,
         writeRepository: writeRepository,
         idGenerator: UuidV7EntityIdGenerator(),
+        ledger: ActionLedgerService(
+          local: const LocalActionLedgerRepository(),
+          cloud: FirestoreActionLedgerRepository(
+            firestore: firestore,
+            currentUid: () => AuthService.currentUserId,
+          ),
+          currentScope: () => AuthService.currentUserId,
+        ),
+        policyLoader: () async => (await ActionAutonomyPolicyService.local(
+          currentAccountScopeId: () => AuthService.currentUserId,
+        ))
+            .load(),
       ),
       eventParticipantValidation: EventParticipantIdentityValidationService(
         repository: readRepository,

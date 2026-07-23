@@ -7,10 +7,16 @@ import '../models/life_context/memory_context.dart';
 import '../models/memory_lifecycle_state.dart';
 import '../models/memory_policy.dart';
 import '../models/memory_sync.dart';
+import '../models/action_autonomy_policy.dart';
+import '../models/action_ledger.dart';
+import '../models/action_inverse_patch.dart';
 import 'auth_service.dart';
 import 'memory_sync_cloud_repository.dart';
 import 'memory_sync_local_repository.dart';
 import 'memory_sync_service.dart';
+import 'action_ledger_repository.dart';
+import 'action_ledger_service.dart';
+import 'action_autonomy_policy_service.dart';
 
 enum MemoryLibraryFilter {
   all,
@@ -109,9 +115,13 @@ final class MemoryLibraryService {
     required String? Function() currentScope,
     this.now = DateTime.now,
     UuidV7EntityIdGenerator idGenerator = const UuidV7EntityIdGenerator(),
+    ActionLedgerService? ledger,
+    Future<ActionAutonomyPolicy> Function()? loadAutonomyPolicy,
   })  : _sync = sync,
         _currentScope = currentScope,
-        _idGenerator = idGenerator;
+        _idGenerator = idGenerator,
+        _ledger = ledger,
+        _loadAutonomyPolicy = loadAutonomyPolicy;
 
   static const deleteAllConfirmation = 'SUPPRIMER MA MÉMOIRE';
   static const deleteAllPageSize = 20;
@@ -120,9 +130,22 @@ final class MemoryLibraryService {
   final String? Function() _currentScope;
   final DateTime Function() now;
   final UuidV7EntityIdGenerator _idGenerator;
+  final ActionLedgerService? _ledger;
+  final Future<ActionAutonomyPolicy> Function()? _loadAutonomyPolicy;
 
   static Future<MemoryLibraryService> production() async {
     final preferences = await SharedPreferences.getInstance();
+    final autonomyPolicyService = await ActionAutonomyPolicyService.local(
+      currentAccountScopeId: () => AuthService.currentUserId,
+    );
+    final ledger = ActionLedgerService(
+      local: const LocalActionLedgerRepository(),
+      cloud: FirestoreActionLedgerRepository(
+        firestore: FirebaseFirestore.instance,
+        currentUid: () => AuthService.currentUserId,
+      ),
+      currentScope: () => AuthService.currentUserId,
+    );
     return MemoryLibraryService(
       sync: MemorySyncService(
         local: MemorySyncLocalRepository(preferences),
@@ -131,9 +154,87 @@ final class MemoryLibraryService {
           currentUid: () => AuthService.currentUserId,
         ),
         currentScope: () => AuthService.currentUserId,
+        expirationObserver: ({
+          required current,
+          required updated,
+          required mutation,
+          required dispatch,
+        }) =>
+            _traceExpiration(
+          ledger: ledger,
+          loadAutonomyPolicy: autonomyPolicyService.load,
+          current: current,
+          updated: updated,
+          mutation: mutation,
+          dispatch: dispatch,
+        ),
       ),
       currentScope: () => AuthService.currentUserId,
+      ledger: ledger,
+      loadAutonomyPolicy: autonomyPolicyService.load,
     );
+  }
+
+  static Future<void> _traceExpiration({
+    required ActionLedgerService ledger,
+    required Future<ActionAutonomyPolicy> Function() loadAutonomyPolicy,
+    required RevisionedMemory current,
+    required RevisionedMemory updated,
+    required MemorySyncMutation mutation,
+    required Future<void> Function() dispatch,
+  }) async {
+    final policy = await loadAutonomyPolicy();
+    var entry = await ledger.begin(
+      mutationId: mutation.mutationId,
+      actionType: ActionType.correctMemory,
+      domain: ActionLedgerDomain.memory,
+      origin: ActionOrigin.structuredContinuation,
+      riskLevel: ActionRiskLevel.sensitiveMutation,
+      policyMode: policy.mode,
+      policyVersion: policy.schemaVersion,
+      target: ActionTargetReference(
+        domain: ActionLedgerDomain.memory,
+        entityType: 'memory',
+        entityId: current.memoryId,
+        operationType: MemoryMutationType.expireMemory.name,
+        revisionBefore: current.memoryRevision,
+        tombstoneBefore: current.tombstone,
+        patchType: 'memoryExpiration',
+        undoStrategy: ActionUndoStrategy.irreversible,
+      ),
+      undoCapability: const ActionUndoCapability(
+        type: ActionUndoCapabilityType.irreversible,
+        strategy: ActionUndoStrategy.irreversible,
+        reasonCode: 'memory_expiration_irreversible',
+        confirmationRequired: false,
+        currentRevisionRequired: true,
+        domain: ActionLedgerDomain.memory,
+        riskLevel: ActionRiskLevel.sensitiveMutation,
+      ),
+      correlationId: 'ledger-${mutation.mutationId}',
+      provenance: 'memory_expiration',
+    );
+    if (entry.status != ActionLedgerStatus.authorized) return;
+    entry = await ledger.markDispatching(
+      entry,
+      transitionMutationId: '${mutation.mutationId}:dispatch',
+    );
+    try {
+      await dispatch();
+      await ledger.recordResult(
+        entry,
+        outcome: ActionOutcome.pendingSync,
+        transitionMutationId: '${mutation.mutationId}:result',
+        resultRevision: updated.memoryRevision,
+      );
+    } on Object {
+      await ledger.recordResult(
+        entry,
+        outcome: ActionOutcome.unknownResult,
+        transitionMutationId: '${mutation.mutationId}:unknown',
+      );
+      rethrow;
+    }
   }
 
   Future<MemoryLibrarySnapshot> load() async {
@@ -386,11 +487,37 @@ final class MemoryLibraryService {
     return _status(state);
   }
 
+  Future<MemoryLibraryActionResult> applyInversePatch({
+    required String memoryId,
+    required MemoryInversePatch patch,
+    required String mutationId,
+  }) =>
+      _change(
+        memoryId,
+        MemoryMutationType.updateMemory,
+        (current, id) => current.copyWith(
+          memoryRevision: current.memoryRevision + 1,
+          lifecycleStatus:
+              MemoryLifecycleState.values.byName(patch.lifecycleStatus),
+          confirmationStatus:
+              MemoryConfirmationStatus.values.byName(patch.confirmationStatus),
+          text: patch.text,
+          normalizedText: patch.normalizedText,
+          tombstone: patch.wasTombstone,
+          updatedAt: now().toUtc(),
+          lastMutationId: id,
+        ),
+        mutationIdOverride: mutationId,
+        traceLedger: false,
+      );
+
   Future<MemoryLibraryActionResult> _change(
     String memoryId,
     MemoryMutationType type,
     RevisionedMemory Function(RevisionedMemory, String) transform, {
     bool protectStructuredDomain = false,
+    String? mutationIdOverride,
+    bool traceLedger = true,
   }) async {
     final snapshot = await load();
     final current = snapshot.memories
@@ -415,8 +542,56 @@ final class MemoryLibraryService {
         MemoryLibraryActionStatus.blockedByPolicy,
       );
     }
-    final mutationId = _idGenerator.generate();
+    final mutationId = mutationIdOverride ?? _idGenerator.generate();
     final updated = transform(current, mutationId);
+    final autonomyPolicy = await _loadAutonomyPolicy?.call();
+    if (autonomyPolicy?.mode == ActionAutonomyMode.paused) {
+      return const MemoryLibraryActionResult(
+        MemoryLibraryActionStatus.blockedByPolicy,
+      );
+    }
+    ActionLedgerEntry? ledgerEntry;
+    final ledger = _ledger;
+    if (ledger != null && traceLedger) {
+      ledgerEntry = await ledger.begin(
+        mutationId: mutationId,
+        actionType: _memoryActionType(type),
+        domain: ActionLedgerDomain.memory,
+        origin: ActionOrigin.explicitUserRequest,
+        riskLevel: _memoryRisk(type),
+        policyMode: autonomyPolicy?.mode ?? ActionAutonomyMode.normal,
+        policyVersion: autonomyPolicy?.schemaVersion ??
+            ActionAutonomyPolicy.currentSchemaVersion,
+        target: ActionTargetReference(
+          domain: ActionLedgerDomain.memory,
+          entityType: 'memory',
+          entityId: memoryId,
+          operationType: type.name,
+          revisionBefore: current.memoryRevision,
+          tombstoneBefore: current.tombstone,
+          patchType: 'memoryLifecycle',
+          undoStrategy: _memoryUndoStrategy(type),
+        ),
+        undoCapability: _memoryUndoCapability(type),
+        inversePatch:
+            _memoryUndoStrategy(type) == ActionUndoStrategy.irreversible
+                ? null
+                : MemoryInversePatch(
+                    text: current.text,
+                    normalizedText: current.normalizedText,
+                    lifecycleStatus: current.lifecycleStatus.name,
+                    confirmationStatus: current.confirmationStatus.name,
+                    wasTombstone: current.tombstone,
+                    isHealth: current.isHealth,
+                  ),
+        correlationId: 'ledger-$mutationId',
+        provenance: 'memory_library',
+      );
+      ledgerEntry = await ledger.markDispatching(
+        ledgerEntry,
+        transitionMutationId: '$mutationId:dispatch',
+      );
+    }
     try {
       await _sync.queueMemoryChange(
         current: current,
@@ -425,7 +600,32 @@ final class MemoryLibraryService {
         mutationId: mutationId,
         patch: {'action': type.name},
       );
-      return _status(await _sync.synchronize());
+      final result = _status(await _sync.synchronize());
+      if (ledger != null && ledgerEntry != null) {
+        final outcome = switch (result.status) {
+          MemoryLibraryActionStatus.synced => ActionOutcome.completed,
+          MemoryLibraryActionStatus.pendingSync => ActionOutcome.pendingSync,
+          MemoryLibraryActionStatus.conflict => ActionOutcome.conflict,
+          MemoryLibraryActionStatus.blockedByPolicy =>
+            ActionOutcome.policyBlocked,
+          _ => ActionOutcome.validationFailure,
+        };
+        final recorded = await ledger.recordResult(
+          ledgerEntry,
+          outcome: outcome,
+          transitionMutationId: '$mutationId:result',
+          resultRevision: outcome == ActionOutcome.completed
+              ? updated.memoryRevision
+              : null,
+        );
+        if (outcome == ActionOutcome.completed) {
+          await ledger.exposeUndo(
+            recorded,
+            transitionMutationId: '$mutationId:undo-capability',
+          );
+        }
+      }
+      return result;
     } on MemorySyncException catch (error) {
       return MemoryLibraryActionResult(
         error.code == 'memory_revision_conflict'
@@ -433,6 +633,48 @@ final class MemoryLibraryService {
             : MemoryLibraryActionStatus.invalid,
       );
     }
+  }
+
+  static ActionType _memoryActionType(MemoryMutationType type) =>
+      switch (type) {
+        MemoryMutationType.confirmMemory => ActionType.confirmMemory,
+        MemoryMutationType.archiveMemory => ActionType.archiveMemory,
+        MemoryMutationType.deleteMemory => ActionType.deleteMemory,
+        _ => ActionType.correctMemory,
+      };
+
+  static ActionRiskLevel _memoryRisk(MemoryMutationType type) =>
+      type == MemoryMutationType.deleteMemory
+          ? ActionRiskLevel.destructive
+          : ActionRiskLevel.sensitiveMutation;
+
+  static ActionUndoStrategy _memoryUndoStrategy(MemoryMutationType type) =>
+      switch (type) {
+        MemoryMutationType.archiveMemory =>
+          ActionUndoStrategy.undoArchiveMemory,
+        MemoryMutationType.restoreMemory =>
+          ActionUndoStrategy.undoRestoreMemory,
+        MemoryMutationType.updateMemory => ActionUndoStrategy.undoCorrectMemory,
+        _ => ActionUndoStrategy.irreversible,
+      };
+
+  static ActionUndoCapability _memoryUndoCapability(
+    MemoryMutationType type,
+  ) {
+    final strategy = _memoryUndoStrategy(type);
+    return ActionUndoCapability(
+      type: strategy == ActionUndoStrategy.irreversible
+          ? ActionUndoCapabilityType.irreversible
+          : ActionUndoCapabilityType.conditionallyReversible,
+      strategy: strategy,
+      reasonCode: strategy == ActionUndoStrategy.irreversible
+          ? 'undo_memory_not_supported'
+          : 'undo_memory_policy_and_revision_required',
+      confirmationRequired: true,
+      currentRevisionRequired: true,
+      domain: ActionLedgerDomain.memory,
+      riskLevel: _memoryRisk(type),
+    );
   }
 
   List<MemoryHistoryEntry> _history(

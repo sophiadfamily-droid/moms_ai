@@ -37,6 +37,13 @@ final class MemoryBootstrapResult {
   final bool restoredFromCloud;
 }
 
+typedef MemoryExpirationObserver = Future<void> Function({
+  required RevisionedMemory current,
+  required RevisionedMemory updated,
+  required MemorySyncMutation mutation,
+  required Future<void> Function() dispatch,
+});
+
 final class MemorySyncService {
   MemorySyncService({
     required MemorySyncLocalRepository local,
@@ -44,6 +51,7 @@ final class MemorySyncService {
     required String? Function() currentScope,
     this.now = DateTime.now,
     this.retryPolicy = const MemoryRetryPolicy(),
+    this.expirationObserver,
   })  : _local = local,
         _cloud = cloud,
         _currentScope = currentScope;
@@ -56,6 +64,7 @@ final class MemorySyncService {
   final String? Function() _currentScope;
   final DateTime Function() now;
   final MemoryRetryPolicy retryPolicy;
+  final MemoryExpirationObserver? expirationObserver;
 
   Future<MemoryBootstrapResult> bootstrap() async {
     final scope = _scope();
@@ -254,25 +263,38 @@ final class MemorySyncService {
         ].reversed.take(RevisionedMemory.maxHistoryEntries).toList()
           ..sort((left, right) => left.at.compareTo(right.at))),
       );
-      state = state.copyWith(memories: memories);
-      await _local.save(state);
-      state = await _local.enqueue(
-        state,
-        MemorySyncMutation(
-          mutationId: mutationId,
-          accountScopeId: scope,
-          type: MemoryMutationType.expireMemory,
-          targetId: memory.memoryId,
-          expectedRevision: memory.memoryRevision,
-          createdAt: timestamp,
-          observedGeneralMode: state.policy?.policy.generalMode ??
-              MemoryGeneralMode.askEveryTime,
-          observedHealthMode:
-              state.policy?.policy.healthMode ?? MemoryHealthMode.disabled,
-          isHealth: memory.isHealth,
-          provenance: LifeContextSourceType.memory,
-        ),
+      final updated = memories[index];
+      final mutation = MemorySyncMutation(
+        mutationId: mutationId,
+        accountScopeId: scope,
+        type: MemoryMutationType.expireMemory,
+        targetId: memory.memoryId,
+        expectedRevision: memory.memoryRevision,
+        createdAt: timestamp,
+        observedGeneralMode:
+            state.policy?.policy.generalMode ?? MemoryGeneralMode.askEveryTime,
+        observedHealthMode:
+            state.policy?.policy.healthMode ?? MemoryHealthMode.disabled,
+        isHealth: memory.isHealth,
+        provenance: LifeContextSourceType.memory,
       );
+      Future<void> dispatch() async {
+        state = state.copyWith(memories: memories);
+        await _local.save(state);
+        state = await _local.enqueue(state, mutation);
+      }
+
+      final observer = expirationObserver;
+      if (observer == null) {
+        await dispatch();
+      } else {
+        await observer(
+          current: memory,
+          updated: updated,
+          mutation: mutation,
+          dispatch: dispatch,
+        );
+      }
     }
     return state;
   }

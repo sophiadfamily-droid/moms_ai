@@ -17,6 +17,7 @@ import 'revisioned_cloud_repositories.dart';
 import 'revisioned_domain_sync_service.dart';
 import 'revisioned_domain_local_repository.dart';
 import 'revisioned_offline_journal.dart';
+import 'revisioned_action_ledger_observer.dart';
 
 class TaskService {
   static const String tasksKey = "tasks";
@@ -207,19 +208,21 @@ class TaskService {
     for (final entry in proposedById.entries) {
       final existing = currentById[entry.key];
       if (existing == null) {
-        await _sync.apply(
+        final mutation = TaskMutation(
+          mutationId: mutationIds.generate(),
+          targetId: entry.key,
+          expectedRevision: 0,
+          createdAt: DateTime.now().toUtc(),
+          attempt: 0,
+          nextRetryAt: null,
+          state: RevisionedMutationState.queued,
+          type: TaskMutationType.createTask,
+          task: entry.value,
+        );
+        await RevisionedActionLedgerObserver.task(
           scope,
-          TaskMutation(
-            mutationId: mutationIds.generate(),
-            targetId: entry.key,
-            expectedRevision: 0,
-            createdAt: DateTime.now().toUtc(),
-            attempt: 0,
-            nextRetryAt: null,
-            state: RevisionedMutationState.queued,
-            type: TaskMutationType.createTask,
-            task: entry.value,
-          ),
+          mutation,
+          () => _sync.apply(scope, mutation),
         );
       } else if (!existing.isTombstone &&
           jsonEncode(existing.task.toJson()) !=
@@ -229,19 +232,21 @@ class TaskService {
             : entry.value.isDone
                 ? TaskMutationType.completeTask
                 : TaskMutationType.reopenTask;
-        await _sync.apply(
+        final mutation = TaskMutation(
+          mutationId: mutationIds.generate(),
+          targetId: entry.key,
+          expectedRevision: existing.revision,
+          createdAt: DateTime.now().toUtc(),
+          attempt: 0,
+          nextRetryAt: null,
+          state: RevisionedMutationState.queued,
+          type: type,
+          task: entry.value,
+        );
+        await RevisionedActionLedgerObserver.task(
           scope,
-          TaskMutation(
-            mutationId: mutationIds.generate(),
-            targetId: entry.key,
-            expectedRevision: existing.revision,
-            createdAt: DateTime.now().toUtc(),
-            attempt: 0,
-            nextRetryAt: null,
-            state: RevisionedMutationState.queued,
-            type: type,
-            task: entry.value,
-          ),
+          mutation,
+          () => _sync.apply(scope, mutation),
         );
       }
     }
@@ -249,19 +254,21 @@ class TaskService {
       (value) =>
           !value.isTombstone && !proposedById.containsKey(value.entityId),
     )) {
-      await _sync.apply(
+      final mutation = TaskMutation(
+        mutationId: mutationIds.generate(),
+        targetId: existing.entityId,
+        expectedRevision: existing.revision,
+        createdAt: DateTime.now().toUtc(),
+        attempt: 0,
+        nextRetryAt: null,
+        state: RevisionedMutationState.queued,
+        type: TaskMutationType.deleteTask,
+        task: existing.task,
+      );
+      await RevisionedActionLedgerObserver.task(
         scope,
-        TaskMutation(
-          mutationId: mutationIds.generate(),
-          targetId: existing.entityId,
-          expectedRevision: existing.revision,
-          createdAt: DateTime.now().toUtc(),
-          attempt: 0,
-          nextRetryAt: null,
-          state: RevisionedMutationState.queued,
-          type: TaskMutationType.deleteTask,
-          task: existing.task,
-        ),
+        mutation,
+        () => _sync.apply(scope, mutation),
       );
     }
   }
