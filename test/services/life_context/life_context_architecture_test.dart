@@ -61,7 +61,8 @@ void main() {
     for (final forbidden in [
       'FirebaseFirestore',
       'SharedPreferences',
-      'OpenAI',
+      'package:openai',
+      'openai_service',
       'saveCanonical',
       'saveEvents',
       'saveTasks',
@@ -128,6 +129,76 @@ void main() {
     final request = File('${root.path}/lib/models/chat_backend_request.dart')
         .readAsStringSync();
     expect(request, isNot(contains('LifeContextSnapshot')));
+  });
+
+  test('LC.2 is a pure snapshot-only, bounded, closed-rule projection', () {
+    final relationEngine =
+        File('lib/services/life_context/life_context_relation_engine.dart')
+            .readAsStringSync();
+    final graphModel = File('lib/models/life_context/life_context_graph.dart')
+        .readAsStringSync();
+
+    for (final forbidden in [
+      'cloud_firestore',
+      'firebase',
+      'SharedPreferences',
+      'package:openai',
+      'openai_service',
+      'EventService',
+      'TaskService',
+      'HumanModelService',
+      'Repository',
+      'ChatScreen',
+      'write(',
+      'save(',
+      'delete(',
+      'set(',
+      'update(',
+    ]) {
+      expect(
+        relationEngine,
+        isNot(contains(forbidden)),
+        reason: 'LC.2 contains forbidden dependency $forbidden.',
+      );
+    }
+    expect(
+      relationEngine,
+      contains('LifeContextGraph build(LifeContextSnapshot snapshot)'),
+    );
+    expect(relationEngine, contains('maxDepth'));
+    expect(relationEngine, contains('maxVisitedNodes'));
+    expect(relationEngine, contains('LifeContextDerivationRules.require'));
+    expect(graphModel, isNot(contains('title')));
+    expect(graphModel, isNot(contains('displayName')));
+    expect(graphModel, isNot(contains('medical')));
+    expect(graphModel, isNot(contains('address')));
+  });
+
+  test('LC.2 has one canonical builder and is not persisted or sent to UI', () {
+    final productionFiles = Directory('lib')
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where((file) => file.path.endsWith('.dart'))
+        .toList();
+    final builders = productionFiles.where(
+      (file) => file.readAsStringSync().contains(
+            'LifeContextGraph build(LifeContextSnapshot snapshot)',
+          ),
+    );
+    expect(builders, hasLength(1));
+
+    for (final file in productionFiles.where(
+      (file) =>
+          file.path.contains('/screens/') ||
+          file.path.contains('/repositories/') ||
+          file.path.contains('chat_backend'),
+    )) {
+      expect(
+        file.readAsStringSync(),
+        isNot(contains('LifeContextRelationEngine')),
+        reason: '${file.path} must not construct or persist LC.2.',
+      );
+    }
   });
 }
 

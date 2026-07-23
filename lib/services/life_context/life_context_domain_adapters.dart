@@ -111,6 +111,10 @@ final class HumanModelLifeContextAdapter implements LifeContextDomainAdapter {
                 record.status.name,
                 record.evidence,
                 record.validity,
+                sourceReferenceId: record.sourcePersonId,
+                targetReferenceId: record.targetPersonId,
+                evidenceSource: record.evidence.source.name,
+                reciprocal: record.reciprocal,
               ),
             )
             .toList(),
@@ -124,6 +128,7 @@ final class HumanModelLifeContextAdapter implements LifeContextDomainAdapter {
                 record.evidence,
                 record.validity,
                 label: record.displayName,
+                evidenceSource: record.evidence.source.name,
               ),
             )
             .toList(),
@@ -137,6 +142,10 @@ final class HumanModelLifeContextAdapter implements LifeContextDomainAdapter {
                 record.evidence,
                 record.validity,
                 label: record.label,
+                householdIds: record.householdIds,
+                personIds: record.personIds,
+                placeEntityId: record.placeEntityId,
+                evidenceSource: record.evidence.source.name,
               ),
             )
             .toList(),
@@ -149,6 +158,9 @@ final class HumanModelLifeContextAdapter implements LifeContextDomainAdapter {
                 'declared',
                 record.evidence,
                 record.validity,
+                sourceReferenceId: record.personId,
+                targetReferenceId: record.householdId,
+                evidenceSource: record.evidence.source.name,
               ),
             )
             .toList(),
@@ -162,6 +174,9 @@ final class HumanModelLifeContextAdapter implements LifeContextDomainAdapter {
                 record.evidence,
                 record.validity,
                 label: record.scope,
+                sourceReferenceId: record.responsiblePersonId,
+                targetReferenceId: record.subjectPersonId,
+                evidenceSource: record.evidence.source.name,
               ),
             )
             .toList(),
@@ -205,6 +220,13 @@ final class HumanModelLifeContextAdapter implements LifeContextDomainAdapter {
     HumanEvidence evidence,
     HumanValidityPeriod validity, {
     String? label,
+    String? sourceReferenceId,
+    String? targetReferenceId,
+    List<String> householdIds = const [],
+    List<String> personIds = const [],
+    String? placeEntityId,
+    String? evidenceSource,
+    bool reciprocal = false,
   }) =>
       HumanContextRecord(
         id: id,
@@ -215,6 +237,13 @@ final class HumanModelLifeContextAdapter implements LifeContextDomainAdapter {
         label: label,
         validFrom: validity.validFrom,
         validUntil: validity.validUntil,
+        sourceReferenceId: sourceReferenceId,
+        targetReferenceId: targetReferenceId,
+        householdIds: List<String>.of(householdIds)..sort(),
+        personIds: List<String>.of(personIds)..sort(),
+        placeEntityId: placeEntityId,
+        evidenceSource: evidenceSource,
+        reciprocal: reciprocal,
       );
 }
 
@@ -350,6 +379,7 @@ final class EventLifeContextAdapter implements LifeContextDomainAdapter {
           revision: event.eventRevision,
           syncStatus: syncStatuses[id] ?? 'unknown',
           participantEntityId: participant?.identity.entityId,
+          parentRecurringId: _optional(event.parentRecurringId),
         );
       }).toList()
         ..sort((a, b) {

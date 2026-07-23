@@ -106,6 +106,13 @@ final class HumanContextRecord {
     this.label,
     this.validFrom,
     this.validUntil,
+    this.sourceReferenceId,
+    this.targetReferenceId,
+    this.householdIds = const [],
+    this.personIds = const [],
+    this.placeEntityId,
+    this.evidenceSource,
+    this.reciprocal = false,
   });
 
   final String id;
@@ -116,6 +123,13 @@ final class HumanContextRecord {
   final String? label;
   final DateTime? validFrom;
   final DateTime? validUntil;
+  final String? sourceReferenceId;
+  final String? targetReferenceId;
+  final List<String> householdIds;
+  final List<String> personIds;
+  final String? placeEntityId;
+  final String? evidenceSource;
+  final bool reciprocal;
 
   Map<String, Object?> toJson() => {
         'id': id,
@@ -128,6 +142,13 @@ final class HumanContextRecord {
           'validFrom': validFrom!.toUtc().toIso8601String(),
         if (validUntil != null)
           'validUntil': validUntil!.toUtc().toIso8601String(),
+        if (sourceReferenceId != null) 'sourceReferenceId': sourceReferenceId,
+        if (targetReferenceId != null) 'targetReferenceId': targetReferenceId,
+        if (householdIds.isNotEmpty) 'householdIds': householdIds,
+        if (personIds.isNotEmpty) 'personIds': personIds,
+        if (placeEntityId != null) 'placeEntityId': placeEntityId,
+        if (evidenceSource != null) 'evidenceSource': evidenceSource,
+        if (reciprocal) 'reciprocal': true,
       };
 }
 
@@ -223,6 +244,7 @@ final class EventContextItem {
     required this.revision,
     required this.syncStatus,
     this.participantEntityId,
+    this.parentRecurringId,
   });
 
   final String id;
@@ -238,6 +260,7 @@ final class EventContextItem {
   final int revision;
   final String syncStatus;
   final String? participantEntityId;
+  final String? parentRecurringId;
 
   Map<String, Object?> toJson() => {
         'id': id,
@@ -254,6 +277,7 @@ final class EventContextItem {
         'syncStatus': syncStatus,
         if (participantEntityId != null)
           'participantEntityId': participantEntityId,
+        if (parentRecurringId != null) 'parentRecurringId': parentRecurringId,
       };
 }
 

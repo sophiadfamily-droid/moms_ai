@@ -336,6 +336,53 @@ not send the canonical multi-domain snapshot to OpenAI. LC.2 will calculate
 cross-domain relationships and consequences; LC.3 will define the final
 bounded, filtered consumer projection.
 
+**LC.2 relation layer.** `LifeContextRelationEngine.build` is the only
+canonical relation-graph builder. Its sole input is one validated LC.1
+`LifeContextSnapshot`; it has no repository, persistence, UI, model-provider,
+or domain-write dependency. The resulting immutable schema-v1
+`LifeContextGraph` is reconstructible and is never a business source of truth.
+
+Graph nodes use deterministic technical IDs built from domain, resource type,
+and stable source ID. They deliberately omit visible labels, free text,
+addresses, medical data, and source payloads. Directed relations retain their
+source record, section, read time, freshness, confirmation, temporal range,
+snapshot, evidence type, and registered rule/version. LC.1 now preserves
+ordered Human relationship/responsibility references and explicit residence
+associations so LC.2 never has to infer direction from a sorted list.
+
+The closed rule registry currently projects only:
+
+- explicit Human relationships;
+- explicit person-to-household memberships;
+- explicit household/person-to-residence associations;
+- explicit responsible-person-to-subject responsibilities;
+- persisted HumanPerson-to-Identity links;
+- structured Identity-to-Event participants;
+- structured HumanPerson-to-Routine associations;
+- explicit recurring-series membership.
+
+Task has no structured cross-domain link today, so LC.2 creates no Task
+relation or dependency. A free participant name, matching title, nearby time,
+family relationship, double household membership, or responsibility never
+creates a dependency. Routine data without a stable HumanPerson reference also
+remains unlinked.
+
+`LifeContextGraphQuery` provides deterministic incoming/outgoing/type/time
+queries, household, residence, responsibility and Event-participant lookups,
+provenance explanations, bounded dependency traversal, deterministic cycle
+detection, and bounded technical consequence paths. A relation only states
+association. A dependency is the separate directed
+prerequisite-to-dependent contract and requires a registered explicit rule. A
+technical consequence only identifies projections that must be revalidated;
+it never recommends, prioritizes, moves, or writes anything.
+
+Historical, future, rejected, proposed, inferred, and needs-confirmation
+records remain distinguishable. Rejected records are never active. All graph
+construction and traversals validate scope, references, duplicates, periods,
+versions, rule registration, depth, and visit bounds. LC.3 will define the
+filtered consumer projection; priority and decision engines remain later,
+separate phases.
+
 ### 7.3 Profile Engine
 
 **Current state:** Profile models, persistence, structured context building, and planning reasoning exist, but responsibilities remain distributed between application state, a large profile screen, and services.
