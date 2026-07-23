@@ -10,6 +10,7 @@ import '../services/school_schedule_metadata_service.dart';
 import '../services/storage_service.dart';
 import '../services/auth_service.dart';
 import 'auth/auth_screen.dart';
+import 'human_profile_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final UserProfile profile;
@@ -844,6 +845,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final updatedProfile = UserProfile(
       humanPersonId: profile.humanPersonId,
       partnerHumanPersonId: profile.partnerHumanPersonId,
+      legacyExtensions: profile.legacyExtensions,
       firstName: firstNameController.text.trim(),
       familyStatus: selectedFamilyStatus,
       workStatus: selectedWorkStatus,
@@ -3419,6 +3421,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget buildPremiumSectionsCard() {
     return buildPremiumCard(
       children: [
+        buildProfileRow(
+          icon: Icons.hub_outlined,
+          label: "Mon organisation",
+          value: "Personnes, foyers et responsabilités",
+          iconColor: textSoft,
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => HumanProfileScreen(
+                  legacyProfile: profile,
+                  onLegacyProfileUpdated: (updated) {
+                    if (!mounted) return;
+                    setState(() => syncProfile(updated));
+                    widget.onSave?.call(updated);
+                  },
+                ),
+              ),
+            );
+          },
+          showChevron: true,
+        ),
+        buildDivider(),
         buildAccountRow(),
         buildDivider(),
         if (hasStructuredSchedule()) ...[

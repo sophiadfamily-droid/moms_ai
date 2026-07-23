@@ -979,3 +979,17 @@ automatic merges, shared-household ACLs, and relation inference. Future
 Knowledge Graph work may add typed relationships after entity identity is
 stable. Future resolution may add carefully measured signals, but ambiguity and
 provenance remain part of the public contract.
+
+## HM.3 profile editing boundary
+
+The universal profile flow edits `HumanPerson` records and human relationships,
+not Identity records. A form may preserve an existing confirmed
+`PersistedIdentityLink`, but it never creates, merges, reassigns, or deletes an
+Identity. Renaming or archiving a human person keeps both its stable human ID
+and any existing Identity link. Removing a household membership, ending a
+relationship, or archiving a responsibility has no Identity cascade.
+
+The UI deliberately allows homonyms and unlinked people. Any future operation
+that binds or replaces an Identity must continue through the existing Identity
+application and confirmation contracts; it is not an implicit side effect of
+HM.3.

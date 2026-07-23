@@ -10,6 +10,22 @@ enum LegacyHumanReconciliationStatus {
   needsConfirmation,
 }
 
+abstract final class HumanLegacyReconciliationMarker {
+  static const field = 'humanReconciliationRejectedMarker';
+
+  static String forModel(HumanModel model) {
+    final legacy = Map<String, Object?>.from(model.legacyProfile)
+      ..remove(field);
+    final comparable = model.copyWith(legacyProfile: legacy);
+    var hash = 0x811c9dc5;
+    for (final codeUnit in jsonEncode(comparable.toJson()).codeUnits) {
+      hash ^= codeUnit;
+      hash = (hash * 0x01000193) & 0x7fffffff;
+    }
+    return hash.toRadixString(16);
+  }
+}
+
 final class LegacyHumanReconciliationResult {
   const LegacyHumanReconciliationResult({
     required this.status,
@@ -161,6 +177,16 @@ final class LegacyUserProfileReconciliationService {
       relationships: nextRelationships,
       legacyProfile: next,
     );
+    final rejectedMarker =
+        _string(current.legacyProfile[HumanLegacyReconciliationMarker.field]);
+    if (rejectedMarker != null &&
+        rejectedMarker == HumanLegacyReconciliationMarker.forModel(proposed)) {
+      return LegacyHumanReconciliationResult(
+        status: LegacyHumanReconciliationStatus.unchanged,
+        proposed: current,
+        ambiguousFields: const [],
+      );
+    }
     final changed =
         jsonEncode(proposed.toJson()) != jsonEncode(current.toJson());
     return LegacyHumanReconciliationResult(

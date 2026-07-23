@@ -202,6 +202,7 @@ final class HumanPerson {
 
   HumanPerson copyWith({
     String? displayName,
+    bool clearDisplayName = false,
     HumanPersonStatus? status,
     HumanEvidence? evidence,
     Map<String, Object?>? customFields,
@@ -210,7 +211,7 @@ final class HumanPerson {
       id: id,
       accountScopeId: accountScopeId,
       identityLink: identityLink,
-      displayName: displayName ?? this.displayName,
+      displayName: clearDisplayName ? null : (displayName ?? this.displayName),
       status: status ?? this.status,
       evidence: evidence ?? this.evidence,
       customFields: customFields ?? this.customFields,
@@ -298,6 +299,29 @@ final class HumanRelationship {
   bool isActiveAt(DateTime instant) =>
       status == HumanRecordStatus.active && validity.isActiveAt(instant);
 
+  HumanRelationship copyWith({
+    String? type,
+    String? customType,
+    bool clearCustomType = false,
+    bool? reciprocal,
+    HumanRecordStatus? status,
+    HumanValidityPeriod? validity,
+    HumanEvidence? evidence,
+  }) =>
+      HumanRelationship(
+        id: id,
+        accountScopeId: accountScopeId,
+        sourcePersonId: sourcePersonId,
+        targetPersonId: targetPersonId,
+        type: type ?? this.type,
+        customType: clearCustomType ? null : (customType ?? this.customType),
+        reciprocal: reciprocal ?? this.reciprocal,
+        status: status ?? this.status,
+        validity: validity ?? this.validity,
+        evidence: evidence ?? this.evidence,
+        structuredNotes: structuredNotes,
+      );
+
   Map<String, Object?> toJson() => {
         'id': id,
         'accountScopeId': accountScopeId,
@@ -368,6 +392,23 @@ final class HumanHousehold {
   bool isActiveAt(DateTime instant) =>
       status != HouseholdStatus.historical && validity.isActiveAt(instant);
 
+  HumanHousehold copyWith({
+    String? displayName,
+    bool clearDisplayName = false,
+    HouseholdStatus? status,
+    HumanValidityPeriod? validity,
+    HumanEvidence? evidence,
+  }) =>
+      HumanHousehold(
+        id: id,
+        accountScopeId: accountScopeId,
+        displayName:
+            clearDisplayName ? null : (displayName ?? this.displayName),
+        status: status ?? this.status,
+        validity: validity ?? this.validity,
+        evidence: evidence ?? this.evidence,
+      );
+
   Map<String, Object?> toJson() => {
         'id': id,
         'accountScopeId': accountScopeId,
@@ -428,6 +469,29 @@ final class HumanResidence {
   final ResidenceStatus status;
   final HumanValidityPeriod validity;
   final HumanEvidence evidence;
+
+  HumanResidence copyWith({
+    String? label,
+    String? placeEntityId,
+    bool clearPlaceEntityId = false,
+    List<String>? householdIds,
+    List<String>? personIds,
+    ResidenceStatus? status,
+    HumanValidityPeriod? validity,
+    HumanEvidence? evidence,
+  }) =>
+      HumanResidence(
+        id: id,
+        accountScopeId: accountScopeId,
+        label: label ?? this.label,
+        placeEntityId:
+            clearPlaceEntityId ? null : (placeEntityId ?? this.placeEntityId),
+        householdIds: householdIds ?? this.householdIds,
+        personIds: personIds ?? this.personIds,
+        status: status ?? this.status,
+        validity: validity ?? this.validity,
+        evidence: evidence ?? this.evidence,
+      );
 
   Map<String, Object?> toJson() => {
         'id': id,
@@ -493,6 +557,24 @@ final class HumanHouseholdMembership {
   final HumanEvidence evidence;
 
   bool isActiveAt(DateTime instant) => validity.isActiveAt(instant);
+
+  HumanHouseholdMembership copyWith({
+    String? role,
+    String? customRole,
+    bool clearCustomRole = false,
+    HumanValidityPeriod? validity,
+    HumanEvidence? evidence,
+  }) =>
+      HumanHouseholdMembership(
+        id: id,
+        accountScopeId: accountScopeId,
+        householdId: householdId,
+        personId: personId,
+        role: role ?? this.role,
+        customRole: clearCustomRole ? null : (customRole ?? this.customRole),
+        validity: validity ?? this.validity,
+        evidence: evidence ?? this.evidence,
+      );
 
   Map<String, Object?> toJson() => {
         'id': id,
@@ -562,6 +644,29 @@ final class HumanResponsibility {
 
   bool isActiveAt(DateTime instant) =>
       status == HumanRecordStatus.active && validity.isActiveAt(instant);
+
+  HumanResponsibility copyWith({
+    String? type,
+    String? customType,
+    bool clearCustomType = false,
+    String? scope,
+    bool clearScope = false,
+    HumanValidityPeriod? validity,
+    HumanRecordStatus? status,
+    HumanEvidence? evidence,
+  }) =>
+      HumanResponsibility(
+        id: id,
+        accountScopeId: accountScopeId,
+        responsiblePersonId: responsiblePersonId,
+        subjectPersonId: subjectPersonId,
+        type: type ?? this.type,
+        customType: clearCustomType ? null : (customType ?? this.customType),
+        scope: clearScope ? null : (scope ?? this.scope),
+        validity: validity ?? this.validity,
+        status: status ?? this.status,
+        evidence: evidence ?? this.evidence,
+      );
 
   Map<String, Object?> toJson() => {
         'id': id,

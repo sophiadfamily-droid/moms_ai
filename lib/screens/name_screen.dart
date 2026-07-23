@@ -19,9 +19,6 @@ class _NameScreenState extends State<NameScreen> {
 
   void validate() {
     final value = controller.text.trim();
-
-    if (value.isEmpty) return;
-
     widget.onNext(value);
   }
 
@@ -50,7 +47,7 @@ class _NameScreenState extends State<NameScreen> {
         ),
         child: Center(
           child: Text(
-            "Continuer",
+            "Commencer",
             style: TextStyle(
               fontFamily: AppTheme.bodyFontFamily,
               fontSize: 17,
@@ -138,7 +135,7 @@ class _NameScreenState extends State<NameScreen> {
                             color: const Color(0xFF3D241E),
                           ),
                           decoration: InputDecoration(
-                            hintText: "Ton prénom",
+                            hintText: "Nom d’affichage (facultatif)",
                             hintStyle: TextStyle(
                               fontFamily: AppTheme.bodyFontFamily,
                               color: const Color(0xFFB99B92),
@@ -149,6 +146,13 @@ class _NameScreenState extends State<NameScreen> {
                               vertical: 18,
                             ),
                           ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Center(
+                        child: TextButton(
+                          onPressed: () => widget.onNext(''),
+                          child: const Text('Je préfère compléter plus tard'),
                         ),
                       ),
                       const Spacer(),

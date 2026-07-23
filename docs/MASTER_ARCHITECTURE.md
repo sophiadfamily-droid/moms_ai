@@ -577,6 +577,40 @@ user-facing reconciliation before replacing those legacy views. A future
 partitioning phase is required before the bounded single-document payload
 approaches its limit.
 
+HM.3 adds that explicit user-facing boundary. `HumanModelEditService` is the
+single application service used by the profile flow: it loads the local
+revisioned envelope, applies one typed model transformation, validates the
+complete aggregate, generates a non-personal mutation ID, and delegates the
+revision-checked write to `HumanModelService.saveCanonical`. Its closed result
+distinguishes validation, revision conflict, offline pending synchronization,
+network, storage, cancellation, and unknown failures. Screens never access
+Firestore or SharedPreferences and never display revisions, scopes, or mutation
+IDs.
+
+`HumanProfileScreen`, reached from the existing Profile screen through “Mon
+organisation”, provides progressive sections for the main person, other
+persons, relationships, households and memberships, residences,
+responsibilities, and retained legacy proposals. Empty sections are valid.
+Records are archived, ended, or detached rather than cascaded. Forms never
+require gender, marriage, children, an address, one household, or one
+responsible person, and they never create or delete Identity records.
+
+Legacy proposals can be confirmed, rejected, or postponed. Rejection stores a
+bounded deterministic technical marker in the retained legacy snapshot so the
+same unchanged proposal does not return; source changes create a new proposal.
+No proposal content appears in diagnostics. `HumanModelUserProfileProjectionService`
+updates only the deterministically mapped main person, partner, and child names
+while preserving all other legacy and unknown fields. Ambiguous partners,
+relationships, family status, custody, and households never overwrite
+`UserProfile`.
+
+The initial onboarding now ends after an optional display name and explicitly
+offers “Je préfère compléter plus tard”. Historical family, partner, child, and
+work screens remain readable compatibility code but are no longer required to
+start Zélia. The complete human organization is edited later through the
+canonical flow. HM.3 does not project the graph to OpenAI, alter planning,
+derive custody consequences, or start Life Context work.
+
 ## 11. Persistence principles
 
 1. Persisted identity must be stable and explicit.

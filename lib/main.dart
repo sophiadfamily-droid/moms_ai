@@ -195,6 +195,27 @@ class _ZeliaAppState extends State<ZeliaApp> {
     final profile = currentProfile();
 
     final persistedProfile = await StorageService.saveUserProfile(profile);
+    final accountScopeId = AuthService.currentUserId;
+    if (accountScopeId != null && accountScopeId.trim().isNotEmpty) {
+      try {
+        final localHumanModelService = await HumanModelService.createLocal();
+        await localHumanModelService.loadOrMigrate(
+          accountScopeId: accountScopeId,
+          legacyProfile: persistedProfile,
+        );
+        final humanModelService = await HumanModelService.createProduction();
+        await humanModelService.bootstrap(
+          accountScopeId: accountScopeId,
+          legacyProfile: persistedProfile,
+        );
+      } on Object {
+        AppDiagnostics.record(
+          component: 'human_model_storage',
+          step: 'onboarding_bootstrap',
+          code: AppErrorCode.storageFailure,
+        );
+      }
+    }
 
     if (!mounted) return;
 
@@ -290,11 +311,11 @@ class _ZeliaAppState extends State<ZeliaApp> {
 
         case 1:
           currentScreen = NameScreen(
-            onNext: (name) {
+            onNext: (name) async {
               setState(() {
                 firstName = name;
-                currentStep = 2;
               });
+              await saveProfileAndGoHome();
             },
           );
           break;
