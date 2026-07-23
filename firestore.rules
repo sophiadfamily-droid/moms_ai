@@ -255,7 +255,7 @@ service cloud.firestore {
           'structuredDomain', 'structuredReferenceId', 'lastMutationId',
           'tombstone', 'semanticType', 'importance', 'lifecycleState',
           'confirmedAt', 'rejectedAt', 'deletedAt', 'replacedByMemoryId',
-          'supersedesMemoryId', 'lifecycleHistory'
+          'supersedesMemoryId', 'lifecycleHistory', 'history'
         ])
         && data.keys().hasAll([
           'schemaVersion', 'memoryId', 'accountScopeId', 'memoryRevision',
@@ -270,7 +270,7 @@ service cloud.firestore {
         && data.memoryRevision > 0
         && data.lifecycleStatus in [
           'proposed', 'confirmed', 'rejected', 'active', 'superseded',
-          'obsolete', 'deleted', 'expired'
+          'obsolete', 'archived', 'deleted', 'expired'
         ]
         && data.confirmationStatus in [
           'unconfirmed', 'confirmed', 'inferred', 'rejected', 'obsolete'
@@ -308,6 +308,8 @@ service cloud.firestore {
         && (!data.keys().hasAny(['lifecycleHistory'])
           || (data.lifecycleHistory is list
             && data.lifecycleHistory.size() <= 100))
+        && (!data.keys().hasAny(['history'])
+          || (data.history is list && data.history.size() <= 50))
         && data.lastMutationId is string
         && data.lastMutationId.size() > 0
         && data.lastMutationId.size() <= 128
@@ -377,6 +379,7 @@ service cloud.firestore {
           && request.resource.data.createdAt == resource.data.createdAt
           && request.resource.data.memoryRevision == resource.data.memoryRevision + 1
           && request.resource.data.lastMutationId != resource.data.lastMutationId
+          && (!resource.data.tombstone || request.resource.data.tombstone)
           && request.resource.data.updatedAt == request.time;
         allow delete: if false;
       }

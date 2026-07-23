@@ -5,6 +5,7 @@ enum MemoryLifecycleState {
   active,
   superseded,
   obsolete,
+  archived,
   deleted,
   expired,
 }

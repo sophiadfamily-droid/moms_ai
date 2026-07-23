@@ -130,6 +130,55 @@ final class MemorySyncService {
     return _local.enqueue(state, mutation);
   }
 
+  Future<MemorySyncLocalState> queueMemoryChange({
+    required RevisionedMemory current,
+    required RevisionedMemory updated,
+    required MemoryMutationType type,
+    required String mutationId,
+    Map<String, Object?> patch = const {},
+  }) async {
+    final scope = _scope();
+    if (current.accountScopeId != scope ||
+        updated.accountScopeId != scope ||
+        current.memoryId != updated.memoryId ||
+        updated.memoryRevision != current.memoryRevision + 1 ||
+        updated.lastMutationId != mutationId) {
+      throw const MemorySyncException('invalid_memory_change');
+    }
+    var state =
+        await _local.load(scope) ?? MemorySyncLocalState(accountScopeId: scope);
+    final index =
+        state.memories.indexWhere((item) => item.memoryId == current.memoryId);
+    if (index < 0 ||
+        state.memories[index].memoryRevision != current.memoryRevision) {
+      throw const MemorySyncException('memory_revision_conflict');
+    }
+    final memories = [...state.memories]..[index] = updated;
+    state = state.copyWith(
+      memories: memories,
+      syncStatus: MemorySyncStatus.pending,
+    );
+    await _local.save(state);
+    return _local.enqueue(
+      state,
+      MemorySyncMutation(
+        mutationId: mutationId,
+        accountScopeId: scope,
+        type: type,
+        targetId: current.memoryId,
+        expectedRevision: current.memoryRevision,
+        createdAt: now().toUtc(),
+        observedGeneralMode:
+            state.policy?.policy.generalMode ?? MemoryGeneralMode.askEveryTime,
+        observedHealthMode:
+            state.policy?.policy.healthMode ?? MemoryHealthMode.disabled,
+        isHealth: current.isHealth,
+        provenance: LifeContextSourceType.memory,
+        patch: patch,
+      ),
+    );
+  }
+
   Future<MemorySyncLocalState> queuePolicy({
     required MemoryPolicy policy,
     required String mutationId,
@@ -195,6 +244,15 @@ final class MemorySyncService {
         confirmationStatus: MemoryConfirmationStatus.obsolete,
         updatedAt: timestamp,
         lastMutationId: mutationId,
+        history: ([
+          ...memory.history,
+          MemoryHistoryEntry(
+            action: MemoryHistoryAction.expired,
+            at: timestamp,
+            source: LifeContextSourceType.memory,
+          ),
+        ].reversed.take(RevisionedMemory.maxHistoryEntries).toList()
+          ..sort((left, right) => left.at.compareTo(right.at))),
       );
       state = state.copyWith(memories: memories);
       await _local.save(state);
@@ -430,6 +488,9 @@ final class MemorySyncService {
       return false;
     }
     if (mutation.isHealth &&
+        mutation.type != MemoryMutationType.deleteMemory &&
+        mutation.type != MemoryMutationType.archiveMemory &&
+        mutation.type != MemoryMutationType.rejectMemory &&
         (policy.healthMode == MemoryHealthMode.disabled ||
             (policy.healthMode == MemoryHealthMode.enabled &&
                 !policy.healthConsentGranted))) {

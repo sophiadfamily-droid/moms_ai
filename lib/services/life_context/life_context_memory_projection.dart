@@ -139,7 +139,11 @@ final class HistoricalMemoryContextProjection
         snapshot['confirmationStatus']?.toString().trim().toLowerCase() ?? '';
     if (normalized.isEmpty) {
       final lifecycle =
-          snapshot['lifecycleState']?.toString().trim().toLowerCase() ?? '';
+          (snapshot['lifecycleState'] ?? snapshot['lifecycleStatus'])
+                  ?.toString()
+                  .trim()
+                  .toLowerCase() ??
+              '';
       return switch (lifecycle) {
         'confirmed' || 'active' => MemoryConfirmationStatus.confirmed,
         'rejected' => MemoryConfirmationStatus.rejected,
@@ -157,7 +161,10 @@ final class HistoricalMemoryContextProjection
   }
 
   MemoryLifecycleState _lifecycleState(Map<String, dynamic> snapshot) {
-    final stored = snapshot['lifecycleState']?.toString().trim().toLowerCase();
+    final stored = (snapshot['lifecycleState'] ?? snapshot['lifecycleStatus'])
+        ?.toString()
+        .trim()
+        .toLowerCase();
     if (stored != null && stored.isNotEmpty) {
       return MemoryLifecycleState.values.firstWhere(
         (state) => state.name.toLowerCase() == stored,

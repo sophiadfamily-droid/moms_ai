@@ -761,6 +761,64 @@ try {
   await fails(deleteDoc(ownerMemory));
   checks += 31;
 
+  const m3 = environment.authenticatedContext('account-memory-m3').firestore();
+  const m3Memory = doc(m3, 'users/account-memory-m3/memories/m3-memory');
+  await succeeds(setDoc(m3Memory, memory('m3-memory', {
+    accountScopeId: 'account-memory-m3',
+    lastMutationId: 'm3-create',
+  })));
+  await succeeds(updateDoc(m3Memory, {
+    text: 'corrected',
+    normalizedText: 'corrected',
+    memoryRevision: 2,
+    updatedAt: serverTimestamp(),
+    lastMutationId: 'm3-correct',
+  }));
+  await succeeds(updateDoc(m3Memory, {
+    confirmationStatus: 'confirmed',
+    lifecycleStatus: 'active',
+    memoryRevision: 3,
+    updatedAt: serverTimestamp(),
+    lastMutationId: 'm3-confirm',
+  }));
+  await succeeds(updateDoc(m3Memory, {
+    lifecycleStatus: 'archived',
+    memoryRevision: 4,
+    updatedAt: serverTimestamp(),
+    lastMutationId: 'm3-archive',
+  }));
+  await succeeds(updateDoc(m3Memory, {
+    lifecycleStatus: 'active',
+    memoryRevision: 5,
+    updatedAt: serverTimestamp(),
+    lastMutationId: 'm3-restore',
+  }));
+  await succeeds(updateDoc(m3Memory, {
+    lifecycleStatus: 'deleted',
+    confirmationStatus: 'obsolete',
+    text: '[supprimé]',
+    normalizedText: '[supprime]',
+    tombstone: true,
+    memoryRevision: 6,
+    updatedAt: serverTimestamp(),
+    lastMutationId: 'm3-delete',
+  }));
+  await fails(updateDoc(m3Memory, {
+    lifecycleStatus: 'active',
+    tombstone: false,
+    memoryRevision: 7,
+    updatedAt: serverTimestamp(),
+    lastMutationId: 'm3-invalid-restore',
+  }));
+  await fails(updateDoc(m3Memory, {
+    memoryRevision: 7,
+    updatedAt: serverTimestamp(),
+    lastMutationId: 'm3-delete',
+  }));
+  await fails(deleteDoc(m3Memory));
+  await fails(getDoc(doc(other, 'users/account-memory-m3/memories/m3-memory')));
+  checks += 10;
+
   const quotaPath = '__server_ai_chat_quota/account-a';
   await fails(setDoc(doc(owner, quotaPath), {
     windowStartedAtMs: 1,

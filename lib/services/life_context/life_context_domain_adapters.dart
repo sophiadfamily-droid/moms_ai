@@ -690,7 +690,9 @@ final class MemoryLifeContextAdapter implements LifeContextDomainAdapter {
       }
       policy.validate();
       final raw = await _loadMemories(request.accountScopeId);
-      final context = _projection.project(raw);
+      final context = _projection.project(
+        raw.where((item) => item['tombstone'] != true),
+      );
       final syncState = await _loadSyncState?.call(request.accountScopeId);
       final memories = context.memories
           .map(

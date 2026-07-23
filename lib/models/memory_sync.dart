@@ -29,7 +29,56 @@ enum MemoryMutationType {
   postponeMemory,
   expireMemory,
   archiveMemory,
+  deleteMemory,
+  restoreMemory,
   changePolicy,
+}
+
+enum MemoryHistoryAction {
+  created,
+  corrected,
+  confirmed,
+  rejected,
+  postponed,
+  archived,
+  expired,
+  deleted,
+  restored,
+  synchronized,
+  conflict,
+}
+
+final class MemoryHistoryEntry {
+  const MemoryHistoryEntry({
+    required this.action,
+    required this.at,
+    required this.source,
+  });
+
+  final MemoryHistoryAction action;
+  final DateTime at;
+  final LifeContextSourceType source;
+
+  Map<String, Object?> toJson() => {
+        'action': action.name,
+        'at': at.toUtc().toIso8601String(),
+        'source': source.name,
+      };
+
+  factory MemoryHistoryEntry.fromJson(Map<String, Object?> json) =>
+      MemoryHistoryEntry(
+        action: _enum(
+          MemoryHistoryAction.values,
+          json['action'],
+          'invalid_memory_history_action',
+        ),
+        at: _date(json['at']),
+        source: _enum(
+          LifeContextSourceType.values,
+          json['source'],
+          'invalid_memory_history_source',
+        ),
+      );
 }
 
 enum MemoryMutationState {
@@ -89,6 +138,7 @@ final class RevisionedMemory {
     this.structuredDomain,
     this.structuredReferenceId,
     this.tombstone = false,
+    this.history = const [],
   }) {
     validate();
   }
@@ -114,6 +164,9 @@ final class RevisionedMemory {
   final String? structuredReferenceId;
   final String lastMutationId;
   final bool tombstone;
+  final List<MemoryHistoryEntry> history;
+
+  static const maxHistoryEntries = 50;
 
   bool isExpiredAt(DateTime date) {
     final end = expiresAt ?? validUntil;
@@ -130,6 +183,9 @@ final class RevisionedMemory {
         lastMutationId.length > 128 ||
         text.length > 4000 ||
         normalizedText.length > 4000 ||
+        text.trim().isEmpty ||
+        normalizedText.trim().isEmpty ||
+        history.length > maxHistoryEntries ||
         (validFrom != null &&
             validUntil != null &&
             validUntil!.isBefore(validFrom!))) {
@@ -141,9 +197,15 @@ final class RevisionedMemory {
     int? memoryRevision,
     MemoryLifecycleState? lifecycleStatus,
     MemoryConfirmationStatus? confirmationStatus,
+    String? text,
+    String? normalizedText,
+    DateTime? validFrom,
+    DateTime? validUntil,
+    DateTime? expiresAt,
     DateTime? updatedAt,
     String? lastMutationId,
     bool? tombstone,
+    List<MemoryHistoryEntry>? history,
   }) =>
       RevisionedMemory(
         schemaVersion: schemaVersion,
@@ -156,17 +218,18 @@ final class RevisionedMemory {
         sensitivity: sensitivity,
         category: category,
         isHealth: isHealth,
-        text: text,
-        normalizedText: normalizedText,
+        text: text ?? this.text,
+        normalizedText: normalizedText ?? this.normalizedText,
         createdAt: createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
-        validFrom: validFrom,
-        validUntil: validUntil,
-        expiresAt: expiresAt,
+        validFrom: validFrom ?? this.validFrom,
+        validUntil: validUntil ?? this.validUntil,
+        expiresAt: expiresAt ?? this.expiresAt,
         structuredDomain: structuredDomain,
         structuredReferenceId: structuredReferenceId,
         lastMutationId: lastMutationId ?? this.lastMutationId,
         tombstone: tombstone ?? this.tombstone,
+        history: history ?? this.history,
       );
 
   Map<String, Object?> toJson() => {
@@ -195,6 +258,8 @@ final class RevisionedMemory {
           'structuredReferenceId': structuredReferenceId,
         'lastMutationId': lastMutationId,
         'tombstone': tombstone,
+        if (history.isNotEmpty)
+          'history': history.map((entry) => entry.toJson()).toList(),
       };
 
   factory RevisionedMemory.fromJson(
@@ -230,6 +295,15 @@ final class RevisionedMemory {
       structuredReferenceId: _optionalString(json['structuredReferenceId']),
       lastMutationId: _string(json['lastMutationId']),
       tombstone: json['tombstone'] == true,
+      history: json['history'] is List
+          ? (json['history']! as List)
+              .map(
+                (entry) => MemoryHistoryEntry.fromJson(
+                  Map<String, Object?>.from(entry as Map),
+                ),
+              )
+              .toList(growable: false)
+          : const [],
     );
     if (memory.accountScopeId != expectedScope ||
         (expectedId != null && memory.memoryId != expectedId)) {

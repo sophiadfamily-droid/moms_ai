@@ -1107,7 +1107,31 @@ synchronisation et les souvenirs autorisés par M.1/LC.3. Conversation ne voit
 ni file ni conflit, et Planning ne reçoit aucune mémoire libre. Les parcours
 visibles de bibliothèque, correction et suppression relèvent de M.3.
 
-## 24. Change policy for this document
+## 24. Contrôle visible de la mémoire (V1-M.3)
+
+La bibliothèque mémoire est désormais une capacité produit explicite.
+`MemoryLibraryService` orchestre lecture bornée, détail, explication,
+correction, confirmation, rejet, report, archivage, tombstones, restauration
+d’archives, conflits et suppression globale. Les écrans restent de simples
+consommateurs et n’accèdent à aucune persistance.
+
+Toute action persistante conserve l’identifiant, utilise une mutation M.2
+idempotente et contrôle la révision attendue. L’historique produit contient au
+plus 50 événements sans ancienne copie du contenu. Une suppression remplace le
+contenu par un marqueur neutre et ne peut jamais cascader vers Identity,
+HumanModel, Event, Task, Routine, profil ou compte.
+
+La suppression globale est renforcée, paginée par lots de 20, reprenable et
+isolée au compte authentifié. Hors ligne, elle demeure pending. Les mémoires
+legacy Routine et les références structurées sont archivées pour préserver la
+continuité des domaines propriétaires.
+
+Les tombstones sont filtrés à la frontière Life Context, les archives ne sont
+pas actives, Conversation reconstruit une projection bornée et Planning ne
+reçoit toujours aucune mémoire libre. Les conflits restent explicites sans
+merge automatique ni exposition de révision.
+
+## 25. Change policy for this document
 
 Change this document when:
 
@@ -1131,7 +1155,7 @@ Do not change this document solely because:
 
 Every change must be based on the verified repository and must preserve the distinction between current state and planned architecture.
 
-## 25. Definition of architectural readiness
+## 26. Definition of architectural readiness
 
 A ZELIA capability is architecturally ready when:
 
@@ -1149,7 +1173,7 @@ A ZELIA capability is architecturally ready when:
 
 Code existing in the repository does not by itself make an engine architecturally ready. Conversely, a planned engine should not be implemented as a broad new subsystem until its prerequisites and ownership are clear.
 
-## 26. Enduring direction
+## 27. Enduring direction
 
 ZELIA should grow by deepening trust, context, and deterministic coordination—not by accumulating disconnected “smart” features.
 

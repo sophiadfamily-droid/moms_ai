@@ -265,10 +265,50 @@ d’utiliser la projection M.1/LC.3 et Planning continue d’exclure toute mémo
 libre. La bibliothèque, la correction et les suppressions visibles restent
 réservées à M.3.
 
+## M.3 — Bibliothèque et contrôle visible
+
+`MemoryLibraryService` est l’unique frontière d’application de la bibliothèque.
+Les écrans ne connaissent ni Firestore, ni SharedPreferences, ni la file M.2.
+La façade charge l’état paginé et borné, produit les sections actif,
+à-confirmer, pending, historique et conflit, explique les faits par des règles
+fermées, puis transforme toute action en mutation M.2 avec `expectedRevision`
+et `mutationId`.
+
+L’écran « Ce que Zélia retient », accessible depuis les réglages mémoire,
+propose des filtres canoniques, un détail sans identifiant technique, une
+provenance en français, l’état de confirmation et de synchronisation, ainsi
+qu’un historique produit limité à 50 événements. Les explications sont
+déterministes et n’appellent ni OpenAI ni un service de diagnostic.
+
+Une correction conserve l’identifiant, la provenance initiale et ajoute un
+événement de correction. Elle refuse le vide, une période incohérente, une
+politique santé insuffisante et toute référence possédée par un domaine
+structuré. Confirmation, rejet et report restent distincts : le report
+n’affirme aucune écriture, le rejet reste inactif et la confirmation n’est
+annoncée qu’après le résultat de la synchronisation.
+
+L’archivage est un état révisionné, historique et restaurable. Une suppression
+individuelle produit un tombstone révisionné : le contenu est remplacé par un
+marqueur neutre, l’historique est réduit à la preuve technique minimale, et
+aucun delete Firestore n’est effectué. Un tombstone ne peut pas être réactivé.
+Une archive santé ne peut être restaurée que si le consentement santé actuel
+l’autorise; la suppression reste toujours possible.
+
+La suppression globale exige la saisie exacte « SUPPRIMER MA MÉMOIRE ». Elle
+parcourt uniquement le domaine Memory par pages de 20, est reprenable par
+curseur et s’arrête en état pending hors ligne sans annoncer un succès cloud.
+Les références structurées et les mémoires legacy Routine sont archivées
+plutôt que supprimées afin de ne créer aucun trou silencieux. Aucun compte,
+profil, HumanModel, Identity, Event, Task ou Routine n’est touché.
+
+Les conflits M.2 sont affichés sans révision technique. La personne peut garder
+la version distante, abandonner sa mutation ou recharger; aucun merge de texte
+n’est proposé. Life Context filtre les tombstones dès l’adaptateur, les
+archives ne sont pas consommables, Conversation reconstruit sa prochaine
+projection et Planning continue d’exclure toute mémoire libre.
+
 ## Deliberately deferred
 
-- complete library, correction, individual deletion, and detailed explanation
-  UI (M.3);
 - general contradiction and entity-resolution engines;
 - probabilistic or model-based similarity;
 - restoration workflow;
