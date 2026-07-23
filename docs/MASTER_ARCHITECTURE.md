@@ -521,14 +521,61 @@ versions. Diagnostics contain only stable technical codes and migration steps;
 they never contain names, relations, residences, profile JSON, Identity data,
 or account IDs.
 
-HM.1 is local-only. It does not add Firestore paths or rules, remote migration,
-family management UI, planning rules for custody, profile synchronization,
-Life Context reasoning, or a medical/legal model. `UserProfile` and its current
-conversation projection remain compatible consumers during the incremental
-transition. The one-time canonical migration is not a bidirectional bridge:
-legacy profile edits continue to serve legacy consumers and are not silently
-merged into the human aggregate. HM.2 must introduce explicit edit and
-reconciliation contracts before canonical human data replaces those views.
+HM.2 promotes the aggregate to a private, shared source of truth at
+`users/{uid}/private/humanModel`. The cloud document is a single bounded
+snapshot (maximum client payload 700,000 UTF-8 bytes) with schema version,
+monotone `modelRevision`, immutable account scope, server timestamps,
+idempotent non-personal `lastMutationId`, migration version/status, and a
+validated deterministic payload. A transaction creates only when absent or
+updates exactly `N → N+1`; a stale writer receives a conflict and cannot
+overwrite the winner.
+
+Bootstrap uses this order:
+
+1. validate the last local envelope, falling back to its single previous
+   snapshot if the current value is corrupt or unsupported;
+2. read the authenticated account's cloud document;
+3. adopt and locally verify a valid cloud model when present;
+4. otherwise upload the exact HM.1 local graph with its existing IDs;
+5. otherwise migrate the retained `UserProfile` and create the cloud document
+   only if it remains absent;
+6. if two devices race, the losing device reloads and adopts the winning cloud
+   graph;
+7. when offline, retain the last valid local model with an explicit unsynced
+   status rather than claiming cloud success.
+
+The local key remains `human_model_v1:{accountScopeId}` but now stores a
+versioned envelope: current model, known cloud revision, sync and migration
+states, last mutation, and at most one pending canonical mutation. Before
+replacement, the repository saves one previous valid envelope; it writes,
+reads, and validates the candidate before success. The legacy HM.1 raw-model
+format remains readable. Neither the previous envelope nor `user_profile` is
+deleted during migration.
+
+Legacy compatibility IDs (`humanPersonId` on the principal and each child,
+plus `partnerHumanPersonId`) are optional additive JSON fields. They are random,
+hidden from UI, never derived from names, and reused when already present. The
+canonical payload retains the enriched legacy snapshot. Reconciliation may
+update the legacy payload and an unconfirmed legacy principal deterministically;
+partner replacement, missing children, renames without stable correspondence,
+deletions, and other ambiguous changes become one bounded pending proposal and
+never mutate the cloud silently. Confirmed canonical data always wins over an
+ambiguous legacy value.
+
+Firestore rules now give `private/profile` its historical owner-only access and
+give `private/humanModel` a stricter shape/revision lifecycle. Authentication,
+path UID, `accountScopeId`, payload scope, schema, initial revision, exact
+increment, immutable creation metadata, and direct-delete denial are enforced.
+Anonymous Firebase sessions are accepted because they have a verified UID;
+credential linking preserves the same scope.
+
+`UserProfile` remains the compatibility view and the source for fields not yet
+migrated. ProfileScreen, onboarding, conversation, planning, and Life Context
+still consume it during HM.2. HM.2 does not add family-management UI or send the
+human graph to OpenAI. HM.3 must provide explicit canonical editing and
+user-facing reconciliation before replacing those legacy views. A future
+partitioning phase is required before the bounded single-document payload
+approaches its limit.
 
 ## 11. Persistence principles
 

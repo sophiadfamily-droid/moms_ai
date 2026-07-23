@@ -148,6 +148,70 @@ service cloud.firestore {
         );
     }
 
+    function hasValidHumanModelShape(userId) {
+      let data = request.resource.data;
+      return data.keys().hasOnly([
+          'schemaVersion', 'modelRevision', 'accountScopeId', 'payload',
+          'createdAt', 'updatedAt', 'lastMutationId', 'migrationVersion',
+          'migrationStatus', 'creationSource'
+        ])
+        && data.keys().hasAll([
+          'schemaVersion', 'modelRevision', 'accountScopeId', 'payload',
+          'createdAt', 'updatedAt', 'lastMutationId', 'migrationVersion',
+          'migrationStatus', 'creationSource'
+        ])
+        && data.schemaVersion == 1
+        && data.modelRevision is int
+        && data.modelRevision > 0
+        && data.accountScopeId == userId
+        && data.payload is map
+        && data.payload.keys().hasAll([
+          'schemaVersion', 'accountScopeId', 'primaryPersonId', 'persons',
+          'relationships', 'households', 'residences', 'memberships',
+          'responsibilities', 'legacyProfile'
+        ])
+        && data.payload.schemaVersion == data.schemaVersion
+        && data.payload.accountScopeId == userId
+        && data.payload.primaryPersonId is string
+        && data.payload.primaryPersonId.size() > 0
+        && data.payload.persons is list
+        && data.payload.persons.size() > 0
+        && data.payload.relationships is list
+        && data.payload.households is list
+        && data.payload.residences is list
+        && data.payload.memberships is list
+        && data.payload.responsibilities is list
+        && data.payload.legacyProfile is map
+        && data.lastMutationId is string
+        && data.lastMutationId.size() > 0
+        && data.lastMutationId.size() <= 128
+        && data.migrationVersion == 1
+        && data.migrationStatus == 'complete'
+        && data.creationSource in [
+          'legacyOrLocalMigration', 'canonicalRestore', 'canonicalMutation'
+        ];
+    }
+
+    function isValidHumanModelCreate(userId) {
+      let data = request.resource.data;
+      return hasValidHumanModelShape(userId)
+        && data.modelRevision == 1
+        && data.createdAt == request.time
+        && data.updatedAt == request.time;
+    }
+
+    function isValidHumanModelUpdate(userId) {
+      let next = request.resource.data;
+      let previous = resource.data;
+      return hasValidHumanModelShape(userId)
+        && next.accountScopeId == previous.accountScopeId
+        && next.schemaVersion == previous.schemaVersion
+        && next.createdAt == previous.createdAt
+        && next.modelRevision == previous.modelRevision + 1
+        && next.lastMutationId != previous.lastMutationId
+        && next.updatedAt == request.time;
+    }
+
     match /users/{userId} {
       allow read, write: if isOwner(userId);
 
@@ -165,10 +229,24 @@ service cloud.firestore {
         allow delete: if isOwner(userId);
       }
 
+      match /private/profile {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /private/humanModel {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId)
+          && isValidHumanModelCreate(userId);
+        allow update: if isOwner(userId)
+          && isValidHumanModelUpdate(userId);
+        allow delete: if false;
+      }
+
       match /{collection}/{document=**} {
         allow read, write: if isOwner(userId)
           && collection != 'identities'
-          && collection != 'events';
+          && collection != 'events'
+          && collection != 'private';
       }
     }
 

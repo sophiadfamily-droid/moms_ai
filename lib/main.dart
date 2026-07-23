@@ -157,23 +157,24 @@ class _ZeliaAppState extends State<ZeliaApp> {
   Future<void> loadProfile() async {
     final loadedProfile = await StorageService.getUserProfile();
 
-    if (loadedProfile != null) {
-      final accountScopeId = AuthService.currentUserId;
-      if (accountScopeId != null && accountScopeId.trim().isNotEmpty) {
-        try {
-          final humanModelService = await HumanModelService.createLocal();
-          await humanModelService.loadOrMigrate(
-            accountScopeId: accountScopeId,
-            legacyProfile: loadedProfile,
-          );
-        } on Object {
-          AppDiagnostics.record(
-            component: 'human_model_storage',
-            step: 'legacy_migration',
-            code: AppErrorCode.storageFailure,
-          );
-        }
+    final accountScopeId = AuthService.currentUserId;
+    if (accountScopeId != null && accountScopeId.trim().isNotEmpty) {
+      try {
+        final humanModelService = await HumanModelService.createProduction();
+        await humanModelService.bootstrap(
+          accountScopeId: accountScopeId,
+          legacyProfile: loadedProfile,
+        );
+      } on Object {
+        AppDiagnostics.record(
+          component: 'human_model_storage',
+          step: 'bootstrap',
+          code: AppErrorCode.storageFailure,
+        );
       }
+    }
+
+    if (loadedProfile != null) {
       savedProfile = loadedProfile;
       firstName = loadedProfile.firstName;
       familyStatus = normalizeFamilyStatus(loadedProfile.familyStatus);
@@ -193,12 +194,12 @@ class _ZeliaAppState extends State<ZeliaApp> {
   Future<void> saveProfileAndGoHome() async {
     final profile = currentProfile();
 
-    await StorageService.saveUserProfile(profile);
+    final persistedProfile = await StorageService.saveUserProfile(profile);
 
     if (!mounted) return;
 
     setState(() {
-      savedProfile = profile;
+      savedProfile = persistedProfile;
       onboardingDone = true;
     });
   }

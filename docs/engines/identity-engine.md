@@ -274,6 +274,13 @@ Life Context remains a later projection consumer. It may eventually calculate
 cross-domain consequences from human and Identity data, but it must not become
 a second source of truth for either system.
 
+V1-HM.2 persists that aggregate independently under the authenticated
+account's private Firestore subtree. Its account scope and model revision are
+not Identity revisions. HumanModel creation, restoration, reconciliation, and
+rollback never call an Identity repository. Optional legacy human-record IDs
+maintain profile-to-human correspondence only; they are not Identity IDs and
+cannot be used for Identity lookup or automatic merging.
+
 ## Verified current state
 
 ### Stable record identity foundation

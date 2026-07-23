@@ -16,6 +16,7 @@ import {
   limit,
   query,
   runTransaction,
+  serverTimestamp,
   setDoc,
   updateDoc,
   writeBatch,
@@ -63,6 +64,35 @@ const identity = (id, overrides = {}) => ({
   metadata: {},
   schemaVersion: 1,
   revision: 1,
+  ...overrides,
+});
+
+const humanModel = (overrides = {}) => ({
+  schemaVersion: 1,
+  modelRevision: 1,
+  accountScopeId: 'account-a',
+  payload: {
+    schemaVersion: 1,
+    accountScopeId: 'account-a',
+    primaryPersonId: 'person-main',
+    persons: [{
+      id: 'person-main',
+      accountScopeId: 'account-a',
+      status: 'active',
+    }],
+    relationships: [],
+    households: [],
+    residences: [],
+    memberships: [],
+    responsibilities: [],
+    legacyProfile: {},
+  },
+  createdAt: serverTimestamp(),
+  updatedAt: serverTimestamp(),
+  lastMutationId: 'mutation-create',
+  migrationVersion: 1,
+  migrationStatus: 'complete',
+  creationSource: 'legacyOrLocalMigration',
   ...overrides,
 });
 
@@ -420,6 +450,164 @@ try {
   if (concurrentResults.filter((result) => result.status === 'fulfilled').length !== 1 ||
       concurrentResults.filter((result) => result.status === 'rejected').length !== 1) {
     throw new Error('Concurrent revision guard failed');
+  }
+  checks++;
+
+  const humanModelPath = 'users/account-a/private/humanModel';
+  const ownerHumanModel = doc(owner, humanModelPath);
+  const anonymousOwner = environment.authenticatedContext('anonymous-account', {
+    firebase: {sign_in_provider: 'anonymous'},
+  }).firestore();
+  await succeeds(setDoc(ownerHumanModel, humanModel()));
+  await succeeds(getDoc(ownerHumanModel));
+  await fails(getDoc(doc(other, humanModelPath)));
+  await fails(getDoc(doc(guest, humanModelPath)));
+  await fails(setDoc(
+    doc(other, humanModelPath),
+    humanModel(),
+  ));
+  await fails(setDoc(
+    doc(guest, humanModelPath),
+    humanModel(),
+  ));
+  await succeeds(setDoc(
+    doc(anonymousOwner, 'users/anonymous-account/private/humanModel'),
+    humanModel({
+      accountScopeId: 'anonymous-account',
+      payload: {
+        ...humanModel().payload,
+        accountScopeId: 'anonymous-account',
+      },
+      lastMutationId: 'anonymous-create',
+    }),
+  ));
+  const invalidScopeOwner =
+    environment.authenticatedContext('account-invalid-scope').firestore();
+  await fails(setDoc(
+    doc(invalidScopeOwner, 'users/account-invalid-scope/private/humanModel'),
+    humanModel({accountScopeId: 'account-b'}),
+  ));
+  const invalidRevisionOwner =
+    environment.authenticatedContext('account-invalid-revision').firestore();
+  await fails(setDoc(
+    doc(invalidRevisionOwner, 'users/account-invalid-revision/private/humanModel'),
+    humanModel({
+      accountScopeId: 'account-invalid-revision',
+      payload: {
+        ...humanModel().payload,
+        accountScopeId: 'account-invalid-revision',
+      },
+      modelRevision: 2,
+    }),
+  ));
+  const invalidSchemaOwner =
+    environment.authenticatedContext('account-invalid-schema').firestore();
+  await fails(setDoc(
+    doc(invalidSchemaOwner, 'users/account-invalid-schema/private/humanModel'),
+    humanModel({
+      accountScopeId: 'account-invalid-schema',
+      payload: {
+        ...humanModel().payload,
+        accountScopeId: 'account-invalid-schema',
+      },
+      schemaVersion: 2,
+    }),
+  ));
+  const invalidPayloadOwner =
+    environment.authenticatedContext('account-invalid-payload').firestore();
+  await fails(setDoc(
+    doc(invalidPayloadOwner, 'users/account-invalid-payload/private/humanModel'),
+    humanModel({
+      accountScopeId: 'account-invalid-payload',
+      payload: {
+        ...humanModel().payload,
+        accountScopeId: 'account-invalid-payload',
+        persons: [],
+      },
+    }),
+  ));
+  await succeeds(updateDoc(ownerHumanModel, {
+    payload: {...humanModel().payload, legacyProfile: {version: 2}},
+    modelRevision: 2,
+    updatedAt: serverTimestamp(),
+    lastMutationId: 'mutation-update',
+    creationSource: 'canonicalMutation',
+  }));
+  await fails(updateDoc(ownerHumanModel, {
+    modelRevision: 2,
+    updatedAt: serverTimestamp(),
+    lastMutationId: 'mutation-same-revision',
+  }));
+  await fails(updateDoc(ownerHumanModel, {
+    modelRevision: 4,
+    updatedAt: serverTimestamp(),
+    lastMutationId: 'mutation-jump',
+  }));
+  await fails(updateDoc(ownerHumanModel, {
+    accountScopeId: 'account-b',
+    modelRevision: 3,
+    updatedAt: serverTimestamp(),
+    lastMutationId: 'mutation-scope',
+  }));
+  await fails(updateDoc(ownerHumanModel, {
+    schemaVersion: 2,
+    modelRevision: 3,
+    updatedAt: serverTimestamp(),
+    lastMutationId: 'mutation-schema',
+  }));
+  const updateHumanAtRevisionTwo = (mutationId) => runTransaction(
+    owner,
+    async (transaction) => {
+      const snapshot = await transaction.get(ownerHumanModel);
+      if (snapshot.data().modelRevision !== 2) {
+        throw new Error('human_model_revision_conflict');
+      }
+      transaction.update(ownerHumanModel, {
+        modelRevision: 3,
+        updatedAt: serverTimestamp(),
+        lastMutationId: mutationId,
+        creationSource: 'canonicalMutation',
+      });
+    },
+  );
+  const humanUpdateResults = await Promise.allSettled([
+    updateHumanAtRevisionTwo('mutation-concurrent-a'),
+    updateHumanAtRevisionTwo('mutation-concurrent-b'),
+  ]);
+  if (humanUpdateResults.filter((result) => result.status === 'fulfilled').length !== 1 ||
+      humanUpdateResults.filter((result) => result.status === 'rejected').length !== 1) {
+    throw new Error('Concurrent HumanModel revision guard failed');
+  }
+  checks++;
+  await fails(deleteDoc(ownerHumanModel));
+
+  const raceOwner = environment.authenticatedContext('account-race').firestore();
+  const racePath = doc(
+    raceOwner,
+    'users/account-race/private/humanModel',
+  );
+  const createHumanModelOnce = (mutationId) => runTransaction(
+    raceOwner,
+    async (transaction) => {
+      const snapshot = await transaction.get(racePath);
+      if (snapshot.exists()) throw new Error('already_exists');
+      transaction.set(racePath, humanModel({
+        accountScopeId: 'account-race',
+        payload: {
+          ...humanModel().payload,
+          accountScopeId: 'account-race',
+        },
+        lastMutationId: mutationId,
+      }));
+    },
+  );
+  const humanRaceResults = await Promise.allSettled([
+    createHumanModelOnce('migration-a'),
+    createHumanModelOnce('migration-b'),
+  ]);
+  if (humanRaceResults.filter((result) => result.status === 'fulfilled').length !== 1 ||
+      humanRaceResults.filter((result) => result.status === 'rejected').length !== 1) {
+    throw new Error('Concurrent HumanModel creation guard failed');
   }
   checks++;
 

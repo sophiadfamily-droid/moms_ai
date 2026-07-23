@@ -102,7 +102,8 @@ class ActivityModel {
       location: json["location"] ?? "",
       days: (json["days"] as List? ?? []).map((day) => day.toString()).toList(),
       timeRanges: (json["timeRanges"] as List? ?? [])
-          .map((range) => TimeRangeModel.fromJson(Map<String, dynamic>.from(range)))
+          .map((range) =>
+              TimeRangeModel.fromJson(Map<String, dynamic>.from(range)))
           .toList(),
       travelMinutes: json["travelMinutes"] ?? "",
       notes: json["notes"] ?? "",
@@ -111,6 +112,28 @@ class ActivityModel {
 }
 
 class ChildProfile {
+  static const _knownJsonKeys = {
+    "humanPersonId",
+    "firstName",
+    "age",
+    "birthDate",
+    "gender",
+    "school",
+    "notes",
+    "photoPath",
+    "className",
+    "allergies",
+    "doctor",
+    "medicalNotes",
+    "schoolTimeRanges",
+    "activities",
+    "activity",
+    "activityDays",
+    "activityTime",
+  };
+
+  final String humanPersonId;
+  final Map<String, dynamic> legacyExtensions;
   final String firstName;
   final String age;
   final String birthDate;
@@ -127,6 +150,8 @@ class ChildProfile {
   final List<ActivityModel> activities;
 
   ChildProfile({
+    this.humanPersonId = "",
+    this.legacyExtensions = const {},
     required this.firstName,
     required this.age,
     required this.birthDate,
@@ -143,6 +168,8 @@ class ChildProfile {
   });
 
   ChildProfile copyWith({
+    String? humanPersonId,
+    Map<String, dynamic>? legacyExtensions,
     String? firstName,
     String? age,
     String? birthDate,
@@ -158,6 +185,8 @@ class ChildProfile {
     List<ActivityModel>? activities,
   }) {
     return ChildProfile(
+      humanPersonId: humanPersonId ?? this.humanPersonId,
+      legacyExtensions: legacyExtensions ?? this.legacyExtensions,
       firstName: firstName ?? this.firstName,
       age: age ?? this.age,
       birthDate: birthDate ?? this.birthDate,
@@ -176,6 +205,8 @@ class ChildProfile {
 
   Map<String, dynamic> toJson() {
     return {
+      ...legacyExtensions,
+      "humanPersonId": humanPersonId,
       "firstName": firstName,
       "age": age,
       "birthDate": birthDate,
@@ -187,15 +218,20 @@ class ChildProfile {
       "allergies": allergies,
       "doctor": doctor,
       "medicalNotes": medicalNotes,
-      "schoolTimeRanges": schoolTimeRanges.map((range) => range.toJson()).toList(),
+      "schoolTimeRanges":
+          schoolTimeRanges.map((range) => range.toJson()).toList(),
       "activities": activities.map((activity) => activity.toJson()).toList(),
     };
   }
 
   factory ChildProfile.fromJson(Map<String, dynamic> json) {
     final legacyActivity = json["activity"]?.toString() ?? "";
+    final legacyExtensions = Map<String, dynamic>.from(json)
+      ..removeWhere((key, _) => _knownJsonKeys.contains(key));
 
     return ChildProfile(
+      humanPersonId: json["humanPersonId"] ?? "",
+      legacyExtensions: legacyExtensions,
       firstName: json["firstName"] ?? "",
       age: json["age"] ?? "",
       birthDate: json["birthDate"] ?? "",
@@ -208,10 +244,12 @@ class ChildProfile {
       doctor: json["doctor"] ?? "",
       medicalNotes: json["medicalNotes"] ?? "",
       schoolTimeRanges: (json["schoolTimeRanges"] as List? ?? [])
-          .map((range) => TimeRangeModel.fromJson(Map<String, dynamic>.from(range)))
+          .map((range) =>
+              TimeRangeModel.fromJson(Map<String, dynamic>.from(range)))
           .toList(),
       activities: (json["activities"] as List? ?? [])
-          .map((activity) => ActivityModel.fromJson(Map<String, dynamic>.from(activity)))
+          .map((activity) =>
+              ActivityModel.fromJson(Map<String, dynamic>.from(activity)))
           .toList()
         ..addAll(
           legacyActivity.isEmpty
@@ -237,6 +275,66 @@ class ChildProfile {
 }
 
 class UserProfile {
+  static const _knownJsonKeys = {
+    "humanPersonId",
+    "partnerHumanPersonId",
+    "firstName",
+    "familyStatus",
+    "workStatus",
+    "partnerName",
+    "wantsNotifications",
+    "children",
+    "age",
+    "birthDate",
+    "profilePhotoPath",
+    "partnerBirthDate",
+    "partnerPhotoPath",
+    "relationshipStatus",
+    "marriageDate",
+    "engagementDate",
+    "workHours",
+    "workScheduleType",
+    "workDays",
+    "morningStart",
+    "morningEnd",
+    "afternoonStart",
+    "afternoonEnd",
+    "variableWorkDetails",
+    "workTimeRanges",
+    "habits",
+    "personalNotes",
+    "preferences",
+    "goals",
+    "allergies",
+    "medicalNotes",
+    "bloodType",
+    "doctorName",
+    "emergencyContactName",
+    "emergencyContactPhone",
+    "aiTone",
+    "planningStyle",
+    "notificationLevel",
+    "mainLifePriority",
+    "spokenLanguage",
+    "country",
+    "timeZone",
+    "personalGoals",
+    "businessGoals",
+    "familyGoals",
+    "vehicleInfo",
+    "petsInfo",
+    "transportInfo",
+    "childcareInfo",
+    "foodPreferences",
+    "adminNotes",
+    "budgetNotes",
+    "importantPlaces",
+    "personalActivities",
+  };
+
+  final String humanPersonId;
+  final String partnerHumanPersonId;
+  final Map<String, dynamic> legacyExtensions;
   final String firstName;
   final String familyStatus;
   final String workStatus;
@@ -300,6 +398,9 @@ class UserProfile {
   final List<ActivityModel> personalActivities;
 
   UserProfile({
+    this.humanPersonId = "",
+    this.partnerHumanPersonId = "",
+    this.legacyExtensions = const {},
     required this.firstName,
     required this.familyStatus,
     required this.workStatus,
@@ -355,6 +456,9 @@ class UserProfile {
   });
 
   UserProfile copyWith({
+    String? humanPersonId,
+    String? partnerHumanPersonId,
+    Map<String, dynamic>? legacyExtensions,
     String? firstName,
     String? familyStatus,
     String? workStatus,
@@ -409,6 +513,9 @@ class UserProfile {
     List<ActivityModel>? personalActivities,
   }) {
     return UserProfile(
+      humanPersonId: humanPersonId ?? this.humanPersonId,
+      partnerHumanPersonId: partnerHumanPersonId ?? this.partnerHumanPersonId,
+      legacyExtensions: legacyExtensions ?? this.legacyExtensions,
       firstName: firstName ?? this.firstName,
       familyStatus: familyStatus ?? this.familyStatus,
       workStatus: workStatus ?? this.workStatus,
@@ -441,7 +548,8 @@ class UserProfile {
       bloodType: bloodType ?? this.bloodType,
       doctorName: doctorName ?? this.doctorName,
       emergencyContactName: emergencyContactName ?? this.emergencyContactName,
-      emergencyContactPhone: emergencyContactPhone ?? this.emergencyContactPhone,
+      emergencyContactPhone:
+          emergencyContactPhone ?? this.emergencyContactPhone,
       aiTone: aiTone ?? this.aiTone,
       planningStyle: planningStyle ?? this.planningStyle,
       notificationLevel: notificationLevel ?? this.notificationLevel,
@@ -466,6 +574,9 @@ class UserProfile {
 
   Map<String, dynamic> toJson() {
     return {
+      ...legacyExtensions,
+      "humanPersonId": humanPersonId,
+      "partnerHumanPersonId": partnerHumanPersonId,
       "firstName": firstName,
       "familyStatus": familyStatus,
       "workStatus": workStatus,
@@ -517,19 +628,26 @@ class UserProfile {
       "adminNotes": adminNotes,
       "budgetNotes": budgetNotes,
       "importantPlaces": importantPlaces,
-      "personalActivities": personalActivities.map((activity) => activity.toJson()).toList(),
+      "personalActivities":
+          personalActivities.map((activity) => activity.toJson()).toList(),
     };
   }
 
   factory UserProfile.fromJson(Map<String, dynamic> json) {
+    final legacyExtensions = Map<String, dynamic>.from(json)
+      ..removeWhere((key, _) => _knownJsonKeys.contains(key));
     return UserProfile(
+      humanPersonId: json["humanPersonId"] ?? "",
+      partnerHumanPersonId: json["partnerHumanPersonId"] ?? "",
+      legacyExtensions: legacyExtensions,
       firstName: json["firstName"] ?? "",
       familyStatus: json["familyStatus"] ?? "",
       workStatus: json["workStatus"] ?? "",
       partnerName: json["partnerName"] ?? "",
       wantsNotifications: json["wantsNotifications"] ?? true,
       children: (json["children"] as List? ?? [])
-          .map((child) => ChildProfile.fromJson(Map<String, dynamic>.from(child)))
+          .map((child) =>
+              ChildProfile.fromJson(Map<String, dynamic>.from(child)))
           .toList(),
       age: json["age"] ?? "",
       birthDate: json["birthDate"] ?? "",
@@ -541,14 +659,17 @@ class UserProfile {
       engagementDate: json["engagementDate"] ?? "",
       workHours: json["workHours"] ?? "",
       workScheduleType: json["workScheduleType"] ?? "",
-      workDays: (json["workDays"] as List? ?? []).map((day) => day.toString()).toList(),
+      workDays: (json["workDays"] as List? ?? [])
+          .map((day) => day.toString())
+          .toList(),
       morningStart: json["morningStart"] ?? "",
       morningEnd: json["morningEnd"] ?? "",
       afternoonStart: json["afternoonStart"] ?? "",
       afternoonEnd: json["afternoonEnd"] ?? "",
       variableWorkDetails: json["variableWorkDetails"] ?? "",
       workTimeRanges: (json["workTimeRanges"] as List? ?? [])
-          .map((range) => TimeRangeModel.fromJson(Map<String, dynamic>.from(range)))
+          .map((range) =>
+              TimeRangeModel.fromJson(Map<String, dynamic>.from(range)))
           .toList(),
       habits: json["habits"] ?? "",
       personalNotes: json["personalNotes"] ?? "",
@@ -579,9 +700,9 @@ class UserProfile {
       budgetNotes: json["budgetNotes"] ?? "",
       importantPlaces: json["importantPlaces"] ?? "",
       personalActivities: (json["personalActivities"] as List? ?? [])
-          .map((activity) => ActivityModel.fromJson(Map<String, dynamic>.from(activity)))
+          .map((activity) =>
+              ActivityModel.fromJson(Map<String, dynamic>.from(activity)))
           .toList(),
     );
   }
 }
-

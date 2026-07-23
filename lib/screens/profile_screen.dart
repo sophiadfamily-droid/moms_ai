@@ -842,6 +842,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         normalizeFrenchDate(engagementDateController.text);
 
     final updatedProfile = UserProfile(
+      humanPersonId: profile.humanPersonId,
+      partnerHumanPersonId: profile.partnerHumanPersonId,
       firstName: firstNameController.text.trim(),
       familyStatus: selectedFamilyStatus,
       workStatus: selectedWorkStatus,
@@ -897,18 +899,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
       goals: profile.goals,
     );
 
-    await StorageService.saveUserProfile(updatedProfile);
+    final persistedProfile =
+        await StorageService.saveUserProfile(updatedProfile);
 
     if (!mounted) {
       return;
     }
 
     setState(() {
-      profile = updatedProfile;
+      profile = persistedProfile;
     });
 
     if (widget.onSave != null) {
-      widget.onSave!(updatedProfile);
+      widget.onSave!(persistedProfile);
     }
 
     if (showSnack) {
@@ -2677,6 +2680,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         );
 
                         result = ChildProfile(
+                          humanPersonId: child?.humanPersonId ?? "",
                           firstName: name,
                           age: calculateAgeFromBirthDate(birth),
                           birthDate: birth,

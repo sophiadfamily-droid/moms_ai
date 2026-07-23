@@ -57,6 +57,40 @@ FakeEntityIdGenerator _ids() => FakeEntityIdGenerator([
 
 void main() {
   group('adaptateur legacy prudent', () {
+    test('IDs techniques legacy sont additifs et réutilisés', () {
+      final profile = _profile(
+        partnerName: 'Alex',
+        children: [_child('Lou')],
+      ).copyWith(
+        humanPersonId: 'person-existing-main',
+        partnerHumanPersonId: 'person-existing-partner',
+        children: [
+          _child('Lou').copyWith(humanPersonId: 'person-existing-child'),
+        ],
+      );
+      final model = const LegacyUserProfileHumanAdapter().migrate(
+        profile: profile,
+        legacyProfile: {
+          ...profile.toJson(),
+          'unknownLegacyValue': 'kept',
+        },
+        accountScopeId: 'account-a',
+        idGenerator: FakeEntityIdGenerator([
+          'relation-partner',
+          'relation-child',
+        ]),
+      );
+      expect(model.primaryPersonId, 'person-existing-main');
+      expect(model.personById('person-existing-partner'), isNotNull);
+      expect(model.personById('person-existing-child'), isNotNull);
+      expect(model.legacyProfile['unknownLegacyValue'], 'kept');
+      final children = model.legacyProfile['children'] as List;
+      expect(
+        (children.single as Map)['humanPersonId'],
+        'person-existing-child',
+      );
+    });
+
     test('profil minimal crée seulement la personne principale stable', () {
       final profile = _profile(firstName: '');
       final model = const LegacyUserProfileHumanAdapter().migrate(

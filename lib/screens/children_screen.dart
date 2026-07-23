@@ -377,6 +377,7 @@ class _ChildrenScreenState extends State<ChildrenScreen> {
                                 }
 
                                 final updated = ChildProfile(
+                                  humanPersonId: child?.humanPersonId ?? "",
                                   firstName: name,
                                   age: calculateAge(birth),
                                   birthDate: birth,

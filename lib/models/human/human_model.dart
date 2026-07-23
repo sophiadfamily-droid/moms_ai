@@ -200,6 +200,23 @@ final class HumanPerson {
   final HumanEvidence evidence;
   final Map<String, Object?> customFields;
 
+  HumanPerson copyWith({
+    String? displayName,
+    HumanPersonStatus? status,
+    HumanEvidence? evidence,
+    Map<String, Object?>? customFields,
+  }) {
+    return HumanPerson(
+      id: id,
+      accountScopeId: accountScopeId,
+      identityLink: identityLink,
+      displayName: displayName ?? this.displayName,
+      status: status ?? this.status,
+      evidence: evidence ?? this.evidence,
+      customFields: customFields ?? this.customFields,
+    );
+  }
+
   Map<String, Object?> toJson() => {
         'id': id,
         'accountScopeId': accountScopeId,
@@ -636,6 +653,31 @@ final class HumanModel {
   final List<HumanResponsibility> responsibilities;
   final Map<String, Object?> legacyProfile;
   final Map<String, Object?> unknownFields;
+
+  HumanModel copyWith({
+    List<HumanPerson>? persons,
+    List<HumanRelationship>? relationships,
+    List<HumanHousehold>? households,
+    List<HumanResidence>? residences,
+    List<HumanHouseholdMembership>? memberships,
+    List<HumanResponsibility>? responsibilities,
+    Map<String, Object?>? legacyProfile,
+    Map<String, Object?>? unknownFields,
+  }) {
+    return HumanModel(
+      schemaVersion: schemaVersion,
+      accountScopeId: accountScopeId,
+      primaryPersonId: primaryPersonId,
+      persons: persons ?? this.persons,
+      relationships: relationships ?? this.relationships,
+      households: households ?? this.households,
+      residences: residences ?? this.residences,
+      memberships: memberships ?? this.memberships,
+      responsibilities: responsibilities ?? this.responsibilities,
+      legacyProfile: legacyProfile ?? this.legacyProfile,
+      unknownFields: unknownFields ?? this.unknownFields,
+    );
+  }
 
   void validate() {
     if (schemaVersion < 1 || schemaVersion > currentSchemaVersion) {

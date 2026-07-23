@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/user_profile.dart';
+import '../core/identity/uuid_v7_entity_id_generator.dart';
 import 'cloud_profile_service.dart';
 import 'app_diagnostics.dart';
 
@@ -11,12 +12,29 @@ class StorageService {
 
   static const String onboardingDoneKey = "onboarding_done";
 
-  static Future<void> saveUserProfile(
+  static Future<UserProfile> saveUserProfile(
     UserProfile profile,
   ) async {
+    const idGenerator = UuidV7EntityIdGenerator();
+    final persistedProfile = profile.copyWith(
+      humanPersonId: profile.humanPersonId.trim().isEmpty
+          ? idGenerator.generate()
+          : profile.humanPersonId,
+      partnerHumanPersonId: profile.partnerName.trim().isNotEmpty &&
+              profile.partnerHumanPersonId.trim().isEmpty
+          ? idGenerator.generate()
+          : profile.partnerHumanPersonId,
+      children: profile.children
+          .map(
+            (child) => child.humanPersonId.trim().isEmpty
+                ? child.copyWith(humanPersonId: idGenerator.generate())
+                : child,
+          )
+          .toList(growable: false),
+    );
     final prefs = await SharedPreferences.getInstance();
 
-    final profileJson = jsonEncode(profile.toJson());
+    final profileJson = jsonEncode(persistedProfile.toJson());
 
     await prefs.setString(
       userProfileKey,
@@ -29,7 +47,7 @@ class StorageService {
     );
 
     try {
-      await CloudProfileService.saveProfile(profile);
+      await CloudProfileService.saveProfile(persistedProfile);
     } catch (_) {
       AppDiagnostics.record(
         component: 'profile_storage',
@@ -37,6 +55,7 @@ class StorageService {
         code: AppErrorCode.syncFailure,
       );
     }
+    return persistedProfile;
   }
 
   static Future<UserProfile?> getUserProfile() async {
