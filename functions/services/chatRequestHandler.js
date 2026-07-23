@@ -141,6 +141,7 @@ ${systemPrompt({
     conversationContext,
     conversationHistory,
     detectedIntent,
+    autonomyMode: source.autonomyMode,
   })}
 
 ${buildBrainContext()}

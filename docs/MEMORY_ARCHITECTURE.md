@@ -178,6 +178,12 @@ bounded compatibility field and does not duplicate the Memory repository.
 
 ## Conversational confirmation workflow
 
+V1-A.1 adds an independent account-scoped autonomy guard. It never replaces
+`MemoryPolicy`: the effective result is the most restrictive of autonomy mode,
+memory mode, health consent and the existing lifecycle confirmation. Thus
+`normal + askEveryTime` still confirms, `suggestions + automatic` confirms,
+and `paused + automatic` blocks the mutation without deleting its proposal.
+
 `ConversationCoordinator` is the application boundary for a memory proposal.
 It keeps a typed pending action containing only the proposal identifier, the
 expected lifecycle action, and its creation date. The proposal is reloaded by

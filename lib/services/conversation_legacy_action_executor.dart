@@ -1,5 +1,6 @@
 import '../models/conversation_models.dart';
 import '../models/task_model.dart';
+import '../models/action_autonomy_policy.dart';
 import 'action_handler_service.dart';
 import 'chat_planning_helper_service.dart';
 import 'conversation_coordinator.dart';
@@ -13,15 +14,30 @@ final class ConversationLegacyActionExecutor {
   const ConversationLegacyActionExecutor({
     required this.coordinator,
     this.smartPlanning,
+    this.loadAutonomyPolicy,
   });
 
   final ConversationCoordinator coordinator;
   final SmartPlanningContinuationCoordinator? smartPlanning;
+  final Future<ActionAutonomyPolicy> Function()? loadAutonomyPolicy;
 
   Future<ConversationOutcome?> resolvePending(
     String answer,
     int sessionGeneration,
   ) async {
+    final autonomyResolution =
+        await coordinator.resolvePendingAutonomyConfirmation(
+      answer: answer,
+      sessionGeneration: sessionGeneration,
+      executeAction: (action) => execute(
+        action,
+        answer,
+        sessionGeneration,
+      ),
+    );
+    if (autonomyResolution != null) {
+      return ConversationOutcome(reply: autonomyResolution.message);
+    }
     final planningResolution = await smartPlanning?.resolve(
       answer,
       sessionGeneration: sessionGeneration,
@@ -62,13 +78,15 @@ final class ConversationLegacyActionExecutor {
     String userMessage,
     int sessionGeneration,
   ) async {
+    final effectiveUserMessage =
+        action['originalMessage']?.toString() ?? userMessage;
     final result = await ActionHandlerService.handleAction(
       action: action,
-      currentUserMessage: userMessage,
+      currentUserMessage: effectiveUserMessage,
       normalizeTime: ChatPlanningHelperService.normalizeTime,
       parseDurationMinutes: ChatPlanningHelperService.parseDurationMinutes,
-      weekdayFromText: () => _weekdayFromText(userMessage),
-      messageLooksRecurringWeekly: () => _looksRecurring(userMessage),
+      weekdayFromText: () => _weekdayFromText(effectiveUserMessage),
+      messageLooksRecurringWeekly: () => _looksRecurring(effectiveUserMessage),
       nextDateForWeekday: _nextDateForWeekday,
       eventNeedsTravel: _eventNeedsTravel,
       buildStartDateTimeIso: ChatPlanningHelperService.buildStartDateTimeIso,
@@ -93,10 +111,12 @@ final class ConversationLegacyActionExecutor {
     final task = pendingTask?['task'];
     final planningTitle = task is TaskModel ? task.title : null;
     if (task is TaskModel && smartPlanning != null) {
+      final policy = await loadAutonomyPolicy?.call();
+      if (policy != null) smartPlanning!.updateAutonomyPolicy(policy);
       smartPlanning!.beginTaskPlanning(
         task: task,
         originalMessage:
-            pendingTask?['originalMessage']?.toString() ?? userMessage,
+            pendingTask?['originalMessage']?.toString() ?? effectiveUserMessage,
         sessionGeneration: sessionGeneration,
       );
     }

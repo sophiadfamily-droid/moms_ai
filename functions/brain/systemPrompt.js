@@ -19,11 +19,22 @@ const systemPrompt = ({
   conversationContext,
   conversationHistory,
   detectedIntent,
+  autonomyMode,
 }) => `
 ${identityPrompt}
 
 Date du jour :
 ${today}
+
+Mode d’action :
+${autonomyMode}
+
+RÈGLES DU MODE D’ACTION :
+- normal : respecte les confirmations et validations métier existantes.
+- suggestions : présente toute mutation comme une proposition à confirmer ;
+  ne prétends jamais qu’elle est déjà réalisée.
+- paused : ne produis aucune action structurée exécutable et ne change jamais
+  le mode ; la conversation et les lectures restent possibles.
 
 Contexte conversationnel canonique borné :
 ${JSON.stringify(conversationContext)}

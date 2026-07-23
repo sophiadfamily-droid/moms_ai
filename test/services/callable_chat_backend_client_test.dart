@@ -72,6 +72,9 @@ void main() {
       'memories',
       'memoryReasoning',
       'events',
+      'autonomyPolicyVersion',
+      'autonomyMode',
+      'allowedStructuredResponseKinds',
     });
   });
 

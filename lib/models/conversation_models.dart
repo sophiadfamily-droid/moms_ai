@@ -9,6 +9,7 @@ import 'event_model.dart';
 import 'event_mutation_models.dart';
 import 'event_participant.dart';
 import 'memory_lifecycle_state.dart';
+import 'action_autonomy_policy.dart';
 import 'user_profile.dart';
 
 enum ConversationPhase {
@@ -37,6 +38,7 @@ enum PendingConversationActionType {
   memoryConfirmation,
   eventTargetClarification,
   eventMutationConfirmation,
+  autonomyConfirmation,
 }
 
 final class PendingEventTargetClarification {
@@ -179,6 +181,13 @@ final class PendingIdentityActionBinding {
   final IdentityActionContinuation continuation;
   final String? clarificationId;
   final String? resolvedEntityId;
+  final ActionType actionType;
+  final ActionOrigin origin;
+  final ActionRiskLevel riskLevel;
+  final ActionAutonomyMode policyModeAtCreation;
+  final int policyVersionAtCreation;
+  final int sessionGeneration;
+  final bool hasExplicitConfirmation;
 
   PendingIdentityActionBinding({
     required this.bindingId,
@@ -186,6 +195,13 @@ final class PendingIdentityActionBinding {
     required this.continuation,
     this.clarificationId,
     this.resolvedEntityId,
+    this.actionType = ActionType.linkIdentity,
+    this.origin = ActionOrigin.structuredContinuation,
+    this.riskLevel = ActionRiskLevel.sensitiveMutation,
+    this.policyModeAtCreation = ActionAutonomyMode.suggestions,
+    this.policyVersionAtCreation = ActionAutonomyPolicy.currentSchemaVersion,
+    this.sessionGeneration = 0,
+    this.hasExplicitConfirmation = false,
   }) : accountScopeId = accountScopeId.trim() {
     if (!EntityIdentity.isValid(bindingId)) {
       throw const ConversationIdentityException('invalid_binding_id');
@@ -199,6 +215,12 @@ final class PendingIdentityActionBinding {
     if (resolvedEntityId != null && !EntityIdentity.isValid(resolvedEntityId)) {
       throw const ConversationIdentityException('invalid_resolved_entity_id');
     }
+    if (riskLevel != ActionRiskLevel.sensitiveMutation ||
+        sessionGeneration < 0) {
+      throw const ConversationIdentityException(
+        'invalid_identity_autonomy_metadata',
+      );
+    }
   }
 
   bool get isApplied => resolvedEntityId != null;
@@ -206,6 +228,7 @@ final class PendingIdentityActionBinding {
   PendingIdentityActionBinding copyWith({
     String? clarificationId,
     String? resolvedEntityId,
+    bool? hasExplicitConfirmation,
   }) {
     return PendingIdentityActionBinding(
       bindingId: bindingId,
@@ -213,6 +236,14 @@ final class PendingIdentityActionBinding {
       continuation: continuation,
       clarificationId: clarificationId ?? this.clarificationId,
       resolvedEntityId: resolvedEntityId ?? this.resolvedEntityId,
+      actionType: actionType,
+      origin: origin,
+      riskLevel: riskLevel,
+      policyModeAtCreation: policyModeAtCreation,
+      policyVersionAtCreation: policyVersionAtCreation,
+      sessionGeneration: sessionGeneration,
+      hasExplicitConfirmation:
+          hasExplicitConfirmation ?? this.hasExplicitConfirmation,
     );
   }
 }
@@ -500,11 +531,21 @@ class PendingConversationAction {
   final PendingIdentityCreation? identityCreation;
   final PendingEventTargetClarification? eventTargetClarification;
   final PendingEventMutationConfirmation? eventMutationConfirmation;
+  final ActionPending? autonomyPending;
+  final ActionPendingMetadata autonomyMetadata;
 
   const PendingConversationAction.eventConfirmation(
     EventModel this._event, {
     this.eventParticipant,
     this.participantIdentityEntityId,
+    this.autonomyMetadata = const ActionPendingMetadata(
+      actionType: ActionType.createEvent,
+      origin: ActionOrigin.structuredContinuation,
+      riskLevel: ActionRiskLevel.mutation,
+      policyModeAtCreation: ActionAutonomyMode.suggestions,
+      policyVersionAtCreation: 1,
+      sessionGeneration: 0,
+    ),
   })  : type = PendingConversationActionType.eventConfirmation,
         proposalId = null,
         expectedMemoryAction = null,
@@ -512,12 +553,21 @@ class PendingConversationAction {
         identityClarification = null,
         identityCreation = null,
         eventTargetClarification = null,
-        eventMutationConfirmation = null;
+        eventMutationConfirmation = null,
+        autonomyPending = null;
 
   const PendingConversationAction.memoryConfirmation({
     required this.proposalId,
     required this.createdAt,
     required this.expectedMemoryAction,
+    this.autonomyMetadata = const ActionPendingMetadata(
+      actionType: ActionType.confirmMemory,
+      origin: ActionOrigin.structuredContinuation,
+      riskLevel: ActionRiskLevel.sensitiveMutation,
+      policyModeAtCreation: ActionAutonomyMode.suggestions,
+      policyVersionAtCreation: 1,
+      sessionGeneration: 0,
+    ),
   })  : type = PendingConversationActionType.memoryConfirmation,
         _event = null,
         eventParticipant = null,
@@ -525,11 +575,20 @@ class PendingConversationAction {
         identityClarification = null,
         identityCreation = null,
         eventTargetClarification = null,
-        eventMutationConfirmation = null;
+        eventMutationConfirmation = null,
+        autonomyPending = null;
 
   const PendingConversationAction.identityClarification(
-    PendingIdentityClarification this.identityClarification,
-  )   : type = PendingConversationActionType.identityClarification,
+    PendingIdentityClarification this.identityClarification, {
+    this.autonomyMetadata = const ActionPendingMetadata(
+      actionType: ActionType.linkIdentity,
+      origin: ActionOrigin.structuredContinuation,
+      riskLevel: ActionRiskLevel.sensitiveMutation,
+      policyModeAtCreation: ActionAutonomyMode.suggestions,
+      policyVersionAtCreation: 1,
+      sessionGeneration: 0,
+    ),
+  })  : type = PendingConversationActionType.identityClarification,
         _event = null,
         eventParticipant = null,
         participantIdentityEntityId = null,
@@ -538,11 +597,20 @@ class PendingConversationAction {
         createdAt = null,
         identityCreation = null,
         eventTargetClarification = null,
-        eventMutationConfirmation = null;
+        eventMutationConfirmation = null,
+        autonomyPending = null;
 
   const PendingConversationAction.identityCreation(
-    PendingIdentityCreation this.identityCreation,
-  )   : type = PendingConversationActionType.identityCreation,
+    PendingIdentityCreation this.identityCreation, {
+    this.autonomyMetadata = const ActionPendingMetadata(
+      actionType: ActionType.createIdentity,
+      origin: ActionOrigin.structuredContinuation,
+      riskLevel: ActionRiskLevel.sensitiveMutation,
+      policyModeAtCreation: ActionAutonomyMode.suggestions,
+      policyVersionAtCreation: 1,
+      sessionGeneration: 0,
+    ),
+  })  : type = PendingConversationActionType.identityCreation,
         _event = null,
         eventParticipant = null,
         participantIdentityEntityId = null,
@@ -551,11 +619,20 @@ class PendingConversationAction {
         createdAt = null,
         identityClarification = null,
         eventTargetClarification = null,
-        eventMutationConfirmation = null;
+        eventMutationConfirmation = null,
+        autonomyPending = null;
 
   const PendingConversationAction.eventTargetClarification(
-    PendingEventTargetClarification this.eventTargetClarification,
-  )   : type = PendingConversationActionType.eventTargetClarification,
+    PendingEventTargetClarification this.eventTargetClarification, {
+    this.autonomyMetadata = const ActionPendingMetadata(
+      actionType: ActionType.updateEvent,
+      origin: ActionOrigin.structuredContinuation,
+      riskLevel: ActionRiskLevel.mutation,
+      policyModeAtCreation: ActionAutonomyMode.suggestions,
+      policyVersionAtCreation: 1,
+      sessionGeneration: 0,
+    ),
+  })  : type = PendingConversationActionType.eventTargetClarification,
         _event = null,
         eventParticipant = null,
         participantIdentityEntityId = null,
@@ -564,11 +641,20 @@ class PendingConversationAction {
         createdAt = null,
         identityClarification = null,
         identityCreation = null,
-        eventMutationConfirmation = null;
+        eventMutationConfirmation = null,
+        autonomyPending = null;
 
   const PendingConversationAction.eventMutationConfirmation(
-    PendingEventMutationConfirmation this.eventMutationConfirmation,
-  )   : type = PendingConversationActionType.eventMutationConfirmation,
+    PendingEventMutationConfirmation this.eventMutationConfirmation, {
+    this.autonomyMetadata = const ActionPendingMetadata(
+      actionType: ActionType.updateEvent,
+      origin: ActionOrigin.structuredContinuation,
+      riskLevel: ActionRiskLevel.mutation,
+      policyModeAtCreation: ActionAutonomyMode.suggestions,
+      policyVersionAtCreation: 1,
+      sessionGeneration: 0,
+    ),
+  })  : type = PendingConversationActionType.eventMutationConfirmation,
         _event = null,
         eventParticipant = null,
         participantIdentityEntityId = null,
@@ -577,7 +663,30 @@ class PendingConversationAction {
         createdAt = null,
         identityClarification = null,
         identityCreation = null,
-        eventTargetClarification = null;
+        eventTargetClarification = null,
+        autonomyPending = null;
+
+  PendingConversationAction.autonomyConfirmation(
+    ActionPending this.autonomyPending,
+  )   : autonomyMetadata = ActionPendingMetadata(
+          actionType: autonomyPending.actionType,
+          origin: autonomyPending.origin,
+          riskLevel: autonomyPending.riskLevel,
+          policyModeAtCreation: autonomyPending.policyModeAtCreation,
+          policyVersionAtCreation: autonomyPending.policyVersionAtCreation,
+          sessionGeneration: autonomyPending.sessionGeneration,
+        ),
+        type = PendingConversationActionType.autonomyConfirmation,
+        _event = null,
+        eventParticipant = null,
+        participantIdentityEntityId = null,
+        proposalId = null,
+        expectedMemoryAction = null,
+        createdAt = null,
+        identityClarification = null,
+        identityCreation = null,
+        eventTargetClarification = null,
+        eventMutationConfirmation = null;
 
   EventModel get event => _event!;
 }

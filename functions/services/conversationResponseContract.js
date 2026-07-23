@@ -279,6 +279,12 @@ function validateSemantics(response, request) {
   }
   validateSupportingData(epistemic, request);
   validateGrounding(epistemic, request.conversationContext);
+  if (!request.allowedStructuredResponseKinds.includes(
+      epistemic.responseKind,
+  ) || request.autonomyMode === "paused" &&
+      response.actions.length > 0) {
+    fail("response_autonomy_policy_blocked");
+  }
   const blockingMissing = epistemic.missingInformation.some((item) =>
     item && item.isRequired === true);
   const blockingContradiction = epistemic.contradictions.some((item) =>

@@ -44,6 +44,13 @@ function payload(overrides = {}) {
     memories: [],
     memoryReasoning: [],
     events: [],
+    autonomyPolicyVersion: 1,
+    autonomyMode: "suggestions",
+    allowedStructuredResponseKinds: [
+      "answer", "answerWithCaveat", "clarificationRequired",
+      "confirmationRequired", "actionProposal", "cannotDetermine",
+      "contextUnavailable", "unsupportedRequest", "safeFailure",
+    ],
     ...overrides,
   };
 }
@@ -65,6 +72,27 @@ test("refuses future, absent and unknown request schemas", () => {
   assert.throws(() => validateConversationRequest(absent));
   assert.throws(() => validateConversationRequest(payload({unknown: true})));
 });
+
+test("validates the closed autonomy mode and blocks executable kinds in pause",
+    () => {
+      assert.equal(validateConversationRequest(payload()).autonomyMode,
+          "suggestions");
+      assert.throws(() => validateConversationRequest(
+          payload({autonomyMode: "unknown"})));
+      assert.throws(() => validateConversationRequest(payload({
+        autonomyMode: "paused",
+        allowedStructuredResponseKinds: ["answer", "actionProposal"],
+      })));
+      const paused = validateConversationRequest(payload({
+        autonomyMode: "paused",
+        allowedStructuredResponseKinds: [
+          "answer", "answerWithCaveat", "clarificationRequired",
+          "cannotDetermine", "contextUnavailable", "unsupportedRequest",
+          "safeFailure",
+        ],
+      }));
+      assert.equal(paused.autonomyMode, "paused");
+    });
 
 test("refuses oversized current messages including UTF-8", () => {
   assert.throws(() => validateConversationRequest(

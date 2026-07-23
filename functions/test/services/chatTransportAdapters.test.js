@@ -57,6 +57,13 @@ function validPayload(message = "Bonjour") {
     memories: [],
     memoryReasoning: [],
     events: [],
+    autonomyPolicyVersion: 1,
+    autonomyMode: "suggestions",
+    allowedStructuredResponseKinds: [
+      "answer", "answerWithCaveat", "clarificationRequired",
+      "confirmationRequired", "actionProposal", "cannotDetermine",
+      "contextUnavailable", "unsupportedRequest", "safeFailure",
+    ],
   };
 }
 

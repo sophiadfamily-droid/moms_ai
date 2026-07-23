@@ -1,11 +1,14 @@
 import 'package:flutter/foundation.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import '../models/conversation_models.dart';
+import '../models/action_autonomy_policy.dart';
 import '../models/conversation_epistemic_models.dart';
 import '../models/conversation_session_models.dart';
 import '../models/smart_planning_continuation.dart';
 import '../models/user_profile.dart';
 import 'app_diagnostics.dart';
+import 'action_autonomy_policy_service.dart';
 import 'chat_backend_client.dart';
 import 'chat_backend_client_factory.dart';
 import 'chat_service.dart';
@@ -105,6 +108,21 @@ final class ConversationSessionController extends ChangeNotifier {
     String? initialAssistantMessage,
   }) {
     final backend = backendClient ?? createDefaultChatBackendClient();
+    Future<ActionAutonomyPolicyService>? autonomyService;
+    Future<ActionAutonomyPolicyService> loadAutonomyService() =>
+        autonomyService ??= ActionAutonomyPolicyService.local(
+          currentAccountScopeId: () => FirebaseAuth.instance.currentUser?.uid,
+        );
+    Future<ActionAutonomyPolicy> loadAutonomyPolicy() async {
+      if (backendClient != null) {
+        return ActionAutonomyPolicy.restrictiveDefault(
+          accountScopeId: 'injected-session',
+          changedAt: DateTime.now().toUtc(),
+        );
+      }
+      return (await loadAutonomyService()).load();
+    }
+
     final coordinator = ConversationCoordinator(
       backend: backend,
       contextProvider:
@@ -114,15 +132,18 @@ final class ConversationSessionController extends ChangeNotifier {
       identityAccountScope: identityServices?.scope,
       eventParticipantIdentityValidationService:
           identityServices?.eventParticipantValidation,
+      loadAutonomyPolicy: loadAutonomyPolicy,
     );
     final smartPlanningGateway =
         ProductionSmartPlanningContinuationGateway(profile);
     final smartPlanning = SmartPlanningContinuationCoordinator(
       gateway: smartPlanningGateway,
+      loadAutonomyPolicy: loadAutonomyPolicy,
     );
     final legacyExecutor = ConversationLegacyActionExecutor(
       coordinator: coordinator,
       smartPlanning: smartPlanning,
+      loadAutonomyPolicy: loadAutonomyPolicy,
     );
     final controller = ConversationSessionController(
       profile: profile,
@@ -130,6 +151,7 @@ final class ConversationSessionController extends ChangeNotifier {
       executeAction: executeAction ?? legacyExecutor.execute,
       resolvePending: legacyExecutor.resolvePending,
       invalidateSession: (nextProfile, _) {
+        coordinator.invalidateSession();
         smartPlanning.invalidate();
         smartPlanningGateway.updateProfile(nextProfile);
       },

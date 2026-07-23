@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'action_autonomy_policy.dart';
 import 'conversation_context_envelope.dart';
 
 final class ChatBackendRequest {
@@ -16,6 +17,8 @@ final class ChatBackendRequest {
     this.memories = const [],
     this.memoryReasoning = const [],
     this.events = const [],
+    this.autonomyPolicyVersion = ActionAutonomyPolicy.currentSchemaVersion,
+    this.autonomyMode = ActionAutonomyMode.suggestions,
   });
 
   factory ChatBackendRequest.withUnavailableContext({
@@ -45,6 +48,8 @@ final class ChatBackendRequest {
   final List<Map<String, dynamic>> memories;
   final List<Map<String, dynamic>> memoryReasoning;
   final List<Map<String, dynamic>> events;
+  final int autonomyPolicyVersion;
+  final ActionAutonomyMode autonomyMode;
 
   Map<String, dynamic> toJson() {
     final envelope = context;
@@ -73,6 +78,41 @@ final class ChatBackendRequest {
       'memories': const <Map<String, dynamic>>[],
       'memoryReasoning': const <Map<String, dynamic>>[],
       'events': const <Map<String, dynamic>>[],
+      'autonomyPolicyVersion': autonomyPolicyVersion,
+      'autonomyMode': autonomyMode.name,
+      'allowedStructuredResponseKinds': switch (autonomyMode) {
+        ActionAutonomyMode.normal => const [
+            'answer',
+            'answerWithCaveat',
+            'clarificationRequired',
+            'confirmationRequired',
+            'actionProposal',
+            'cannotDetermine',
+            'contextUnavailable',
+            'unsupportedRequest',
+            'safeFailure',
+          ],
+        ActionAutonomyMode.suggestions => const [
+            'answer',
+            'answerWithCaveat',
+            'clarificationRequired',
+            'confirmationRequired',
+            'actionProposal',
+            'cannotDetermine',
+            'contextUnavailable',
+            'unsupportedRequest',
+            'safeFailure',
+          ],
+        ActionAutonomyMode.paused => const [
+            'answer',
+            'answerWithCaveat',
+            'clarificationRequired',
+            'cannotDetermine',
+            'contextUnavailable',
+            'unsupportedRequest',
+            'safeFailure',
+          ],
+      },
     };
     if (utf8.encode(jsonEncode(result)).length >
         ConversationTransportContract.maximumRequestUtf8Bytes) {
@@ -92,5 +132,20 @@ final class ChatBackendRequest {
         sessionGeneration: generation,
         context: context,
         history: history,
+        autonomyPolicyVersion: autonomyPolicyVersion,
+        autonomyMode: autonomyMode,
       );
+
+  ChatBackendRequest withAutonomyPolicy(ActionAutonomyPolicy policy) {
+    policy.validate();
+    return ChatBackendRequest(
+      schemaVersion: schemaVersion,
+      message: message,
+      sessionGeneration: sessionGeneration,
+      context: context,
+      history: history,
+      autonomyPolicyVersion: policy.schemaVersion,
+      autonomyMode: policy.mode,
+    );
+  }
 }

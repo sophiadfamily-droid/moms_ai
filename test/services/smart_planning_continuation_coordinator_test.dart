@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:moms_ai/models/event_model.dart';
+import 'package:moms_ai/models/action_autonomy_policy.dart';
 import 'package:moms_ai/models/smart_planning_continuation.dart';
 import 'package:moms_ai/models/task_model.dart';
 import 'package:moms_ai/services/planning_proposal_engine.dart';
@@ -44,7 +45,43 @@ void main() {
     expect(active.type, SmartPlanningContinuationType.taskPlanning);
     expect(active.step, SmartPlanningContinuationStep.planningConsent);
     expect(active.sessionGeneration, 4);
+    expect(active.actionType, ActionType.smartPlanningReservation);
+    expect(active.origin, ActionOrigin.structuredContinuation);
+    expect(active.riskLevel, ActionRiskLevel.mutation);
+    expect(active.policyModeAtCreation, ActionAutonomyMode.suggestions);
+    expect(active.policyVersionAtCreation, 1);
+    expect(active.mutationId, isNotEmpty);
     expect(() => active.groupedTasks.add(task()), throwsUnsupportedError);
+  });
+
+  test('current paused policy blocks reservation and preserves continuation',
+      () async {
+    var mode = ActionAutonomyMode.suggestions;
+    coordinator = SmartPlanningContinuationCoordinator(
+      gateway: gateway,
+      clock: () => now,
+      idGenerator: () => 'policy-${++id}',
+      loadAutonomyPolicy: () async => ActionAutonomyPolicy(
+        mode: mode,
+        changedAt: now,
+        changeSource: ActionAutonomyChangeSource.explicitUserSetting,
+        accountScopeId: 'scope-a',
+      ),
+    );
+    await _reachOptions(coordinator, task(), generation: 7);
+    mode = ActionAutonomyMode.paused;
+    final blocked = await coordinator.resolve('1', sessionGeneration: 7);
+    expect(blocked!.reply, contains('pause'));
+    expect(gateway.addedEvents, isEmpty);
+    expect(
+      coordinator.active!.policyState,
+      SmartPlanningPolicyState.blockedByPolicy,
+    );
+    mode = ActionAutonomyMode.normal;
+    expect(gateway.addedEvents, isEmpty);
+    final completed = await coordinator.resolve('oui', sessionGeneration: 7);
+    expect(completed!.reply, contains('C’est fait'));
+    expect(gateway.addedEvents, hasLength(1));
   });
 
   test('task consent, duration and travel reproduce historical questions',

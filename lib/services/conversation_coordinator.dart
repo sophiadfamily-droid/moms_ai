@@ -1,4 +1,5 @@
 import '../models/conversation_models.dart';
+import '../models/action_autonomy_policy.dart';
 import '../models/event_model.dart';
 import '../models/event_participant.dart';
 import '../models/event_mutation_models.dart';
@@ -13,6 +14,7 @@ import 'chat_backend_client.dart';
 import 'conversation_answer_classifier.dart';
 import 'conversation_context_service.dart';
 import 'conversation_grounding_policy.dart';
+import 'action_autonomy_policy_engine.dart';
 import 'memory_confirmation_copy.dart';
 import 'memory_lifecycle_engine.dart';
 import 'memory_lifecycle_repository.dart';
@@ -34,6 +36,8 @@ typedef ConversationActionExecutor = Future<ConversationActionOutcome> Function(
 );
 
 typedef PendingEventExecutor = Future<String> Function(EventModel event);
+typedef ConversationAutonomyPolicyLoader = Future<ActionAutonomyPolicy>
+    Function();
 
 class ConversationCoordinator {
   final ChatBackendClient backend;
@@ -52,10 +56,14 @@ class ConversationCoordinator {
   final EntityIdGenerator _actionDraftIdGenerator;
   final EventConversationMutationService eventConversationMutationService;
   final DateTime Function() _clock;
+  final ConversationAutonomyPolicyLoader? _loadAutonomyPolicy;
+  final ActionAutonomyPolicyEngine _autonomyEngine;
 
   ConversationState _state = const ConversationState();
   bool _isSending = false;
   bool _isResolvingPendingAction = false;
+  ActionAutonomyPolicy? _lastAutonomyPolicy;
+  int _sessionGeneration = 0;
   final Map<String, PendingIdentityActionBinding> _identityActionBindings = {};
   final Map<String, PendingEventIdentityDraft> _eventIdentityDrafts = {};
   final Map<String, PendingEventParticipantMutationDraft>
@@ -77,6 +85,9 @@ class ConversationCoordinator {
     EntityIdGenerator? actionDraftIdGenerator,
     EventConversationMutationService? eventConversationMutationService,
     DateTime Function()? clock,
+    ConversationAutonomyPolicyLoader? loadAutonomyPolicy,
+    ActionAutonomyPolicyEngine autonomyEngine =
+        const ActionAutonomyPolicyEngine(),
   })  : _memoryLifecycleRepository = memoryLifecycleRepository,
         identityClarificationService = identityClarificationService ??
             IdentityClarificationService(
@@ -90,9 +101,20 @@ class ConversationCoordinator {
             actionDraftIdGenerator ?? UuidV7EntityIdGenerator(),
         eventConversationMutationService = eventConversationMutationService ??
             EventConversationMutationService(),
+        _loadAutonomyPolicy = loadAutonomyPolicy,
+        _autonomyEngine = autonomyEngine,
         _clock = clock ?? DateTime.now;
 
   ConversationState get state => _state;
+
+  void invalidateSession() {
+    _state = const ConversationState();
+    _identityActionBindings.clear();
+    _eventIdentityDrafts.clear();
+    _eventParticipantMutationDrafts.clear();
+    _isSending = false;
+    _isResolvingPendingAction = false;
+  }
 
   void setPendingEventConfirmation(
     EventModel? event, {
@@ -113,6 +135,7 @@ class ConversationCoordinator {
         event,
         eventParticipant: participant,
         participantIdentityEntityId: participantIdentityEntityId,
+        autonomyMetadata: _pendingMetadata(ActionType.createEvent),
       ),
     );
   }
@@ -186,6 +209,7 @@ class ConversationCoordinator {
         proposalId: proposalId,
         createdAt: createdAt,
         expectedMemoryAction: request.action,
+        autonomyMetadata: _pendingMetadata(ActionType.confirmMemory),
       ),
     );
   }
@@ -201,7 +225,10 @@ class ConversationCoordinator {
     );
     _state = _state.copyWith(
       phase: ConversationPhase.awaitingActionConfirmation,
-      pendingAction: PendingConversationAction.identityClarification(pending),
+      pendingAction: PendingConversationAction.identityClarification(
+        pending,
+        autonomyMetadata: _pendingMetadata(ActionType.linkIdentity),
+      ),
     );
     return PendingConversationResolution(
       identityClarificationService.question(pending),
@@ -220,7 +247,10 @@ class ConversationCoordinator {
     );
     _state = _state.copyWith(
       phase: ConversationPhase.awaitingActionConfirmation,
-      pendingAction: PendingConversationAction.identityCreation(pending),
+      pendingAction: PendingConversationAction.identityCreation(
+        pending,
+        autonomyMetadata: _pendingMetadata(ActionType.createIdentity),
+      ),
     );
     return PendingConversationResolution(service.question(pending));
   }
@@ -284,7 +314,10 @@ class ConversationCoordinator {
           identityActionBindingService.pendingCreation(binding);
       _state = _state.copyWith(
         phase: ConversationPhase.awaitingActionConfirmation,
-        pendingAction: PendingConversationAction.identityCreation(pending),
+        pendingAction: PendingConversationAction.identityCreation(
+          pending,
+          autonomyMetadata: _pendingMetadata(ActionType.createIdentity),
+        ),
       );
       return PendingConversationResolution(
         creationService.question(pending),
@@ -322,7 +355,10 @@ class ConversationCoordinator {
     );
     _state = _state.copyWith(
       phase: ConversationPhase.awaitingActionConfirmation,
-      pendingAction: PendingConversationAction.identityClarification(pending),
+      pendingAction: PendingConversationAction.identityClarification(
+        pending,
+        autonomyMetadata: _pendingMetadata(ActionType.linkIdentity),
+      ),
     );
     return PendingConversationResolution(
       identityClarificationService.question(pending),
@@ -341,6 +377,15 @@ class ConversationCoordinator {
       return null;
     }
     final pending = pendingAction.identityClarification!;
+    if (answerClassifier.classify(answer) != ConversationAnswer.negative) {
+      final authorization = await _authorizeConfirmed(ActionType.linkIdentity);
+      if (authorization != null) {
+        return PendingConversationResolution(
+          authorization,
+          diagnosticCode: 'identity_blocked_by_autonomy',
+        );
+      }
+    }
     final result = identityClarificationService.process(
       pending: pending,
       answer: answer,
@@ -386,6 +431,19 @@ class ConversationCoordinator {
     _isResolvingPendingAction = true;
     _state = _state.copyWith(phase: ConversationPhase.executingAction);
     try {
+      if (answerClassifier.classify(answer) != ConversationAnswer.negative) {
+        final authorization =
+            await _authorizeConfirmed(ActionType.createIdentity);
+        if (authorization != null) {
+          _state = _state.copyWith(
+            phase: ConversationPhase.awaitingActionConfirmation,
+          );
+          return PendingConversationResolution(
+            authorization,
+            diagnosticCode: 'identity_blocked_by_autonomy',
+          );
+        }
+      }
       final result = await service.process(
         pending: pendingAction.identityCreation!,
         answer: answer,
@@ -531,8 +589,10 @@ class ConversationCoordinator {
         );
         _state = _state.copyWith(
           phase: ConversationPhase.awaitingActionConfirmation,
-          pendingAction:
-              PendingConversationAction.eventTargetClarification(pending),
+          pendingAction: PendingConversationAction.eventTargetClarification(
+            pending,
+            autonomyMetadata: _pendingMetadata(ActionType.updateEvent),
+          ),
         );
         return PendingConversationResolution(
           _eventTargetQuestion(pending),
@@ -654,6 +714,13 @@ class ConversationCoordinator {
         }
         participantIntent = ReplaceEventParticipant(validation.link!);
       }
+      final authorization = await _authorizeConfirmed(ActionType.updateEvent);
+      if (authorization != null) {
+        _state = _state.copyWith(
+          phase: ConversationPhase.awaitingActionConfirmation,
+        );
+        return PendingConversationResolution(authorization);
+      }
       final result = await eventConversationMutationService.execute(
         original: confirmation.original,
         proposed: confirmation.proposed,
@@ -768,6 +835,7 @@ class ConversationCoordinator {
           createdAt: now,
           expiresAt: now.add(const Duration(minutes: 15)),
         ),
+        autonomyMetadata: _pendingMetadata(ActionType.updateEvent),
       ),
     );
     return PendingConversationResolution(
@@ -875,6 +943,13 @@ class ConversationCoordinator {
         }
         event = event.copyWith(participantIdentity: validation.link);
       }
+      final authorization = await _authorizeConfirmed(ActionType.createEvent);
+      if (authorization != null) {
+        _state = _state.copyWith(
+          phase: ConversationPhase.awaitingActionConfirmation,
+        );
+        return PendingConversationResolution(authorization);
+      }
       final message = await execute(event);
       _state = _state.copyWith(
         phase: ConversationPhase.idle,
@@ -931,6 +1006,13 @@ class ConversationCoordinator {
           referenceDate: referenceDate,
         );
       }
+      final authorization = await _authorizeConfirmed(ActionType.confirmMemory);
+      if (authorization != null) {
+        _state = _state.copyWith(
+          phase: ConversationPhase.awaitingActionConfirmation,
+        );
+        return PendingConversationResolution(authorization);
+      }
       return await _confirmMemory(
         repository: repository,
         memory: memory,
@@ -946,10 +1028,135 @@ class ConversationCoordinator {
     }
   }
 
+  Future<PendingConversationResolution?> resolvePendingAutonomyConfirmation({
+    required String answer,
+    required int sessionGeneration,
+    required ConversationActionExecutor executeAction,
+  }) async {
+    final wrapped = _state.pendingAction;
+    if (wrapped?.type != PendingConversationActionType.autonomyConfirmation) {
+      return null;
+    }
+    var pending = wrapped!.autonomyPending!;
+    pending.validate();
+    if (pending.sessionGeneration != sessionGeneration) {
+      _clearPendingAction();
+      return const PendingConversationResolution(
+        'Cette proposition appartient à une ancienne session. Reformule ta demande.',
+        diagnosticCode: 'autonomy_pending_stale_session',
+      );
+    }
+    if (pending.isExpiredAt(_clock().toUtc())) {
+      _clearPendingAction();
+      return const PendingConversationResolution(
+        'Cette proposition a expiré. Reformule ta demande.',
+        diagnosticCode: 'autonomy_pending_expired',
+      );
+    }
+    if (pending.state == ActionPendingState.executing ||
+        pending.state == ActionPendingState.completed) {
+      return const PendingConversationResolution(
+        'Cette action a déjà été traitée.',
+        diagnosticCode: 'autonomy_pending_duplicate_confirmation',
+      );
+    }
+    final classified = answerClassifier.classify(answer);
+    if (classified == ConversationAnswer.negative) {
+      _clearPendingAction();
+      return const PendingConversationResolution(
+        'D’accord, je ne modifie rien.',
+        diagnosticCode: 'autonomy_pending_rejected',
+      );
+    }
+    if (classified != ConversationAnswer.positive) {
+      final attempts = pending.attemptCount + 1;
+      if (attempts >= ActionPending.maximumAttempts) {
+        _clearPendingAction();
+        return const PendingConversationResolution(
+          'Je n’ai pas reçu de confirmation claire. La proposition est annulée.',
+          diagnosticCode: 'autonomy_pending_attempts_exceeded',
+        );
+      }
+      pending = pending.copyWith(attemptCount: attempts);
+      _state = _state.copyWith(
+        pendingAction: PendingConversationAction.autonomyConfirmation(pending),
+      );
+      return const PendingConversationResolution(
+        'Réponds simplement oui pour confirmer, ou non pour annuler.',
+        diagnosticCode: 'autonomy_pending_confirmation_ambiguous',
+      );
+    }
+    final policy = await _loadAutonomyPolicy?.call();
+    if (policy == null) {
+      return const PendingConversationResolution(
+        'Je ne peux pas vérifier le mode d’action pour le moment.',
+        diagnosticCode: 'autonomy_policy_unavailable',
+      );
+    }
+    _lastAutonomyPolicy = policy;
+    final decision = _autonomyEngine.evaluate(
+      policy: policy,
+      request: ActionAuthorizationRequest(
+        actionType: pending.actionType,
+        origin: ActionOrigin.explicitUserConfirmation,
+        riskLevel: pending.riskLevel,
+        sessionGeneration: sessionGeneration,
+        policyVersionObserved: policy.schemaVersion,
+        isGrounded: pending.wasGrounded,
+        isComplete: pending.wasComplete,
+        hasFreshExplicitConfirmation: true,
+      ),
+      evaluatedAt: _clock(),
+    );
+    if (!decision.mayExecute) {
+      pending = pending.copyWith(
+        state: ActionPendingState.blockedByPolicy,
+        hasFreshConfirmation: false,
+      );
+      _state = _state.copyWith(
+        phase: ConversationPhase.awaitingActionConfirmation,
+        pendingAction: PendingConversationAction.autonomyConfirmation(pending),
+      );
+      return PendingConversationResolution(
+        _autonomyMessage(decision),
+        diagnosticCode: decision.reasonCode,
+      );
+    }
+    pending = pending.copyWith(
+      state: ActionPendingState.executing,
+      hasFreshConfirmation: true,
+      attemptCount: pending.attemptCount + 1,
+    );
+    _state = _state.copyWith(
+      phase: ConversationPhase.executingAction,
+      pendingAction: PendingConversationAction.autonomyConfirmation(pending),
+    );
+    try {
+      final outcome = await executeAction(_legacyAction(pending));
+      _clearPendingAction();
+      return PendingConversationResolution(
+        outcome.message.isEmpty ? 'C’est fait.' : outcome.message,
+        diagnosticCode: 'autonomy_pending_completed',
+      );
+    } catch (_) {
+      _state = _state.copyWith(
+        phase: ConversationPhase.awaitingActionConfirmation,
+        pendingAction: PendingConversationAction.autonomyConfirmation(
+          pending.copyWith(
+            state: ActionPendingState.blockedByPolicy,
+            hasFreshConfirmation: false,
+          ),
+        ),
+      );
+      rethrow;
+    }
+  }
+
   Future<ConversationOutcome?> send({
     required ConversationInput input,
     required ConversationActionExecutor executeAction,
   }) async {
+    _sessionGeneration = input.sessionGeneration;
     final eventMutationResolution = await resolvePendingEventMutation(
       answer: input.message,
     );
@@ -991,8 +1198,12 @@ class ConversationCoordinator {
         message: input.message,
         profile: input.profile,
       );
-      final request =
-          builtRequest.withSessionGeneration(input.sessionGeneration);
+      final autonomyPolicy = await _loadAutonomyPolicy?.call();
+      if (autonomyPolicy != null) _lastAutonomyPolicy = autonomyPolicy;
+      final request = (autonomyPolicy == null
+              ? builtRequest
+              : builtRequest.withAutonomyPolicy(autonomyPolicy))
+          .withSessionGeneration(input.sessionGeneration);
       final memoryContext = contextProvider is MemoryConversationContextProvider
           ? contextProvider as MemoryConversationContextProvider
           : null;
@@ -1037,6 +1248,65 @@ class ConversationCoordinator {
 
         final action = guarded.action!;
         final type = action['type']?.toString() ?? '';
+        final latestPolicy = await _loadAutonomyPolicy?.call();
+        if (latestPolicy != null) {
+          _lastAutonomyPolicy = latestPolicy;
+          final actionType = _actionType(action);
+          final decision = _autonomyEngine.evaluate(
+            policy: latestPolicy,
+            request: ActionAuthorizationRequest(
+              actionType: actionType,
+              origin: ActionOrigin.explicitUserRequest,
+              riskLevel:
+                  const ActionAutonomyActionRegistry().riskFor(actionType),
+              sessionGeneration: input.sessionGeneration,
+              policyVersionObserved: latestPolicy.schemaVersion,
+              domainConfirmationRequired: actionType == ActionType.proposeEvent,
+            ),
+            evaluatedAt: _clock(),
+          );
+          if (!decision.mayExecute && !decision.mayCreateProposal) {
+            actionMessages.add(_autonomyMessage(decision));
+            continue;
+          }
+          if (decision.requiresConfirmation &&
+              actionType != ActionType.proposeEvent) {
+            final payload = _pendingPayload(action);
+            if (payload == null || _state.pendingAction != null) {
+              actionMessages
+                  .add('Cette modification ne peut pas être préparée.');
+              continue;
+            }
+            final now = _clock().toUtc();
+            final pending = ActionPending(
+              pendingActionId: _actionDraftIdGenerator.generate(),
+              sessionGeneration: input.sessionGeneration,
+              actionType: actionType,
+              origin: ActionOrigin.explicitUserRequest,
+              riskLevel: decision.actionType == actionType
+                  ? const ActionAutonomyActionRegistry().riskFor(actionType)
+                  : ActionRiskLevel.mutation,
+              policyModeAtCreation: latestPolicy.mode,
+              policyVersionAtCreation: latestPolicy.schemaVersion,
+              wasGrounded: epistemic != null,
+              wasComplete: true,
+              payload: payload,
+              originalInstruction: input.message,
+              mutationId: _actionDraftIdGenerator.generate(),
+              createdAt: now,
+              expiresAt: now.add(const Duration(minutes: 15)),
+            )..validate();
+            _state = _state.copyWith(
+              phase: ConversationPhase.awaitingActionConfirmation,
+              pendingAction:
+                  PendingConversationAction.autonomyConfirmation(pending),
+            );
+            actionMessages.add(
+              'Je peux préparer cette modification. Veux-tu la confirmer ?',
+            );
+            continue;
+          }
+        }
         if (type == 'event_mutation' &&
             action['eventMutation'] is EventMutationRequest) {
           final mutation = await beginEventMutation(
@@ -1102,6 +1372,105 @@ class ConversationCoordinator {
             : ConversationPhase.awaitingActionConfirmation,
       );
     }
+  }
+
+  static ActionType _actionType(Map<String, dynamic> action) {
+    return switch (action['type']?.toString()) {
+      'event' || 'event_mutation' => ActionType.proposeEvent,
+      'task' || 'todo' || 'to-do' => ActionType.createTask,
+      'shopping' => ActionType.addShoppingItem,
+      _ => ActionType.thirdPartyUnsupported,
+    };
+  }
+
+  static ActionPendingPayload? _pendingPayload(Map<String, dynamic> action) {
+    final title = action['title']?.toString().trim() ?? '';
+    if (title.isEmpty || title.length > 500) return null;
+    return switch (action['type']?.toString()) {
+      'task' || 'todo' || 'to-do' => PendingTaskPayload(
+          title: title,
+          dueDate: action['dueDate']?.toString() ?? '',
+          notes: action['notes']?.toString() ?? '',
+          planning: action['planning']?.toString() ?? '',
+          priority: action['priority']?.toString() ?? '',
+          isImportant: action['isImportant'] == true,
+        ),
+      'shopping' => PendingShoppingPayload(
+          title: title,
+          category: action['category']?.toString() ?? '',
+          notes: action['notes']?.toString() ?? '',
+          section: action['section']?.toString() ?? '',
+          isUrgent: action['isUrgent'] == true,
+        ),
+      _ => null,
+    };
+  }
+
+  static Map<String, dynamic> _legacyAction(ActionPending pending) {
+    final payload = pending.payload;
+    return switch (payload) {
+      PendingTaskPayload() => {
+          'type': 'task',
+          'title': payload.title,
+          'dueDate': payload.dueDate,
+          'notes': payload.notes,
+          'planning': payload.planning,
+          'priority': payload.priority,
+          'isImportant': payload.isImportant,
+          'originalMessage': pending.originalInstruction,
+        },
+      PendingShoppingPayload() => {
+          'type': 'shopping',
+          'title': payload.title,
+          'category': payload.category,
+          'notes': payload.notes,
+          'section': payload.section,
+          'isUrgent': payload.isUrgent,
+        },
+    };
+  }
+
+  static String _autonomyMessage(ActionAuthorizationDecision decision) {
+    return switch (decision.decision) {
+      ActionAuthorizationDecisionType.blockedPaused =>
+        'Les actions sont en pause. Je peux continuer à répondre, mais je ne '
+            'modifierai rien.',
+      ActionAuthorizationDecisionType.blockedUnsupported =>
+        'Cette action n’est pas prise en charge.',
+      _ => 'Je ne peux pas appliquer cette action de façon sûre.',
+    };
+  }
+
+  Future<String?> _authorizeConfirmed(ActionType actionType) async {
+    final policy = await _loadAutonomyPolicy?.call();
+    if (policy == null) return null;
+    _lastAutonomyPolicy = policy;
+    final decision = _autonomyEngine.evaluate(
+      policy: policy,
+      request: ActionAuthorizationRequest(
+        actionType: actionType,
+        origin: ActionOrigin.explicitUserConfirmation,
+        riskLevel: const ActionAutonomyActionRegistry().riskFor(actionType),
+        sessionGeneration: 0,
+        policyVersionObserved: policy.schemaVersion,
+        hasFreshExplicitConfirmation: true,
+      ),
+      evaluatedAt: _clock(),
+    );
+    return decision.mayExecute ? null : _autonomyMessage(decision);
+  }
+
+  ActionPendingMetadata _pendingMetadata(ActionType actionType) {
+    final policy = _lastAutonomyPolicy;
+    return ActionPendingMetadata(
+      actionType: actionType,
+      origin: ActionOrigin.structuredContinuation,
+      riskLevel: const ActionAutonomyActionRegistry().riskFor(actionType),
+      policyModeAtCreation: policy?.mode ?? ActionAutonomyMode.suggestions,
+      policyVersionAtCreation:
+          policy?.schemaVersion ?? ActionAutonomyPolicy.currentSchemaVersion,
+      sessionGeneration: _sessionGeneration,
+    );
   }
 
   MemoryLifecycleRepository? get _repository {

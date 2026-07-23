@@ -12,6 +12,7 @@ import '../services/auth_service.dart';
 import 'auth/auth_screen.dart';
 import 'human_profile_screen.dart';
 import 'memory_settings_screen.dart';
+import 'action_autonomy_settings_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final UserProfile profile;
@@ -3540,6 +3541,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Navigator.of(context).push(
               MaterialPageRoute<void>(
                 builder: (_) => const MemorySettingsScreen(),
+              ),
+            );
+          },
+          showChevron: true,
+        ),
+        buildDivider(),
+        buildProfileRow(
+          icon: Icons.tune,
+          label: "Mode d’action",
+          value: "Normal, suggestions ou pause",
+          iconColor: textSoft,
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const ActionAutonomySettingsScreen(),
               ),
             );
           },

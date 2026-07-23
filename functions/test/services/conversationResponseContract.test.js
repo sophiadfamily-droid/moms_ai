@@ -50,6 +50,13 @@ function request(contextOverrides = {}) {
     memories: [],
     memoryReasoning: [],
     events: [],
+    autonomyPolicyVersion: 1,
+    autonomyMode: "suggestions",
+    allowedStructuredResponseKinds: [
+      "answer", "answerWithCaveat", "clarificationRequired",
+      "confirmationRequired", "actionProposal", "cannotDetermine",
+      "contextUnavailable", "unsupportedRequest", "safeFailure",
+    ],
   };
 }
 
@@ -209,6 +216,18 @@ test("keeps unavailable distinct from an empty available section", () => {
       () => validateConversationResponse(inventedEmpty, unavailableRequest),
       /response_grounding_reference_invalid/,
   );
+});
+
+test("paused mode refuses model-produced structured actions", () => {
+  const req = request();
+  req.autonomyMode = "paused";
+  req.allowedStructuredResponseKinds = [
+    "answer", "answerWithCaveat", "clarificationRequired",
+    "cannotDetermine", "contextUnavailable", "unsupportedRequest",
+    "safeFailure",
+  ];
+  const result = response({}, [{type: "task", title: "Action"}]);
+  assert.throws(() => validateConversationResponse(result, req));
 });
 
 test("rejects stale evidence presented as current", () => {

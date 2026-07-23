@@ -3,6 +3,7 @@ import 'dart:collection';
 import '../services/planning_proposal_engine.dart';
 import '../services/smart_planning_service.dart';
 import 'task_model.dart';
+import 'action_autonomy_policy.dart';
 
 enum SmartPlanningContinuationType {
   taskPlanning,
@@ -29,6 +30,14 @@ enum SmartPlanningContinuationStatus {
   cancelled,
   expired,
   failed,
+}
+
+enum SmartPlanningPolicyState {
+  active,
+  blockedByPolicy,
+  expired,
+  completed,
+  cancelled,
 }
 
 enum SmartPlanningContinuationResultStatus {
@@ -75,6 +84,12 @@ final class SmartPlanningContinuation {
     List<PlanningProposalOption> options = const [],
     this.selectedOption,
     this.mutationId,
+    required this.policyModeAtCreation,
+    required this.policyVersionAtCreation,
+    this.actionType = ActionType.smartPlanningReservation,
+    this.origin = ActionOrigin.structuredContinuation,
+    this.riskLevel = ActionRiskLevel.mutation,
+    this.policyState = SmartPlanningPolicyState.active,
   })  : groupedTasks = UnmodifiableListView(groupedTasks),
         options = UnmodifiableListView(options) {
     if (schemaVersion != currentSchemaVersion ||
@@ -116,6 +131,12 @@ final class SmartPlanningContinuation {
   final List<PlanningProposalOption> options;
   final PlanningProposalOption? selectedOption;
   final String? mutationId;
+  final ActionAutonomyMode policyModeAtCreation;
+  final int policyVersionAtCreation;
+  final ActionType actionType;
+  final ActionOrigin origin;
+  final ActionRiskLevel riskLevel;
+  final SmartPlanningPolicyState policyState;
 
   SmartPlanningContinuation copyWith({
     SmartPlanningContinuationType? type,
@@ -135,6 +156,9 @@ final class SmartPlanningContinuation {
     List<PlanningProposalOption>? options,
     PlanningProposalOption? selectedOption,
     String? mutationId,
+    ActionAutonomyMode? policyModeAtCreation,
+    int? policyVersionAtCreation,
+    SmartPlanningPolicyState? policyState,
   }) =>
       SmartPlanningContinuation(
         id: id,
@@ -160,6 +184,13 @@ final class SmartPlanningContinuation {
         options: options ?? this.options,
         selectedOption: selectedOption ?? this.selectedOption,
         mutationId: mutationId ?? this.mutationId,
+        policyModeAtCreation: policyModeAtCreation ?? this.policyModeAtCreation,
+        policyVersionAtCreation:
+            policyVersionAtCreation ?? this.policyVersionAtCreation,
+        actionType: actionType,
+        origin: origin,
+        riskLevel: riskLevel,
+        policyState: policyState ?? this.policyState,
       );
 }
 

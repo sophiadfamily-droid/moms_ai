@@ -729,6 +729,64 @@ Interaction rules:
 
 ## 9. Conversation and action lifecycle
 
+### V1-A.1 — Central autonomy policy
+
+`ActionAutonomyPolicyEngine` is the single deterministic authorization matrix
+for the three account-scoped modes. `normal` allows explicit, grounded and
+complete requests while preserving every domain confirmation. `suggestions`
+allows reads and proposals but requires a fresh explicit confirmation before
+every mutation. `paused` keeps conversation and permitted reads available,
+while blocking proposals intended for execution, confirmations, mutation
+retries and pending execution. The restrictive default is `suggestions`.
+
+The closed inputs are action type, technical origin, registered risk, C.3
+grounding/completeness, domain policy, confirmation, conflict, pending state
+and session generation. Proactive, external and unknown origins are always
+blocked. Risk is registered by action type and never inferred from visible
+text or a person. The guard order is: account/session, response generation,
+supported type, C.3 grounding, required fields, stale/contradiction, domain
+policy, A.1 mode, confirmation, conflict/revision, idempotence, then domain
+dispatch. The most restrictive result wins.
+
+The local `ActionAutonomyPolicyService` persists one versioned value under an
+account-scoped SharedPreferences key. Corrupt or missing state falls back to
+`suggestions`; no Firestore collection or multi-device synchronization is
+claimed. A same-UID account link retains the setting, while an account change
+loads a distinct key. The settings screen calls only this service.
+
+`ActionPending` is the sole generic A.1 continuation for simple conversational
+mutations. Its payload is a closed Task or Shopping value rather than a
+business `Map`; it carries generation, action type, origin, risk, mode and
+policy version at creation, bounded original instruction, mutation identity,
+grounding/completeness, expiry, fresh-confirmation state, bounded attempts and
+the pending state machine. In Suggestions the coordinator creates this value
+after C.3, writes nothing, and executes only after reloading and re-evaluating
+the current policy. Pause marks it `blockedByPolicy` without deleting it.
+Changing mode never executes it; a new explicit confirmation is required.
+
+Smart Planning continuations carry the same A.1 mode/version/type/origin/risk
+metadata and their final mutation identity. Policy is reloaded when resolving
+each continuation, before an executable confirmation and twice around final
+Event revalidation/dispatch. Searches and bounded alternatives remain
+read-only in Pause, but reservation is blocked and the typed continuation is
+preserved. Identity selection and creation are classified as sensitive and
+revalidated immediately before their application service. Account change
+clears generic, Event, Memory and Identity pending state and invalidates Smart
+Planning.
+
+`ChatBackendRequest` sends only the policy version, current mode and the closed
+response kinds allowed for that mode. Functions validates these fields and
+rejects structured actions in pause before model output can reach Flutter.
+Flutter remains authoritative and re-evaluates the current policy after the
+backend response. `ChatScreen` owns no matrix or storage access.
+
+Memory actions remain subject to the stricter combination of A.1,
+`MemoryPolicy`, health consent and memory confirmation. Event and Smart
+Planning keep their date, duration, travel, margin, conflict, revision,
+mutation-id and confirmation guards. A.1 introduces no proactive execution,
+notification, third-party action, ledger, replay or undo; those remain outside
+this phase.
+
 ### 9.1 Current state
 
 The Flutter chat experience follows the C.1 chain:

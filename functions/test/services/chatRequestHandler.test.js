@@ -38,6 +38,13 @@ function request(message = "Ajoute du lait aux courses") {
     memories: [],
     memoryReasoning: [],
     events: [],
+    autonomyPolicyVersion: 1,
+    autonomyMode: "suggestions",
+    allowedStructuredResponseKinds: [
+      "answer", "answerWithCaveat", "clarificationRequired",
+      "confirmationRequired", "actionProposal", "cannotDetermine",
+      "contextUnavailable", "unsupportedRequest", "safeFailure",
+    ],
   };
 }
 

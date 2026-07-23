@@ -1,9 +1,11 @@
 import '../models/conversation_models.dart';
+import '../models/action_autonomy_policy.dart';
 import '../models/event_model.dart';
 import '../models/smart_planning_continuation.dart';
 import '../models/task_model.dart';
 import '../models/user_profile.dart';
 import 'chat_planning_helper_service.dart';
+import 'action_autonomy_policy_engine.dart';
 import 'event_service.dart';
 import 'memory_planning_compatibility_service.dart';
 import 'notification_service.dart';
@@ -44,6 +46,9 @@ abstract interface class SmartPlanningContinuationGateway {
 
   Future<void> addEvent(EventModel event);
 }
+
+typedef SmartPlanningAutonomyPolicyLoader = Future<ActionAutonomyPolicy>
+    Function();
 
 final class ProductionSmartPlanningContinuationGateway
     implements SmartPlanningContinuationGateway {
@@ -135,14 +140,28 @@ final class SmartPlanningContinuationCoordinator {
     required SmartPlanningContinuationGateway gateway,
     DateTime Function()? clock,
     String Function()? idGenerator,
+    SmartPlanningAutonomyPolicyLoader? loadAutonomyPolicy,
+    ActionAutonomyPolicyEngine autonomyEngine =
+        const ActionAutonomyPolicyEngine(),
+    ActionAutonomyPolicy? initialAutonomyPolicy,
   })  : _gateway = gateway,
         _clock = clock ?? DateTime.now,
         _idGenerator = idGenerator ??
-            (() => DateTime.now().microsecondsSinceEpoch.toString());
+            (() => DateTime.now().microsecondsSinceEpoch.toString()),
+        _loadAutonomyPolicy = loadAutonomyPolicy,
+        _autonomyEngine = autonomyEngine,
+        _currentPolicy = initialAutonomyPolicy ??
+            ActionAutonomyPolicy.restrictiveDefault(
+              accountScopeId: 'smart-planning-session',
+              changedAt: (clock ?? DateTime.now)().toUtc(),
+            );
 
   final SmartPlanningContinuationGateway _gateway;
   final DateTime Function() _clock;
   final String Function() _idGenerator;
+  final SmartPlanningAutonomyPolicyLoader? _loadAutonomyPolicy;
+  final ActionAutonomyPolicyEngine _autonomyEngine;
+  ActionAutonomyPolicy _currentPolicy;
   SmartPlanningContinuation? _active;
   final Set<String> _completedMutationIds = <String>{};
 
@@ -150,6 +169,17 @@ final class SmartPlanningContinuationCoordinator {
   bool get hasActive => _active != null;
 
   void invalidate() => _active = null;
+
+  void updateAutonomyPolicy(ActionAutonomyPolicy policy) {
+    policy.validate();
+    _currentPolicy = policy;
+    final active = _active;
+    if (active != null && policy.mode == ActionAutonomyMode.paused) {
+      _active = active.copyWith(
+        policyState: SmartPlanningPolicyState.blockedByPolicy,
+      );
+    }
+  }
 
   SmartPlanningContinuationResult beginTaskPlanning({
     required TaskModel task,
@@ -208,6 +238,8 @@ final class SmartPlanningContinuationCoordinator {
     String answer, {
     required int sessionGeneration,
   }) async {
+    final latestPolicy = await _loadAutonomyPolicy?.call();
+    if (latestPolicy != null) updateAutonomyPolicy(latestPolicy);
     final continuation = _active;
     if (continuation == null) {
       final started = await tryStartExplicitSlotRequest(
@@ -427,12 +459,15 @@ final class SmartPlanningContinuationCoordinator {
     }
     if (continuation.type ==
         SmartPlanningContinuationType.explicitSlotRequest) {
-      _active = continuation.copyWith(
+      final candidate = continuation.copyWith(
         type: SmartPlanningContinuationType.alternativeSearch,
         step: SmartPlanningContinuationStep.alternativeConfirmation,
         failedDate: start,
         marginMinutes: margin,
       );
+      final blocked = await _blockExecutableConfirmationIfNeeded(candidate);
+      if (blocked != null) return blocked;
+      _active = candidate;
       return _result(
         SmartPlanningContinuationResultStatus.confirmationRequired,
         'Je n’ai pas trouvé de créneau disponible réaliste pour '
@@ -451,12 +486,15 @@ final class SmartPlanningContinuationCoordinator {
           : continuation.groupedTasks,
     );
     if (proposal.canPropose) {
-      _active = continuation.copyWith(
+      final candidate = continuation.copyWith(
         type: SmartPlanningContinuationType.simpleProposal,
         step: SmartPlanningContinuationStep.confirmation,
         proposal: proposal,
         marginMinutes: proposal.marginMinutes,
       );
+      final blocked = await _blockExecutableConfirmationIfNeeded(candidate);
+      if (blocked != null) return blocked;
+      _active = candidate;
       return _result(
         SmartPlanningContinuationResultStatus.confirmationRequired,
         proposal.confirmationMessage,
@@ -489,13 +527,16 @@ final class SmartPlanningContinuationCoordinator {
       );
     }
     final selected = continuation.options[index];
-    _active = continuation.copyWith(
+    final candidate = continuation.copyWith(
       type: SmartPlanningContinuationType.selectedSlot,
       step: SmartPlanningContinuationStep.confirmation,
       selectedOption: selected,
       options: const [],
       mutationId: _idGenerator(),
     );
+    final blocked = await _blockExecutableConfirmationIfNeeded(candidate);
+    if (blocked != null) return blocked;
+    _active = candidate;
     return _result(
       SmartPlanningContinuationResultStatus.confirmationRequired,
       _recap(_active!),
@@ -519,6 +560,8 @@ final class SmartPlanningContinuationCoordinator {
         'Réponds simplement oui pour réserver, ou non pour annuler 💕',
       );
     }
+    final blocked = await _authorizeFinalExecution(continuation);
+    if (blocked != null) return blocked;
     final mutationId = continuation.mutationId ?? _idGenerator();
     if (_completedMutationIds.contains(mutationId)) {
       return _result(
@@ -585,6 +628,8 @@ final class SmartPlanningContinuationCoordinator {
         'Je peux chercher un autre créneau si tu veux.',
       );
     }
+    final finalBlocked = await _authorizeFinalExecution(continuation);
+    if (finalBlocked != null) return finalBlocked;
     await _gateway.addEvent(event);
     _completedMutationIds.add(mutationId);
     if (_completedMutationIds.length > maximumCompletedMutationReceipts) {
@@ -634,13 +679,16 @@ final class SmartPlanningContinuationCoordinator {
             : continuation.groupedTasks,
       );
       if (proposal.canPropose) {
-        _active = continuation.copyWith(
+        final candidate = continuation.copyWith(
           type: SmartPlanningContinuationType.simpleProposal,
           step: SmartPlanningContinuationStep.confirmation,
           proposal: proposal,
           failedDate: date,
           mutationId: _idGenerator(),
         );
+        final blocked = await _blockExecutableConfirmationIfNeeded(candidate);
+        if (blocked != null) return blocked;
+        _active = candidate;
         return _result(
           SmartPlanningContinuationResultStatus.confirmationRequired,
           'J’ai trouvé une autre possibilité 💕\n\n'
@@ -678,6 +726,60 @@ final class SmartPlanningContinuationCoordinator {
       originalMessage: originalMessage,
       groupedTasks: [task],
       startDate: startDate,
+      mutationId: _idGenerator(),
+      policyModeAtCreation: _currentPolicy.mode,
+      policyVersionAtCreation: _currentPolicy.schemaVersion,
+    );
+  }
+
+  Future<SmartPlanningContinuationResult?> _blockExecutableConfirmationIfNeeded(
+    SmartPlanningContinuation continuation,
+  ) async {
+    final policy = await _loadAutonomyPolicy?.call();
+    if (policy == null) return null;
+    updateAutonomyPolicy(policy);
+    if (policy.mode != ActionAutonomyMode.paused) return null;
+    _active = continuation.copyWith(
+      policyState: SmartPlanningPolicyState.blockedByPolicy,
+    );
+    return _result(
+      SmartPlanningContinuationResultStatus.confirmationRequired,
+      'Les actions sont en pause. Je conserve cette proposition, mais je ne '
+      'réserve aucun créneau.',
+    );
+  }
+
+  Future<SmartPlanningContinuationResult?> _authorizeFinalExecution(
+    SmartPlanningContinuation continuation,
+  ) async {
+    final policy = await _loadAutonomyPolicy?.call();
+    if (policy == null) return null;
+    updateAutonomyPolicy(policy);
+    final decision = _autonomyEngine.evaluate(
+      policy: policy,
+      request: ActionAuthorizationRequest(
+        actionType: continuation.actionType,
+        origin: ActionOrigin.explicitUserConfirmation,
+        riskLevel: continuation.riskLevel,
+        sessionGeneration: continuation.sessionGeneration,
+        policyVersionObserved: policy.schemaVersion,
+        hasFreshExplicitConfirmation: true,
+      ),
+      evaluatedAt: _clock(),
+    );
+    if (decision.mayExecute) {
+      _active = continuation.copyWith(
+        policyState: SmartPlanningPolicyState.active,
+      );
+      return null;
+    }
+    _active = continuation.copyWith(
+      policyState: SmartPlanningPolicyState.blockedByPolicy,
+    );
+    return _result(
+      SmartPlanningContinuationResultStatus.confirmationRequired,
+      'Les actions sont en pause. Je conserve cette proposition, mais je ne '
+      'réserve aucun créneau.',
     );
   }
 

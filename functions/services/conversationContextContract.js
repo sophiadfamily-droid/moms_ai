@@ -21,6 +21,13 @@ const REQUEST_KEYS = new Set([
   "schemaVersion", "message", "sessionGeneration", "conversationContext",
   "conversationHistory",
   "profile", "profileContext", "memories", "memoryReasoning", "events",
+  "autonomyPolicyVersion", "autonomyMode", "allowedStructuredResponseKinds",
+]);
+const AUTONOMY_MODES = new Set(["normal", "suggestions", "paused"]);
+const STRUCTURED_RESPONSE_KINDS = new Set([
+  "answer", "answerWithCaveat", "clarificationRequired",
+  "confirmationRequired", "actionProposal", "cannotDetermine",
+  "contextUnavailable", "unsupportedRequest", "safeFailure",
 ]);
 const CONTEXT_KEYS = new Set([
   "schemaVersion", "projectionVersion", "purpose", "generatedAt", "state",
@@ -231,7 +238,16 @@ function validateConversationRequest(payload) {
       !emptyRecord(payload.profileContext) ||
       !emptyArray(payload.memories) ||
       !emptyArray(payload.memoryReasoning) ||
-      !emptyArray(payload.events)) {
+      !emptyArray(payload.events) ||
+      payload.autonomyPolicyVersion !== 1 ||
+      !AUTONOMY_MODES.has(payload.autonomyMode) ||
+      !Array.isArray(payload.allowedStructuredResponseKinds) ||
+      payload.allowedStructuredResponseKinds.length === 0 ||
+      payload.allowedStructuredResponseKinds.some((kind) =>
+        !STRUCTURED_RESPONSE_KINDS.has(kind)) ||
+      payload.autonomyMode === "paused" &&
+        payload.allowedStructuredResponseKinds.some((kind) =>
+          ["confirmationRequired", "actionProposal"].includes(kind))) {
     fail("conversation_request_invalid");
   }
   const sanitized = {
@@ -245,6 +261,10 @@ function validateConversationRequest(payload) {
     memories: [],
     memoryReasoning: [],
     events: [],
+    autonomyPolicyVersion: 1,
+    autonomyMode: payload.autonomyMode,
+    allowedStructuredResponseKinds:
+      [...payload.allowedStructuredResponseKinds],
   };
   if (bytes(sanitized) > MAX_REQUEST_BYTES) fail("request_size_exceeded");
   return sanitized;

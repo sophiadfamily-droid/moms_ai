@@ -6,6 +6,7 @@ import 'package:moms_ai/core/identity/entity_resolution.dart';
 import 'package:moms_ai/core/identity/entity_types.dart';
 import 'package:moms_ai/core/identity/life_entity.dart';
 import 'package:moms_ai/models/chat_backend_request.dart';
+import 'package:moms_ai/models/action_autonomy_policy.dart';
 import 'package:moms_ai/models/chat_backend_response.dart';
 import 'package:moms_ai/models/conversation_models.dart';
 import 'package:moms_ai/models/event_model.dart';
@@ -219,6 +220,35 @@ void main() {
   });
 
   group('ConversationCoordinator Identity creation', () {
+    test('paused autonomy keeps Identity creation pending without mutation',
+        () async {
+      final fixture = _creationFixture(
+        loadAutonomyPolicy: () async => ActionAutonomyPolicy(
+          mode: ActionAutonomyMode.paused,
+          changedAt: now,
+          changeSource: ActionAutonomyChangeSource.explicitUserSetting,
+          accountScopeId: 'account-a',
+        ),
+      );
+      fixture.coordinator.beginIdentityCreation(
+        applicationResult: _notFoundResult(),
+        request: _creationRequest(),
+      );
+      final outcome = await fixture.coordinator.send(
+        input: ConversationInput(message: 'oui', profile: _profile()),
+        executeAction: (_) async => const ConversationActionOutcome(),
+      );
+      expect(outcome?.reply, contains('pause'));
+      expect(fixture.coordinator.state.pendingAction, isNotNull);
+      expect(
+        await fixture.repository.findById(
+          scope: IdentityAccountScope('account-a'),
+          entityId: 'entity-new',
+        ),
+        isNull,
+      );
+    });
+
     test('stores a proposal without writing and confirms exactly once',
         () async {
       final fixture = _creationFixture();
@@ -487,7 +517,9 @@ final class _CreationFixture {
   });
 }
 
-_CreationFixture _creationFixture() {
+_CreationFixture _creationFixture({
+  ConversationAutonomyPolicyLoader? loadAutonomyPolicy,
+}) {
   final repository = FakeIdentityRepository();
   final backend = _FakeBackend();
   final context = _FakeContext();
@@ -504,6 +536,7 @@ _CreationFixture _creationFixture() {
         idGenerator: _CreationIdGenerator(),
         now: () => now,
       ),
+      loadAutonomyPolicy: loadAutonomyPolicy,
     ),
   );
 }

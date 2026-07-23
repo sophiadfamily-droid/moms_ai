@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:moms_ai/models/chat_backend_request.dart';
+import 'package:moms_ai/models/action_autonomy_policy.dart';
 import 'package:moms_ai/models/chat_backend_response.dart';
 import 'package:moms_ai/models/conversation_context_envelope.dart';
 import 'package:moms_ai/models/conversation_epistemic_models.dart';
@@ -50,6 +51,9 @@ void main() {
         'memories',
         'memoryReasoning',
         'events',
+        'autonomyPolicyVersion',
+        'autonomyMode',
+        'allowedStructuredResponseKinds',
       });
       expect(coordinator.state.phase, ConversationPhase.idle);
     });
@@ -91,6 +95,231 @@ void main() {
 
       expect(executions, 1);
       expect(outcome?.reply, 'Confirmer le rendez-vous ?');
+    });
+
+    test('suggestions blocks immediate mutation and paused blocks proposals',
+        () async {
+      var mode = ActionAutonomyMode.suggestions;
+      var loads = 0;
+      final coordinator = ConversationCoordinator(
+        backend: _FakeBackend(
+          response: const ChatBackendResponse(
+            reply: 'Réponse initiale',
+            actions: [
+              {'type': 'task', 'title': 'Préparer le dossier'},
+            ],
+            memories: [],
+          ),
+        ),
+        contextProvider: _FakeContextProvider(_request()),
+        loadAutonomyPolicy: () async {
+          loads++;
+          return ActionAutonomyPolicy(
+            mode: mode,
+            changedAt: DateTime.utc(2026, 7, 23),
+            changeSource: ActionAutonomyChangeSource.explicitUserSetting,
+            accountScopeId: 'scope-a',
+          );
+        },
+      );
+      var executions = 0;
+      final suggestions = await coordinator.send(
+        input: ConversationInput(message: 'Ajoute', profile: _profile()),
+        executeAction: (_) async {
+          executions++;
+          return const ConversationActionOutcome();
+        },
+      );
+      expect(executions, 0);
+      expect(suggestions?.reply, contains('confirmer'));
+      expect(loads, greaterThanOrEqualTo(2));
+
+      mode = ActionAutonomyMode.paused;
+      final paused = await coordinator.send(
+        input: ConversationInput(message: 'Ajoute', profile: _profile()),
+        executeAction: (_) async {
+          executions++;
+          return const ConversationActionOutcome();
+        },
+      );
+      expect(executions, 0);
+      expect(paused?.reply, contains('pause'));
+    });
+
+    test('current mode is reloaded before dispatching a late response',
+        () async {
+      var mode = ActionAutonomyMode.normal;
+      var loads = 0;
+      final coordinator = ConversationCoordinator(
+        backend: _FakeBackend(
+          response: const ChatBackendResponse(
+            reply: 'Réponse initiale',
+            actions: [
+              {'type': 'shopping', 'title': 'Lait'},
+            ],
+            memories: [],
+          ),
+        ),
+        contextProvider: _FakeContextProvider(_request()),
+        loadAutonomyPolicy: () async {
+          loads++;
+          if (loads > 1) mode = ActionAutonomyMode.paused;
+          return ActionAutonomyPolicy(
+            mode: mode,
+            changedAt: DateTime.utc(2026, 7, 23),
+            changeSource: ActionAutonomyChangeSource.explicitUserSetting,
+            accountScopeId: 'scope-a',
+          );
+        },
+      );
+      var executions = 0;
+      await coordinator.send(
+        input: ConversationInput(message: 'Ajoute', profile: _profile()),
+        executeAction: (_) async {
+          executions++;
+          return const ConversationActionOutcome();
+        },
+      );
+      expect(executions, 0);
+      expect(mode, ActionAutonomyMode.paused);
+    });
+
+    test('suggestions keeps a typed Task pending and executes it once',
+        () async {
+      var mode = ActionAutonomyMode.suggestions;
+      final coordinator = ConversationCoordinator(
+        backend: _FakeBackend(
+          response: ChatBackendResponse(
+            reply: 'Je prépare la tâche.',
+            actions: const [
+              {'type': 'task', 'title': 'Préparer le dossier'},
+            ],
+            memories: const [],
+            epistemic: _epistemic(
+              kind: ConversationResponseKind.actionProposal,
+            ),
+          ),
+        ),
+        contextProvider: _FakeContextProvider(_request()),
+        loadAutonomyPolicy: () async => ActionAutonomyPolicy(
+          mode: mode,
+          changedAt: DateTime.utc(2026, 7, 23),
+          changeSource: ActionAutonomyChangeSource.explicitUserSetting,
+          accountScopeId: 'scope-a',
+        ),
+      );
+      var executions = 0;
+      await coordinator.send(
+        input: ConversationInput(
+          message: 'Ajoute la tâche',
+          profile: _profile(),
+          sessionGeneration: 4,
+        ),
+        executeAction: (_) async {
+          executions++;
+          return const ConversationActionOutcome();
+        },
+      );
+      final pending = coordinator.state.pendingAction?.autonomyPending;
+      expect(pending?.payload, isA<PendingTaskPayload>());
+      expect(pending?.policyModeAtCreation, ActionAutonomyMode.suggestions);
+      expect(pending?.riskLevel, ActionRiskLevel.reversibleLowRisk);
+      expect(pending?.sessionGeneration, 4);
+      expect(executions, 0);
+
+      final resolved = await coordinator.resolvePendingAutonomyConfirmation(
+        answer: 'oui',
+        sessionGeneration: 4,
+        executeAction: (_) async {
+          executions++;
+          return const ConversationActionOutcome(message: 'Tâche créée.');
+        },
+      );
+      expect(resolved?.message, 'Tâche créée.');
+      expect(executions, 1);
+      expect(coordinator.state.pendingAction, isNull);
+      expect(
+        await coordinator.resolvePendingAutonomyConfirmation(
+          answer: 'oui',
+          sessionGeneration: 4,
+          executeAction: (_) async {
+            executions++;
+            return const ConversationActionOutcome();
+          },
+        ),
+        isNull,
+      );
+      expect(executions, 1);
+      mode = ActionAutonomyMode.paused;
+    });
+
+    test('Shopping pending is preserved and blocked when mode becomes paused',
+        () async {
+      var mode = ActionAutonomyMode.suggestions;
+      final coordinator = ConversationCoordinator(
+        backend: _FakeBackend(
+          response: ChatBackendResponse(
+            reply: 'Je prépare la liste.',
+            actions: const [
+              {'type': 'shopping', 'title': 'Lait'},
+            ],
+            memories: const [],
+            epistemic: _epistemic(
+              kind: ConversationResponseKind.actionProposal,
+            ),
+          ),
+        ),
+        contextProvider: _FakeContextProvider(_request()),
+        loadAutonomyPolicy: () async => ActionAutonomyPolicy(
+          mode: mode,
+          changedAt: DateTime.utc(2026, 7, 23),
+          changeSource: ActionAutonomyChangeSource.explicitUserSetting,
+          accountScopeId: 'scope-a',
+        ),
+      );
+      var executions = 0;
+      await coordinator.send(
+        input: ConversationInput(
+          message: 'Ajoute du lait',
+          profile: _profile(),
+          sessionGeneration: 2,
+        ),
+        executeAction: (_) async {
+          executions++;
+          return const ConversationActionOutcome();
+        },
+      );
+      expect(
+        coordinator.state.pendingAction?.autonomyPending?.payload,
+        isA<PendingShoppingPayload>(),
+      );
+      mode = ActionAutonomyMode.paused;
+      final blocked = await coordinator.resolvePendingAutonomyConfirmation(
+        answer: 'oui',
+        sessionGeneration: 2,
+        executeAction: (_) async {
+          executions++;
+          return const ConversationActionOutcome();
+        },
+      );
+      expect(blocked?.message, contains('pause'));
+      expect(executions, 0);
+      expect(
+        coordinator.state.pendingAction?.autonomyPending?.state,
+        ActionPendingState.blockedByPolicy,
+      );
+      mode = ActionAutonomyMode.normal;
+      expect(executions, 0);
+      final completed = await coordinator.resolvePendingAutonomyConfirmation(
+        answer: 'oui',
+        sessionGeneration: 2,
+        executeAction: (_) async {
+          executions++;
+          return const ConversationActionOutcome(message: 'Article ajouté.');
+        },
+      );
+      expect(completed?.message, 'Article ajouté.');
+      expect(executions, 1);
     });
 
     test('rejects an incomplete grounded action before business execution',
