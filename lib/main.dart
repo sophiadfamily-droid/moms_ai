@@ -18,7 +18,9 @@ import 'models/user_profile.dart';
 import 'services/storage_service.dart';
 import 'services/notification_service.dart';
 import 'services/auth_service.dart';
+import 'services/app_diagnostics.dart';
 import 'services/firebase_security_bootstrap.dart';
+import 'services/human/human_model_service.dart';
 import 'services/identity/identity_production_services.dart';
 
 Future<void> main() async {
@@ -156,6 +158,22 @@ class _ZeliaAppState extends State<ZeliaApp> {
     final loadedProfile = await StorageService.getUserProfile();
 
     if (loadedProfile != null) {
+      final accountScopeId = AuthService.currentUserId;
+      if (accountScopeId != null && accountScopeId.trim().isNotEmpty) {
+        try {
+          final humanModelService = await HumanModelService.createLocal();
+          await humanModelService.loadOrMigrate(
+            accountScopeId: accountScopeId,
+            legacyProfile: loadedProfile,
+          );
+        } on Object {
+          AppDiagnostics.record(
+            component: 'human_model_storage',
+            step: 'legacy_migration',
+            code: AppErrorCode.storageFailure,
+          );
+        }
+      }
       savedProfile = loadedProfile;
       firstName = loadedProfile.firstName;
       familyStatus = normalizeFamilyStatus(loadedProfile.familyStatus);

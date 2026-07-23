@@ -473,6 +473,63 @@ Requests that may produce actions must not be retried automatically unless end-t
 
 No implementation may silently copy one user's local or cloud data into another UID.
 
+### 10.3 Universal human model foundation
+
+`HumanModel` is the canonical V1 foundation for human situations. It is a
+versioned, account-scoped aggregate containing stable person references,
+directional relationships, households, residences, household memberships, and
+organizational responsibilities. Relationships, memberships, residences, and
+responsibilities support explicit validity periods; provenance and confirmation
+are carried by `HumanEvidence`.
+
+Ownership is deliberately separated:
+
+- Identity owns the stable identity of a person or other entity. A
+  `HumanPerson` may reference a confirmed `PersistedIdentityLink`, but the human
+  model never creates, merges, or deletes an Identity.
+- the human model owns known human relationships, household membership,
+  residence association, and organizational responsibility;
+- Life Context may later project consequences and cross-domain dependencies. It
+  does not own or mutate the human aggregate, and HM.1 does not extend it.
+
+Schema version 1 is stored locally under
+`human_model_v1:{accountScopeId}`. On the first authenticated profile load,
+`HumanModelService` migrates the legacy `UserProfile`, validates and persists
+the complete candidate, then reads it back. A later load always uses the
+persisted aggregate, making migration idempotent. Failure leaves the legacy
+profile untouched and usable. A future schema version or corrupt aggregate is
+an explicit failure, never an empty successful model.
+
+Legacy migration is intentionally conservative:
+
+- the main profile becomes one stable person only when a stable account scope
+  exists;
+- a non-empty `partnerName` creates one unlinked, non-gendered partner candidate
+  marked `legacyProfile` and `needsConfirmation`;
+- every `ChildProfile` creates a distinct unlinked person and a directional
+  child relation, also requiring confirmation;
+- marriage, cohabitation, biological relation, custody, a shared household,
+  residence, legal responsibility, gender, and inverse relations are never
+  inferred;
+- the complete legacy payload, including fields not yet projected, remains in
+  the aggregate for compatibility and rollback. Legacy storage is not deleted.
+
+Canonical JSON is deterministic, preserves unknown top-level fields for
+forward-compatible reads, and rejects invalid references, duplicate records,
+invalid periods, cross-account content, corrupt input, and unsupported future
+versions. Diagnostics contain only stable technical codes and migration steps;
+they never contain names, relations, residences, profile JSON, Identity data,
+or account IDs.
+
+HM.1 is local-only. It does not add Firestore paths or rules, remote migration,
+family management UI, planning rules for custody, profile synchronization,
+Life Context reasoning, or a medical/legal model. `UserProfile` and its current
+conversation projection remain compatible consumers during the incremental
+transition. The one-time canonical migration is not a bidirectional bridge:
+legacy profile edits continue to serve legacy consumers and are not silently
+merged into the human aggregate. HM.2 must introduce explicit edit and
+reconciliation contracts before canonical human data replaces those views.
+
 ## 11. Persistence principles
 
 1. Persisted identity must be stable and explicit.

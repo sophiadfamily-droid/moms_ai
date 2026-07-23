@@ -257,6 +257,23 @@ The engine identifies nodes. It does not own the relationships between nodes,
 their scheduling rules, their memory lifecycle, or the actions performed on
 their behalf.
 
+### Universal human model boundary
+
+V1-HM.1 adds a separate, local `HumanModel` aggregate. Identity remains the
+owner of stable entity identity; the human model owns only account-scoped
+person references, human relationships, household memberships, residences,
+responsibilities, validity periods, provenance, and confirmation.
+
+A `HumanPerson` may carry a confirmed `PersistedIdentityLink` of type `person`.
+The link is optional. Legacy names never create an Identity, homonyms are never
+merged, a rename does not replace a stable human-record ID, and deleting a
+human record must not cascade to Identity. The legacy adapter creates unlinked
+candidates marked `needsConfirmation`; it does not call an Identity repository.
+
+Life Context remains a later projection consumer. It may eventually calculate
+cross-domain consequences from human and Identity data, but it must not become
+a second source of truth for either system.
+
 ## Verified current state
 
 ### Stable record identity foundation

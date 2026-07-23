@@ -87,7 +87,10 @@ void main() {
             file.path.endsWith('/lib/models/conversation_models.dart');
         final isEventIdentityLink = file.path
             .endsWith('/lib/models/event_participant_identity_link.dart');
-        expect(usesIdentity, isConversationModel || isEventIdentityLink,
+        final isCanonicalHumanModel =
+            file.path.endsWith('/lib/models/human/human_model.dart');
+        expect(usesIdentity,
+            isConversationModel || isEventIdentityLink || isCanonicalHumanModel,
             reason: '${file.path} has an unexpected identity dependency.');
       }
     }
