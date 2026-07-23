@@ -8,8 +8,12 @@ import '../core/identity/entity_identity.dart';
 import '../core/identity/entity_matcher.dart';
 import '../core/identity/uuid_v7_entity_id_generator.dart';
 import '../models/shopping_item_model.dart';
-import 'cloud_shopping_service.dart';
+import '../models/revisioned_domain_models.dart';
+import '../models/revisioned_sync_protocol.dart';
+import 'auth_service.dart';
 import 'app_diagnostics.dart';
+import 'revisioned_cloud_repositories.dart';
+import 'revisioned_domain_sync_service.dart';
 
 class ShoppingService {
   static const String shoppingKey = "shopping_items";
@@ -23,6 +27,9 @@ class ShoppingService {
   );
 
   static final ValueNotifier<int> shoppingVersion = ValueNotifier<int>(0);
+  static final ShoppingRevisionSyncService _sync = ShoppingRevisionSyncService(
+    cloud: const FirestoreRevisionedShoppingRepository(),
+  );
 
   static void notifyUpdate() {
     shoppingVersion.value++;
@@ -32,6 +39,7 @@ class ShoppingService {
     List<ShoppingItemModel> items,
   ) async {
     final prefs = await SharedPreferences.getInstance();
+    final scope = _currentAccountScope();
 
     final encoded = items
         .map(
@@ -39,13 +47,15 @@ class ShoppingService {
         )
         .toList();
 
-    await prefs.setStringList(
-      shoppingKey,
-      encoded,
-    );
+    if (scope == null) {
+      await prefs.setStringList(
+        shoppingKey,
+        encoded,
+      );
+    }
 
     try {
-      await CloudShoppingService.saveItems(items);
+      if (scope != null) await _reconcileRevisioned(scope, items);
     } catch (_) {
       AppDiagnostics.record(
         component: 'shopping_storage',
@@ -59,8 +69,9 @@ class ShoppingService {
 
   static Future<List<ShoppingItemModel>> getItems() async {
     final prefs = await SharedPreferences.getInstance();
+    final scope = _currentAccountScope();
 
-    final data = prefs.getStringList(shoppingKey);
+    final data = scope == null ? prefs.getStringList(shoppingKey) : null;
 
     final localItems = data == null
         ? <ShoppingItemModel>[]
@@ -73,25 +84,16 @@ class ShoppingService {
             .toList();
 
     try {
-      final cloudItems = await CloudShoppingService.getItems();
+      final cloudValues = scope == null
+          ? const <RevisionedShoppingItem>[]
+          : await _sync.bootstrap(scope);
+      final cloudItems = cloudValues
+          .where((value) => !value.isTombstone)
+          .map((value) => value.item)
+          .toList(growable: false);
 
-      if (cloudItems.isNotEmpty) {
-        final encoded = cloudItems
-            .map(
-              (item) => jsonEncode(item.toJson()),
-            )
-            .toList();
-
-        await prefs.setStringList(
-          shoppingKey,
-          encoded,
-        );
-
+      if (scope != null) {
         return cloudItems;
-      }
-
-      if (localItems.isNotEmpty) {
-        await CloudShoppingService.saveItems(localItems);
       }
     } catch (_) {
       AppDiagnostics.record(
@@ -135,5 +137,69 @@ class ShoppingService {
     List<ShoppingItemModel> items,
   ) async {
     await saveItems(items);
+  }
+
+  static Future<void> _reconcileRevisioned(
+    String scope,
+    List<ShoppingItemModel> proposed,
+  ) async {
+    final current = await _sync.bootstrap(scope);
+    final currentById = {for (final value in current) value.entityId: value};
+    final proposedById = {
+      for (final item in proposed)
+        if (EntityIdentity.isValid(item.id)) item.id!: item,
+    };
+    const mutationIds = UuidV7EntityIdGenerator();
+    for (final entry in proposedById.entries) {
+      final existing = currentById[entry.key];
+      final mutation = ShoppingMutation(
+        mutationId: mutationIds.generate(),
+        targetId: entry.key,
+        expectedRevision: existing?.revision ?? 0,
+        createdAt: DateTime.now().toUtc(),
+        attempt: 0,
+        nextRetryAt: null,
+        state: RevisionedMutationState.queued,
+        type: existing == null
+            ? ShoppingMutationType.addItem
+            : ShoppingMutationType.updateItem,
+        item: entry.value,
+        clearGeneration: existing?.clearGeneration ?? 0,
+      );
+      if (existing == null ||
+          !existing.isTombstone &&
+              jsonEncode(existing.item.toJson()) !=
+                  jsonEncode(entry.value.toJson())) {
+        await _sync.apply(scope, mutation);
+      }
+    }
+    for (final existing in current.where(
+      (value) =>
+          !value.isTombstone && !proposedById.containsKey(value.entityId),
+    )) {
+      await _sync.apply(
+        scope,
+        ShoppingMutation(
+          mutationId: mutationIds.generate(),
+          targetId: existing.entityId,
+          expectedRevision: existing.revision,
+          createdAt: DateTime.now().toUtc(),
+          attempt: 0,
+          nextRetryAt: null,
+          state: RevisionedMutationState.queued,
+          type: ShoppingMutationType.removeItem,
+          item: existing.item,
+          clearGeneration: existing.clearGeneration,
+        ),
+      );
+    }
+  }
+
+  static String? _currentAccountScope() {
+    try {
+      return AuthService.currentUserId;
+    } on Object {
+      return null;
+    }
   }
 }

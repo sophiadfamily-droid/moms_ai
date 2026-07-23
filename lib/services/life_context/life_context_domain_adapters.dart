@@ -22,6 +22,9 @@ typedef EventContextSyncLoader = Future<Map<String, String>> Function(
 typedef TaskContextLoader = Future<List<TaskModel>> Function(
   String accountScopeId,
 );
+typedef TaskContextSyncLoader = Future<TaskLifeContextSyncMetadata> Function(
+  String accountScopeId,
+);
 typedef MemoryContextLoader = Future<List<Map<String, dynamic>>> Function(
   String accountScopeId,
 );
@@ -449,10 +452,14 @@ final class EventLifeContextAdapter implements LifeContextDomainAdapter {
 }
 
 final class TaskLifeContextAdapter implements LifeContextDomainAdapter {
-  const TaskLifeContextAdapter({required TaskContextLoader load})
-      : _load = load;
+  const TaskLifeContextAdapter({
+    required TaskContextLoader load,
+    TaskContextSyncLoader? loadSyncMetadata,
+  })  : _load = load,
+        _loadSyncMetadata = loadSyncMetadata;
 
   final TaskContextLoader _load;
+  final TaskContextSyncLoader? _loadSyncMetadata;
 
   @override
   LifeContextDomain get domain => LifeContextDomain.task;
@@ -461,6 +468,9 @@ final class TaskLifeContextAdapter implements LifeContextDomainAdapter {
   Future<TaskDomainSection> load(LifeContextAdapterRequest request) async {
     try {
       final source = await _load(request.accountScopeId);
+      final syncMetadata = await _loadSyncMetadata?.call(
+        request.accountScopeId,
+      );
       final items = source.map((task) {
         final id = task.id;
         if (id == null || id.trim().isEmpty) {
@@ -472,7 +482,7 @@ final class TaskLifeContextAdapter implements LifeContextDomainAdapter {
           isCompleted: task.isDone,
           dueDate: _optional(task.dueDate),
           durationMinutes: null,
-          syncStatus: 'unknown',
+          syncStatus: syncMetadata?.itemSyncStatuses[id] ?? 'unknown',
         );
       }).toList()
         ..sort((a, b) => a.id.compareTo(b.id));
@@ -485,8 +495,10 @@ final class TaskLifeContextAdapter implements LifeContextDomainAdapter {
               ? LifeContextAvailability.empty
               : LifeContextAvailability.available,
           LifeContextFreshness.current,
-          false,
+          syncMetadata != null,
           items.length,
+          revision: syncMetadata?.revision,
+          syncStatus: syncMetadata?.syncStatus,
         ),
         tasks: items,
       );

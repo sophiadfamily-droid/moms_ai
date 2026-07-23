@@ -30,7 +30,10 @@ abstract final class LifeContextProductionFactory {
           load: EventService.getEventsForLifeContext,
           loadSyncStatuses: EventService.getEventSyncStatesForLifeContext,
         ),
-        TaskLifeContextAdapter(load: TaskService.getTasksForLifeContext),
+        TaskLifeContextAdapter(
+          load: TaskService.getTasksForLifeContext,
+          loadSyncMetadata: TaskService.getTaskSyncMetadataForLifeContext,
+        ),
         RoutineLifeContextAdapter(loadHuman: loadHuman),
         MemoryLifeContextAdapter(
           loadMemories: MemoryService.getMemoriesForLifeContext,

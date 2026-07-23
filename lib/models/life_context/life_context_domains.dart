@@ -25,6 +25,22 @@ enum LifeContextSourceKind {
 
 enum LifeContextGlobalState { complete, partial, unavailable }
 
+final class TaskLifeContextSyncMetadata {
+  const TaskLifeContextSyncMetadata({
+    required this.revision,
+    required this.syncStatus,
+    required this.pendingCount,
+    required this.hasConflict,
+    required this.itemSyncStatuses,
+  });
+
+  final int revision;
+  final String syncStatus;
+  final int pendingCount;
+  final bool hasConflict;
+  final Map<String, String> itemSyncStatuses;
+}
+
 final class LifeContextSourceMetadata {
   const LifeContextSourceMetadata({
     required this.domain,

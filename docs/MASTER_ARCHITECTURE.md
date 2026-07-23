@@ -1489,6 +1489,69 @@ plus 50 événements sans ancienne copie du contenu. Une suppression remplace le
 contenu par un marqueur neutre et ne peut jamais cascader vers Identity,
 HumanModel, Event, Task, Routine, profil ou compte.
 
+## 24. Synchronisation révisionnée Task, Shopping et Profile (V1-Y.1)
+
+Y.1 remplace l’autorité historique des listes complètes par trois flux
+révisionnés. Une création commence à la révision 1. Toute mise à jour porte un
+`expectedRevision` et une `mutationId`, puis la transaction cloud accepte
+uniquement N → N+1. Un retry portant la même mutation est idempotent ; la même
+mutation avec un autre résultat et toute révision obsolète deviennent des
+conflits explicites. Les suppressions Task et Shopping sont des tombstones :
+une mutation ancienne ne peut donc pas ressusciter une donnée.
+
+Les états locaux et les journaux sont séparés par compte et domaine. Les clés
+`zelia_y1_<domain>_state_v1:<scope>` et
+`zelia_y1_<domain>_journal_v1:<scope>` sont versionnées. Le journal conserve au
+maximum 200 mutations, 200 reçus et 100 conflits, avec cinq tentatives au
+maximum et une sauvegarde précédente relue en cas de corruption. Le bootstrap
+charge au plus 100 documents cloud par domaine, adopte les révisions valides et
+préserve les mutations locales non synchronisées. Un échec réseau laisse un
+état `queued`/`unavailable`; il n’est jamais annoncé comme succès cloud.
+
+Les façades `TaskService`, `ShoppingService` et `StorageService` restent
+compatibles avec les écrans historiques, mais leurs écritures authentifiées
+passent par `TaskRevisionSyncService`, `ShoppingRevisionSyncService` ou
+`ProfileRevisionSyncService`. Les anciens documents restent lisibles et sont
+convertis additivement lors de leur prochaine mutation. Les réécritures
+complètes et suppressions physiques cloud sont refusées.
+
+### Propriété Profile et HumanModel
+
+HumanModel reste seul propriétaire des personnes, relations, foyers,
+domiciles, appartenances et responsabilités. `ProfileFieldOwnership` ferme la
+liste des champs encore propriétaires de Profile : réglages de planning,
+travail, organisation, notifications, langue et préférences générales. Un
+patch contenant un champ humain produit
+`canonicalOwnershipConflict`; il n’est jamais fusionné. Les extensions legacy
+inconnues restent conservées pour compatibilité, mais la payload Profile
+révisionnée n’exporte ni personne ni famille.
+
+### Conflits, A.1 et Life Context
+
+Les conflits sont bornés et typés (`revisionConflict`,
+`completionConflict`, `listConflict`, `profileFieldConflict`,
+`canonicalOwnershipConflict`, corruption ou mauvais compte). Aucun texte libre
+n’est fusionné automatiquement. Un retry issu de Conversation conserve
+uniquement sa référence A.1 minimale et doit repasser par un
+`RevisionedActionRetryGuard`; Pause ou une confirmation Suggestions devenue
+obsolète bloque le retry.
+
+Life Context continue de consommer le dernier état métier valide par les
+façades account-scoped. Il ne reçoit jamais le journal, les reçus, les
+tombstones, les mutations ou les conflits complets. LC.3 reste responsable de
+la sélection et des budgets.
+
+Les règles Firestore locales ferment Task, Shopping et Profile : propriétaire
+authentifié, scope et identifiant cohérents, version 1, création à la révision
+1, incrément exact, `lastMutationId` renouvelé, timestamps serveur, tombstone
+monotone et suppression directe interdite. Elles ne sont pas déployées par
+Y.1.
+
+Y.2 reste nécessaire pour Routine et Documents. Y.3/Y.4 restent nécessaires
+pour les protocoles d’export et la convergence multiappareil plus générale.
+A.2 reste reportée : Y.1 fournit des références techniques stables et des
+reçus d’idempotence, mais ne crée ni ledger d’actions, ni replay, ni undo.
+
 La suppression globale est renforcée, paginée par lots de 20, reprenable et
 isolée au compte authentifié. Hors ligne, elle demeure pending. Les mémoires
 legacy Routine et les références structurées sont archivées pour préserver la

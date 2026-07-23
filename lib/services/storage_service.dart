@@ -3,14 +3,24 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/user_profile.dart';
+import '../models/revisioned_domain_models.dart';
+import '../models/revisioned_sync_protocol.dart';
 import '../core/identity/uuid_v7_entity_id_generator.dart';
-import 'cloud_profile_service.dart';
+import 'auth_service.dart';
 import 'app_diagnostics.dart';
+import 'revisioned_cloud_repositories.dart';
+import 'revisioned_domain_sync_service.dart';
 
 class StorageService {
   static const String userProfileKey = "user_profile";
 
   static const String onboardingDoneKey = "onboarding_done";
+  static final ProfileRevisionSyncService _sync = ProfileRevisionSyncService(
+    cloud: const FirestoreRevisionedProfileRepository(),
+  );
+
+  static String _scopedCompatibilityKey(String scope) =>
+      'user_profile_compatibility_v1:$scope';
 
   static Future<UserProfile> saveUserProfile(
     UserProfile profile,
@@ -33,11 +43,12 @@ class StorageService {
           .toList(growable: false),
     );
     final prefs = await SharedPreferences.getInstance();
+    final scope = _currentAccountScope();
 
     final profileJson = jsonEncode(persistedProfile.toJson());
 
     await prefs.setString(
-      userProfileKey,
+      scope == null ? userProfileKey : _scopedCompatibilityKey(scope),
       profileJson,
     );
 
@@ -47,7 +58,31 @@ class StorageService {
     );
 
     try {
-      await CloudProfileService.saveProfile(persistedProfile);
+      if (scope != null) {
+        final current = await _sync.bootstrap(scope);
+        final mutationId = idGenerator.generate();
+        final result = await _sync.apply(
+          scope,
+          ProfileMutation(
+            mutationId: mutationId,
+            targetId: RevisionedProfileState.entityId,
+            expectedRevision: current?.revision ?? 0,
+            createdAt: DateTime.now().toUtc(),
+            attempt: 0,
+            nextRetryAt: null,
+            state: RevisionedMutationState.queued,
+            type: current == null
+                ? ProfileMutationType.updateCompatibilityProjection
+                : ProfileMutationType.updateProfileFields,
+            changedFields: ProfileFieldOwnership.profileOwnedFields,
+            profile: persistedProfile,
+          ),
+        );
+        if (!result.isRealSuccess &&
+            result.status != RevisionedCloudWriteStatus.unavailable) {
+          throw const FormatException('profile_sync_conflict');
+        }
+      }
     } catch (_) {
       AppDiagnostics.record(
         component: 'profile_storage',
@@ -60,9 +95,11 @@ class StorageService {
 
   static Future<UserProfile?> getUserProfile() async {
     final prefs = await SharedPreferences.getInstance();
+    final scope = _currentAccountScope();
 
     try {
-      final cloudProfile = await CloudProfileService.getProfile();
+      final cloudProfile =
+          scope == null ? null : (await _sync.bootstrap(scope))?.profile;
 
       if (cloudProfile != null) {
         await prefs.setString(
@@ -85,7 +122,9 @@ class StorageService {
       );
     }
 
-    final profileData = prefs.getString(userProfileKey);
+    final profileData = prefs.getString(
+      scope == null ? userProfileKey : _scopedCompatibilityKey(scope),
+    );
 
     if (profileData == null) {
       return null;
@@ -109,12 +148,23 @@ class StorageService {
 
   static Future<void> resetOnboarding() async {
     final prefs = await SharedPreferences.getInstance();
+    final scope = _currentAccountScope();
 
-    await prefs.remove(userProfileKey);
+    await prefs.remove(
+      scope == null ? userProfileKey : _scopedCompatibilityKey(scope),
+    );
 
     await prefs.setBool(
       onboardingDoneKey,
       false,
     );
+  }
+
+  static String? _currentAccountScope() {
+    try {
+      return AuthService.currentUserId;
+    } on Object {
+      return null;
+    }
   }
 }

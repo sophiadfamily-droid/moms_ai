@@ -212,6 +212,91 @@ service cloud.firestore {
         && next.updatedAt == request.time;
     }
 
+    function hasValidRevisionedEntity(userId, entityId) {
+      let data = request.resource.data;
+      return data.keys().hasOnly([
+          'schemaVersion', 'accountScopeId', 'entityId', 'payload', 'revision',
+          'createdAt', 'updatedAt', 'lastMutationId', 'syncStatus',
+          'isTombstone', 'clearGeneration'
+        ])
+        && data.keys().hasAll([
+          'schemaVersion', 'accountScopeId', 'entityId', 'payload', 'revision',
+          'createdAt', 'updatedAt', 'lastMutationId', 'syncStatus',
+          'isTombstone'
+        ])
+        && data.schemaVersion == 1
+        && data.accountScopeId == userId
+        && data.entityId == entityId
+        && data.entityId is string
+        && data.entityId.size() > 0
+        && data.entityId.size() <= 200
+        && data.payload is map
+        && data.payload.size() <= 32
+        && data.revision is int
+        && data.revision > 0
+        && data.lastMutationId is string
+        && data.lastMutationId.size() > 0
+        && data.lastMutationId.size() <= 128
+        && data.syncStatus == 'synced'
+        && data.isTombstone is bool
+        && (!data.keys().hasAny(['clearGeneration'])
+          || (data.clearGeneration is int && data.clearGeneration >= 0));
+    }
+
+    function isValidRevisionedCreate(userId, entityId) {
+      return hasValidRevisionedEntity(userId, entityId)
+        && request.resource.data.revision == 1
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function isValidRevisionedUpdate(userId, entityId) {
+      let next = request.resource.data;
+      let previous = resource.data;
+      return hasValidRevisionedEntity(userId, entityId)
+        && next.accountScopeId == previous.accountScopeId
+        && next.entityId == previous.entityId
+        && next.schemaVersion == previous.schemaVersion
+        && next.createdAt == previous.createdAt
+        && next.revision == previous.revision + 1
+        && next.lastMutationId != previous.lastMutationId
+        && (!previous.isTombstone || next.isTombstone)
+        && next.updatedAt == request.time;
+    }
+
+    function hasValidRevisionedProfile(userId) {
+      let data = request.resource.data;
+      return data.keys().hasOnly([
+          'schemaVersion', 'accountScopeId', 'entityId', 'payload',
+          'profileRevision', 'createdAt', 'updatedAt', 'lastMutationId',
+          'syncStatus', 'legacyExtensions', 'projectionProvenance'
+        ])
+        && data.keys().hasAll([
+          'schemaVersion', 'accountScopeId', 'entityId', 'payload',
+          'profileRevision', 'createdAt', 'updatedAt', 'lastMutationId',
+          'syncStatus', 'legacyExtensions', 'projectionProvenance'
+        ])
+        && data.schemaVersion == 1
+        && data.accountScopeId == userId
+        && data.entityId == 'profile'
+        && data.payload is map
+        && data.payload.size() <= 40
+        && !data.payload.keys().hasAny([
+          'humanPersonId', 'partnerHumanPersonId', 'firstName', 'familyStatus',
+          'partnerName', 'children', 'age', 'birthDate', 'partnerBirthDate',
+          'relationshipStatus', 'marriageDate', 'engagementDate'
+        ])
+        && data.profileRevision is int
+        && data.profileRevision > 0
+        && data.lastMutationId is string
+        && data.lastMutationId.size() > 0
+        && data.lastMutationId.size() <= 128
+        && data.syncStatus == 'synced'
+        && data.legacyExtensions is map
+        && data.legacyExtensions.size() <= 64
+        && data.projectionProvenance in ['profileOwned', 'legacyCloud'];
+    }
+
     function hasValidMemoryPolicyShape(userId) {
       let data = request.resource.data;
       return data.keys().hasOnly([
@@ -333,8 +418,48 @@ service cloud.firestore {
         allow delete: if isOwner(userId);
       }
 
+      match /tasks/{taskId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId)
+          && isValidRevisionedCreate(userId, taskId);
+        allow update: if isOwner(userId)
+          && isValidRevisionedUpdate(userId, taskId);
+        allow delete: if false;
+      }
+
+      match /shopping_items/{itemId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId)
+          && isValidRevisionedCreate(userId, itemId);
+        allow update: if isOwner(userId)
+          && isValidRevisionedUpdate(userId, itemId);
+        allow delete: if false;
+      }
+
       match /private/profile {
-        allow read, write: if isOwner(userId);
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId)
+          && hasValidRevisionedProfile(userId)
+          && request.resource.data.profileRevision == 1
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.updatedAt == request.time;
+        allow update: if isOwner(userId)
+          && hasValidRevisionedProfile(userId)
+          && (
+            (
+              resource.data.keys().hasAny(['profileRevision'])
+              && request.resource.data.accountScopeId == resource.data.accountScopeId
+              && request.resource.data.createdAt == resource.data.createdAt
+              && request.resource.data.profileRevision == resource.data.profileRevision + 1
+              && request.resource.data.lastMutationId != resource.data.lastMutationId
+            )
+            || (
+              !resource.data.keys().hasAny(['profileRevision'])
+              && request.resource.data.profileRevision == 2
+            )
+          )
+          && request.resource.data.updatedAt == request.time;
+        allow delete: if false;
       }
 
       match /private/humanModel {
@@ -388,6 +513,8 @@ service cloud.firestore {
         allow read, write: if isOwner(userId)
           && collection != 'identities'
           && collection != 'events'
+          && collection != 'tasks'
+          && collection != 'shopping_items'
           && collection != 'private'
           && collection != 'memories';
       }

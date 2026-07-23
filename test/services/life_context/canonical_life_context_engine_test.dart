@@ -243,11 +243,24 @@ void main() {
         () async {
       final section = await TaskLifeContextAdapter(
         load: (_) async => _tasks(),
+        loadSyncMetadata: (_) async => const TaskLifeContextSyncMetadata(
+          revision: 7,
+          syncStatus: 'pending',
+          pendingCount: 1,
+          hasConflict: false,
+          itemSyncStatuses: {
+            'task-a': 'queued',
+            'task-b': 'synced',
+          },
+        ),
       ).load(
           LifeContextAdapterRequest(accountScopeId: 'account-a', readAt: now));
       expect(section.tasks, hasLength(2));
       expect(section.tasks.first.dueDate, '2026-07-30');
       expect(section.tasks.last.dueDate, isNull);
+      expect(section.metadata.revision, 7);
+      expect(section.metadata.syncStatus, 'pending');
+      expect(section.tasks.first.syncStatus, 'queued');
       expect(section.toJson().toString(), isNot(contains('priority')));
       expect(section.toJson().toString(), isNot(contains('important')));
     });
