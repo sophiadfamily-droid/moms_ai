@@ -42,6 +42,10 @@ final class LifeMemoryFact {
   final double? confidence;
   final LifeContextSensitivity sensitivity;
   final LifeContextEvidenceType evidenceType;
+  final bool isExplicitHealth;
+  final DateTime? lastConfirmedAt;
+  final String? structuredDomain;
+  final String? structuredReferenceId;
   final Map<String, Object?> _legacyData;
 
   LifeMemoryFact({
@@ -63,6 +67,10 @@ final class LifeMemoryFact {
     this.confidence,
     this.lifecycleState = MemoryLifecycleState.proposed,
     this.lifecycleStateIsExplicit = false,
+    this.isExplicitHealth = false,
+    this.lastConfirmedAt,
+    this.structuredDomain,
+    this.structuredReferenceId,
     Map<String, Object?> legacyData = const {},
   }) : _legacyData = _freezeMap(legacyData);
 
@@ -87,6 +95,12 @@ final class LifeMemoryFact {
         'confidence': confidence,
         'sensitivity': sensitivity.name,
         'evidenceType': evidenceType.name,
+        'isExplicitHealth': isExplicitHealth,
+        if (lastConfirmedAt != null)
+          'lastConfirmedAt': lastConfirmedAt!.toIso8601String(),
+        if (structuredDomain != null) 'structuredDomain': structuredDomain,
+        if (structuredReferenceId != null)
+          'structuredReferenceId': structuredReferenceId,
         if (_legacyData.isNotEmpty) 'legacyData': _copyMap(_legacyData),
       };
 
@@ -121,14 +135,23 @@ final class LifeMemoryFact {
 }
 
 final class MemoryContext {
+  static const int currentSchemaVersion = 1;
+
   final List<LifeMemoryFact> memories;
+  final int schemaVersion;
 
-  const MemoryContext._(this.memories);
+  const MemoryContext._(this.memories, this.schemaVersion);
 
-  static const empty = MemoryContext._([]);
+  static const empty = MemoryContext._([], currentSchemaVersion);
 
-  factory MemoryContext({List<LifeMemoryFact> memories = const []}) {
-    return MemoryContext._(List.unmodifiable(memories));
+  factory MemoryContext({
+    List<LifeMemoryFact> memories = const [],
+    int schemaVersion = currentSchemaVersion,
+  }) {
+    if (schemaVersion != currentSchemaVersion) {
+      throw const FormatException('unsupported_memory_context_version');
+    }
+    return MemoryContext._(List.unmodifiable(memories), schemaVersion);
   }
 
   bool get isEmpty => memories.isEmpty;
@@ -139,6 +162,7 @@ final class MemoryContext {
       });
 
   Map<String, dynamic> toJson() => {
+        'schemaVersion': schemaVersion,
         'memories': memories.map((memory) => memory.toJson()).toList(),
       };
 }

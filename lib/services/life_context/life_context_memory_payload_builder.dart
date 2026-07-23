@@ -1,6 +1,6 @@
 import '../../models/life_context/life_context_provenance.dart';
 import '../../models/life_context/memory_context.dart';
-import 'life_context_memory_serializer.dart';
+import 'memory_projection_backend_serializer.dart';
 
 final class LifeContextMemoryPayloadBuilder {
   const LifeContextMemoryPayloadBuilder();
@@ -15,9 +15,9 @@ final class LifeContextMemoryPayloadBuilder {
       message: message,
       limit: limit,
     );
-    return selected.memories
-        .map(LifeContextMemorySerializer.toBackendMap)
-        .toList(growable: false);
+    return MemoryProjectionBackendSerializer.serializeLegacySelection(
+      selected.memories,
+    );
   }
 
   MemoryContext select({

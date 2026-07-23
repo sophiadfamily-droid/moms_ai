@@ -11,6 +11,7 @@ import '../services/storage_service.dart';
 import '../services/auth_service.dart';
 import 'auth/auth_screen.dart';
 import 'human_profile_screen.dart';
+import 'memory_settings_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final UserProfile profile;
@@ -3533,14 +3534,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
         buildProfileRow(
           icon: Icons.auto_awesome,
           label: "Mémoire Zelia",
-          value: "Active",
+          value: "Gérer les consentements",
           iconColor: textSoft,
           onTap: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                  "Mémoire IA déjà reliée au chat ",
-                ),
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const MemorySettingsScreen(),
               ),
             );
           },

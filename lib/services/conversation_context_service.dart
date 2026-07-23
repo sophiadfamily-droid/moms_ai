@@ -1,8 +1,13 @@
 import '../models/chat_backend_request.dart';
 import '../models/event_model.dart';
+import '../models/life_context/life_context_provenance.dart';
+import '../models/life_context/memory_context.dart';
 import '../models/memory_lifecycle.dart';
+import '../models/memory_lifecycle_state.dart';
+import '../models/memory_policy.dart';
 import '../models/user_profile.dart';
 import 'conversation_context_privacy_filter.dart';
+import 'auth_service.dart';
 import 'app_diagnostics.dart';
 import 'event_service.dart';
 import 'memory_pipeline_service.dart';
@@ -10,15 +15,18 @@ import 'memory_reasoning_service.dart';
 import 'memory_service.dart';
 import 'life_context/life_context_engine.dart';
 import 'life_context/life_context_memory_payload_builder.dart';
-import 'life_context/life_context_memory_serializer.dart';
+import 'life_context/memory_projection_backend_serializer.dart';
 import 'memory_lifecycle_engine.dart';
 import 'memory_lifecycle_repository.dart';
+import 'memory_policy_engine.dart';
+import 'memory_policy_service.dart';
 import 'profile_context_builder_service.dart';
 import 'memory_proposal_factory.dart';
 
 typedef ConversationMemoryLoader = Future<List<Map<String, dynamic>>>
     Function();
 typedef ConversationEventLoader = Future<List<EventModel>> Function();
+typedef ConversationMemoryPolicyLoader = Future<MemoryPolicy> Function();
 
 abstract class ConversationContextProvider {
   Future<ChatBackendRequest> buildRequest({
@@ -47,6 +55,8 @@ class DefaultConversationContextProvider
   final MemoryLifecycleEngine _memoryLifecycleEngine;
   final MemoryProposalFactory _memoryProposalFactory;
   final MemoryLifecycleRepository? _memoryLifecycleRepository;
+  final MemoryPolicyEngine _memoryPolicyEngine;
+  final ConversationMemoryPolicyLoader? _loadMemoryPolicy;
 
   const DefaultConversationContextProvider({
     LifeContextEngine? lifeContextEngine,
@@ -59,6 +69,8 @@ class DefaultConversationContextProvider
     MemoryLifecycleEngine memoryLifecycleEngine = const MemoryLifecycleEngine(),
     MemoryProposalFactory memoryProposalFactory = const MemoryProposalFactory(),
     MemoryLifecycleRepository? memoryLifecycleRepository,
+    MemoryPolicyEngine memoryPolicyEngine = const MemoryPolicyEngine(),
+    ConversationMemoryPolicyLoader? loadMemoryPolicy,
   })  : _lifeContextEngine = lifeContextEngine,
         _memoryPayloadBuilder = memoryPayloadBuilder,
         _privacyFilter = privacyFilter,
@@ -66,7 +78,9 @@ class DefaultConversationContextProvider
         _loadEvents = loadEvents,
         _memoryLifecycleEngine = memoryLifecycleEngine,
         _memoryProposalFactory = memoryProposalFactory,
-        _memoryLifecycleRepository = memoryLifecycleRepository;
+        _memoryLifecycleRepository = memoryLifecycleRepository,
+        _memoryPolicyEngine = memoryPolicyEngine,
+        _loadMemoryPolicy = loadMemoryPolicy;
 
   @override
   Future<ChatBackendRequest> buildRequest({
@@ -84,9 +98,10 @@ class DefaultConversationContextProvider
       message: message,
       limit: 12,
     );
-    final relevantMemories = selectedMemory.memories
-        .map(LifeContextMemorySerializer.toBackendMap)
-        .toList(growable: false);
+    final relevantMemories =
+        MemoryProjectionBackendSerializer.serializeLegacySelection(
+      selectedMemory.memories,
+    );
     final memoryReasoning =
         MemoryReasoningService.buildReasoningFromContext(selectedMemory);
     final profileContext = _privacyFilter.filterStructuredProfile(
@@ -188,6 +203,31 @@ class DefaultConversationContextProvider
       );
       if (proposal == null) return null;
       final existing = await repository.findCandidates(proposal);
+      final policy = await _policy();
+      final isHealth = _isExplicitHealthCategory(proposal.category);
+      final policyDecision = _memoryPolicyEngine.evaluate(
+        policy: policy,
+        input: MemoryPolicyProposal(
+          proposal: proposal,
+          sensitivity: proposal.sensitivity == LifeContextSensitivity.sensitive
+              ? MemoryProposalSensitivity.sensitive
+              : MemoryProposalSensitivity.ordinary,
+          isExplicitHealth: isHealth,
+          hasExplicitUserEvidence: source == 'explicit_user_message',
+          isDuplicate: existing.any(
+            (item) =>
+                item.semanticType == proposal.semanticType &&
+                item.category.trim().toLowerCase() ==
+                    proposal.category.trim().toLowerCase() &&
+                item.normalizedText == proposal.normalizedText,
+          ),
+          structuredDomain: _structuredOwner(proposal.semanticType),
+        ),
+      );
+      if (policyDecision.type == MemoryPolicyDecisionType.paused ||
+          policyDecision.type.name.startsWith('reject')) {
+        return null;
+      }
       final decision = _memoryLifecycleEngine.evaluateProposal(
         proposal: proposal,
         existingMemories: existing,
@@ -202,6 +242,10 @@ class DefaultConversationContextProvider
         return null;
       }
       await repository.createProposal(proposal, decision.mutations.single);
+      if (policyDecision.type == MemoryPolicyDecisionType.saveAutomatically) {
+        await _activateAutomatically(repository, proposal, proposedAt);
+        return null;
+      }
       return decision.confirmationRequest;
     } catch (_) {
       AppDiagnostics.record(
@@ -212,4 +256,82 @@ class DefaultConversationContextProvider
       return null;
     }
   }
+
+  Future<MemoryPolicy> _policy() async {
+    if (_loadMemoryPolicy != null) return _loadMemoryPolicy();
+    final service = await MemoryPolicyService.local(
+      currentAccountScopeId: () => AuthService.currentUserId,
+    );
+    return service.load();
+  }
+
+  Future<void> _activateAutomatically(
+    MemoryLifecycleRepository repository,
+    MemoryProposal proposal,
+    DateTime referenceDate,
+  ) async {
+    var fact = _factFromProposal(proposal, MemoryLifecycleState.proposed);
+    final confirmed = _memoryLifecycleEngine.evaluate(
+      MemoryLifecycleCommand(
+        action: MemoryLifecycleAction.confirm,
+        referenceDate: referenceDate,
+        actor: MemoryLifecycleActor.system,
+        source: 'memory_policy_v1',
+        target: fact,
+      ),
+    );
+    if (!confirmed.hasMutations) return;
+    fact = _factFromProposal(proposal, MemoryLifecycleState.confirmed);
+    final active = _memoryLifecycleEngine.evaluate(
+      MemoryLifecycleCommand(
+        action: MemoryLifecycleAction.activate,
+        referenceDate: referenceDate,
+        actor: MemoryLifecycleActor.system,
+        source: 'memory_policy_v1',
+        target: fact,
+      ),
+    );
+    if (!active.hasMutations) return;
+    await repository.applyMutations([
+      ...confirmed.mutations,
+      ...active.mutations,
+    ]);
+  }
+
+  LifeMemoryFact _factFromProposal(
+    MemoryProposal proposal,
+    MemoryLifecycleState state,
+  ) =>
+      LifeMemoryFact(
+        id: proposal.id,
+        text: proposal.text,
+        normalizedText: proposal.normalizedText,
+        semanticType: proposal.semanticType,
+        category: proposal.category,
+        importance: proposal.importance,
+        sourceType: LifeContextSourceType.memory,
+        sourceId: proposal.source,
+        createdAt: proposal.proposedAt,
+        validFrom: proposal.validFrom,
+        validUntil: proposal.validUntil,
+        confirmationStatus: state == MemoryLifecycleState.confirmed
+            ? MemoryConfirmationStatus.confirmed
+            : MemoryConfirmationStatus.unconfirmed,
+        sensitivity: proposal.sensitivity,
+        evidenceType: LifeContextEvidenceType.explicit,
+        lifecycleState: state,
+        lifecycleStateIsExplicit: true,
+        confidence: proposal.confidence,
+      );
+
+  bool _isExplicitHealthCategory(String category) {
+    final value = category.trim().toLowerCase();
+    return value == 'health' || value == 'medical' || value == 'sante';
+  }
+
+  String? _structuredOwner(LifeMemorySemanticType type) => switch (type) {
+        LifeMemorySemanticType.routine => 'routine',
+        LifeMemorySemanticType.relationship => 'human',
+        _ => null,
+      };
 }

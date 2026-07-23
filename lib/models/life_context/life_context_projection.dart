@@ -23,6 +23,7 @@ enum LifeContextProjectionSectionType {
   event,
   task,
   routine,
+  memory,
   relation,
 }
 
@@ -45,6 +46,7 @@ abstract final class LifeContextProjectionFactKeys {
   static const endTime = 'endTime';
   static const travelMinutes = 'travelMinutes';
   static const title = 'title';
+  static const category = 'category';
   static const sourceNodeId = 'sourceNodeId';
   static const targetNodeId = 'targetNodeId';
 
@@ -67,6 +69,7 @@ abstract final class LifeContextProjectionFactKeys {
     endTime,
     travelMinutes,
     title,
+    category,
     sourceNodeId,
     targetNodeId,
   };
@@ -132,13 +135,14 @@ final class LifeContextConsumerContract {
             LifeContextSensitivityLevel.ordinaryPersonal,
             LifeContextSensitivityLevel.privatePersonal,
           },
-          globalBudget: 215,
+          globalBudget: 245,
           sectionBudgets: const {
             LifeContextProjectionSectionType.human: 55,
             LifeContextProjectionSectionType.identity: 10,
             LifeContextProjectionSectionType.event: 50,
             LifeContextProjectionSectionType.task: 30,
             LifeContextProjectionSectionType.routine: 20,
+            LifeContextProjectionSectionType.memory: 30,
             LifeContextProjectionSectionType.relation: 50,
           },
           pastWindow: const Duration(days: 7),

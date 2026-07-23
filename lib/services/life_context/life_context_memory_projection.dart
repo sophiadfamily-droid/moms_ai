@@ -47,8 +47,19 @@ final class HistoricalMemoryContextProjection
       confidence: _confidence(snapshot['confidence']),
       sensitivity: _sensitivity(category, text),
       evidenceType: _evidenceType(snapshot['evidenceType']),
+      isExplicitHealth: _isExplicitHealth(category),
+      lastConfirmedAt: _dateTime(snapshot['confirmedAt']),
+      structuredDomain: _nullableText(snapshot['structuredDomain']),
+      structuredReferenceId: _nullableText(snapshot['structuredReferenceId']),
       legacyData: _unknownFields(snapshot),
     );
+  }
+
+  bool _isExplicitHealth(String category) {
+    final normalized = _normalizeCategory(category);
+    return normalized == 'health' ||
+        normalized == 'medical' ||
+        normalized == 'sante';
   }
 
   LifeMemorySemanticType _semanticType(String category, String text) {
@@ -237,6 +248,9 @@ final class HistoricalMemoryContextProjection
       'lifecycleState',
       'confidence',
       'evidenceType',
+      'confirmedAt',
+      'structuredDomain',
+      'structuredReferenceId',
     };
     return Map.unmodifiable(
       Map<String, Object?>.fromEntries(

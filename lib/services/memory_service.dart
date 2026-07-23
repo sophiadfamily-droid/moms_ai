@@ -124,4 +124,14 @@ class MemoryService {
       return [];
     }
   }
+
+  static Future<List<Map<String, dynamic>>> getMemoriesForLifeContext(
+    String accountScopeId,
+  ) async {
+    final uid = AuthService.currentUserId;
+    if (uid == null || uid.isEmpty || uid != accountScopeId) {
+      throw StateError('memory_account_mismatch');
+    }
+    return getMemories();
+  }
 }

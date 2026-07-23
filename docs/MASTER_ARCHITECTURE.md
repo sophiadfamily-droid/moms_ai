@@ -305,13 +305,13 @@ An engine is a cohesive domain capability with explicit inputs, outputs, invaria
 ### 7.2 Life Context Engine
 
 **LC.1 implemented foundation.** `LifeContextEngine.buildCanonicalSnapshot`
-is the single multi-domain construction boundary. Five injected, read-only
-adapters project HumanModel, confirmed Identity links, Event, Task, and the
-currently structured legacy Routine source. Each domain keeps ownership and
-persistence of its own records; Life Context is reconstructible and is never a
-second database.
+is the single multi-domain construction boundary. Six injected, read-only
+adapters project HumanModel, confirmed Identity links, Event, Task, the
+currently structured legacy Routine source, and the consent-filterable Memory
+source. Each domain keeps ownership and persistence of its own records; Life
+Context is reconstructible and is never a second database.
 
-The canonical snapshot schema is version 4 and each new domain section starts
+The canonical snapshot schema is version 5 and each new domain section starts
 at section schema version 1. It contains an authenticated internal
 account scope, a random non-personal snapshot ID, generation time, global
 complete/partial/unavailable state, typed domain sections, and source metadata.
@@ -423,8 +423,8 @@ temporal facts. They never serialize LC.1, LC.2, or `UserProfile` wholesale.
 The current production conversation and planning workflows retain their
 legacy paths until their dedicated migrations; LC.3 adds no second
 multi-domain reader and does not silently send an additional context to
-OpenAI. Memory policy, priority, final conversation orchestration, and
-planning decisions remain separate later phases.
+OpenAI. Priority, final conversation orchestration, and planning decisions
+remain separate later phases.
 
 ### 7.3 Profile Engine
 
@@ -434,9 +434,45 @@ planning decisions remain separate later phases.
 
 ### 7.4 Memory Engine
 
-**Current state:** Eligibility, categorization, normalization, exact duplicate prevention, persistence, context construction, reasoning, similarity helpers, consolidation helpers, and recurring-memory schedule interpretation exist. Not every helper is active in the live pipeline. Memory modification and deletion are not yet complete product flows.
+**M.1 policy foundation.** `MemoryPolicy` schema v1 is account-scoped and
+defaults restrictively to `askEveryTime`, with health disabled. General modes
+are automatic, confirmation for every item, and pause. Health has its own
+disabled, confirmation-per-item, and explicitly enabled policy; general
+automatic mode never grants health consent. `MemoryPolicyEngine` is the closed,
+pure decision boundary. It rejects pauses, duplicates, structured-domain
+ownership, contradictions, highly sensitive content, and missing health
+consent before persistence. It never reads a repository, calls a model, or
+decides whether free text is true.
 
-**Planned architecture:** The Memory Engine owns the lifecycle of durable learned context: extraction eligibility, provenance, persistence result, retrieval relevance, correction, deletion, consolidation, and projections into other engines. It must preserve creation metadata when that metadata anchors recurrence.
+Policy transitions are additive: they neither delete existing memories nor
+approve pending proposals, alter routines, or ingest paused conversations
+retroactively. A pause blocks new proposals and writes while existing memories
+remain readable under the consumer contract. Settings are stored locally under
+an account-scoped, versioned key; cross-device policy synchronization is
+deliberately deferred to M.2.
+
+`MemoryContext` schema v1 is the typed compatibility projection over the
+existing `users/{uid}/memories` source. It preserves lifecycle, confirmation,
+provenance, sensitivity, temporal bounds, explicit health classification, and
+optional structured-domain references without rewriting or deleting legacy
+documents. Ambiguous legacy records remain unconfirmed. Memory is now a typed
+LC.1 domain section with availability, freshness, policy state, and a bounded
+item count.
+
+LC.3 Conversation selects only active, policy-authorized, non-duplicated
+memory items under its Memory section budget. Explicit health memories are
+excluded in M.1's current Conversation contract. The single
+`MemoryProjectionBackendSerializer` emits only bounded legacy-compatible
+`memories` maps from either the LC.3 section or the already-filtered historical
+selection; it never receives a repository, snapshot, graph, profile, or full
+`MemoryContext`. Planning excludes the Memory domain. A narrowly scoped
+compatibility bridge preserves only historical records explicitly categorized
+as recurring routines until Routine owns their migration; free preferences,
+facts, and constraints never become planning rules.
+
+The profile exposes only the minimal policy settings. The complete memory
+library, correction/deletion UI, versioned offline synchronization and
+multi-device conflicts remain M.2/M.3 work.
 
 ### 7.5 Routine Engine
 
@@ -759,12 +795,17 @@ These invariants are constitutional because they protect user trust:
 ## 13. Memory invariants
 
 - Only durable information is eligible for durable memory.
+- An absent policy is restrictive: confirmation is required and health is
+  disabled.
+- General consent never grants health consent.
+- Pause creates no proposal or memory and causes no retroactive ingestion.
 - One-off actions do not become memory merely because they contain important words.
 - Memory persistence must be successful before success is claimed.
 - Exact and semantic duplicate policies must remain distinguishable.
 - Memory context is bounded and selected through an explicit relevance policy.
 - Stored creation metadata is preserved when recurrence depends on it.
-- Memory reasoning may produce planning constraints only from complete and applicable evidence.
+- Free memory never enters Planning. Only the explicit legacy-routine
+  compatibility bridge may produce complete, applicable recurring constraints.
 - Users must ultimately be able to inspect, correct, and delete durable memories.
 - Consolidation must preserve provenance and must not erase conflicting facts silently.
 - Client and server memory responsibilities require an explicit authority contract.

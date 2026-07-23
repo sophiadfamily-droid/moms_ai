@@ -2,9 +2,59 @@
 
 ## Status
 
-This document describes the implemented Memory Lifecycle Engine V1. The
-Firestore collection remains `users/{uid}/memories`; no migration or new
-collection is required.
+This document describes the implemented Memory Lifecycle Engine V1 and the
+consent-aware M.1 policy. The Firestore collection remains
+`users/{uid}/memories`; no migration or new collection is required.
+
+## Ownership
+
+Memory owns durable preferences, declared habits, goals, constraints,
+instructions, and personal facts that have no better structured owner. Event,
+Task, Routine, HumanModel, Identity, households, residences, relationships,
+responsibilities, and Planning remain authoritative for their own facts. A
+memory may retain a bounded technical reference to one of those facts but
+cannot replace or overwrite it. `UserProfile` remains a legacy compatibility
+view and is never copied wholesale into memory.
+
+Memory and Life Context are also distinct: Memory retains information through
+time; Life Context reconstructs the facts needed by a consumer. Memory is one
+read-only Life Context source, not the owner of the aggregate context.
+
+## Consent policy
+
+`MemoryPolicy` schema v1 is isolated by authenticated `accountScopeId`.
+Missing policy means `askEveryTime` and health `disabled`; absence is never
+automatic consent.
+
+General modes:
+
+- `automatic`: only an explicit, ordinary, sufficiently trusted, eligible,
+  non-duplicate proposal outside a structured domain may be saved;
+- `askEveryTime`: an eligible proposal stays proposed until confirmed;
+- `paused`: no new proposal or write is created. Existing records remain
+  readable and untouched.
+
+Health modes are independent:
+
+- `disabled`: reject every new explicit health memory;
+- `askEveryTime`: require confirmation for each item;
+- `enabled`: permitted only after explicit health consent.
+
+General automatic mode cannot enable health. No medical condition is inferred,
+and this setting concerns memorization rather than medical advice or
+diagnosis.
+
+`MemoryPolicyEngine` is pure and deterministic. It returns a closed decision:
+automatic save, confirmation required, duplicate, structured-domain ownership,
+contradiction, sensitive/highly-sensitive rejection, health-consent rejection,
+pause, or invalid proposal. It neither parses free conversation nor reads,
+writes, or calls a model.
+
+All transitions retain existing memories and pending proposals, approve
+nothing implicitly, change no Routine or other domain, and perform no
+retroactive ingestion after a pause. The minimal profile settings are stored
+locally under `memory_policy_v1:{accountScopeId}`. Cross-device policy
+revisions belong to M.2.
 
 ## Three independent dimensions
 
@@ -90,10 +140,41 @@ readable. Unknown historical fields remain in immutable legacy metadata.
 Existing routines therefore retain their creation anchors and planning
 behavior.
 
-The broader Life Context construction still reads the existing memory stream
-through `MemoryService`. Pagination or server-side relevance for that
-pre-existing read path is deferred because it requires a wider retrieval
-contract, not a lifecycle change.
+`MemoryContext` schema v1 adapts historical records without rewriting them. It
+keeps stable identifiers, lifecycle, confirmation, dates, provenance,
+sensitivity, explicit health classification, and optional structured-domain
+references. Missing dates remain absent; ambiguous legacy provenance remains
+unconfirmed; unknown fields stay in the legacy reader metadata. No old key or
+record is deleted.
+
+The LC.1 `MemoryLifeContextAdapter` reads this source through an account-bound
+service and returns a typed section distinguishing available, empty, stale,
+unavailable, corrupted, account-mismatched, paused, and unconfigured policy
+states. The broader read is still bounded only at projection time; pagination
+or server-side relevance is deferred to M.2.
+
+## Consumer projections
+
+LC.3 Conversation includes only active, non-rejected, non-expired,
+policy-authorized memories under a deterministic section budget. Explicit
+health and memories already represented by a structured domain are excluded.
+Text is normalized and bounded. Confirmation and minimal provenance remain
+visible to the typed consumer.
+
+Planning excludes the Memory domain. For backward compatibility only,
+historical memories explicitly typed as Routine may still pass through
+`MemoryPlanningCompatibilityService` so existing recurrence anchors and
+blocked periods keep working until their Routine migration. Free preferences,
+facts, habits, or constraints are never interpreted as Planning rules.
+
+`MemoryProjectionBackendSerializer` is the only Memory-to-backend boundary. It
+accepts either the filtered Conversation projection or, during the controlled
+transition, its already-filtered historical selection. It emits bounded maps
+using the established `text`, `category`, `importance`, and creation metadata
+contract; the LC.3 path also carries confirmation and minimal source. Neither
+the full repository, `MemoryContext`, Life Context snapshot/graph, profile, nor
+source conversation is serialized. `memoryReasoning` remains a separate
+bounded compatibility field and does not duplicate the Memory repository.
 
 ## Conversational confirmation workflow
 
@@ -129,6 +210,9 @@ remain outside V1.
 
 ## Deliberately deferred
 
+- revisioned offline and multi-device policy/memory synchronization (M.2);
+- complete library, correction, individual deletion, and detailed explanation
+  UI (M.3);
 - general contradiction and entity-resolution engines;
 - probabilistic or model-based similarity;
 - restoration workflow;

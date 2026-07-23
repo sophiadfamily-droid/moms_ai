@@ -143,6 +143,8 @@ final class LifeContextEngine {
       taskDomain: sectionByDomain[LifeContextDomain.task]! as TaskDomainSection,
       routineDomain:
           sectionByDomain[LifeContextDomain.routine]! as RoutineDomainSection,
+      memoryDomain:
+          sectionByDomain[LifeContextDomain.memory]! as MemoryDomainSection,
     );
     snapshot.validateCanonical();
     return snapshot;
@@ -209,6 +211,7 @@ final class LifeContextEngine {
         LifeContextDomain.event => LifeContextSourceKind.eventService,
         LifeContextDomain.task => LifeContextSourceKind.taskService,
         LifeContextDomain.routine => LifeContextSourceKind.legacyProfileRoutine,
+        LifeContextDomain.memory => LifeContextSourceKind.memoryFirestore,
       },
       readAt: request.readAt,
       availability: LifeContextAvailability.unavailable,
@@ -226,6 +229,12 @@ final class LifeContextEngine {
       LifeContextDomain.event => EventDomainSection(metadata: metadata),
       LifeContextDomain.task => TaskDomainSection(metadata: metadata),
       LifeContextDomain.routine => RoutineDomainSection(metadata: metadata),
+      LifeContextDomain.memory => MemoryDomainSection(
+          metadata: metadata,
+          policyGeneralMode: 'askEveryTime',
+          policyHealthMode: 'disabled',
+          policyConfigured: false,
+        ),
     };
   }
 }

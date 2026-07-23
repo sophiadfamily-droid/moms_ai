@@ -13,10 +13,7 @@ import '../services/event_service.dart';
 import '../services/event_confirmation_service.dart';
 import '../services/notification_service.dart';
 import '../services/voice_service.dart';
-import '../services/memory_service.dart';
-import '../services/memory_reasoning_service.dart';
-import '../services/life_context/life_context_engine.dart';
-import '../services/life_context/life_context_memory_serializer.dart';
+import '../services/memory_planning_compatibility_service.dart';
 import '../services/smart_planning_service.dart';
 import '../services/smart_planning_response_builder.dart';
 import '../services/planning_proposal_service.dart';
@@ -25,7 +22,6 @@ import '../services/planning_proposal_selection_service.dart';
 import '../services/selected_slot_schedule_service.dart';
 import '../services/selected_slot_revalidation_service.dart';
 import '../services/planning_draft_service.dart';
-import '../services/profile_reasoning_service.dart';
 import '../services/planner_engine_service.dart';
 import '../services/conflict_engine_service.dart';
 import '../services/action_handler_service.dart';
@@ -1439,24 +1435,9 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<List<Map<String, dynamic>>> buildCurrentPlanningReasoning() async {
-    final rawMemories = await MemoryService.getMemories();
-    final snapshot = LifeContextEngine().buildSnapshot(
+    return MemoryPlanningCompatibilityService.build(
       profile: widget.profile,
-      generatedAt: DateTime.now(),
-      memories: rawMemories,
     );
-    final planningMemory = LifeContextMemorySerializer.selectForPlanning(
-      snapshot.memory,
-    );
-    final memoryReasoning =
-        MemoryReasoningService.buildReasoningFromContext(planningMemory);
-    final profileReasoning =
-        ProfileReasoningService.buildReasoningFromSnapshot(snapshot);
-
-    return [
-      ...profileReasoning,
-      ...memoryReasoning,
-    ];
   }
 
   Future<List<Map<String, dynamic>>> buildCurrentMemoryReasoning() async {

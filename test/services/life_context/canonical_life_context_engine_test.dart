@@ -9,6 +9,7 @@ import 'package:moms_ai/models/human/human_model.dart';
 import 'package:moms_ai/models/human/human_model_persistence.dart';
 import 'package:moms_ai/models/life_context/life_context_domains.dart';
 import 'package:moms_ai/models/life_context/life_context_snapshot.dart';
+import 'package:moms_ai/models/memory_policy.dart';
 import 'package:moms_ai/models/task_model.dart';
 import 'package:moms_ai/models/user_profile.dart';
 import 'package:moms_ai/services/life_context/life_context_adapter.dart';
@@ -411,6 +412,13 @@ LifeContextEngine _engine({
       EventLifeContextAdapter(load: (_) async => _events()),
       TaskLifeContextAdapter(load: taskLoader ?? (_) async => _tasks()),
       RoutineLifeContextAdapter(loadHuman: loadHuman),
+      MemoryLifeContextAdapter(
+        loadMemories: (_) async => const [],
+        loadPolicy: (scope) async => MemoryPolicy.restrictiveDefault(
+          accountScopeId: scope,
+          changedAt: now,
+        ),
+      ),
     ],
   );
 }

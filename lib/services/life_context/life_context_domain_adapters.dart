@@ -4,7 +4,9 @@ import '../../models/human/human_model_persistence.dart';
 import '../../models/life_context/life_context_domains.dart';
 import '../../models/task_model.dart';
 import '../../models/user_profile.dart';
+import '../../models/memory_policy.dart';
 import 'life_context_adapter.dart';
+import 'life_context_memory_projection.dart';
 
 typedef HumanContextLoader = Future<HumanModelLocalState?> Function(
   String accountScopeId,
@@ -16,6 +18,12 @@ typedef EventContextSyncLoader = Future<Map<String, String>> Function(
   String accountScopeId,
 );
 typedef TaskContextLoader = Future<List<TaskModel>> Function(
+  String accountScopeId,
+);
+typedef MemoryContextLoader = Future<List<Map<String, dynamic>>> Function(
+  String accountScopeId,
+);
+typedef MemoryPolicyContextLoader = Future<MemoryPolicy> Function(
   String accountScopeId,
 );
 
@@ -642,6 +650,116 @@ final class RoutineLifeContextAdapter implements LifeContextDomainAdapter {
       );
     }
   }
+}
+
+final class MemoryLifeContextAdapter implements LifeContextDomainAdapter {
+  const MemoryLifeContextAdapter({
+    required MemoryContextLoader loadMemories,
+    required MemoryPolicyContextLoader loadPolicy,
+    LifeContextMemoryProjection projection =
+        const HistoricalMemoryContextProjection(),
+  })  : _loadMemories = loadMemories,
+        _loadPolicy = loadPolicy,
+        _projection = projection;
+
+  final MemoryContextLoader _loadMemories;
+  final MemoryPolicyContextLoader _loadPolicy;
+  final LifeContextMemoryProjection _projection;
+
+  @override
+  LifeContextDomain get domain => LifeContextDomain.memory;
+
+  @override
+  Future<MemoryDomainSection> load(LifeContextAdapterRequest request) async {
+    try {
+      final policy = await _loadPolicy(request.accountScopeId);
+      if (policy.accountScopeId != request.accountScopeId) {
+        return _empty(
+          request,
+          LifeContextAvailability.accountMismatch,
+          'account_mismatch',
+        );
+      }
+      policy.validate();
+      final raw = await _loadMemories(request.accountScopeId);
+      final context = _projection.project(raw);
+      final memories = context.memories
+          .map(
+            (memory) => MemoryContextItem(
+              id: memory.id,
+              text: memory.text,
+              category: memory.category,
+              status: memory.lifecycleState.name,
+              confirmation: memory.confirmationStatus.name,
+              provenance: memory.sourceType.name,
+              sensitivity: memory.sensitivity.name,
+              isExplicitHealth: memory.isExplicitHealth,
+              createdAt: memory.createdAt,
+              updatedAt: memory.updatedAt,
+              validFrom: memory.validFrom,
+              validUntil: memory.validUntil,
+              structuredDomain: memory.structuredDomain,
+              structuredReferenceId: memory.structuredReferenceId,
+            ),
+          )
+          .toList()
+        ..sort((a, b) => a.id.compareTo(b.id));
+      return MemoryDomainSection(
+        metadata: _metadata(
+          request,
+          domain,
+          LifeContextSourceKind.memoryFirestore,
+          memories.isEmpty
+              ? LifeContextAvailability.empty
+              : LifeContextAvailability.available,
+          LifeContextFreshness.current,
+          false,
+          memories.length,
+          syncStatus: policy.generalMode == MemoryGeneralMode.paused
+              ? 'paused'
+              : 'available',
+        ),
+        policyGeneralMode: policy.generalMode.name,
+        policyHealthMode: policy.healthMode.name,
+        policyConfigured:
+            policy.changeSource == MemoryPolicyChangeSource.explicitUserSetting,
+        memories: memories,
+      );
+    } on MemoryPolicyException {
+      return _empty(
+        request,
+        LifeContextAvailability.corrupted,
+        'memory_policy_invalid',
+      );
+    } on Object {
+      return _empty(
+        request,
+        LifeContextAvailability.unavailable,
+        'memory_domain_unavailable',
+      );
+    }
+  }
+
+  MemoryDomainSection _empty(
+    LifeContextAdapterRequest request,
+    LifeContextAvailability availability,
+    String errorCode,
+  ) =>
+      MemoryDomainSection(
+        metadata: _metadata(
+          request,
+          domain,
+          LifeContextSourceKind.memoryFirestore,
+          availability,
+          LifeContextFreshness.unknown,
+          false,
+          0,
+          errorCode: errorCode,
+        ),
+        policyGeneralMode: MemoryGeneralMode.askEveryTime.name,
+        policyHealthMode: MemoryHealthMode.disabled.name,
+        policyConfigured: false,
+      );
 }
 
 LifeContextSourceMetadata _metadata(

@@ -40,6 +40,7 @@ final class LifeContextProjectionEngine {
       LifeContextDomain.event: snapshot.eventDomain!.metadata,
       LifeContextDomain.task: snapshot.taskDomain!.metadata,
       LifeContextDomain.routine: snapshot.routineDomain!.metadata,
+      LifeContextDomain.memory: snapshot.memoryDomain!.metadata,
     };
     _validateRequiredDomains(sourceMetadata, contract);
     _validateFreshness(sourceMetadata, contract);
@@ -56,6 +57,8 @@ final class LifeContextProjectionEngine {
           _taskCandidates(snapshot, contract),
       LifeContextProjectionSectionType.routine:
           _routineCandidates(snapshot, contract),
+      LifeContextProjectionSectionType.memory:
+          _memoryCandidates(snapshot, contract),
       LifeContextProjectionSectionType.relation:
           _relationCandidates(snapshot, graph, contract),
     };
@@ -201,6 +204,9 @@ final class LifeContextProjectionEngine {
       if (contract.allowedSections
           .contains(LifeContextProjectionSectionType.routine))
         LifeContextDomain.routine,
+      if (contract.allowedSections
+          .contains(LifeContextProjectionSectionType.memory))
+        LifeContextDomain.memory,
     };
     for (final domain in allowedDomains) {
       final source = metadata[domain]!;
@@ -591,6 +597,57 @@ final class LifeContextProjectionEngine {
     return result;
   }
 
+  List<LifeContextProjectionItem> _memoryCandidates(
+    LifeContextSnapshot snapshot,
+    LifeContextConsumerContract contract,
+  ) {
+    if (contract.purpose != LifeContextConsumerPurpose.conversation) {
+      return const [];
+    }
+    final section = snapshot.memoryDomain!;
+    final result = <LifeContextProjectionItem>[];
+    for (final memory in section.memories) {
+      if (memory.isExplicitHealth ||
+          memory.structuredDomain?.trim().isNotEmpty == true ||
+          const {'rejected', 'expired', 'deleted', 'obsolete', 'superseded'}
+              .contains(memory.status)) {
+        continue;
+      }
+      final confirmation = _memoryConfirmation(memory.confirmation);
+      final facts = <LifeContextProjectionFact>[
+        _fact(
+          LifeContextProjectionFactKeys.category,
+          memory.category.isEmpty ? 'other' : memory.category,
+          LifeContextSensitivityLevel.publicTechnical,
+        ),
+        _fact(
+          LifeContextProjectionFactKeys.title,
+          memory.text,
+          memory.sensitivity == 'sensitive'
+              ? LifeContextSensitivityLevel.sensitive
+              : LifeContextSensitivityLevel.ordinaryPersonal,
+          contract: contract,
+        ),
+      ];
+      _addAllowed(
+        result,
+        _item(
+          snapshot,
+          section.metadata,
+          memory.id,
+          LifeContextDomain.memory,
+          'memory',
+          facts,
+          confirmation,
+          validFrom: memory.validFrom,
+          validUntil: memory.validUntil,
+        ),
+        contract,
+      );
+    }
+    return result;
+  }
+
   LifeContextProjectionItem _recordItem(
     LifeContextSnapshot snapshot,
     LifeContextSourceMetadata metadata,
@@ -755,8 +812,18 @@ final class LifeContextProjectionEngine {
           metadata[LifeContextDomain.task],
         LifeContextProjectionSectionType.routine =>
           metadata[LifeContextDomain.routine],
+        LifeContextProjectionSectionType.memory =>
+          metadata[LifeContextDomain.memory],
         LifeContextProjectionSectionType.relation =>
           graph == null ? null : metadata[LifeContextDomain.human],
+      };
+
+  LifeContextConfirmation _memoryConfirmation(String value) => switch (value) {
+        'confirmed' => LifeContextConfirmation.confirmed,
+        'rejected' => LifeContextConfirmation.rejected,
+        'obsolete' => LifeContextConfirmation.historical,
+        'inferred' => LifeContextConfirmation.inferred,
+        _ => LifeContextConfirmation.needsConfirmation,
       };
 
   String? _availabilityWarning(

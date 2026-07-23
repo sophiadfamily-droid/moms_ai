@@ -4,11 +4,16 @@ import 'human/human_model_service.dart';
 import '../models/human/human_model_persistence.dart';
 import 'life_context/life_context_domain_adapters.dart';
 import 'life_context/life_context_engine.dart';
+import 'memory_policy_service.dart';
+import 'memory_service.dart';
 import 'task_service.dart';
 
 abstract final class LifeContextProductionFactory {
   static Future<LifeContextEngine> create() async {
     final humanService = await HumanModelService.createLocal();
+    final memoryPolicyService = await MemoryPolicyService.local(
+      currentAccountScopeId: () => AuthService.currentUserId,
+    );
     Future<HumanModelLocalState?> loadHuman(String scope) =>
         humanService.loadState(scope);
 
@@ -23,6 +28,15 @@ abstract final class LifeContextProductionFactory {
         ),
         TaskLifeContextAdapter(load: TaskService.getTasksForLifeContext),
         RoutineLifeContextAdapter(loadHuman: loadHuman),
+        MemoryLifeContextAdapter(
+          loadMemories: MemoryService.getMemoriesForLifeContext,
+          loadPolicy: (scope) async {
+            if (AuthService.currentUserId != scope) {
+              throw StateError('memory_account_mismatch');
+            }
+            return memoryPolicyService.load();
+          },
+        ),
       ],
     );
   }

@@ -1,6 +1,6 @@
 import 'dart:collection';
 
-enum LifeContextDomain { human, identity, event, task, routine }
+enum LifeContextDomain { human, identity, event, task, routine, memory }
 
 enum LifeContextAvailability {
   available,
@@ -20,6 +20,7 @@ enum LifeContextSourceKind {
   eventService,
   taskService,
   legacyProfileRoutine,
+  memoryFirestore,
 }
 
 enum LifeContextGlobalState { complete, partial, unavailable }
@@ -386,5 +387,86 @@ final class RoutineDomainSection extends LifeContextDomainSection {
         'schemaVersion': LifeContextDomainSection.currentSchemaVersion,
         'metadata': metadata.toJson(),
         'routines': routines.map((item) => item.toJson()).toList(),
+      };
+}
+
+final class MemoryContextItem {
+  const MemoryContextItem({
+    required this.id,
+    required this.text,
+    required this.category,
+    required this.status,
+    required this.confirmation,
+    required this.provenance,
+    required this.sensitivity,
+    required this.isExplicitHealth,
+    this.createdAt,
+    this.updatedAt,
+    this.validFrom,
+    this.validUntil,
+    this.structuredDomain,
+    this.structuredReferenceId,
+  });
+
+  final String id;
+  final String text;
+  final String category;
+  final String status;
+  final String confirmation;
+  final String provenance;
+  final String sensitivity;
+  final bool isExplicitHealth;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+  final DateTime? validFrom;
+  final DateTime? validUntil;
+  final String? structuredDomain;
+  final String? structuredReferenceId;
+
+  Map<String, Object?> toJson() => {
+        'id': id,
+        'text': text,
+        'category': category,
+        'status': status,
+        'confirmation': confirmation,
+        'provenance': provenance,
+        'sensitivity': sensitivity,
+        'isExplicitHealth': isExplicitHealth,
+        if (createdAt != null)
+          'createdAt': createdAt!.toUtc().toIso8601String(),
+        if (updatedAt != null)
+          'updatedAt': updatedAt!.toUtc().toIso8601String(),
+        if (validFrom != null)
+          'validFrom': validFrom!.toUtc().toIso8601String(),
+        if (validUntil != null)
+          'validUntil': validUntil!.toUtc().toIso8601String(),
+        if (structuredDomain != null) 'structuredDomain': structuredDomain,
+        if (structuredReferenceId != null)
+          'structuredReferenceId': structuredReferenceId,
+      };
+}
+
+final class MemoryDomainSection extends LifeContextDomainSection {
+  MemoryDomainSection({
+    required super.metadata,
+    required this.policyGeneralMode,
+    required this.policyHealthMode,
+    required this.policyConfigured,
+    List<MemoryContextItem> memories = const [],
+  }) : memories = UnmodifiableListView(memories);
+
+  final String policyGeneralMode;
+  final String policyHealthMode;
+  final bool policyConfigured;
+  final List<MemoryContextItem> memories;
+
+  @override
+  Map<String, Object?> toJson() => {
+        'schemaVersion': LifeContextDomainSection.currentSchemaVersion,
+        'metadata': metadata.toJson(),
+        'policyGeneralMode': policyGeneralMode,
+        'policyHealthMode': policyHealthMode,
+        'policyConfigured': policyConfigured,
+        'memories': memories.map((item) => item.toJson()).toList(),
       };
 }
