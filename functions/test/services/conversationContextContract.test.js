@@ -14,6 +14,7 @@ function payload(overrides = {}) {
   return {
     schemaVersion: 2,
     message: "Bonjour",
+    sessionGeneration: 0,
     conversationContext: {
       schemaVersion: 1,
       projectionVersion: 1,

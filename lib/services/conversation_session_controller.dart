@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../models/conversation_models.dart';
+import '../models/conversation_epistemic_models.dart';
 import '../models/conversation_session_models.dart';
 import '../models/smart_planning_continuation.dart';
 import '../models/user_profile.dart';
@@ -10,6 +11,7 @@ import 'chat_backend_client_factory.dart';
 import 'chat_service.dart';
 import 'conversation_context_service.dart';
 import 'conversation_coordinator.dart';
+import 'conversation_grounding_policy.dart';
 import 'conversation_legacy_action_executor.dart';
 import 'identity/identity_production_services.dart';
 import 'smart_planning_continuation_coordinator.dart';
@@ -167,6 +169,8 @@ final class ConversationSessionController extends ChangeNotifier {
   int _requestSequence = 0;
   int _retryCount = 0;
   String? _lastSubmittedText;
+  ConversationClarificationLedger _clarificationLedger =
+      const ConversationClarificationLedger();
 
   Future<void> dispatch(ConversationUiIntent intent) => switch (intent) {
         SubmitConversationText(:final text) => submitText(text),
@@ -234,7 +238,11 @@ final class ConversationSessionController extends ChangeNotifier {
       final pendingOutcome = await _resolvePending?.call(text, generation);
       final outcome = pendingOutcome ??
           await _coordinator.send(
-            input: ConversationInput(message: text, profile: _profile),
+            input: ConversationInput(
+              message: text,
+              profile: _profile,
+              sessionGeneration: generation,
+            ),
             executeAction: (action) => _executeAction(action, text, generation),
           );
       if (!_isCurrent(requestId, generation) || outcome == null) return;
@@ -243,14 +251,45 @@ final class ConversationSessionController extends ChangeNotifier {
       if (outcome.reply.trim().isEmpty) {
         throw ChatBackendMalformedResponseException();
       }
-      _appendMessage(ConversationMessageRole.assistant, outcome.reply);
+      var responseKind = outcome.responseKind;
+      var visibleReply = outcome.reply;
+      final clarification = outcome.epistemicClarification;
+      if (responseKind == ConversationResponseKind.clarificationRequired &&
+          clarification != null) {
+        final codes = clarification.missingFieldCodes;
+        if (_clarificationLedger.sessionGeneration != generation) {
+          _clarificationLedger = ConversationClarificationLedger(
+            sessionGeneration: generation,
+          );
+        }
+        if (_clarificationLedger.canAsk(codes, generation: generation)) {
+          _clarificationLedger = _clarificationLedger.record(codes);
+        } else {
+          responseKind = ConversationResponseKind.cannotDetermine;
+          visibleReply = ConversationSafeResponseCatalog.clarificationLimit;
+        }
+      } else if (responseKind != null &&
+          responseKind != ConversationResponseKind.confirmationRequired) {
+        _clarificationLedger = ConversationClarificationLedger(
+          sessionGeneration: generation,
+        );
+      }
+      _appendMessage(ConversationMessageRole.assistant, visibleReply);
       if (!_isCurrent(requestId, generation)) return;
       final applicationPhase = _applicationPendingPhase?.call();
-      final pending =
-          _coordinator.state.pendingAction != null || applicationPhase != null;
+      final epistemicPhase =
+          responseKind == ConversationResponseKind.clarificationRequired
+              ? ConversationSessionPhase.awaitingClarification
+              : responseKind == ConversationResponseKind.confirmationRequired
+                  ? ConversationSessionPhase.awaitingConfirmation
+                  : null;
+      final pending = _coordinator.state.pendingAction != null ||
+          applicationPhase != null ||
+          epistemicPhase != null;
       _setState(
         _state.copyWith(
           phase: applicationPhase ??
+              epistemicPhase ??
               (_coordinator.state.pendingAction != null
                   ? _pendingPhase(_coordinator.state.pendingAction!.type)
                   : ConversationSessionPhase.ready),
@@ -311,6 +350,9 @@ final class ConversationSessionController extends ChangeNotifier {
         retryAvailable: false,
       ),
     );
+    _clarificationLedger = ConversationClarificationLedger(
+      sessionGeneration: _state.sessionGeneration,
+    );
     _setState(_state.copyWith(phase: ConversationSessionPhase.ready));
   }
 
@@ -330,6 +372,9 @@ final class ConversationSessionController extends ChangeNotifier {
     );
     _lastSubmittedText = null;
     _retryCount = 0;
+    _clarificationLedger = ConversationClarificationLedger(
+      sessionGeneration: generation,
+    );
   }
 
   void _appendMessage(ConversationMessageRole role, String text) {
@@ -415,6 +460,9 @@ final class ConversationSessionController extends ChangeNotifier {
       sessionGeneration: _state.sessionGeneration + 1,
       phase: ConversationSessionPhase.disposed,
       clearCurrentRequest: true,
+    );
+    _clarificationLedger = ConversationClarificationLedger(
+      sessionGeneration: _state.sessionGeneration,
     );
     final backend = _ownedBackend;
     if (backend is ClosableChatBackendClient) backend.close();

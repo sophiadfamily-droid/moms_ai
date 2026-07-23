@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:moms_ai/models/chat_backend_request.dart';
 import 'package:moms_ai/models/chat_backend_response.dart';
 import 'package:moms_ai/models/conversation_models.dart';
+import 'package:moms_ai/models/conversation_epistemic_models.dart';
 import 'package:moms_ai/models/conversation_session_models.dart';
 import 'package:moms_ai/models/user_profile.dart';
 import 'package:moms_ai/services/chat_backend_client.dart';
@@ -120,6 +121,44 @@ void main() {
       harness.dispose();
     });
 
+    test('does not repeat the same epistemic clarification indefinitely',
+        () async {
+      final clarification = ConversationClarification(
+        clarificationId: 'clarification-1',
+        reasonCode: 'event_date_required',
+        questionText: 'Pour quel jour ?',
+        expectedAnswerType: ConversationClarificationAnswerType.date,
+        allowedChoices: const [],
+        missingFieldCodes: const [
+          ConversationMissingInformationCode.missingDate,
+        ],
+        createdAt: DateTime.utc(2026, 7, 23),
+        attemptNumber: 1,
+        sessionGeneration: 0,
+      );
+      final harness = _Harness(
+        resolvePending: (_, __) async => ConversationOutcome(
+          reply: 'Pour quel jour ?',
+          responseKind: ConversationResponseKind.clarificationRequired,
+          epistemicClarification: clarification,
+        ),
+      );
+
+      await harness.controller.submitText('Planifie un rendez-vous');
+      expect(
+        harness.controller.state.phase,
+        ConversationSessionPhase.awaitingClarification,
+      );
+      await harness.controller.submitText('Je ne sais pas');
+
+      expect(harness.controller.state.phase, ConversationSessionPhase.ready);
+      expect(
+        harness.controller.state.messages.last.text,
+        contains('informations restent insuffisantes'),
+      );
+      harness.dispose();
+    });
+
     test('dispose prevents late state application', () async {
       final completer = Completer<ChatBackendResponse>();
       final harness = _Harness(pending: completer.future);
@@ -137,6 +176,7 @@ final class _Harness {
   _Harness({
     Future<ChatBackendResponse>? pending,
     Object? error,
+    ConversationPendingResolver? resolvePending,
   })  : backend = _Backend(pending: pending, error: error),
         context = _Context(),
         store = _Store() {
@@ -149,6 +189,7 @@ final class _Harness {
       profile: _profile(),
       coordinator: coordinator,
       executeAction: (_, __, ___) async => const ConversationActionOutcome(),
+      resolvePending: resolvePending,
       messageStore: store,
       idGenerator: () => 'technical-${++id}',
       clock: () => DateTime.utc(2026, 7, 23),

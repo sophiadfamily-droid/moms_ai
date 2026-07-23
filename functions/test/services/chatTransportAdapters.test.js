@@ -36,6 +36,7 @@ function validPayload(message = "Bonjour") {
   return {
     schemaVersion: 2,
     message,
+    sessionGeneration: 0,
     conversationContext: {
       schemaVersion: 1,
       projectionVersion: 1,

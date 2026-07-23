@@ -37,7 +37,7 @@ void main() {
         capturedTimeout = timeout;
         return (payload) async {
           capturedPayload = payload;
-          return {'reply': 'Réponse', 'actions': [], 'memories': []};
+          return _response('Réponse');
         };
       },
     );
@@ -55,7 +55,7 @@ void main() {
     late Map<String, dynamic> sentData;
     final backend = CallableChatBackendClient.withInvoker((data) async {
       sentData = data;
-      return {'reply': 'Réponse', 'actions': [], 'memories': []};
+      return _response('Réponse');
     });
 
     await backend.send(request);
@@ -64,6 +64,7 @@ void main() {
     expect(sentData.keys, {
       'schemaVersion',
       'message',
+      'sessionGeneration',
       'conversationContext',
       'conversationHistory',
       'profile',
@@ -77,7 +78,7 @@ void main() {
   test('normalizes callable result maps', () async {
     final backend = CallableChatBackendClient.withInvoker((_) async {
       return <Object?, Object?>{
-        'reply': 'Voici la réponse',
+        ..._response('Voici la réponse'),
         'actions': [
           {'type': 'task', 'title': 'Appeler'},
         ],
@@ -92,14 +93,14 @@ void main() {
     expect(response.memories, isEmpty);
   });
 
-  test('preserves response fallbacks for missing fields', () async {
+  test('refuses missing response fields without an invented fallback',
+      () async {
     final backend = CallableChatBackendClient.withInvoker((_) async => {});
 
-    final response = await backend.send(request);
-
-    expect(response.reply, 'C’est noté 💕');
-    expect(response.actions, isEmpty);
-    expect(response.memories, isEmpty);
+    await expectLater(
+      backend.send(request),
+      throwsA(isA<ChatBackendMalformedResponseException>()),
+    );
   });
 
   test('rejects malformed callable result data', () async {
@@ -175,7 +176,7 @@ void main() {
     final backend = CallableChatBackendClient.withInvoker(
       (_) async {
         order.add('callable');
-        return {'reply': 'Réponse', 'actions': [], 'memories': []};
+        return _response('Réponse');
       },
       ensureAuthenticatedUid: () async {
         order.add('auth');
@@ -283,3 +284,35 @@ void main() {
     expect(serviceSources, isNot(contains('chatWithZeliaHttp')));
   });
 }
+
+Map<String, dynamic> _response(String reply) => {
+      'reply': reply,
+      'actions': const [],
+      'memories': const [],
+      'epistemic': {
+        'schemaVersion': 1,
+        'responseKind': 'answer',
+        'epistemicState': 'grounded',
+        'confidenceLevel': 'high',
+        'usedSourceTypes': const ['currentUserMessage'],
+        'groundingReferences': const [
+          {
+            'schemaVersion': 1,
+            'sourceType': 'currentUserMessage',
+            'section': null,
+            'factKey': null,
+            'freshness': 'current',
+            'confirmation': 'confirmed',
+            'projectionVersion': 0,
+          },
+        ],
+        'personalClaims': const [],
+        'missingInformation': const [],
+        'contradictions': const [],
+        'clarification': null,
+        'uncertaintyCodes': const [],
+        'contextStateObserved': 'unavailable',
+        'warningCodes': const [],
+        'responseId': 'response-test',
+      },
+    };

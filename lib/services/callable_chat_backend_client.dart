@@ -86,7 +86,11 @@ class CallableChatBackendClient implements ChatBackendClient {
         throw ChatBackendMalformedResponseException();
       }
 
-      return ChatBackendResponse.fromJson(normalized);
+      try {
+        return ChatBackendResponse.fromJson(normalized);
+      } on FormatException {
+        throw ChatBackendMalformedResponseException();
+      }
     } on ChatBackendException {
       rethrow;
     } on FormatException {

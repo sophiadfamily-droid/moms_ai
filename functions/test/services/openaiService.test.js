@@ -12,6 +12,43 @@ const {
   zeliaResponseJsonSchema,
 } = require("../../brain/zeliaResponseJsonSchema");
 
+/**
+ * Builds a valid model response fixture.
+ * @param {string} visibleText Visible assistant text.
+ * @return {object} Closed epistemic response.
+ */
+function generatedResponse(visibleText = "C'est noté.") {
+  return {
+    visibleText,
+    actions: [],
+    memories: [],
+    epistemic: {
+      schemaVersion: 1,
+      responseKind: "answer",
+      epistemicState: "grounded",
+      confidenceLevel: "high",
+      usedSourceTypes: ["currentUserMessage"],
+      groundingReferences: [{
+        schemaVersion: 1,
+        sourceType: "currentUserMessage",
+        section: null,
+        factKey: null,
+        freshness: "current",
+        confirmation: "confirmed",
+        projectionVersion: null,
+      }],
+      personalClaims: [],
+      missingInformation: [],
+      contradictions: [],
+      clarification: null,
+      uncertaintyCodes: [],
+      contextStateObserved: "complete",
+      warningCodes: [],
+      responseId: "response-test",
+    },
+  };
+}
+
 test("builds a stateless Responses API request", () => {
   const request = buildZeliaResponseRequest({
     systemContent: "SYSTEM",
@@ -57,18 +94,10 @@ test("uses the strict Zelia response schema", () => {
 
 test("parses a valid Responses API output", () => {
   const parsed = parseZeliaResponse({
-    output_text: JSON.stringify({
-      reply: "C'est noté.",
-      actions: [],
-      memories: [],
-    }),
+    output_text: JSON.stringify(generatedResponse()),
   });
 
-  assert.deepEqual(parsed, {
-    reply: "C'est noté.",
-    actions: [],
-    memories: [],
-  });
+  assert.deepEqual(parsed, generatedResponse());
 });
 
 test("rejects an empty Responses API output", () => {
@@ -154,11 +183,9 @@ test(
             }
 
             return {
-              output_text: JSON.stringify({
-                reply: "Réponse de secours",
-                actions: [],
-                memories: [],
-              }),
+              output_text: JSON.stringify(
+                  generatedResponse("Réponse de secours"),
+              ),
             };
           },
         },
@@ -180,11 +207,7 @@ test(
       assert.equal(calls[0].options.signal, signal);
       assert.equal(calls[1].options.signal, signal);
 
-      assert.deepEqual(result, {
-        reply: "Réponse de secours",
-        actions: [],
-        memories: [],
-      });
+      assert.deepEqual(result, generatedResponse("Réponse de secours"));
     },
 );
 

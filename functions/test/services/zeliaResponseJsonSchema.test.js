@@ -25,13 +25,25 @@ test("defines the supported action types", () => {
 test("requires every top-level response field", () => {
   assert.deepEqual(
       zeliaResponseJsonSchema.required,
-      ["reply", "actions", "memories"],
+      ["visibleText", "actions", "memories", "epistemic"],
   );
 
   assert.equal(
       zeliaResponseJsonSchema.additionalProperties,
       false,
   );
+});
+
+test("defines a closed epistemic response contract", () => {
+  const epistemic = zeliaResponseJsonSchema.properties.epistemic;
+
+  assert.equal(epistemic.type, "object");
+  assert.equal(epistemic.additionalProperties, false);
+  assert.deepEqual(epistemic.properties.schemaVersion.enum, [1]);
+  assert.equal(epistemic.required.includes("responseKind"), true);
+  assert.equal(epistemic.required.includes("groundingReferences"), true);
+  assert.equal(epistemic.required.includes("missingInformation"), true);
+  assert.equal(epistemic.required.includes("contradictions"), true);
 });
 
 test("defines actions as a strict array of action objects", () => {

@@ -17,6 +17,8 @@ const {sanitizeEventMutations} = require("./eventMutationContract");
 const {writeDiagnostic} = require("./diagnostics");
 const {validateConversationRequest} =
   require("./conversationContextContract");
+const {validateConversationResponse} =
+  require("./conversationResponseContract");
 
 const OPENAI_TIMEOUT_MS = 22000;
 
@@ -178,13 +180,21 @@ ${buildBrainContext()}
       timeoutMs,
   );
 
-  return {
-    reply: parsed.reply || "C'est noté 💕",
+  const validatedResponse = validateConversationResponse({
+    visibleText: parsed.visibleText,
     actions: sanitizeEventMutations(
         sanitizeEventParticipants(parsed.actions, message, logger),
         message,
         logger),
-    memories: parsed.memories || [],
+    memories: parsed.memories,
+    epistemic: parsed.epistemic,
+  }, source);
+
+  return {
+    reply: validatedResponse.visibleText,
+    actions: validatedResponse.actions,
+    memories: validatedResponse.memories,
+    epistemic: validatedResponse.epistemic,
   };
 }
 

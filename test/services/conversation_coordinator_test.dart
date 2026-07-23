@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:moms_ai/models/chat_backend_request.dart';
 import 'package:moms_ai/models/chat_backend_response.dart';
+import 'package:moms_ai/models/conversation_context_envelope.dart';
+import 'package:moms_ai/models/conversation_epistemic_models.dart';
 import 'package:moms_ai/models/conversation_models.dart';
 import 'package:moms_ai/models/event_model.dart';
 import 'package:moms_ai/models/user_profile.dart';
@@ -12,7 +14,8 @@ import 'package:moms_ai/services/conversation_coordinator.dart';
 
 void main() {
   group('ConversationCoordinator', () {
-    test('sends a normal message with the unchanged backend request', () async {
+    test('sends a normal message with the session-scoped backend request',
+        () async {
       final request = _request(message: 'Bonjour');
       final backend = _FakeBackend(
         response: const ChatBackendResponse(
@@ -33,11 +36,13 @@ void main() {
       );
 
       expect(outcome?.reply, 'Bonjour 💕');
-      expect(identical(outcome?.request, request), isTrue);
-      expect(identical(backend.requests.single, request), isTrue);
-      expect(request.toJson().keys, {
+      expect(outcome?.request?.message, request.message);
+      expect(outcome?.request?.sessionGeneration, 0);
+      expect(backend.requests.single, same(outcome?.request));
+      expect(outcome?.request?.toJson().keys, {
         'schemaVersion',
         'message',
+        'sessionGeneration',
         'conversationContext',
         'conversationHistory',
         'profile',
@@ -86,6 +91,42 @@ void main() {
 
       expect(executions, 1);
       expect(outcome?.reply, 'Confirmer le rendez-vous ?');
+    });
+
+    test('rejects an incomplete grounded action before business execution',
+        () async {
+      final backend = _FakeBackend(
+        response: ChatBackendResponse(
+          reply: 'Je prépare le rendez-vous.',
+          actions: const [
+            {'type': 'event', 'title': 'Médecin'},
+          ],
+          memories: const [],
+          epistemic: _epistemic(
+            kind: ConversationResponseKind.actionProposal,
+          ),
+        ),
+      );
+      final coordinator = ConversationCoordinator(
+        backend: backend,
+        contextProvider: _FakeContextProvider(_request()),
+      );
+      var executions = 0;
+
+      await expectLater(
+        coordinator.send(
+          input: ConversationInput(
+            message: 'Ajoute le rendez-vous',
+            profile: _profile(),
+          ),
+          executeAction: (_) async {
+            executions++;
+            return const ConversationActionOutcome();
+          },
+        ),
+        throwsA(isA<ChatBackendMalformedResponseException>()),
+      );
+      expect(executions, 0);
     });
 
     test('keeps a pending event after an unrecognized answer', () async {
@@ -332,3 +373,30 @@ EventModel _event() {
     durationMinutes: 30,
   );
 }
+
+ConversationEpistemicContract _epistemic({
+  required ConversationResponseKind kind,
+}) =>
+    ConversationEpistemicContract(
+      responseKind: kind,
+      epistemicState: ConversationEpistemicState.grounded,
+      confidenceLevel: ConversationConfidenceLevel.high,
+      usedSourceTypes: const [
+        ConversationGroundingSourceType.currentUserMessage,
+      ],
+      groundingReferences: const [
+        ConversationGroundingReference(
+          sourceType: ConversationGroundingSourceType.currentUserMessage,
+          freshness: 'current',
+          confirmation: 'confirmed',
+          projectionVersion: 0,
+        ),
+      ],
+      personalClaims: const [],
+      missingInformation: const [],
+      contradictions: const [],
+      uncertaintyCodes: const [],
+      contextStateObserved: ConversationContextState.unavailable,
+      warningCodes: const [],
+      responseId: 'response-test',
+    );

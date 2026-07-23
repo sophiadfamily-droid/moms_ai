@@ -100,9 +100,12 @@ function parseZeliaResponse(response) {
   }
 
   if (
-    typeof parsed.reply !== "string" ||
+    typeof parsed.visibleText !== "string" ||
     !Array.isArray(parsed.actions) ||
-    !Array.isArray(parsed.memories)
+    !Array.isArray(parsed.memories) ||
+    typeof parsed.epistemic !== "object" ||
+    parsed.epistemic === null ||
+    Array.isArray(parsed.epistemic)
   ) {
     throw new Error("OPENAI_INVALID_RESPONSE_CONTRACT");
   }

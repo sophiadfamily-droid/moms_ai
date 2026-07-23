@@ -18,7 +18,8 @@ const MAX_FACTS = 12;
 const MAX_FACT_TEXT = 80;
 
 const REQUEST_KEYS = new Set([
-  "schemaVersion", "message", "conversationContext", "conversationHistory",
+  "schemaVersion", "message", "sessionGeneration", "conversationContext",
+  "conversationHistory",
   "profile", "profileContext", "memories", "memoryReasoning", "events",
 ]);
 const CONTEXT_KEYS = new Set([
@@ -220,6 +221,8 @@ function validateHistory(history) {
 function validateConversationRequest(payload) {
   if (!exactKeys(payload, REQUEST_KEYS) ||
       payload.schemaVersion !== REQUEST_SCHEMA_VERSION ||
+      !Number.isInteger(payload.sessionGeneration) ||
+      payload.sessionGeneration < 0 ||
       typeof payload.message !== "string" ||
       payload.message.trim().length === 0 ||
       payload.message.length > MAX_MESSAGE_CHARACTERS ||
@@ -234,6 +237,7 @@ function validateConversationRequest(payload) {
   const sanitized = {
     schemaVersion: REQUEST_SCHEMA_VERSION,
     message: payload.message,
+    sessionGeneration: payload.sessionGeneration,
     conversationContext: validateContext(payload.conversationContext),
     conversationHistory: validateHistory(payload.conversationHistory),
     profile: {},

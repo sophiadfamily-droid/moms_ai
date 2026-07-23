@@ -4,6 +4,7 @@ import '../core/identity/entity_identity.dart';
 import '../core/identity/entity_reference.dart';
 import '../core/identity/entity_types.dart';
 import 'chat_backend_request.dart';
+import 'conversation_epistemic_models.dart';
 import 'event_model.dart';
 import 'event_mutation_models.dart';
 import 'event_participant.dart';
@@ -20,10 +21,12 @@ enum ConversationPhase {
 class ConversationInput {
   final String message;
   final UserProfile profile;
+  final int sessionGeneration;
 
   const ConversationInput({
     required this.message,
     required this.profile,
+    this.sessionGeneration = 0,
   });
 }
 
@@ -621,6 +624,8 @@ class ConversationOutcome {
   final IdentityClarificationResult? identityClarificationResult;
   final IdentityActionBindingResult? identityActionBindingResult;
   final IdentityCreationResult? identityCreationResult;
+  final ConversationResponseKind? responseKind;
+  final ConversationClarification? epistemicClarification;
 
   const ConversationOutcome({
     required this.reply,
@@ -628,6 +633,8 @@ class ConversationOutcome {
     this.identityClarificationResult,
     this.identityActionBindingResult,
     this.identityCreationResult,
+    this.responseKind,
+    this.epistemicClarification,
   });
 }
 

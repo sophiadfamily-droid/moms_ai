@@ -8,6 +8,7 @@ final class ChatBackendRequest {
   const ChatBackendRequest({
     this.schemaVersion = currentSchemaVersion,
     required this.message,
+    this.sessionGeneration = 0,
     this.context,
     this.history = const [],
     this.profile = const {},
@@ -33,6 +34,7 @@ final class ChatBackendRequest {
 
   final int schemaVersion;
   final String message;
+  final int sessionGeneration;
   final ConversationContextEnvelope? context;
   final List<ConversationHistoryMessage> history;
 
@@ -48,6 +50,7 @@ final class ChatBackendRequest {
     final envelope = context;
     if (schemaVersion != currentSchemaVersion ||
         envelope == null ||
+        sessionGeneration < 0 ||
         message.trim().isEmpty ||
         message.length >
             ConversationTransportContract.maximumUserMessageCharacters ||
@@ -61,6 +64,7 @@ final class ChatBackendRequest {
     final result = <String, dynamic>{
       'schemaVersion': schemaVersion,
       'message': message,
+      'sessionGeneration': sessionGeneration,
       'conversationContext': envelope.toJson(),
       'conversationHistory':
           history.map((entry) => entry.toJson()).toList(growable: false),
@@ -80,4 +84,13 @@ final class ChatBackendRequest {
   static int _historyBytes(List<ConversationHistoryMessage> history) => utf8
       .encode(jsonEncode(history.map((item) => item.toJson()).toList()))
       .length;
+
+  ChatBackendRequest withSessionGeneration(int generation) =>
+      ChatBackendRequest(
+        schemaVersion: schemaVersion,
+        message: message,
+        sessionGeneration: generation,
+        context: context,
+        history: history,
+      );
 }

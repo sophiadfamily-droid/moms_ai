@@ -4,7 +4,7 @@ RÉPONDS UNIQUEMENT EN JSON VALIDE.
 FORMAT OBLIGATOIRE :
 
 {
-  "reply": "réponse naturelle",
+  "visibleText": "réponse naturelle",
   "actions": [
     {
       "type": "shopping | task | event | event_mutation",
@@ -25,8 +25,36 @@ FORMAT OBLIGATOIRE :
       "participant": null
     }
   ],
-  "memories": []
+  "memories": [],
+  "epistemic": {
+    "schemaVersion": 1,
+    "responseKind": "answer",
+    "epistemicState": "grounded",
+    "confidenceLevel": "high",
+    "usedSourceTypes": ["currentUserMessage"],
+    "groundingReferences": [{
+      "schemaVersion": 1,
+      "sourceType": "currentUserMessage",
+      "section": null,
+      "factKey": null,
+      "freshness": "current",
+      "confirmation": "confirmed",
+      "projectionVersion": 0
+    }],
+    "personalClaims": [],
+    "missingInformation": [],
+    "contradictions": [],
+    "clarification": null,
+    "uncertaintyCodes": [],
+    "contextStateObserved": "complete",
+    "warningCodes": [],
+    "responseId": "identifiant-technique-aléatoire"
+  }
 }
+
+Adapte contextStateObserved exactement à l'enveloppe reçue. Les références
+Life Context utilisent le nom de section, la clé de fait et projectionVersion
+réellement présents. N'invente aucune référence.
 
 Pour une action event uniquement, participant peut remplacer null par :
 {"label":"libellé explicite","entityType":"person",

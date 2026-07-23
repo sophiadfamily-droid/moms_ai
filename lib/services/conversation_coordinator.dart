@@ -12,6 +12,7 @@ import '../core/identity/uuid_v7_entity_id_generator.dart';
 import 'chat_backend_client.dart';
 import 'conversation_answer_classifier.dart';
 import 'conversation_context_service.dart';
+import 'conversation_grounding_policy.dart';
 import 'memory_confirmation_copy.dart';
 import 'memory_lifecycle_engine.dart';
 import 'memory_lifecycle_repository.dart';
@@ -986,10 +987,12 @@ class ConversationCoordinator {
     );
 
     try {
-      final request = await contextProvider.buildRequest(
+      final builtRequest = await contextProvider.buildRequest(
         message: input.message,
         profile: input.profile,
       );
+      final request =
+          builtRequest.withSessionGeneration(input.sessionGeneration);
       final memoryContext = contextProvider is MemoryConversationContextProvider
           ? contextProvider as MemoryConversationContextProvider
           : null;
@@ -1006,6 +1009,21 @@ class ConversationCoordinator {
         );
       }
       final response = await backend.send(request);
+      final epistemic = response.epistemic;
+      if (epistemic != null) {
+        final envelope = request.context;
+        if (envelope == null ||
+            !const ConversationGroundingPolicy()
+                .validate(
+                  contract: epistemic,
+                  envelope: envelope,
+                  actions: response.actions,
+                  sessionGeneration: input.sessionGeneration,
+                )
+                .isValid) {
+          throw ChatBackendMalformedResponseException();
+        }
+      }
       var reply = response.reply;
       final actionMessages = <String>[];
       final shoppingTitles = <String>[];
@@ -1070,7 +1088,12 @@ class ConversationCoordinator {
         reply = memoryCopy.proposal(memoryConfirmation);
       }
 
-      return ConversationOutcome(reply: reply, request: request);
+      return ConversationOutcome(
+        reply: reply,
+        request: request,
+        responseKind: epistemic?.responseKind,
+        epistemicClarification: epistemic?.clarification,
+      );
     } finally {
       _isSending = false;
       _state = _state.copyWith(

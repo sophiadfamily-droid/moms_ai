@@ -837,10 +837,64 @@ de génération et changement de compte continuent d’utiliser les protections
 C.1. Un retry reconstruit le contexte depuis le scope Auth courant. Les
 continuations Smart Planning restent typées et ne dupliquent pas ce contexte.
 
-C.3 renforcera la formulation de l’incertitude et la politique générale de
-clarification. A.1 définira les modes d’action. C.2 ne branche pas Priority,
-ne change ni modèle OpenAI ni politique d’action et n’ajoute aucun nouveau
-prompt général.
+C.2 ne branche pas Priority, ne change ni modèle OpenAI ni politique d’action
+et n’ajoute aucun nouveau prompt général.
+
+### 9.4 C.3 — Grounding, incertitude et clarification
+
+La réponse callable possède désormais un contrat épistémique version 1 fermé.
+Il distingue `grounded`, `groundedPartial`, `uncertain`, `conflicting`,
+`stale`, `contextUnavailable`, `insufficientInformation`, `unsupported` et
+`invalid`. Les types de réponse sont eux aussi fermés : réponse, réponse
+prudente, clarification ou confirmation requise, proposition ou résultat
+d’action, impossibilité de déterminer, contexte indisponible, demande non
+supportée et échec sûr.
+
+Une affirmation personnelle est déclarée comme claim structuré. Chaque claim
+référence au plus trois entrées de grounding et chaque référence doit pointer
+vers le message courant, un message historique validé, une clarification ou un
+résultat confirmé, ou vers un fait effectivement présent dans l’enveloppe C.2.
+`generalKnowledge` autorise une réponse générale mais ne peut soutenir ni claim
+personnel ni action. Les références ne transportent ni valeur personnelle, ni
+UID/scope, ni chemin source. Functions vérifie leur existence dans l’enveloppe
+réellement envoyée et Flutter répète cette validation avant le coordinateur.
+
+`ConversationGroundingPolicy` est la frontière pure et unique qui décide entre
+réponse directe, réponse prudente, clarification, refus d’action,
+`cannotDetermine` et retry du contexte. Elle reçoit des informations
+manquantes et contradictions typées; elle ne lit aucun repository, n’appelle
+ni Firebase ni OpenAI et n’écrit aucun domaine. Une absence reste distincte
+d’une négation. Une section indisponible ne devient pas une section vide et une
+source stale ne peut pas être présentée comme current.
+
+Les clarifications portent une raison, un type de réponse, des choix bornés,
+les champs manquants, la génération de session, une expiration éventuelle et
+un numéro de tentative. Le contrôleur conserve un registre par génération :
+trois tours au maximum et aucun code de champ identique redemandé. Lorsque la
+limite est atteinte, il rend une formulation française sûre et n’exécute
+aucune action. Annulation, changement de compte et dispose invalident aussi ce
+registre.
+
+Functions valide la structure fermée, les bornes, les sources, claims,
+informations manquantes, contradictions et clarifications après le modèle mais
+avant tout retour client. Une action Event exige date, heure et durée positive,
+ainsi que les deux trajets lorsqu’ils sont déclarés séparés. Task et Shopping
+n’inventent aucune échéance, durée, priorité ou quantité facultative. Une
+information obligatoire manquante ou une contradiction bloquante interdit
+toute action. Un `actionResult` exige une source métier confirmée.
+
+Le guard Flutter applique le même invariant avant la boucle d’actions de
+`ConversationCoordinator`. Une réponse invalide n’atteint donc jamais les
+services Event, Task, Shopping, Routine, Identity ou Memory. Les continuations
+Smart Planning C.1 gardent leur machine d’états typée, leurs trajets, marges,
+conflits, confirmations et revalidations.
+
+Le prompt est seulement complété par les obligations C.3 : aucune invention de
+fait personnel, déclaration des manques et contradictions, distinction entre
+connaissance générale et situation personnelle, et absence de faux succès. Le
+modèle, le routage Luna/Terra/Sol, les budgets C.2 et la personnalité ne
+changent pas. A.1 reste hors de cette frontière et définira séparément les
+modes d’action.
 
 The durable lifecycle is:
 
