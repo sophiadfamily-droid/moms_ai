@@ -24,7 +24,7 @@ void main() {
     final source = File('lib/screens/chat_screen.dart').readAsStringSync();
     expect(source, isNot(contains('MemoryService')));
     expect(source, isNot(contains('getMemories')));
-    expect(source, contains('MemoryPlanningCompatibilityService'));
+    expect(source, isNot(contains('MemoryPlanningCompatibilityService')));
   });
 
   test('la projection Planning exclut le domaine Memory', () {

@@ -296,9 +296,20 @@ An engine is a cohesive domain capability with explicit inputs, outputs, invaria
 
 ### 7.1 Conversation Engine
 
-**Current state:** `ChatScreen` coordinates message state, pending information and actions, planning proposals, confirmations, backend requests, validation, persistence calls, interruption paths, and user feedback. There is no standalone typed Conversation Engine.
+**C.1 implemented boundary.** `ConversationSessionController` is the canonical
+application orchestrator. It owns the immutable visible session state, message
+ordering, request generation, double-send protection, logical cancellation,
+bounded backend retry, safe errors and one-shot UI effects.
 
-**First extraction target:** A typed Conversation Coordinator or Conversation Engine will be extracted from `ChatScreen` without changing stable user behavior. It will own active interaction state, pending information, proposals, selection and confirmation state, interruption, cancellation, and the action lifecycle.
+`ConversationCoordinator` remains the typed business coordinator. It owns the
+validated response pipeline, response guards, Event mutations, Identity and
+Memory confirmations and their domain continuations. The session controller
+does not replace or duplicate these rules.
+
+`ChatScreen` is now a passive Flutter presentation. It owns only text, focus,
+scroll and voice controllers, renders the immutable state, consumes effects
+and dispatches closed UI intentions. It does not construct a backend request,
+load domains, parse responses or call a mutation service.
 
 **Planned architecture:** The Conversation Engine owns workflow state and transitions. It does not own domain truth, persistence rules, planning conflict rules, security enforcement, or Life Context facts. It coordinates authoritative domain engines and repositories through typed contracts.
 
@@ -710,7 +721,22 @@ Interaction rules:
 
 ### 9.1 Current state
 
-The Flutter chat experience, primarily through `ChatScreen`, coordinates message state, pending information and actions, planning paths and proposals, backend requests, validation, confirmation, persistence calls, interruption and cancellation paths, and feedback. The backend receives profile, memory, reasoning, and event context, then returns a strict reply/actions/memories object. Client validation remains mandatory before action handling.
+The Flutter chat experience follows the C.1 chain:
+
+`ChatScreen → ConversationSessionController → ConversationCoordinator →
+ConversationContextProvider → ChatBackendClient`.
+
+The provider remains the only request/context construction dependency and
+preserves the LC.3 compatibility boundary. The callable client remains an
+injectable gateway. `ConversationCoordinator` applies the existing guards and
+delegates only validated actions. `ConversationLegacyActionExecutor` keeps the
+legacy Task, Shopping and Event application path outside the widget while the
+domain services continue to own persistence and confirmation.
+
+The public session state contains only a random technical session identifier,
+bounded visible messages, phase, recoverable error copy, pending presence and
+one-shot effects. It contains no UID, account scope, request payload, snapshot,
+graph, repository, exception or stack trace.
 
 The active remote AI boundary is the single Firebase callable
 `chatWithZeliaCallable`. It requires a Firebase Auth UID, including an anonymous
@@ -725,9 +751,25 @@ deny-by-default Firestore document per UID. It stores no conversation content.
 Its bounded settings are `ZELIA_AI_CHAT_QUOTA_LIMIT` and
 `ZELIA_AI_CHAT_QUOTA_WINDOW_SECONDS`; it is not a commercial entitlement model.
 
-### 9.2 Planned architecture
+### 9.2 C.1 lifecycle and remaining boundaries
 
-The first architectural extraction after foundation stabilization is a typed Conversation Engine that preserves the current user-visible workflow while moving active interaction state and transitions out of `ChatScreen`. It owns pending information, proposals, selection, confirmation, interruption, cancellation, and action lifecycle state. Domain engines continue to own truth and rules; repositories own persistence; the backend owns its security boundary; and Life Context owns contextual facts rather than conversational state.
+Each submit receives un `requestId` et la génération courante de session. Une
+réponse n’est appliquée que si les deux correspondent encore. Annulation,
+dispose ou changement de compte incrémentent la génération : une réponse
+tardive ne peut alors ni ajouter de message ni exécuter une continuation.
+Le retry backend est limité à une tentative et ne recrée pas le message
+utilisateur. L’annulation reste logique : elle ne promet pas d’interrompre le
+callable déjà parti.
+
+Les erreurs backend sont transformées par le catalogue sûr existant et seuls
+code, étape, retryabilité et corrélation technique sont diagnostiqués. Les
+messages sont persistés derrière `ConversationMessageStore`; l’écran ne connaît
+pas cette persistance.
+
+C.2 renforcera la minimisation, les budgets, la sensibilité et la résilience du
+contexte réellement transmis. C.3 renforcera la politique d’incertitude et de
+clarification. A.1 définira les modes d’action. C.1 ne modifie ni budgets LC.3,
+ni prompts, ni modèle OpenAI, ni politique d’action.
 
 The durable lifecycle is:
 

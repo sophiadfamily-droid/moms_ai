@@ -260,7 +260,7 @@ void main() {
         .where((file) => file.path.endsWith('.dart'))
         .map((file) => file.readAsStringSync())
         .join('\n');
-    expect(screenSources, contains('createDefaultChatBackendClient()'));
+    expect(screenSources, isNot(contains('createDefaultChatBackendClient()')));
     expect(screenSources, isNot(contains('HttpChatBackendClient(')));
     expect(screenSources, isNot(contains('CallableChatBackendClient(')));
 

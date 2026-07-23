@@ -1,0 +1,380 @@
+import 'package:flutter/foundation.dart';
+
+import '../models/conversation_models.dart';
+import '../models/conversation_session_models.dart';
+import '../models/user_profile.dart';
+import 'app_diagnostics.dart';
+import 'chat_backend_client.dart';
+import 'chat_backend_client_factory.dart';
+import 'chat_service.dart';
+import 'conversation_context_service.dart';
+import 'conversation_coordinator.dart';
+import 'conversation_legacy_action_executor.dart';
+import 'identity/identity_production_services.dart';
+
+typedef ConversationSessionActionExecutor = Future<ConversationActionOutcome>
+    Function(
+  Map<String, dynamic> action,
+  String userMessage,
+);
+typedef ConversationPendingResolver = Future<ConversationOutcome?> Function(
+  String answer,
+);
+
+abstract interface class ConversationMessageStore {
+  Future<void> save({
+    required String sessionId,
+    required ConversationMessageRole role,
+    required String text,
+  });
+}
+
+final class DefaultConversationMessageStore
+    implements ConversationMessageStore {
+  const DefaultConversationMessageStore();
+
+  @override
+  Future<void> save({
+    required String sessionId,
+    required ConversationMessageRole role,
+    required String text,
+  }) =>
+      ChatService.saveMessage(
+        conversationId: sessionId,
+        role: role.name,
+        text: text,
+      );
+}
+
+final class ConversationSessionController extends ChangeNotifier {
+  static const int maximumBackendRetries = 1;
+
+  ConversationSessionController({
+    required UserProfile profile,
+    required ConversationCoordinator coordinator,
+    ConversationSessionActionExecutor? executeAction,
+    ConversationPendingResolver? resolvePending,
+    ConversationMessageStore messageStore =
+        const DefaultConversationMessageStore(),
+    ChatBackendClient? ownedBackend,
+    DateTime Function()? clock,
+    String Function()? idGenerator,
+    String? initialAssistantMessage,
+  })  : _profile = profile,
+        _coordinator = coordinator,
+        _executeAction = executeAction ??
+            ConversationLegacyActionExecutor(coordinator: coordinator).execute,
+        _resolvePending = resolvePending,
+        _messageStore = messageStore,
+        _ownedBackend = ownedBackend,
+        _clock = clock ?? DateTime.now,
+        _idGenerator = idGenerator ?? _defaultId,
+        _state = ConversationSessionState(
+          sessionId: (idGenerator ?? _defaultId)(),
+          sessionGeneration: 0,
+          phase: ConversationSessionPhase.initial,
+          messages: const [],
+          effects: const [],
+        ) {
+    _state = _state.copyWith(phase: ConversationSessionPhase.ready);
+    addInitialAssistantMessage(initialAssistantMessage);
+  }
+
+  factory ConversationSessionController.production({
+    required UserProfile profile,
+    ChatBackendClient? backendClient,
+    ConversationContextProvider? contextProvider,
+    IdentityProductionServices? identityServices,
+    ConversationSessionActionExecutor? executeAction,
+    String? initialAssistantMessage,
+  }) {
+    final backend = backendClient ?? createDefaultChatBackendClient();
+    final coordinator = ConversationCoordinator(
+      backend: backend,
+      contextProvider:
+          contextProvider ?? const DefaultConversationContextProvider(),
+      identityApplicationService: identityServices?.applicationService,
+      identityCreationService: identityServices?.creationService,
+      identityAccountScope: identityServices?.scope,
+      eventParticipantIdentityValidationService:
+          identityServices?.eventParticipantValidation,
+    );
+    final legacyExecutor =
+        ConversationLegacyActionExecutor(coordinator: coordinator);
+    final controller = ConversationSessionController(
+      profile: profile,
+      coordinator: coordinator,
+      executeAction: executeAction ?? legacyExecutor.execute,
+      resolvePending: legacyExecutor.resolvePending,
+      ownedBackend: backendClient == null ? backend : null,
+      initialAssistantMessage:
+          "Coucou 💕 Moi c'est Zelia. Je suis là pour t'aider à organiser ton quotidien ✨",
+    );
+    controller.addInitialAssistantMessage(initialAssistantMessage);
+    return controller;
+  }
+
+  UserProfile _profile;
+  final ConversationCoordinator _coordinator;
+  final ConversationSessionActionExecutor _executeAction;
+  final ConversationPendingResolver? _resolvePending;
+  final ConversationMessageStore _messageStore;
+  final ChatBackendClient? _ownedBackend;
+  final DateTime Function() _clock;
+  final String Function() _idGenerator;
+
+  ConversationSessionState _state;
+  ConversationSessionState get state => _state;
+  bool _disposed = false;
+  int _requestSequence = 0;
+  int _retryCount = 0;
+  String? _lastSubmittedText;
+
+  Future<void> dispatch(ConversationUiIntent intent) => switch (intent) {
+        SubmitConversationText(:final text) => submitText(text),
+        RetryConversationRequest() => retryLastRequest(),
+        AnswerConversationClarification(:final answer) => submitText(answer),
+        ConfirmPendingConversationAction() => submitText('oui'),
+        RejectPendingConversationAction() => submitText('non'),
+        PostponePendingConversationAction() => submitText('plus tard'),
+        CancelConversationRequest() => cancelCurrentRequest(),
+        DismissConversationError() => _dismissError(),
+        ConsumeConversationEffect(:final effectId) => _consumeEffect(effectId),
+      };
+
+  void addInitialAssistantMessage(String? text) {
+    final value = text?.trim() ?? '';
+    if (value.isEmpty ||
+        _state.messages.any(
+          (message) =>
+              message.role == ConversationMessageRole.assistant &&
+              message.text == value,
+        )) {
+      return;
+    }
+    _appendMessage(ConversationMessageRole.assistant, value);
+  }
+
+  Future<void> submitText(String rawText) async {
+    final text = rawText.trim();
+    if (_disposed || text.isEmpty || _state.isBusy) return;
+    _lastSubmittedText = text;
+    _retryCount = 0;
+    _appendMessage(ConversationMessageRole.user, text);
+    await _runRequest(text, addUserMessage: false);
+  }
+
+  Future<void> retryLastRequest() async {
+    final text = _lastSubmittedText;
+    if (_disposed ||
+        text == null ||
+        !_state.retryAvailable ||
+        _state.isBusy ||
+        _retryCount >= maximumBackendRetries) {
+      return;
+    }
+    _retryCount++;
+    await _runRequest(text, addUserMessage: false);
+  }
+
+  Future<void> _runRequest(
+    String text, {
+    required bool addUserMessage,
+  }) async {
+    if (addUserMessage) _appendMessage(ConversationMessageRole.user, text);
+    final generation = _state.sessionGeneration;
+    final requestId = '${_state.sessionId}:${++_requestSequence}';
+    _setState(
+      _state.copyWith(
+        phase: ConversationSessionPhase.loadingContext,
+        currentRequestId: requestId,
+        retryAvailable: false,
+        clearError: true,
+      ),
+    );
+    try {
+      final pendingOutcome = await _resolvePending?.call(text);
+      final outcome = pendingOutcome ??
+          await _coordinator.send(
+            input: ConversationInput(message: text, profile: _profile),
+            executeAction: (action) => _executeAction(action, text),
+          );
+      if (!_isCurrent(requestId, generation) || outcome == null) return;
+      _setState(
+          _state.copyWith(phase: ConversationSessionPhase.validatingResponse));
+      if (outcome.reply.trim().isEmpty) {
+        throw ChatBackendMalformedResponseException();
+      }
+      _appendMessage(ConversationMessageRole.assistant, outcome.reply);
+      if (!_isCurrent(requestId, generation)) return;
+      final pending = _coordinator.state.pendingAction != null;
+      _setState(
+        _state.copyWith(
+          phase: pending
+              ? _pendingPhase(_coordinator.state.pendingAction!.type)
+              : ConversationSessionPhase.ready,
+          clearCurrentRequest: true,
+          retryAvailable: false,
+          hasPendingAction: pending,
+        ),
+      );
+      if (pending) {
+        _emit(
+          _state.phase == ConversationSessionPhase.awaitingClarification
+              ? ConversationUiEffectType.showClarification
+              : ConversationUiEffectType.showConfirmation,
+        );
+      }
+    } catch (error) {
+      if (!_isCurrent(requestId, generation)) return;
+      final descriptor = error is ChatBackendException
+          ? error.descriptor
+          : AppErrorCatalog.describe(AppErrorCode.unknown);
+      AppDiagnostics.record(
+        component: 'conversation',
+        step: 'orchestrate',
+        code: descriptor.code,
+        severity: descriptor.severity,
+        correlationId: descriptor.correlationId,
+        metadata: {'retryable': descriptor.retryable},
+      );
+      _appendMessage(
+        ConversationMessageRole.assistant,
+        descriptor.userMessage,
+      );
+      _setState(
+        _state.copyWith(
+          phase: descriptor.retryable
+              ? ConversationSessionPhase.recoverableError
+              : ConversationSessionPhase.blockingError,
+          clearCurrentRequest: true,
+          retryAvailable:
+              descriptor.retryable && _retryCount < maximumBackendRetries,
+          errorMessage: descriptor.userMessage,
+        ),
+      );
+      _emit(
+        ConversationUiEffectType.showRecoverableError,
+        message: descriptor.userMessage,
+      );
+    }
+  }
+
+  Future<void> cancelCurrentRequest() async {
+    if (_disposed || !_state.isBusy) return;
+    _setState(
+      _state.copyWith(
+        sessionGeneration: _state.sessionGeneration + 1,
+        phase: ConversationSessionPhase.cancelled,
+        clearCurrentRequest: true,
+        retryAvailable: false,
+      ),
+    );
+    _setState(_state.copyWith(phase: ConversationSessionPhase.ready));
+  }
+
+  void changeAccount(UserProfile profile) {
+    if (_disposed || identical(profile, _profile)) return;
+    _profile = profile;
+    _setState(
+      ConversationSessionState(
+        sessionId: _idGenerator(),
+        sessionGeneration: _state.sessionGeneration + 1,
+        phase: ConversationSessionPhase.ready,
+        messages: const [],
+        effects: const [],
+      ),
+    );
+    _lastSubmittedText = null;
+    _retryCount = 0;
+  }
+
+  void _appendMessage(ConversationMessageRole role, String text) {
+    if (_disposed || text.trim().isEmpty) return;
+    final message = ConversationVisibleMessage(
+      id: _idGenerator(),
+      role: role,
+      text: text,
+      createdAt: _clock().toUtc(),
+    );
+    _setState(
+      _state.copyWith(
+        messages: [..._state.messages, message],
+        effects: _state.effects,
+      ),
+    );
+    _messageStore
+        .save(sessionId: _state.sessionId, role: role, text: message.text)
+        .ignore();
+    _emit(ConversationUiEffectType.scrollToLatest);
+  }
+
+  void _emit(ConversationUiEffectType type, {String? message}) {
+    if (_disposed) return;
+    final effect = ConversationUiEffect(
+      id: _idGenerator(),
+      type: type,
+      sessionGeneration: _state.sessionGeneration,
+      message: message,
+    );
+    _setState(_state.copyWith(effects: [..._state.effects, effect]));
+  }
+
+  Future<void> _consumeEffect(String effectId) async {
+    if (_disposed) return;
+    _setState(
+      _state.copyWith(
+        effects:
+            _state.effects.where((effect) => effect.id != effectId).toList(),
+      ),
+    );
+  }
+
+  Future<void> _dismissError() async {
+    if (_disposed) return;
+    _setState(
+      _state.copyWith(
+        phase: ConversationSessionPhase.ready,
+        clearError: true,
+      ),
+    );
+  }
+
+  bool _isCurrent(String requestId, int generation) =>
+      !_disposed &&
+      _state.currentRequestId == requestId &&
+      _state.sessionGeneration == generation;
+
+  void _setState(ConversationSessionState value) {
+    if (_disposed) return;
+    _state = value;
+    notifyListeners();
+  }
+
+  static ConversationSessionPhase _pendingPhase(
+    PendingConversationActionType type,
+  ) =>
+      switch (type) {
+        PendingConversationActionType.identityClarification ||
+        PendingConversationActionType.eventTargetClarification =>
+          ConversationSessionPhase.awaitingClarification,
+        _ => ConversationSessionPhase.awaitingConfirmation,
+      };
+
+  static String _defaultId() =>
+      '${DateTime.now().microsecondsSinceEpoch}-${identityHashCode(Object())}';
+
+  @override
+  void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    _state = _state.copyWith(
+      sessionGeneration: _state.sessionGeneration + 1,
+      phase: ConversationSessionPhase.disposed,
+      clearCurrentRequest: true,
+    );
+    final backend = _ownedBackend;
+    if (backend is ClosableChatBackendClient) backend.close();
+    super.dispose();
+  }
+}

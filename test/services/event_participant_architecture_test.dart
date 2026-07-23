@@ -3,12 +3,18 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('screen uses only the high-level event participant Identity seam', () {
+  test('application flow uses only the high-level participant Identity seam',
+      () {
     final screen = File('lib/screens/chat_screen.dart').readAsStringSync();
+    final executor =
+        File('lib/services/conversation_legacy_action_executor.dart')
+            .readAsStringSync();
     final main = File('lib/main.dart').readAsStringSync();
 
     expect(screen, isNot(contains('beginIdentityActionBinding')));
-    expect(screen, contains('beginEventParticipantIdentity'));
+    expect(screen, isNot(contains('beginEventParticipantIdentity')));
+    expect(executor, contains('beginEventParticipantIdentity'));
+    expect(executor, isNot(contains('beginIdentityActionBinding')));
     expect(screen, isNot(contains('FirestoreIdentity')));
     expect(main, isNot(contains('FirestoreIdentity')));
     expect(screen, isNot(contains('FirebaseFirestore')));
