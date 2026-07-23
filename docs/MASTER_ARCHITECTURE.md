@@ -605,6 +605,49 @@ la dette de migration déjà décrite par R.1. R.3 pourra transformer les chemin
 composants et codes techniques en explications utilisateur ; R.2 ne produit
 aucune recommandation ni phrase finale.
 
+#### V1-R.3 — Explications déterministes des priorités
+
+`PriorityExplanationEngine` transforme exclusivement les composants R.1 et les
+résultats propagés R.2 en explications françaises bornées. Il ne reçoit ni
+titre, ni description, ni libellé humain et ne consulte aucun repository. Le
+registre versionné `PriorityExplanationRegistry` est fermé : toute formulation
+correspond à un code calculé connu, et un code inconnu invalide l’explication.
+Il n’existe donc aucune justification libre ou reconstruite après le calcul.
+
+La forme courte retient au plus deux facteurs dominants parmi trois raisons
+principales, selon la contribution numérique absolue puis un ordre fermé. La
+forme détaillée sépare score direct, facteurs positifs, facteurs neutres ou
+réducteurs, données manquantes, dépendances explicites et limites du calcul.
+Les paragraphes, le texte total, les raisons secondaires et le nombre
+d’explications de classement sont plafonnés.
+
+Une importance absente reste décrite comme inconnue et neutre. Une échéance
+absente n’est jamais dite lointaine. L’effort n’est expliqué par rapport au
+temps restant que lorsque R.1 l’a effectivement comparé. La flexibilité et
+l’impact direct proviennent uniquement de leurs champs structurés. La
+fraîcheur limitée, un calcul partiel et les données manquantes restent visibles
+sans culpabilisation.
+
+La propagation est présentée séparément du score direct uniquement lorsque sa
+contribution est non nulle. Les cycles, influences incertaines, profondeurs et
+troncatures sont signalés sans exposer chemins, identifiants de dépendances ou
+coefficients internes. Une absence de propagation est elle aussi explicite.
+
+Les comparaisons suivent exactement les départages canoniques R.2 : score
+ajusté, score direct, échéance, rigidité, confirmation, fraîcheur, puis ordre
+stable. Le dernier départage n’expose aucun identifiant et ne prétend pas qu’un
+élément est objectivement plus important. À structure identique, situation
+familiale, genre, domaine visible, nom ou catégorie ne peuvent modifier le
+texte.
+
+`PriorityExplanationPanel` est un composant de présentation testable qui reçoit
+une explication déjà calculée. Il ne charge aucune donnée et ne calcule aucune
+raison. Le classement canonique n’étant pas encore activé dans les écrans
+produit, ce composant n’est pas branché sur les scores legacy et aucun ordre
+visible n’est modifié. Une future frontière C.1 pourra consommer une
+représentation courte et bornée, mais R.3 ne modifie ni payload conversationnel
+ni prompt.
+
 ### 7.8 Reasoning Engine
 
 **Current state:** Reasoning is distributed across profile reasoning, memory reasoning, planning services, prompt context, and model selection. There is no single verified general-purpose Reasoning Engine.
