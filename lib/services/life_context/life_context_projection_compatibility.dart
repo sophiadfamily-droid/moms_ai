@@ -2,7 +2,7 @@ import 'dart:collection';
 
 import '../../models/chat_backend_request.dart';
 import '../../models/life_context/life_context_projection.dart';
-import 'memory_projection_backend_serializer.dart';
+import '../conversation_context_assembler.dart';
 
 /// Transitional adapter only. It never loads domains and never serializes the
 /// LC.1 snapshot or LC.2 graph.
@@ -16,50 +16,11 @@ abstract final class LifeContextConversationProjectionAdapter {
         'conversation_projection_required',
       );
     }
-    final profileSections = <String, Object?>{};
-    final events = <Map<String, dynamic>>[];
-    final memories = <Map<String, dynamic>>[];
-    for (final section in projection.sections) {
-      final serialized = section.items.map(_itemMap).toList(growable: false);
-      if (section.type == LifeContextProjectionSectionType.event) {
-        events.addAll(serialized.cast<Map<String, dynamic>>());
-      } else if (section.type == LifeContextProjectionSectionType.memory) {
-        memories.addAll(
-          MemoryProjectionBackendSerializer.serializeProjection(section),
-        );
-      } else {
-        profileSections[section.type.name] = {
-          'availability': section.availability.name,
-          'freshness': section.freshness.name,
-          'items': serialized,
-          'omittedCount': section.omittedCount,
-        };
-      }
-    }
     return ChatBackendRequest(
       message: message,
-      profile: const {},
-      profileContext: {
-        'projectionVersion': projection.schemaVersion,
-        'purpose': projection.purpose.name,
-        'state': projection.state.name,
-        'sections': profileSections,
-      },
-      memories: memories,
-      memoryReasoning: const [],
-      events: events,
+      context: ConversationContextAssembler.assemble(projection),
     );
   }
-
-  static Map<String, dynamic> _itemMap(LifeContextProjectionItem item) => {
-        'id': item.id,
-        'type': item.type,
-        'confirmation': item.confirmation.name,
-        'freshness': item.freshness.name,
-        'facts': {
-          for (final fact in item.facts) fact.key: fact.value,
-        },
-      };
 }
 
 final class PlanningProjectionEvent {

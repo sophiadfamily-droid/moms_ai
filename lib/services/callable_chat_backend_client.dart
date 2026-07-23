@@ -89,6 +89,11 @@ class CallableChatBackendClient implements ChatBackendClient {
       return ChatBackendResponse.fromJson(normalized);
     } on ChatBackendException {
       rethrow;
+    } on FormatException {
+      throw ChatBackendCallableException(
+        'invalid-request',
+        AppErrorCode.invalidArgument,
+      );
     } on TimeoutException {
       throw ChatBackendTimeoutException();
     } on FirebaseFunctionsException catch (error) {

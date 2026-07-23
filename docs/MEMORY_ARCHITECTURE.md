@@ -260,10 +260,12 @@ dernier état local valide reste lisible sans prétendre être synchronisé.
 
 Life Context expose seulement les compteurs bornés, la fraîcheur, la révision
 de politique, l’état de synchronisation et la présence de conflits; ni la file,
-ni les conflits complets, ni les reçus ne sont projetés. Conversation continue
-d’utiliser la projection M.1/LC.3 et Planning continue d’exclure toute mémoire
-libre. La bibliothèque, la correction et les suppressions visibles restent
-réservées à M.3.
+ni les conflits complets, ni les reçus ne sont projetés. Depuis C.2,
+Conversation sérialise cette unique projection LC.3 dans l’enveloppe bornée
+`conversation.transport.v1`. Le champ de compatibilité `memoryReasoning` reste
+vide et aucun `MemoryContext` complet n’est transporté. La redaction Flutter et
+Functions refuse santé, médical, tombstones, archives, suppressions, conflits
+et données inconnues. Planning continue d’exclure toute mémoire libre.
 
 ## M.3 — Bibliothèque et contrôle visible
 

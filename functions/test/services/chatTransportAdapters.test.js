@@ -32,7 +32,34 @@ function createHandler(overrides = {}) {
   });
 }
 
-function secureRequest(data = {message: "Bonjour"}) {
+function validPayload(message = "Bonjour") {
+  return {
+    schemaVersion: 2,
+    message,
+    conversationContext: {
+      schemaVersion: 1,
+      projectionVersion: 1,
+      purpose: "conversation.transport.v1",
+      generatedAt: "2026-07-20T10:00:00.000Z",
+      state: "complete",
+      sections: [],
+      budgetRequested: 245,
+      budgetUsed: 0,
+      omittedCount: 0,
+      truncatedSections: [],
+      warningCodes: [],
+      redactionVersion: 1,
+    },
+    conversationHistory: [],
+    profile: {},
+    profileContext: {},
+    memories: [],
+    memoryReasoning: [],
+    events: [],
+  };
+}
+
+function secureRequest(data = validPayload()) {
   return {
     data,
     auth: {
@@ -126,7 +153,7 @@ test("rejects client-controlled identity fields", async () => {
   for (const field of ["uid", "userId", "accountId"]) {
     await assert.rejects(
         () => createHandler()(secureRequest({
-          message: "Bonjour",
+          ...validPayload(),
           [field]: "x",
         })),
         (error) => error.code === "invalid-argument",

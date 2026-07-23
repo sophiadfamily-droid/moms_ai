@@ -2,6 +2,10 @@ const {HttpsError} = require("firebase-functions/v2/https");
 const {ChatQuotaExceededError} = require("./chatQuotaService");
 const {requiresAppCheck} = require("./securityEnvironment");
 const {ERROR_CODES, writeDiagnostic} = require("./diagnostics");
+const {
+  ConversationContextValidationError,
+  validateConversationRequest,
+} = require("./conversationContextContract");
 
 const CALLABLE_TIMEOUT_SECONDS = 25;
 const CHAT_FUNCTION_REGION = "us-central1";
@@ -83,12 +87,25 @@ function createCallableChatHandler({
       );
     }
 
+    let validatedPayload;
+    try {
+      validatedPayload = validateConversationRequest(payload);
+    } catch (error) {
+      if (error instanceof ConversationContextValidationError) {
+        throw new HttpsErrorClass(
+            "invalid-argument",
+            "La requête ZELIA est invalide.",
+        );
+      }
+      throw error;
+    }
+
     try {
       if (typeof consumeQuota !== "function") {
         throw new Error("CHAT_QUOTA_NOT_CONFIGURED");
       }
       await consumeQuota({uid});
-      return await handleChatRequest(payload, {
+      return await handleChatRequest(validatedPayload, {
         uid,
       }, {
         ...handlerDependencies,

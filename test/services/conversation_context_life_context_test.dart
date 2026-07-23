@@ -3,24 +3,18 @@ import 'package:moms_ai/models/life_context/memory_context.dart';
 import 'package:moms_ai/models/user_profile.dart';
 import 'package:moms_ai/models/memory_lifecycle.dart';
 import 'package:moms_ai/models/memory_policy.dart';
+import 'package:moms_ai/models/life_context/life_context_domains.dart';
+import 'package:moms_ai/models/life_context/life_context_graph.dart';
+import 'package:moms_ai/models/life_context/life_context_projection.dart';
 import 'package:moms_ai/services/conversation_context_service.dart';
 import 'package:moms_ai/services/memory_lifecycle_repository.dart';
-import 'package:moms_ai/services/smart_planning_service.dart';
 
 void main() {
-  test('builds conversation and planning memory from one typed snapshot',
+  test('builds schema 2 request from one LC.3 conversation projection',
       () async {
-    final source = <String, dynamic>{
-      'id': 'routine-1',
-      'text': 'Tous les lundis de 09h à 10h, routine personnelle.',
-      'normalizedText': 'tous les lundis de 09h à 10h, routine personnelle.',
-      'category': 'routine',
-      'importance': 3,
-      'createdAt': '2026-07-01T08:00:00.000Z',
-    };
     final provider = DefaultConversationContextProvider(
-      loadMemories: () async => [source],
-      loadEvents: () async => [],
+      loadAccountScope: () async => 'account-test',
+      loadProjection: (_) async => _projection(),
     );
 
     final request = await provider.buildRequest(
@@ -28,31 +22,19 @@ void main() {
       profile: _profile(),
     );
 
-    expect(
-        request.profileContext['identity'], containsPair('firstName', 'User'));
-    expect(request.memories.single['text'], source['text']);
-    expect(
-      request.memoryReasoning.where(
-        (item) => item['type'] == 'blocked_period',
-      ),
-      hasLength(1),
-    );
-    expect(
-      SmartPlanningService.overlapsBlockedReasoning(
-        start: DateTime(2026, 7, 20, 9, 15),
-        end: DateTime(2026, 7, 20, 9, 30),
-        reasoning: request.memoryReasoning,
-      ),
-      isTrue,
-    );
-    expect(source['id'], 'routine-1');
+    expect(request.schemaVersion, 2);
+    expect(request.context!.state.name, 'complete');
+    expect(request.toJson()['conversationContext'], isNotEmpty);
+    expect(request.profile, isEmpty);
+    expect(request.memories, isEmpty);
+    expect(request.memoryReasoning, isEmpty);
   });
 
-  test('conversation boundary excludes photo paths from both profile views',
+  test('conversation boundary serializes no profile or account scope',
       () async {
     final provider = DefaultConversationContextProvider(
-      loadMemories: () async => [],
-      loadEvents: () async => [],
+      loadAccountScope: () async => 'account-test',
+      loadProjection: (_) async => _projection(),
     );
 
     final request = await provider.buildRequest(
@@ -60,26 +42,16 @@ void main() {
       profile: _profile(profilePhotoPath: '/local/private.jpg'),
     );
 
-    expect(request.profile.toString(), isNot(contains('/local/private.jpg')));
-    expect(
-      request.profileContext.toString(),
-      isNot(contains('/local/private.jpg')),
-    );
-    expect(request.memories, isEmpty);
+    final serialized = request.toJson().toString();
+    expect(serialized, isNot(contains('/local/private.jpg')));
+    expect(serialized, isNot(contains('account-test')));
   });
 
-  test('explicit non-active proposal is excluded from chat context', () async {
+  test('projection account mismatch becomes explicit unavailable state',
+      () async {
     final provider = DefaultConversationContextProvider(
-      loadMemories: () async => [
-        {
-          'id': 'proposal-1',
-          'text': 'Routine proposée le lundi',
-          'category': 'routine',
-          'importance': 3,
-          'lifecycleState': 'proposed',
-        },
-      ],
-      loadEvents: () async => [],
+      loadAccountScope: () async => 'other-account',
+      loadProjection: (_) async => _projection(),
     );
 
     final request = await provider.buildRequest(
@@ -87,8 +59,8 @@ void main() {
       profile: _profile(),
     );
 
-    expect(request.memories, isEmpty);
-    expect(request.memoryReasoning, isEmpty);
+    expect(request.context!.state.name, 'accountMismatch');
+    expect(request.context!.sections, isEmpty);
   });
 
   test('assistant memory output is persisted only as a proposal', () async {
@@ -216,6 +188,52 @@ UserProfile _profile({String profilePhotoPath = ''}) {
     profilePhotoPath: profilePhotoPath,
   );
 }
+
+LifeContextProjection _projection() => LifeContextProjection(
+      projectionId: 'projection-1',
+      sourceSnapshotId: 'snapshot-1',
+      accountScopeId: 'account-test',
+      purpose: LifeContextConsumerPurpose.conversation,
+      generatedAt: DateTime.utc(2026, 7, 23),
+      state: LifeContextProjectionState.complete,
+      budgetRequested: 245,
+      budgetUsed: 2,
+      sections: [
+        LifeContextProjectionSection(
+          type: LifeContextProjectionSectionType.human,
+          availability: LifeContextAvailability.available,
+          freshness: LifeContextFreshness.current,
+          items: [
+            LifeContextProjectionItem(
+              id: 'person-1',
+              domain: LifeContextDomain.human,
+              type: 'person',
+              facts: [
+                LifeContextProjectionFact(
+                  key: LifeContextProjectionFactKeys.status,
+                  value: 'active',
+                  sensitivity: LifeContextSensitivityLevel.publicTechnical,
+                ),
+              ],
+              confirmation: LifeContextConfirmation.confirmed,
+              freshness: LifeContextFreshness.current,
+              provenance: const LifeContextProjectionProvenance(
+                sourceDomain: LifeContextDomain.human,
+                sourceId: 'person-1',
+                sourceSnapshotId: 'snapshot-1',
+                sourceKind: LifeContextSourceKind.humanModelLocal,
+              ),
+            ),
+          ],
+          budgetLimit: 55,
+          budgetUsed: 2,
+          omittedCount: 0,
+          truncated: false,
+        ),
+      ],
+      omittedCount: 0,
+      warningCodes: const [],
+    );
 
 final class _FakeLifecycleRepository implements MemoryLifecycleRepository {
   final List<MemoryProposal> proposals = [];

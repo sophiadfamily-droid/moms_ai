@@ -36,7 +36,10 @@ void main() {
       expect(identical(outcome?.request, request), isTrue);
       expect(identical(backend.requests.single, request), isTrue);
       expect(request.toJson().keys, {
+        'schemaVersion',
         'message',
+        'conversationContext',
+        'conversationHistory',
         'profile',
         'profileContext',
         'memories',
@@ -301,13 +304,8 @@ ConversationCoordinator _coordinator() {
 }
 
 ChatBackendRequest _request({String message = 'message'}) {
-  return ChatBackendRequest(
+  return ChatBackendRequest.withUnavailableContext(
     message: message,
-    profile: const {'firstName': 'Sophia'},
-    profileContext: const {'identity': {}},
-    memories: const [],
-    memoryReasoning: const [],
-    events: const [],
   );
 }
 

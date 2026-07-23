@@ -253,8 +253,9 @@ void main() {
         projection: projection,
       );
       expect(request.profile, isEmpty);
-      expect(request.profileContext, contains('projectionVersion'));
-      expect(request.events, isNotEmpty);
+      expect(request.profileContext, isEmpty);
+      expect(request.events, isEmpty);
+      expect(request.context, isNotNull);
       final json = request.toJson().toString();
       expect(json, isNot(contains('sourceSnapshotId')));
       expect(json, isNot(contains('LifeContextGraph')));

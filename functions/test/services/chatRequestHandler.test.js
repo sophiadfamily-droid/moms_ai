@@ -8,20 +8,45 @@ const {
 } = require("../../services/chatRequestHandler");
 const {generateZeliaResponse} = require("../../services/openaiService");
 
-const payload = {
-  message: "Ajoute du lait aux courses",
-  profile: {firstName: "Sophie"},
-  profileContext: {work: {}},
-  memories: [{text: "Routine"}],
-  memoryReasoning: [{type: "routine"}],
-  events: [{title: "École"}],
-};
+/**
+ * Builds a canonical bounded conversation request fixture.
+ * @param {string} message Visible user message.
+ * @return {object} Canonical request.
+ */
+function request(message = "Ajoute du lait aux courses") {
+  return {
+    schemaVersion: 2,
+    message,
+    conversationContext: {
+      schemaVersion: 1,
+      projectionVersion: 1,
+      purpose: "conversation.transport.v1",
+      generatedAt: "2026-07-20T10:00:00.000Z",
+      state: "complete",
+      sections: [],
+      budgetRequested: 245,
+      budgetUsed: 0,
+      omittedCount: 0,
+      truncatedSections: [],
+      warningCodes: [],
+      redactionVersion: 1,
+    },
+    conversationHistory: [],
+    profile: {},
+    profileContext: {},
+    memories: [],
+    memoryReasoning: [],
+    events: [],
+  };
+}
+
+const payload = request();
 
 test("uses a 22 second total OpenAI deadline", () => {
   assert.equal(OPENAI_TIMEOUT_MS, 22000);
 });
 
-test("handles the legacy payload without mutating it", async () => {
+test("handles the canonical bounded payload without mutating it", async () => {
   const original = structuredClone(payload);
   const calls = [];
 
@@ -53,50 +78,39 @@ test("handles the legacy payload without mutating it", async () => {
   });
 });
 
-test("preserves legacy defaults for missing fields", async () => {
-  const result = await handleChatRequest({}, {uid: "test-uid"}, {
-    apiKey: "test-key",
-    now: () => new Date("2026-07-20T10:00:00.000Z"),
-    logger: {info() {}},
-    generateResponse: async ({userMessage}) => {
-      assert.equal(userMessage, "");
-      return {reply: "", actions: null, memories: null};
-    },
-  });
-
-  assert.deepEqual(result, {
-    reply: "C'est noté 💕",
-    actions: [],
-    memories: [],
-  });
+test("rejects missing canonical fields", async () => {
+  await assert.rejects(
+      () => handleChatRequest({}, {uid: "test-uid"}),
+      /conversation_request_invalid/,
+  );
 });
 
 test(
     "keeps only a participant literally present in the user message",
     async () => {
-      const explicit = await handleChatRequest({
-        message: "Ajoute un rendez-vous avec Person A",
-      }, {uid: "test-uid"}, {
-        now: () => new Date("2026-07-20T10:00:00.000Z"),
-        logger: {info() {}},
-        generateResponse: async () => ({
-          reply: "D'accord",
-          actions: [{
-            type: "event",
-            title: "Rendez-vous",
-            participant: {
-              label: "Person A",
-              entityType: "person",
-              evidence: "explicit_user_input",
-            },
-          }],
-          memories: [],
-        }),
-      });
+      const explicit = await handleChatRequest(
+          request("Ajoute un rendez-vous avec Person A"),
+          {uid: "test-uid"}, {
+            now: () => new Date("2026-07-20T10:00:00.000Z"),
+            logger: {info() {}},
+            generateResponse: async () => ({
+              reply: "D'accord",
+              actions: [{
+                type: "event",
+                title: "Rendez-vous",
+                participant: {
+                  label: "Person A",
+                  entityType: "person",
+                  evidence: "explicit_user_input",
+                },
+              }],
+              memories: [],
+            }),
+          });
       assert.equal(explicit.actions[0].participant.label, "Person A");
 
       const invented = await handleChatRequest(
-          {message: "Ajoute un rendez-vous"},
+          request("Ajoute un rendez-vous"),
           {uid: "test-uid"},
           {
             now: () => new Date("2026-07-20T10:00:00.000Z"),

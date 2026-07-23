@@ -1,32 +1,36 @@
+import 'dart:async';
+
 import '../models/chat_backend_request.dart';
+import '../models/conversation_context_envelope.dart';
 import '../models/event_model.dart';
+import '../models/life_context/life_context_projection.dart';
 import '../models/life_context/life_context_provenance.dart';
 import '../models/life_context/memory_context.dart';
 import '../models/memory_lifecycle.dart';
 import '../models/memory_lifecycle_state.dart';
 import '../models/memory_policy.dart';
 import '../models/user_profile.dart';
-import 'conversation_context_privacy_filter.dart';
 import 'auth_service.dart';
 import 'app_diagnostics.dart';
-import 'event_service.dart';
 import 'memory_pipeline_service.dart';
-import 'memory_reasoning_service.dart';
-import 'memory_service.dart';
 import 'life_context/life_context_engine.dart';
-import 'life_context/life_context_memory_payload_builder.dart';
-import 'life_context/memory_projection_backend_serializer.dart';
+import 'life_context/life_context_projection_engine.dart';
+import 'life_context_production_factory.dart';
 import 'memory_lifecycle_engine.dart';
 import 'memory_lifecycle_repository.dart';
 import 'memory_policy_engine.dart';
 import 'memory_policy_service.dart';
-import 'profile_context_builder_service.dart';
 import 'memory_proposal_factory.dart';
+import 'conversation_context_assembler.dart';
 
+typedef ConversationMemoryPolicyLoader = Future<MemoryPolicy> Function();
 typedef ConversationMemoryLoader = Future<List<Map<String, dynamic>>>
     Function();
 typedef ConversationEventLoader = Future<List<EventModel>> Function();
-typedef ConversationMemoryPolicyLoader = Future<MemoryPolicy> Function();
+typedef ConversationProjectionLoader = Future<LifeContextProjection> Function(
+  String accountScopeId,
+);
+typedef ConversationAccountScopeLoader = Future<String> Function();
 
 abstract class ConversationContextProvider {
   Future<ChatBackendRequest> buildRequest({
@@ -47,11 +51,8 @@ abstract interface class MemoryConversationContextProvider {
 
 class DefaultConversationContextProvider
     implements ConversationContextProvider, MemoryConversationContextProvider {
-  final LifeContextEngine? _lifeContextEngine;
-  final LifeContextMemoryPayloadBuilder _memoryPayloadBuilder;
-  final ConversationContextPrivacyFilter _privacyFilter;
-  final ConversationMemoryLoader? _loadMemories;
-  final ConversationEventLoader? _loadEvents;
+  final ConversationProjectionLoader? _loadProjection;
+  final ConversationAccountScopeLoader _loadAccountScope;
   final MemoryLifecycleEngine _memoryLifecycleEngine;
   final MemoryProposalFactory _memoryProposalFactory;
   final MemoryLifecycleRepository? _memoryLifecycleRepository;
@@ -59,23 +60,18 @@ class DefaultConversationContextProvider
   final ConversationMemoryPolicyLoader? _loadMemoryPolicy;
 
   const DefaultConversationContextProvider({
-    LifeContextEngine? lifeContextEngine,
-    LifeContextMemoryPayloadBuilder memoryPayloadBuilder =
-        const LifeContextMemoryPayloadBuilder(),
-    ConversationContextPrivacyFilter privacyFilter =
-        const ConversationContextPrivacyFilter(),
-    ConversationMemoryLoader? loadMemories,
-    ConversationEventLoader? loadEvents,
+    ConversationProjectionLoader? loadProjection,
+    ConversationAccountScopeLoader loadAccountScope =
+        AuthService.ensureAuthenticatedUid,
+    @Deprecated('Use loadProjection') ConversationMemoryLoader? loadMemories,
+    @Deprecated('Use loadProjection') ConversationEventLoader? loadEvents,
     MemoryLifecycleEngine memoryLifecycleEngine = const MemoryLifecycleEngine(),
     MemoryProposalFactory memoryProposalFactory = const MemoryProposalFactory(),
     MemoryLifecycleRepository? memoryLifecycleRepository,
     MemoryPolicyEngine memoryPolicyEngine = const MemoryPolicyEngine(),
     ConversationMemoryPolicyLoader? loadMemoryPolicy,
-  })  : _lifeContextEngine = lifeContextEngine,
-        _memoryPayloadBuilder = memoryPayloadBuilder,
-        _privacyFilter = privacyFilter,
-        _loadMemories = loadMemories,
-        _loadEvents = loadEvents,
+  })  : _loadProjection = loadProjection,
+        _loadAccountScope = loadAccountScope,
         _memoryLifecycleEngine = memoryLifecycleEngine,
         _memoryProposalFactory = memoryProposalFactory,
         _memoryLifecycleRepository = memoryLifecycleRepository,
@@ -87,54 +83,75 @@ class DefaultConversationContextProvider
     required String message,
     required UserProfile profile,
   }) async {
-    final rawMemories = await (_loadMemories ?? MemoryService.getMemories)();
-    final snapshot = (_lifeContextEngine ?? LifeContextEngine()).buildSnapshot(
-      profile: profile,
-      generatedAt: DateTime.now(),
-      memories: rawMemories,
-    );
-    final selectedMemory = _memoryPayloadBuilder.select(
-      context: snapshot.memory,
-      message: message,
-      limit: 12,
-    );
-    final relevantMemories =
-        MemoryProjectionBackendSerializer.serializeLegacySelection(
-      selectedMemory.memories,
-    );
-    final memoryReasoning =
-        MemoryReasoningService.buildReasoningFromContext(selectedMemory);
-    final profileContext = _privacyFilter.filterStructuredProfile(
-      profileContext:
-          ProfileContextBuilderService.buildStructuredContextFromSnapshot(
-        snapshot,
-      ),
-      message: message,
-    );
-    final savedEvents = await (_loadEvents ?? EventService.getEvents)();
-    final existingEvents = savedEvents.map((event) {
-      return {
-        'title': event.title,
-        'date': event.date,
-        'time': event.time,
-        'startDateTimeIso': event.startDateTimeIso,
-        'endTime': event.endTime,
-        'endDateTimeIso': event.endDateTimeIso,
-        'durationMinutes': event.durationMinutes,
-        'category': event.category,
-      };
-    }).toList();
-
+    final now = DateTime.now().toUtc();
+    ConversationContextEnvelope envelope;
+    try {
+      final scope = await _loadAccountScope();
+      final projection = await (_loadProjection ?? _loadCanonicalProjection)(
+        scope,
+      ).timeout(ConversationTransportContract.contextTimeout);
+      if (projection.accountScopeId != scope) {
+        throw const LifeContextProjectionException(
+          'conversation_projection_account_mismatch',
+        );
+      }
+      envelope = ConversationContextAssembler.assemble(projection);
+    } on TimeoutException {
+      envelope = ConversationContextEnvelope.unavailable(
+        state: ConversationContextState.timeout,
+        generatedAt: now,
+        warningCode: 'context_timeout',
+      );
+    } on LifeContextEngineException catch (error) {
+      envelope = ConversationContextEnvelope.unavailable(
+        state: switch (error.code) {
+          'unauthenticated' => ConversationContextState.unauthenticated,
+          'account_mismatch' => ConversationContextState.accountMismatch,
+          'cancelled' => ConversationContextState.cancelled,
+          _ => ConversationContextState.unavailable,
+        },
+        generatedAt: now,
+        warningCode: error.code,
+      );
+    } on LifeContextProjectionException catch (error) {
+      envelope = ConversationContextEnvelope.unavailable(
+        state: error.code.contains('account_mismatch')
+            ? ConversationContextState.accountMismatch
+            : ConversationContextState.invalidProjection,
+        generatedAt: now,
+        warningCode: error.code,
+      );
+    } on FormatException {
+      envelope = ConversationContextEnvelope.unavailable(
+        state: ConversationContextState.invalidProjection,
+        generatedAt: now,
+        warningCode: 'invalid_projection',
+      );
+    } on Object {
+      envelope = ConversationContextEnvelope.unavailable(
+        state: ConversationContextState.unknownFailure,
+        generatedAt: now,
+        warningCode: 'context_unavailable',
+      );
+    }
     return ChatBackendRequest(
       message: message,
-      profile: _privacyFilter.filterProfile(
-        profile: profile.toJson(),
-        message: message,
+      context: envelope,
+    );
+  }
+
+  static Future<LifeContextProjection> _loadCanonicalProjection(
+    String scope,
+  ) async {
+    final engine = await LifeContextProductionFactory.create();
+    final snapshot = await engine.buildCanonicalSnapshot(
+      accountScopeId: scope,
+    );
+    return LifeContextProjectionEngine().build(
+      snapshot: snapshot,
+      contract: LifeContextConsumerContract.forPurpose(
+        LifeContextConsumerPurpose.conversation,
       ),
-      profileContext: profileContext,
-      memories: relevantMemories,
-      memoryReasoning: memoryReasoning,
-      events: existingEvents,
     );
   }
 

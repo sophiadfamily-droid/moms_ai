@@ -31,14 +31,15 @@ void main() {
     expect(find.text('Bonjour Zélia'), findsOneWidget);
     expect(find.text('Bonjour 💕'), findsOneWidget);
     expect(backend.requests, hasLength(1));
-    expect(backend.requests.single.toJson(), {
-      'message': 'Bonjour Zélia',
-      'profile': _profile().toJson(),
-      'profileContext': const <String, dynamic>{},
-      'memories': const <Map<String, dynamic>>[],
-      'memoryReasoning': const <Map<String, dynamic>>[],
-      'events': const <Map<String, dynamic>>[],
-    });
+    final payload = backend.requests.single.toJson();
+    expect(payload['schemaVersion'], 2);
+    expect(payload['message'], 'Bonjour Zélia');
+    expect(
+      (payload['conversationContext'] as Map)['state'],
+      'unavailable',
+    );
+    expect(payload['profile'], isEmpty);
+    expect(payload['memoryReasoning'], isEmpty);
   });
 
   testWidgets('ChatScreen never exposes a raw backend failure', (tester) async {
@@ -94,13 +95,8 @@ class _WidgetContextProvider implements ConversationContextProvider {
     required String message,
     required UserProfile profile,
   }) async {
-    return ChatBackendRequest(
+    return ChatBackendRequest.withUnavailableContext(
       message: message,
-      profile: profile.toJson(),
-      profileContext: const {},
-      memories: const [],
-      memoryReasoning: const [],
-      events: const [],
     );
   }
 

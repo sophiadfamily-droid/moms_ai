@@ -792,10 +792,55 @@ code, étape, retryabilité et corrélation technique sont diagnostiqués. Les
 messages sont persistés derrière `ConversationMessageStore`; l’écran ne connaît
 pas cette persistance.
 
-C.2 renforcera la minimisation, les budgets, la sensibilité et la résilience du
-contexte réellement transmis. C.3 renforcera la politique d’incertitude et de
-clarification. A.1 définira les modes d’action. C.1 ne modifie ni budgets LC.3,
-ni prompts, ni modèle OpenAI, ni politique d’action.
+### 9.3 C.2 — Contexte conversationnel borné
+
+Le parcours de production utilise désormais une seule chaîne multi-domaines :
+`LifeContextProductionFactory → LifeContextProjectionEngine` avec le contrat
+Conversation LC.3, puis `ConversationContextAssembler → ChatBackendRequest`.
+Le contrôleur demande cette frontière injectable; ni l’écran ni le contrôleur
+ne chargent un repository. L’ancien adaptateur de compatibilité dérive lui
+aussi son résultat du même assembleur et n’est donc pas un second builder.
+
+L’enveloppe `conversation.transport.v1` conserve l’état `complete`, `partial`,
+`stale` ou explicitement indisponible, la disponibilité et la fraîcheur par
+section, les budgets LC.3, les omissions et les troncatures. Elle ne sérialise
+ni UID/scope, ni snapshot, graphe, profil, `MemoryContext`, provenance source,
+révision métier ou contenu Priority. Un échec de projection produit un état
+fermé; il n’est jamais transformé en contexte complet composé de listes vides.
+
+Le transport applique en plus des bornes déterministes : message courant
+4 000 caractères et 12 000 octets UTF-8, historique de 8 messages au maximum
+(1 000 caractères chacun, 8 000 octets au total), contexte 24 000 octets et
+requête complète 48 000 octets. Le message courant est refusé, jamais tronqué
+silencieusement. L’historique est limité aux rôles utilisateur/assistant,
+ordonné et dédupliqué; le parcours actuel n’envoie pas encore d’historique
+ancien par défaut. Les alias backend historiques restent présents mais vides
+et sont comptés dans la taille finale.
+
+La redaction version 1 est une allowlist des sections et faits LC.3. Santé,
+médical, adresse complète, téléphone, secrets, tokens, documents bruts,
+tombstones, conflits et file mémoire restent interdits. Les mémoires ne
+proviennent que de la section Memory LC.3, donc après politique, consentement,
+cycle de vie, déduplication canonique et budget. `memoryReasoning` n’est plus
+une seconde copie : son alias de transition est vide.
+
+Flutter valide version, finalité, clés, états, budgets, nombres d’éléments,
+tailles de texte et taille UTF-8 avant le callable. Functions répète cette
+validation avec une allowlist fermée et une redaction finale avant le builder
+de prompt; une requête invalide n’atteint ni quota ni modèle et aucune erreur
+ne contient le payload. Le prompt existant consomme seulement les sections
+sanitisées et leurs marqueurs de disponibilité, sans changer personnalité,
+modèle, routage ou politique d’action.
+
+La construction LC est bornée à sept secondes; annulation, retry, changement
+de génération et changement de compte continuent d’utiliser les protections
+C.1. Un retry reconstruit le contexte depuis le scope Auth courant. Les
+continuations Smart Planning restent typées et ne dupliquent pas ce contexte.
+
+C.3 renforcera la formulation de l’incertitude et la politique générale de
+clarification. A.1 définira les modes d’action. C.2 ne branche pas Priority,
+ne change ni modèle OpenAI ni politique d’action et n’ajoute aucun nouveau
+prompt général.
 
 The durable lifecycle is:
 

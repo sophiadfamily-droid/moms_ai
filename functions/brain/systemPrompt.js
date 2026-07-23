@@ -16,12 +16,20 @@ const systemPrompt = ({
   memories,
   memoryReasoning = [],
   events,
+  conversationContext,
+  conversationHistory,
   detectedIntent,
 }) => `
 ${identityPrompt}
 
 Date du jour :
 ${today}
+
+Contexte conversationnel canonique borné :
+${JSON.stringify(conversationContext)}
+
+Historique conversationnel borné :
+${JSON.stringify(conversationHistory)}
 
 Profil brut :
 ${JSON.stringify(profile)}

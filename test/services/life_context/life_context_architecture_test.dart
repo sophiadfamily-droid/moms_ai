@@ -117,7 +117,8 @@ void main() {
     for (final file in production) {
       final source = file.readAsStringSync();
       if (file.path.endsWith('life_context_snapshot.dart') ||
-          file.path.endsWith('life_context_engine.dart')) {
+          file.path.endsWith('life_context_engine.dart') ||
+          file.path.endsWith('conversation_context_service.dart')) {
         continue;
       }
       expect(

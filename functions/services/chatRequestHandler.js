@@ -15,6 +15,8 @@ const {routeModel} = require("./modelRouterService");
 const {sanitizeEventParticipants} = require("./eventParticipantContract");
 const {sanitizeEventMutations} = require("./eventMutationContract");
 const {writeDiagnostic} = require("./diagnostics");
+const {validateConversationRequest} =
+  require("./conversationContextContract");
 
 const OPENAI_TIMEOUT_MS = 22000;
 
@@ -106,13 +108,15 @@ async function handleChatRequest(
     throw new Error("CHAT_AUTH_CONTEXT_REQUIRED");
   }
 
-  const source = payload || {};
+  const source = validateConversationRequest(payload);
   const message = source.message || "";
   const profile = source.profile || {};
   const profileContext = source.profileContext || {};
   const memories = source.memories || [];
   const memoryReasoning = source.memoryReasoning || [];
   const events = source.events || [];
+  const conversationContext = source.conversationContext;
+  const conversationHistory = source.conversationHistory;
 
   const now = dependencies.now || (() => new Date());
   const logger = dependencies.logger || console;
@@ -132,6 +136,8 @@ ${systemPrompt({
     memories,
     memoryReasoning,
     events,
+    conversationContext,
+    conversationHistory,
     detectedIntent,
   })}
 

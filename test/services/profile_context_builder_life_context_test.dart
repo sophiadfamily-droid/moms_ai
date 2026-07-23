@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:moms_ai/models/chat_backend_request.dart';
 import 'package:moms_ai/models/user_profile.dart';
 import 'package:moms_ai/services/life_context/life_context_engine.dart';
 import 'package:moms_ai/services/life_context/user_profile_life_context_mapper.dart';
@@ -9,7 +8,7 @@ import 'package:moms_ai/services/profile_reasoning_service.dart';
 void main() {
   final generatedAt = DateTime.utc(2026, 7, 20, 12);
 
-  test('preserves the complete legacy profile context and backend JSON', () {
+  test('preserves the complete legacy profile context locally', () {
     final profile = _completeProfile();
 
     final context = ProfileContextBuilderService.buildStructuredContext(
@@ -23,23 +22,6 @@ void main() {
       );
 
     expect(context, expectedContext);
-
-    final request = ChatBackendRequest(
-      message: 'Bonjour',
-      profile: profile.toJson(),
-      profileContext: context,
-      memories: const [],
-      memoryReasoning: const [],
-      events: const [],
-    );
-    expect(request.toJson(), {
-      'message': 'Bonjour',
-      'profile': profile.toJson(),
-      'profileContext': expectedContext,
-      'memories': const <dynamic>[],
-      'memoryReasoning': const <dynamic>[],
-      'events': const <dynamic>[],
-    });
   });
 
   test('builds through the injected LifeContextEngine', () {

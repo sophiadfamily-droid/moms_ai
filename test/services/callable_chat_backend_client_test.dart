@@ -4,23 +4,18 @@ import 'dart:io';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:moms_ai/models/chat_backend_request.dart';
+import 'package:moms_ai/models/conversation_context_envelope.dart';
 import 'package:moms_ai/services/callable_chat_backend_client.dart';
 import 'package:moms_ai/services/chat_backend_client.dart';
 
 void main() {
-  const request = ChatBackendRequest(
+  final request = ChatBackendRequest(
     message: 'Organise ma journée',
-    profile: {'firstName': 'Sophie'},
-    profileContext: {'work': {}},
-    memories: [
-      {'text': 'Routine'},
-    ],
-    memoryReasoning: [
-      {'type': 'routine'},
-    ],
-    events: [
-      {'title': 'École'},
-    ],
+    context: ConversationContextEnvelope.unavailable(
+      state: ConversationContextState.unavailable,
+      generatedAt: DateTime.utc(2026, 7, 23),
+      warningCode: 'test_context_unavailable',
+    ),
   );
 
   test('wires production callable metadata, timeout, payload and result',
@@ -67,7 +62,10 @@ void main() {
 
     expect(sentData, request.toJson());
     expect(sentData.keys, {
+      'schemaVersion',
       'message',
+      'conversationContext',
+      'conversationHistory',
       'profile',
       'profileContext',
       'memories',
