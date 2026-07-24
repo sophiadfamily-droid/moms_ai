@@ -67,7 +67,13 @@ final class _NotificationSettingsScreenState
                   const SizedBox(height: 12),
                   const Text(
                     'Un clic ouvre seulement l’application. Les alertes '
-                    'automatiques arriveront dans une phase ultérieure.',
+                    'automatiques utilisent uniquement les informations '
+                    'structurées disponibles dans Zélia.',
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Elles peuvent être limitées lorsque certaines données '
+                    'ne sont pas disponibles.',
                   ),
                   const SizedBox(height: 20),
                   Text('Permission : ${_permissionLabel(permission?.state)}'),

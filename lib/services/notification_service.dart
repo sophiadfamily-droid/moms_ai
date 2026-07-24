@@ -17,6 +17,13 @@ import 'notification_interaction_coordinator.dart';
 import 'notification_permission_service.dart';
 import 'notification_privacy_sanitizer.dart';
 import 'notification_settings_service.dart';
+import 'detection_notification_coordinator.dart';
+import 'proactive_detection_engine.dart';
+import 'proactive_detection_lifecycle.dart';
+import 'proactive_detection_production.dart';
+import 'proactive_detection_registry.dart';
+import 'event_service.dart';
+import 'task_service.dart';
 
 final class FlutterNotificationPermissionGateway
     implements NotificationPermissionGateway {
@@ -255,9 +262,12 @@ class NotificationService {
   static NotificationInteractionCoordinator? _interactions;
   static LocalNotificationRegistry? _registry;
   static LocalNotificationPlatformGateway? _platform;
+  static ProactiveDetectionLifecycle? _detectionLifecycle;
   static StreamSubscription<Object?>? _authSubscription;
   static String? _pendingPayload;
   static String? _observedScope;
+  static bool _detectionEvaluationRunning = false;
+  static DetectionEvaluationTrigger? _queuedDetectionTrigger;
 
   static Future<void> init() async {
     final preferences = await SharedPreferences.getInstance();
@@ -289,7 +299,28 @@ class NotificationService {
       registry: registry,
       currentAccountScopeId: () => AuthService.currentUserId,
     );
+    final detectionRegistry =
+        SharedPreferencesProactiveDetectionRegistry(preferences);
+    final detectionCoordinator = DetectionNotificationCoordinator(
+      scheduler: _scheduler!,
+      registry: detectionRegistry,
+      currentAccountScopeId: () => AuthService.currentUserId,
+    );
+    _detectionLifecycle = ProactiveDetectionLifecycle(
+      engine: const ProactiveDetectionEngine(),
+      inputProvider: ProductionProactiveDetectionInputProvider(
+        currentTimezoneId: currentTimezoneId,
+      ),
+      registry: detectionRegistry,
+      notificationCoordinator: detectionCoordinator,
+      currentAccountScopeId: () => AuthService.currentUserId,
+      timezoneId: () => tz.local.name,
+    );
     await _scheduler!.initialize();
+    EventService.eventsVersion.removeListener(_eventChanged);
+    TaskService.tasksVersion.removeListener(_taskChanged);
+    EventService.eventsVersion.addListener(_eventChanged);
+    TaskService.tasksVersion.addListener(_taskChanged);
     _observedScope = AuthService.currentUserId;
     await _authSubscription?.cancel();
     _authSubscription = AuthService.authStateChanges.listen((_) async {
@@ -301,6 +332,16 @@ class NotificationService {
           await _invalidateAccount(previousScope);
         } on Object {
           _pendingPayload = null;
+        }
+      }
+      if (nextScope != null && previousScope != nextScope) {
+        try {
+          await evaluateDetections(
+            DetectionEvaluationTrigger.authenticatedBootstrap,
+          );
+        } on Object {
+          // Detection remains optional and fail-closed. No permission prompt
+          // or domain mutation is triggered by an unavailable context.
         }
       }
     });
@@ -331,6 +372,37 @@ class NotificationService {
       (throw StateError('notification_service_not_initialized'));
   static LocalNotificationScheduler get scheduler =>
       _scheduler ?? (throw StateError('notification_service_not_initialized'));
+
+  static Future<void> evaluateDetections(
+    DetectionEvaluationTrigger trigger,
+  ) async {
+    if (AuthService.currentUserId == null) return;
+    if (_detectionEvaluationRunning) {
+      _queuedDetectionTrigger = trigger;
+      return;
+    }
+    _detectionEvaluationRunning = true;
+    try {
+      await _detectionLifecycle?.evaluate(trigger);
+      final queued = _queuedDetectionTrigger;
+      _queuedDetectionTrigger = null;
+      if (queued != null && AuthService.currentUserId != null) {
+        await _detectionLifecycle?.evaluate(queued);
+      }
+    } finally {
+      _detectionEvaluationRunning = false;
+    }
+  }
+
+  static void _eventChanged() {
+    evaluateDetections(DetectionEvaluationTrigger.eventChanged)
+        .catchError((Object _) {});
+  }
+
+  static void _taskChanged() {
+    evaluateDetections(DetectionEvaluationTrigger.taskChanged)
+        .catchError((Object _) {});
+  }
 
   static Future<NotificationNavigationIntent?>
       consumePendingInteraction() async {

@@ -1718,11 +1718,13 @@ l’absence de valeur valide il désactive les notifications, conserve le mode
 `genericOnly` et n’active ni son, ni vibration, ni badge. La synchronisation
 multiappareil de ce réglage reste hors périmètre.
 
-`LocalNotificationRequest` porte une catégorie N.1 fermée (`test`,
+`LocalNotificationRequest` porte une catégorie locale fermée (`test`,
 `explicitReminder`, `pendingActionAttention`, `systemInformation`), une
 identité logique, un instant ou horaire local explicite, un fuseau IANA, une
-expiration éventuelle et une destination sûre. Les catégories N.2/N.3 sont
-connues mais refusées. Le registre SharedPreferences est account-scoped,
+expiration éventuelle et une destination sûre. N.2 active uniquement
+`forgottenItemDetection`, `conflictDetection`, `delayDetection` et
+`deadlineDetection`; les catégories N.3 restent refusées. Le registre
+SharedPreferences est account-scoped,
 validé à la relecture, sauvegardé avant remplacement et borné à 128 entrées.
 Les identifiants plateforme sont déterministes ; les collisions sont refusées.
 
@@ -1765,7 +1767,53 @@ au plugin ni au stockage. Les diagnostics restent limités aux catégories,
 états, codes et compteurs techniques et n’incluent jamais titre, corps, payload,
 jeton, destination exacte, UID ou contenu métier.
 
-## 28. Change policy for this document
+## 28. Détections proactives déterministes — V1-N.2
+
+V1-N.2 ajoute quatre détecteurs purs : échéance explicite, retard
+objectivement vérifiable, conflit confirmé par la frontière Planning canonique
+et oubli potentiel fondé sur une dépendance R.2 confirmée ou un rappel
+explicite. Aucun détecteur n’analyse un titre, une mémoire libre ou une absence
+de donnée ; aucun n’appelle OpenAI. Une Task sans horaire ne devient pas en
+retard et une Task ordinaire ne devient pas un oubli.
+
+`DetectionEvidence` représente une preuve structurée, sa révision, sa
+fraîcheur et sa disponibilité. `DetectionCoverageState` distingue `complete`,
+`partial`, `stale`, `unavailable`, `unsupported` et `corrupted`. Une passe
+partielle signifie seulement qu’aucun signal éligible n’a été trouvé dans les
+données évaluables : elle ne prouve jamais l’absence globale d’un problème.
+L’adaptateur N.2 consomme les sections canoniques Life Context et les
+dépendances explicites LC.2/R.2 sans lire de repository et sans reconstruire
+de relation.
+
+`ProactiveDetectionPolicy` centralise les horizons, périodes de grâce,
+cooldowns, bornes par domaine, limites par passe et durée de validité. Ces
+valeurs sont des protections techniques, pas des réglages produit N.3. Les
+résultats Priority R.1–R.3 peuvent ordonner des signaux déjà valides ; ils ne
+créent aucune preuve et ne rendent jamais un signal insuffisant éligible.
+
+`ProactiveDetectionEngine` est l’unique agrégateur. La priorité de collision
+est conflit, échéance passée, retard, échéance approchante puis oubli
+potentiel. L’empreinte d’incident est technique et déterministe ; une seule
+notification est conservée, les raisons secondaires sont bornées, et les
+signaux résolus restent brièvement disponibles pour le cooldown. Le registre
+local versionné est isolé par compte, sauvegardé avant remplacement, limité à
+128 entrées et ne conserve aucun contenu personnel.
+
+`DetectionNotificationCoordinator` est la seule jonction avec N.1. Il
+programme, remplace ou annule selon le résultat réel du scheduler, avec un
+contenu générique et un payload minimal. Le cycle de vie est événementiel et
+borné (bootstrap authentifié, premier plan, changement Event/Task/Routine ou
+dépendance, fuseau, reconnexion, résolution) ; il n’existe ni boucle active,
+ni worker permanent. Hors ligne, seules les preuves locales courantes restent
+évaluables ; stale ne devient jamais current.
+
+Un clic reste une navigation N.1 sûre : aucune Task n’est terminée, aucun
+Event déplacé, aucune confirmation A.3 consommée et aucune mutation A.2
+créée. Les modes A.1 n’autorisent aucune action automatique. N.3 reste
+propriétaire des fréquences configurables, résumés quotidiens, alertes
+critiques et réglages avancés.
+
+## 29. Change policy for this document
 
 Change this document when:
 

@@ -118,7 +118,10 @@ void main() {
       final source = file.readAsStringSync();
       if (file.path.endsWith('life_context_snapshot.dart') ||
           file.path.endsWith('life_context_engine.dart') ||
-          file.path.endsWith('conversation_context_service.dart')) {
+          file.path.endsWith('conversation_context_service.dart') ||
+          // N.2 is an explicit read-only canonical consumer. It adapts one
+          // validated snapshot and never persists or sends it.
+          file.path.endsWith('proactive_detection_production.dart')) {
         continue;
       }
       expect(

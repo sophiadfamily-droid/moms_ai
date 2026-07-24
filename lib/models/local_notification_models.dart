@@ -266,6 +266,17 @@ extension LocalNotificationCategoryPolicy on LocalNotificationCategory {
           true,
         _ => false,
       };
+
+  bool get isAvailableInN2 =>
+      isAvailableInN1 ||
+      switch (this) {
+        LocalNotificationCategory.forgottenItemDetection ||
+        LocalNotificationCategory.conflictDetection ||
+        LocalNotificationCategory.delayDetection ||
+        LocalNotificationCategory.deadlineDetection =>
+          true,
+        _ => false,
+      };
 }
 
 enum NotificationPrivacyLevel { generic, hidden }
@@ -282,6 +293,7 @@ enum LocalNotificationSource {
   explicitUserRequest,
   explicitTest,
   completedDomainAction,
+  deterministicDetection,
 }
 
 enum LocalNotificationStatus {
@@ -417,7 +429,7 @@ final class LocalNotificationRequest {
         logicalNotificationId.trim().isEmpty ||
         logicalNotificationId.length > 160 ||
         accountScopeId.trim().isEmpty ||
-        !category.isAvailableInN1 ||
+        !category.isAvailableInN2 ||
         timezoneId.trim().isEmpty ||
         destinationReference.trim().isEmpty ||
         destinationReference.length > 160 ||

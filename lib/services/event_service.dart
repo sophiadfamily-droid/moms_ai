@@ -35,6 +35,24 @@ typedef EventCloudDeletion = Future<EventMutationResult?> Function({
   required int expectedEventRevision,
 });
 
+final class EventProtectedConflictReference {
+  const EventProtectedConflictReference({
+    required this.firstEventId,
+    required this.secondEventId,
+    required this.firstRevision,
+    required this.secondRevision,
+    required this.protectedStart,
+    required this.protectedEnd,
+  });
+
+  final String firstEventId;
+  final String secondEventId;
+  final int firstRevision;
+  final int secondRevision;
+  final DateTime protectedStart;
+  final DateTime protectedEnd;
+}
+
 class EventService {
   static const String eventsKey = "zelia_events";
   static final EventSyncJournal _syncJournal = EventSyncJournal();
@@ -186,6 +204,62 @@ class EventService {
                 ? 'resolved'
                 : 'conflict',
     };
+  }
+
+  /// Bounded read-only projection of conflicts already defined by the
+  /// canonical protected-interval rule. N.2 consumes these references without
+  /// copying Event content or implementing another overlap engine.
+  static Future<List<EventProtectedConflictReference>>
+      getProtectedConflictsForDetection(
+    String accountScopeId, {
+    int maximumEvents = 100,
+    int maximumConflicts = 50,
+    DateTime? observedAt,
+  }) async {
+    if (maximumEvents < 1 ||
+        maximumEvents > 200 ||
+        maximumConflicts < 1 ||
+        maximumConflicts > 100) {
+      throw const FormatException('event_conflict_detection_limit_invalid');
+    }
+    final current = (observedAt ?? DateTime.now()).toUtc();
+    final events = (await getEventsForLifeContext(accountScopeId))
+        .where(
+          (event) =>
+              event.id != null &&
+              event.id!.trim().isNotEmpty &&
+              (parseProtectedEnd(event)?.toUtc().isAfter(current) ?? false),
+        )
+        .take(maximumEvents)
+        .toList()
+      ..sort((a, b) => a.id!.compareTo(b.id!));
+    final conflicts = <EventProtectedConflictReference>[];
+    for (var first = 0; first < events.length; first++) {
+      for (var second = first + 1; second < events.length; second++) {
+        if (!eventsProtectedOverlap(events[first], events[second])) continue;
+        final firstStart = parseProtectedStart(events[first]);
+        final secondStart = parseProtectedStart(events[second]);
+        final firstEnd = parseProtectedEnd(events[first]);
+        final secondEnd = parseProtectedEnd(events[second]);
+        if (firstStart == null ||
+            secondStart == null ||
+            firstEnd == null ||
+            secondEnd == null) {
+          continue;
+        }
+        conflicts.add(EventProtectedConflictReference(
+          firstEventId: events[first].id!,
+          secondEventId: events[second].id!,
+          firstRevision: events[first].eventRevision,
+          secondRevision: events[second].eventRevision,
+          protectedStart:
+              firstStart.isAfter(secondStart) ? firstStart : secondStart,
+          protectedEnd: firstEnd.isBefore(secondEnd) ? firstEnd : secondEnd,
+        ));
+        if (conflicts.length >= maximumConflicts) return conflicts;
+      }
+    }
+    return conflicts;
   }
 
   static Future<void> addEvent(

@@ -22,6 +22,7 @@ import 'services/app_diagnostics.dart';
 import 'services/firebase_security_bootstrap.dart';
 import 'services/human/human_model_service.dart';
 import 'services/identity/identity_production_services.dart';
+import 'services/proactive_detection_lifecycle.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -44,7 +45,7 @@ class ZeliaApp extends StatefulWidget {
   State<ZeliaApp> createState() => _ZeliaAppState();
 }
 
-class _ZeliaAppState extends State<ZeliaApp> {
+class _ZeliaAppState extends State<ZeliaApp> with WidgetsBindingObserver {
   int currentStep = 0;
 
   bool loading = true;
@@ -71,7 +72,23 @@ class _ZeliaAppState extends State<ZeliaApp> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     loadProfile();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      NotificationService.evaluateDetections(
+        DetectionEvaluationTrigger.foreground,
+      ).catchError((Object _) {});
+    }
   }
 
   String normalizeFamilyStatus(String value) {
@@ -169,6 +186,17 @@ class _ZeliaAppState extends State<ZeliaApp> {
         AppDiagnostics.record(
           component: 'human_model_storage',
           step: 'bootstrap',
+          code: AppErrorCode.storageFailure,
+        );
+      }
+      try {
+        await NotificationService.evaluateDetections(
+          DetectionEvaluationTrigger.authenticatedBootstrap,
+        );
+      } on Object {
+        AppDiagnostics.record(
+          component: 'proactive_detection',
+          step: 'authenticated_bootstrap',
           code: AppErrorCode.storageFailure,
         );
       }
