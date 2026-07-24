@@ -1290,6 +1290,10 @@ PODS:
   - FirebaseMessagingInterop (12.15.0)
   - FirebaseSharedSwift (12.15.0)
   - Flutter (1.0.0)
+  - flutter_local_notifications (0.0.1):
+    - Flutter
+  - flutter_timezone (0.0.1):
+    - Flutter
   - GoogleUtilities/AppDelegateSwizzler (8.1.1):
     - GoogleUtilities/Environment
     - GoogleUtilities/Logger
@@ -1436,6 +1440,8 @@ DEPENDENCIES:
   - firebase_auth (from `.symlinks/plugins/firebase_auth/ios`)
   - firebase_core (from `.symlinks/plugins/firebase_core/ios`)
   - Flutter (from `Flutter`)
+  - flutter_local_notifications (from `.symlinks/plugins/flutter_local_notifications/ios`)
+  - flutter_timezone (from `.symlinks/plugins/flutter_timezone/ios`)
   - image_picker_ios (from `.symlinks/plugins/image_picker_ios/ios`)
   - permission_handler_apple (from `.symlinks/plugins/permission_handler_apple/ios`)
   - shared_preferences_foundation (from `.symlinks/plugins/shared_preferences_foundation/darwin`)
@@ -1484,6 +1490,10 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/firebase_core/ios"
   Flutter:
     :path: Flutter
+  flutter_local_notifications:
+    :path: ".symlinks/plugins/flutter_local_notifications/ios"
+  flutter_timezone:
+    :path: ".symlinks/plugins/flutter_timezone/ios"
   image_picker_ios:
     :path: ".symlinks/plugins/image_picker_ios/ios"
   permission_handler_apple:
@@ -1518,6 +1528,8 @@ SPEC CHECKSUMS:
   FirebaseMessagingInterop: 23d50835a19ee3ffae1e5058b9dfea8b651ff298
   FirebaseSharedSwift: 3f5c2758484d32099d693f269f110d3249c3f7e3
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  flutter_local_notifications: 643a3eda1ce1c0599413ca31672536d423dee214
+  flutter_timezone: 7c838e17ffd4645d261e87037e5bebf6d38fe544
   GoogleUtilities: 4f2618a4a1e762a1ee134a1e2323bba9843e06da
   "gRPC-C++": cc207623316fb041a7a3e774c252cf68a058b9e8
   gRPC-Core: 860978b7db482de8b4f5e10677216309b5ff6330
@@ -1532,6 +1544,6 @@ SPEC CHECKSUMS:
   shared_preferences_foundation: 7036424c3d8ec98dfe75ff1667cb0cd531ec82bb
   speech_to_text: 3b313d98516d3d0406cea424782ec25470c59d19
 
-PODFILE CHECKSUM: 53a6aebc29ccee84c41f92f409fc20cd4ca011f1
+PODFILE CHECKSUM: f45fcdc2cdfcc7be7be3126faf623e6287da8bbf
 
 COCOAPODS: 1.16.2

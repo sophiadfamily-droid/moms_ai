@@ -689,7 +689,11 @@ ni prompt.
 
 ### 7.11 Notification Engine
 
-**Current state:** Local notification capability exists and is invoked after selected operations. A complete scheduling, cancellation, permission, recurrence, and identity lifecycle is not yet established.
+**Current state:** V1-N.1 provides local-only notification permission,
+account-scoped settings, a bounded registry, deterministic scheduling identity,
+timezone-aware scheduling, generic lock-screen content and safe navigation.
+Permission is never requested during bootstrap. Automatic detection and daily
+summaries do not exist.
 
 **Planned architecture:** The Notification Engine owns notification intent, authorization, scheduling identity, delivery policy, cancellation, and truthful failure reporting. Notifications are consequences of domain decisions, not a competing source of business truth.
 
@@ -1290,12 +1294,13 @@ emulators, and staging/production use platform attestation providers. Remote
 provider registration and enforcement remain a controlled deployment step.
 
 The current native permissions are deliberately limited. Android declares
-network and microphone access; gallery selection uses the modern system picker
-and does not request broad storage, camera, location, contacts, or notification
-permissions. iOS declares microphone, speech-recognition, and photo-library
-usage because those paths are reachable today. Distribution signing and
-physical-device release validation remain deferred; local release validation
-does not require a paid Apple Developer membership.
+network, microphone, notification, vibration and boot-rescheduling access;
+gallery selection uses the modern system picker and no exact-alarm, broad
+storage, camera, location or contacts permission is requested. iOS declares
+microphone, speech-recognition and photo-library usage; notification permission
+is compiled but requested only after an explicit settings action. Distribution
+signing and physical-device release validation remain deferred; local release
+validation does not require a paid Apple Developer membership.
 
 ## 17. Architectural decision framework
 
@@ -1694,10 +1699,73 @@ aucun service métier. Hors ligne, seul le résultat réel du domaine peut deven
 `pendingSync`; aucun succès cloud n’est annoncé.
 
 Les diagnostics ne contiennent ni présentation, ni payload, ni empreinte
-complète, ni donnée personnelle. N.1, les intégrations tierces et Y.2 restent
-hors périmètre.
+complète, ni donnée personnelle. Les intégrations tierces et Y.2 restent hors
+périmètre.
 
-## 27. Change policy for this document
+## 27. Notifications locales privées — V1-N.1
+
+V1-N.1 fournit une infrastructure locale iOS/Android ; elle ne détecte aucun
+oubli, retard, conflit ou échéance et ne produit aucun résumé quotidien. N.2
+reste propriétaire des futurs détecteurs et N.3 des résumés et alertes
+avancées. Aucun FCM, push distant, connecteur ou serveur de notification n’est
+introduit.
+
+`NotificationPermissionService` sépare la lecture silencieuse de l’état et la
+demande explicite. L’initialisation du plugin désactive les demandes iOS
+automatiques ; Android ne demande jamais la permission depuis `MainActivity`.
+Le réglage `NotificationSettings` est versionné, local et isolé par compte. En
+l’absence de valeur valide il désactive les notifications, conserve le mode
+`genericOnly` et n’active ni son, ni vibration, ni badge. La synchronisation
+multiappareil de ce réglage reste hors périmètre.
+
+`LocalNotificationRequest` porte une catégorie N.1 fermée (`test`,
+`explicitReminder`, `pendingActionAttention`, `systemInformation`), une
+identité logique, un instant ou horaire local explicite, un fuseau IANA, une
+expiration éventuelle et une destination sûre. Les catégories N.2/N.3 sont
+connues mais refusées. Le registre SharedPreferences est account-scoped,
+validé à la relecture, sauvegardé avant remplacement et borné à 128 entrées.
+Les identifiants plateforme sont déterministes ; les collisions sont refusées.
+
+`LocalNotificationScheduler` est l’unique frontière de programmation,
+reprogrammation, remplacement, annulation, notification de test et
+réconciliation plateforme. Une même demande est idempotente, une demande
+divergente portant le même identifiant est refusée et une même
+`replacementKey` remplace explicitement l’ancienne programmation. Aucun succès
+n’est annoncé avant le retour de l’API locale. Android utilise des alarmes
+inexactes et trois canaux versionnés ; aucune permission d’alarme exacte ni
+action système mutable n’est déclarée. Les notifications programmées sont
+restaurables après redémarrage.
+
+Les horaires absolus conservent leur instant. Les horaires muraux sont résolus
+dans leur fuseau IANA ; une heure inexistante au passage à l’heure d’été est
+refusée et une heure ambiguë est résolue de manière déterministe. Un changement
+de fuseau nécessite une réconciliation/reprogrammation explicite : aucune
+interprétation serveur implicite n’existe.
+
+`NotificationPrivacySanitizer` est la seule fabrique de contenu système. Le
+titre est « Zélia » et le corps reste générique ou caché. Le payload contient
+seulement une version, un identifiant opaque, une destination fermée et un
+jeton local opaque. Il n’embarque ni UID, scope, entité, ledger, confirmation,
+texte métier ou donnée personnelle. La visibilité Android est privée ou
+secrète ; iOS utilise la même présentation générique.
+
+`NotificationInteractionCoordinator` valide le payload, le compte courant,
+l’expiration, le registre et le jeton, puis retourne uniquement une intention
+de navigation. Un clic, y compris après lancement à froid, ne confirme pas
+A.3, ne consomme pas une confirmation, n’effectue aucun undo et n’écrit aucun
+domaine. Un changement de compte annule les programmations de l’ancien compte
+et invalide les jetons actifs. A.1 est relu par le parcours chargé après
+navigation ; Pause ne désactive pas arbitrairement toutes les notifications
+système.
+
+L’écran de réglages dépend d’un contrôleur injecté : il affiche l’état,
+explique le contenu générique, déclenche la permission uniquement sur clic,
+enregistre les options et fournit un test local non répétitif. Il n’accède ni
+au plugin ni au stockage. Les diagnostics restent limités aux catégories,
+états, codes et compteurs techniques et n’incluent jamais titre, corps, payload,
+jeton, destination exacte, UID ou contenu métier.
+
+## 28. Change policy for this document
 
 Change this document when:
 
@@ -1721,7 +1789,7 @@ Do not change this document solely because:
 
 Every change must be based on the verified repository and must preserve the distinction between current state and planned architecture.
 
-## 28. Definition of architectural readiness
+## 29. Definition of architectural readiness
 
 A ZELIA capability is architecturally ready when:
 
@@ -1739,7 +1807,7 @@ A ZELIA capability is architecturally ready when:
 
 Code existing in the repository does not by itself make an engine architecturally ready. Conversely, a planned engine should not be implemented as a broad new subsystem until its prerequisites and ownership are clear.
 
-## 29. Enduring direction
+## 30. Enduring direction
 
 ZELIA should grow by deepening trust, context, and deterministic coordination—not by accumulating disconnected “smart” features.
 

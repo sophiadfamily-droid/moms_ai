@@ -14,6 +14,7 @@ import 'human_profile_screen.dart';
 import 'memory_settings_screen.dart';
 import 'action_autonomy_settings_screen.dart';
 import 'action_history_screen.dart';
+import 'notification_settings_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final UserProfile profile;
@@ -2220,41 +2221,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> showNotificationsSettings() async {
-    await showPremiumSheet(
-      title: "Notifications",
-      icon: Icons.notifications_none_rounded,
-      children: [
-        Text(
-          "Les réglages détaillés seront développés dans la page notifications premium.",
-          style: TextStyle(
-            color: textSoft,
-            fontSize: 15,
-            height: 1.35,
-          ),
-        ),
-        const SizedBox(height: 14),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          activeThumbColor: accent,
-          title: Text(
-            "Notifications principales",
-            style: TextStyle(
-              color: textDark,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          subtitle: Text(
-            "Agenda, tâches, courses et rappels.",
-            style: TextStyle(color: textSoft),
-          ),
-          value: wantsNotifications,
-          onChanged: (value) {
-            setState(() {
-              wantsNotifications = value;
-            });
-          },
-        ),
-      ],
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const NotificationSettingsScreen(),
+      ),
     );
   }
 
