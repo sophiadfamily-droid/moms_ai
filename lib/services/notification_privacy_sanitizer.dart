@@ -43,6 +43,8 @@ final class NotificationPrivacySanitizer {
     final body = switch (request.category) {
       LocalNotificationCategory.pendingActionAttention =>
         'Une action demande ton attention dans Zélia.',
+      LocalNotificationCategory.dailySummary =>
+        'Ton résumé quotidien est disponible dans l’application.',
       _ => 'Tu as une information à consulter dans l’application.',
     };
     final payload = jsonEncode({

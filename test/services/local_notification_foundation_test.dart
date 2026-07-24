@@ -67,7 +67,7 @@ void main() {
     });
 
     test(
-        'future versions, unknown fields and unavailable N.2/N.3 categories fail',
+        'future versions, unknown fields and unsupported critical category fail',
         () {
       final request = _request();
       final future = request.toJson()..['schemaVersion'] = 2;
@@ -86,10 +86,10 @@ void main() {
         ),
         throwsFormatException,
       );
+      _request(category: LocalNotificationCategory.dailySummary).validate();
       expect(
-        () => _request(
-          category: LocalNotificationCategory.dailySummary,
-        ).validate(),
+        () => _request(category: LocalNotificationCategory.criticalAlert)
+            .validate(),
         throwsFormatException,
       );
     });

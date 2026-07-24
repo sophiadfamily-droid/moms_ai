@@ -360,7 +360,8 @@ void main() {
   });
 
   group('N.2 registry and N.1 coordination', () {
-    test('N.2 categories are enabled while N.3 remains rejected', () {
+    test('N.2 categories and N.3 summary are enabled, OS critical is rejected',
+        () {
       for (final category in const {
         LocalNotificationCategory.forgottenItemDetection,
         LocalNotificationCategory.conflictDetection,
@@ -369,13 +370,10 @@ void main() {
       }) {
         _notificationRequest(now, category: category).validate();
       }
-      expect(
-        () => _notificationRequest(
-          now,
-          category: LocalNotificationCategory.dailySummary,
-        ).validate(),
-        throwsFormatException,
-      );
+      _notificationRequest(
+        now,
+        category: LocalNotificationCategory.dailySummary,
+      ).validate();
       expect(
         () => _notificationRequest(
           now,

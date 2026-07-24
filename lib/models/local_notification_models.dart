@@ -60,26 +60,93 @@ enum NotificationSettingsSource {
   explicitUserSetting,
 }
 
+enum NotificationQuietHoursBehavior {
+  deferUntilQuietHoursEnd,
+  includeInNextSummary,
+  suppressLowPriority,
+  allowCriticalProductAlertsOnly,
+}
+
 final class NotificationQuietHours {
   NotificationQuietHours({
+    this.enabled = true,
     required this.startMinute,
     required this.endMinute,
-  }) {
+    this.timezoneId = 'Etc/UTC',
+    Set<int> weekdays = const {1, 2, 3, 4, 5, 6, 7},
+    this.behavior = NotificationQuietHoursBehavior.deferUntilQuietHoursEnd,
+    DateTime? changedAt,
+  })  : weekdays = UnmodifiableSetView(Set<int>.of(weekdays)),
+        changedAt =
+            (changedAt ?? DateTime.fromMillisecondsSinceEpoch(0, isUtc: true))
+                .toUtc() {
     if (startMinute < 0 ||
         startMinute > 1439 ||
         endMinute < 0 ||
         endMinute > 1439 ||
-        startMinute == endMinute) {
+        startMinute == endMinute ||
+        timezoneId.trim().isEmpty ||
+        timezoneId.length > 100 ||
+        weekdays.isEmpty ||
+        weekdays.any((day) => day < 1 || day > 7)) {
       throw const FormatException('notification_quiet_hours_invalid');
     }
   }
 
+  factory NotificationQuietHours.fromJson(Map<String, Object?> json) {
+    const legacyKeys = {'startMinute', 'endMinute'};
+    const keys = {
+      'enabled',
+      'startMinute',
+      'endMinute',
+      'timezoneId',
+      'weekdays',
+      'behavior',
+      'changedAt',
+    };
+    final actual = json.keys.toSet();
+    if (actual.difference(keys).isNotEmpty &&
+        actual.difference(legacyKeys).isNotEmpty) {
+      throw const FormatException('notification_quiet_hours_invalid');
+    }
+    final behavior = json['behavior'] == null
+        ? NotificationQuietHoursBehavior.deferUntilQuietHoursEnd
+        : NotificationQuietHoursBehavior.values
+            .where((item) => item.name == json['behavior'])
+            .single;
+    return NotificationQuietHours(
+      enabled: json['enabled'] as bool? ?? true,
+      startMinute: json['startMinute'] as int,
+      endMinute: json['endMinute'] as int,
+      timezoneId: json['timezoneId'] as String? ?? 'Etc/UTC',
+      weekdays: json['weekdays'] == null
+          ? const {1, 2, 3, 4, 5, 6, 7}
+          : (json['weekdays'] as List).cast<int>().toSet(),
+      behavior: behavior,
+      changedAt: json['changedAt'] == null
+          ? null
+          : DateTime.parse(json['changedAt'] as String),
+    );
+  }
+
+  final bool enabled;
   final int startMinute;
   final int endMinute;
+  final String timezoneId;
+  final Set<int> weekdays;
+  final NotificationQuietHoursBehavior behavior;
+  final DateTime changedAt;
+
+  bool get crossesMidnight => startMinute > endMinute;
 
   Map<String, Object?> toJson() => {
+        'enabled': enabled,
         'startMinute': startMinute,
         'endMinute': endMinute,
+        'timezoneId': timezoneId,
+        'weekdays': weekdays.toList()..sort(),
+        'behavior': behavior.name,
+        'changedAt': changedAt.toUtc().toIso8601String(),
       };
 }
 
@@ -159,10 +226,8 @@ final class NotificationSettings {
       badgeEnabled: json['badgeEnabled'] as bool,
       quietHours: quiet == null
           ? null
-          : NotificationQuietHours(
-              startMinute:
-                  (quiet as Map<Object?, Object?>)['startMinute'] as int,
-              endMinute: quiet['endMinute'] as int,
+          : NotificationQuietHours.fromJson(
+              Map<String, Object?>.from(quiet as Map),
             ),
       timezoneId: json['timezoneId'] as String,
       changedAt: DateTime.parse(json['changedAt'] as String).toUtc(),
@@ -277,6 +342,9 @@ extension LocalNotificationCategoryPolicy on LocalNotificationCategory {
           true,
         _ => false,
       };
+
+  bool get isAvailableInN3 =>
+      isAvailableInN2 || this == LocalNotificationCategory.dailySummary;
 }
 
 enum NotificationPrivacyLevel { generic, hidden }
@@ -287,6 +355,7 @@ enum NotificationDestinationType {
   home,
   actionHistory,
   notificationsSettings,
+  dailySummary,
 }
 
 enum LocalNotificationSource {
@@ -294,6 +363,8 @@ enum LocalNotificationSource {
   explicitTest,
   completedDomainAction,
   deterministicDetection,
+  proactivePolicy,
+  dailySummary,
 }
 
 enum LocalNotificationStatus {
@@ -429,7 +500,7 @@ final class LocalNotificationRequest {
         logicalNotificationId.trim().isEmpty ||
         logicalNotificationId.length > 160 ||
         accountScopeId.trim().isEmpty ||
-        !category.isAvailableInN2 ||
+        !category.isAvailableInN3 ||
         timezoneId.trim().isEmpty ||
         destinationReference.trim().isEmpty ||
         destinationReference.length > 160 ||

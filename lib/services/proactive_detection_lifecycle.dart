@@ -51,7 +51,7 @@ final class ProactiveDetectionLifecycle {
   final ProactiveDetectionEngine engine;
   final ProactiveDetectionInputProvider inputProvider;
   final ProactiveDetectionRegistry registry;
-  final DetectionNotificationCoordinator notificationCoordinator;
+  final DetectionDeliveryCoordinator notificationCoordinator;
   final String? Function() currentAccountScopeId;
   final String Function() timezoneId;
   final ProactiveDetectionPolicy policy;

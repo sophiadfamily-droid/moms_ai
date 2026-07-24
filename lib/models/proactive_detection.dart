@@ -516,6 +516,7 @@ final class ProactiveDetectionSignal {
     DateTime? resolvedAt,
     DetectionSuppressionReason? suppressionReason,
     String? notificationLogicalId,
+    bool clearNotificationLogicalId = false,
   }) =>
       ProactiveDetectionSignal(
         detectionId: detectionId,
@@ -536,8 +537,9 @@ final class ProactiveDetectionSignal {
         suppressionReason: suppressionReason ?? this.suppressionReason,
         replacementKey: replacementKey,
         incidentFingerprint: incidentFingerprint,
-        notificationLogicalId:
-            notificationLogicalId ?? this.notificationLogicalId,
+        notificationLogicalId: clearNotificationLogicalId
+            ? null
+            : notificationLogicalId ?? this.notificationLogicalId,
         interactionDestination: interactionDestination,
         policyVersion: policyVersion,
         coverageState: coverageState,

@@ -17,11 +17,14 @@ import 'notification_interaction_coordinator.dart';
 import 'notification_permission_service.dart';
 import 'notification_privacy_sanitizer.dart';
 import 'notification_settings_service.dart';
-import 'detection_notification_coordinator.dart';
 import 'proactive_detection_engine.dart';
 import 'proactive_detection_lifecycle.dart';
 import 'proactive_detection_production.dart';
 import 'proactive_detection_registry.dart';
+import 'daily_summary_view_service.dart';
+import 'proactive_notification_delivery_registry.dart';
+import 'proactive_notification_orchestrator.dart';
+import 'proactive_notification_policy_service.dart';
 import 'event_service.dart';
 import 'task_service.dart';
 
@@ -263,6 +266,8 @@ class NotificationService {
   static LocalNotificationRegistry? _registry;
   static LocalNotificationPlatformGateway? _platform;
   static ProactiveDetectionLifecycle? _detectionLifecycle;
+  static ProactiveDetectionRegistry? _proactiveDetectionRegistry;
+  static ProactiveNotificationPolicyService? _proactivePolicy;
   static StreamSubscription<Object?>? _authSubscription;
   static String? _pendingPayload;
   static String? _observedScope;
@@ -301,9 +306,21 @@ class NotificationService {
     );
     final detectionRegistry =
         SharedPreferencesProactiveDetectionRegistry(preferences);
-    final detectionCoordinator = DetectionNotificationCoordinator(
+    _proactiveDetectionRegistry = detectionRegistry;
+    _proactivePolicy = ProactiveNotificationPolicyService(
+      repository:
+          SharedPreferencesProactiveNotificationPolicyRepository(preferences),
+      currentAccountScopeId: () => AuthService.currentUserId,
+      currentTimezoneId: currentTimezoneId,
+    );
+    final detectionCoordinator = ProactiveNotificationOrchestrator(
       scheduler: _scheduler!,
-      registry: detectionRegistry,
+      signalRegistry: detectionRegistry,
+      deliveryRegistry:
+          SharedPreferencesProactiveNotificationDeliveryRegistry(preferences),
+      policyService: _proactivePolicy!,
+      permissionService: _permissions!,
+      notificationSettingsService: _settings!,
       currentAccountScopeId: () => AuthService.currentUserId,
     );
     _detectionLifecycle = ProactiveDetectionLifecycle(
@@ -372,6 +389,17 @@ class NotificationService {
       (throw StateError('notification_service_not_initialized'));
   static LocalNotificationScheduler get scheduler =>
       _scheduler ?? (throw StateError('notification_service_not_initialized'));
+  static ProactiveNotificationPolicyService get proactivePolicyService =>
+      _proactivePolicy ??
+      (throw StateError('notification_service_not_initialized'));
+
+  static Future<DailySummaryViewData?> loadDailySummary() =>
+      DailySummaryViewService(
+        registry: _proactiveDetectionRegistry ??
+            (throw StateError('notification_service_not_initialized')),
+        policyService: proactivePolicyService,
+        currentAccountScopeId: () => AuthService.currentUserId,
+      ).load();
 
   static Future<void> evaluateDetections(
     DetectionEvaluationTrigger trigger,

@@ -4,6 +4,13 @@ import 'local_notification_scheduler.dart';
 import 'proactive_detection_engine.dart';
 import 'proactive_detection_registry.dart';
 
+abstract interface class DetectionDeliveryCoordinator {
+  Future<DetectionNotificationResult> apply(
+    ProactiveDetectionResult result, {
+    required String timezoneId,
+  });
+}
+
 enum DetectionNotificationResultType {
   applied,
   partial,
@@ -30,7 +37,8 @@ final class DetectionNotificationResult {
 
 /// Application boundary between the pure N.2 engine and the N.1 scheduler.
 /// It never reads a business domain and never executes an action.
-final class DetectionNotificationCoordinator {
+final class DetectionNotificationCoordinator
+    implements DetectionDeliveryCoordinator {
   const DetectionNotificationCoordinator({
     required this.scheduler,
     required this.registry,
@@ -45,6 +53,7 @@ final class DetectionNotificationCoordinator {
   final ProactiveDetectionPolicy policy;
   final DateTime Function() now;
 
+  @override
   Future<DetectionNotificationResult> apply(
     ProactiveDetectionResult result, {
     required String timezoneId,

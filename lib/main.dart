@@ -12,11 +12,13 @@ import 'screens/work_status_screen.dart';
 import 'screens/partner_screen.dart';
 import 'screens/children_screen.dart';
 import 'screens/main_navigation.dart';
+import 'screens/daily_summary_screen.dart';
 
 import 'models/user_profile.dart';
 
 import 'services/storage_service.dart';
 import 'services/notification_service.dart';
+import 'services/notification_interaction_coordinator.dart';
 import 'services/auth_service.dart';
 import 'services/app_diagnostics.dart';
 import 'services/firebase_security_bootstrap.dart';
@@ -46,6 +48,7 @@ class ZeliaApp extends StatefulWidget {
 }
 
 class _ZeliaAppState extends State<ZeliaApp> with WidgetsBindingObserver {
+  final navigatorKey = GlobalKey<NavigatorState>();
   int currentStep = 0;
 
   bool loading = true;
@@ -88,7 +91,22 @@ class _ZeliaAppState extends State<ZeliaApp> with WidgetsBindingObserver {
       NotificationService.evaluateDetections(
         DetectionEvaluationTrigger.foreground,
       ).catchError((Object _) {});
+      _openPendingNotificationDestination();
     }
+  }
+
+  Future<void> _openPendingNotificationDestination() async {
+    final intent = await NotificationService.consumePendingInteraction();
+    if (!mounted ||
+        !onboardingDone ||
+        intent?.type != NotificationNavigationIntentType.dailySummary) {
+      return;
+    }
+    navigatorKey.currentState?.push(
+      MaterialPageRoute<void>(
+        builder: (_) => const DailySummaryScreen(),
+      ),
+    );
   }
 
   String normalizeFamilyStatus(String value) {
@@ -217,6 +235,9 @@ class _ZeliaAppState extends State<ZeliaApp> with WidgetsBindingObserver {
     setState(() {
       loading = false;
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _openPendingNotificationDestination();
+    });
   }
 
   Future<void> saveProfileAndGoHome() async {
@@ -309,6 +330,7 @@ class _ZeliaAppState extends State<ZeliaApp> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     if (loading) {
       return MaterialApp(
+        navigatorKey: navigatorKey,
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,
         home: const Scaffold(
@@ -402,6 +424,7 @@ class _ZeliaAppState extends State<ZeliaApp> with WidgetsBindingObserver {
     }
 
     return MaterialApp(
+      navigatorKey: navigatorKey,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       home: currentScreen,

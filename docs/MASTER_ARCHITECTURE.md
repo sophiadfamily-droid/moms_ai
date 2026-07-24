@@ -689,11 +689,12 @@ ni prompt.
 
 ### 7.11 Notification Engine
 
-**Current state:** V1-N.1 provides local-only notification permission,
-account-scoped settings, a bounded registry, deterministic scheduling identity,
-timezone-aware scheduling, generic lock-screen content and safe navigation.
-Permission is never requested during bootstrap. Automatic detection and daily
-summaries do not exist.
+**Current state:** V1-N.1 provides local-only permission, private scheduling
+and safe navigation. V1-N.2 produces four deterministic, evidenced signal
+families. V1-N.3 applies one account-scoped product policy to category
+activation, pause, quiet hours, daily limits, important product alerts and a
+bounded daily summary. Permission is never requested during bootstrap and
+system content remains generic.
 
 **Planned architecture:** The Notification Engine owns notification intent, authorization, scheduling identity, delivery policy, cancellation, and truthful failure reporting. Notifications are consequences of domain decisions, not a competing source of business truth.
 
@@ -1812,6 +1813,77 @@ Event déplacé, aucune confirmation A.3 consommée et aucune mutation A.2
 créée. Les modes A.1 n’autorisent aucune action automatique. N.3 reste
 propriétaire des fréquences configurables, résumés quotidiens, alertes
 critiques et réglages avancés.
+
+## 29. Politique produit des notifications — V1-N.3
+
+`ProactiveNotificationPolicy` est l’unique policy produit de diffusion. Elle
+est versionnée, locale, isolée par compte et relue après chaque écriture. Son
+défaut est restrictif : alertes automatiques, résumé quotidien et alertes
+importantes sont désactivés. La corruption ou une version future revient à ce
+défaut sûr. Aucune synchronisation cloud de ces réglages n’est introduite.
+
+Chaque catégorie possède un mode fermé (`immediate`,
+`dailySummaryOnly`, `immediateAndSummary`, `disabled`), un cooldown, une
+limite quotidienne, une priorité et des niveaux minimums de confiance et de
+preuve. Ces réglages filtrent seulement les signaux valides de N.2 : ils ne
+créent jamais de preuve, d’échéance, de retard, de conflit ou d’oubli. Priority
+R.1–R.3 peut départager des signaux déjà éligibles mais ne relève ni leur
+confiance ni leur importance.
+
+La pause N.3 est explicite, temporaire ou indéfinie. Elle suspend uniquement
+les catégories proactives sélectionnées et ne modifie jamais A.1. Les rappels
+explicitement demandés restent distincts. La reprise déclenche au plus une
+nouvelle évaluation événementielle bornée ; aucune notification rétroactive ni
+rafale n’est produite. Les heures calmes sont définies en minutes locales,
+jours et fuseau IANA, peuvent traverser minuit, et appliquent un seul report,
+un prochain résumé ou une suppression prudente selon la policy.
+
+`NotificationRateLimitPolicy` borne les diffusions quotidiennes, par fenêtre
+et par catégorie, l’espacement, les reports, remplacements, actifs et éléments
+du résumé. L’historique technique local est account-scoped, sauvegardé avant
+remplacement, limité à 128 décisions et purgé après trente jours. Il ne
+contient aucun contenu métier.
+
+Une « alerte importante » est une qualification produit, jamais une alerte
+système critique. Elle exige un signal N.2 actuel, non ambigu, de preuve forte,
+avec sévérité structurée et catégorie admissible. `potentialOmission` n’est
+pas admissible par défaut. Ces alertes ne contournent ni permission,
+désactivation, pause indéfinie, mode silencieux ou réglages du téléphone.
+Aucun entitlement Apple Critical Alerts, alarme exacte Android, full-screen
+intent, canal médical ou permission supplémentaire n’est ajouté.
+
+`DailySummaryBuilder` produit une projection déterministe et bornée de
+références techniques, catégories, révisions et couverture. Il exclut les
+signaux résolus, expirés, désactivés ou insuffisants et retourne `noSummary`
+quand rien d’utile n’est disponible. Il n’analyse aucun texte et n’appelle
+aucun LLM. Une seule programmation est conservée par date logique grâce à une
+identité et une `replacementKey` stables ; désactivation ou résumé vide
+annulent la programmation future. Un changement de fuseau reconstruit
+explicitement l’instant local, y compris autour des changements d’heure.
+
+`ProactiveNotificationPolicyEngine` est pur et décide `schedule`,
+`includeInDailySummary`, `deferUntil` ou une suppression fermée. Le chemin de
+production est N.2 → `ProactiveNotificationOrchestrator` → scheduler N.1.
+L’orchestrateur charge Auth, la policy, les permissions et les registres,
+applique les décisions, puis enregistre uniquement les résultats réels. Il
+n’appelle aucun domaine métier, ne crée aucun ledger et n’exécute aucune
+action. Les signaux non diffusés restent dans le registre N.2.
+
+Le résumé système reste « Zélia — Ton résumé quotidien est disponible dans
+l’application. » Les autres notifications restent également génériques. Le
+clic passe par le coordinateur N.1, vérifie compte, expiration et jeton opaque,
+puis ouvre une vue interne en lecture seule. Toute action ultérieure repasse
+par A.1–A.3 et A.2 ; la notification elle-même ne confirme et ne mute rien.
+
+L’écran Notifications utilise des contrôleurs injectés pour l’activation
+générale, les catégories, la pause, les heures calmes, la fréquence, le résumé
+et les alertes importantes. Il n’accède ni au plugin ni à
+SharedPreferences. La vue du résumé affiche des comptes et formulations
+prudentes, recharge les signaux et ne devient jamais une source métier.
+
+N.1 reste l’unique scheduler et propriétaire de la confidentialité plateforme.
+N.2 reste l’unique moteur de détection. N.3 n’ajoute ni worker, polling, FCM,
+push distant, marketing, voix, intégration externe ou réglage synchronisé.
 
 ## 29. Change policy for this document
 

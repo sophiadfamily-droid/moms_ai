@@ -6,6 +6,7 @@ enum NotificationNavigationIntentType {
   home,
   actionHistory,
   notificationsSettings,
+  dailySummary,
   neutral,
 }
 
@@ -72,6 +73,8 @@ final class NotificationInteractionCoordinator {
           NotificationNavigationIntentType.actionHistory,
         NotificationDestinationType.notificationsSettings =>
           NotificationNavigationIntentType.notificationsSettings,
+        NotificationDestinationType.dailySummary =>
+          NotificationNavigationIntentType.dailySummary,
       },
       'notification_navigation_safe',
     );
