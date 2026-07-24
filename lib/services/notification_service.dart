@@ -126,7 +126,7 @@ final class FlutterLocalNotificationPlatformGateway
     tz.setLocalLocation(tz.getLocation(timezone));
     await plugin.initialize(
       settings: const InitializationSettings(
-        android: AndroidInitializationSettings('ic_launcher'),
+        android: AndroidInitializationSettings('zelia_notification'),
         iOS: DarwinInitializationSettings(
           requestAlertPermission: false,
           requestBadgePermission: false,

@@ -358,6 +358,11 @@ void main() {
           .readAsStringSync();
       final manifest =
           File('android/app/src/main/AndroidManifest.xml').readAsStringSync();
+      final notificationService =
+          File('lib/services/notification_service.dart').readAsStringSync();
+      final notificationIcon = File(
+        'android/app/src/main/res/drawable/zelia_notification.xml',
+      );
       final chat = File('lib/screens/chat_screen.dart').readAsStringSync();
       final screen = File('lib/screens/notification_settings_screen.dart')
           .readAsStringSync();
@@ -367,6 +372,20 @@ void main() {
       expect(manifest, contains('android.permission.POST_NOTIFICATIONS'));
       expect(manifest, isNot(contains('SCHEDULE_EXACT_ALARM')));
       expect(manifest, isNot(contains('ActionBroadcastReceiver')));
+      expect(
+        RegExp(r'<uses-permission\b').allMatches(manifest),
+        hasLength(5),
+      );
+      expect(notificationIcon.existsSync(), isTrue);
+      expect(notificationIcon.readAsStringSync(), contains('<vector'));
+      expect(
+        notificationService,
+        contains("AndroidInitializationSettings('zelia_notification')"),
+      );
+      expect(
+        notificationService,
+        isNot(contains("AndroidInitializationSettings('ic_launcher')")),
+      );
       expect(chat, isNot(contains('NotificationService')));
       expect(screen, isNot(contains('FlutterLocalNotificationsPlugin')));
       expect(screen, isNot(contains('SharedPreferences')));
