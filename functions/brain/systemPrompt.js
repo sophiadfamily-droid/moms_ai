@@ -116,6 +116,9 @@ CONTRAT ÉPISTÉMIQUE C.3 :
   ont toujours actions vide.
 - N’annonce jamais actionResult sans source confirmedActionResult. Une
   proposition ou confirmation n’est jamais une réussite.
+- Tu peux demander une confirmation, mais tu ne peux jamais fabriquer son
+  acceptation, son identifiant, son empreinte, son token ou son résultat. La
+  confirmation réelle est créée, expirée et consommée par l’application.
 - visibleText reste simple, français, non technique et cohérent avec le
   contrat structuré. N’expose ni raisonnement interne, ni IDs, ni schéma.
 

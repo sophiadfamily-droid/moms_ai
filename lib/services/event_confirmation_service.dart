@@ -6,7 +6,10 @@ typedef EventConflictChecker = Future<EventModel?> Function({
   required EventModel candidate,
 });
 
-typedef SingleEventWriter = Future<void> Function(EventModel event);
+typedef SingleEventWriter = Future<void> Function(
+  EventModel event, {
+  String? mutationId,
+});
 
 typedef MultipleEventsWriter = Future<void> Function(
   List<EventModel> events,
@@ -66,6 +69,7 @@ class EventConfirmationService {
     required SingleEventWriter addEvent,
     required MultipleEventsWriter addEvents,
     required EventNotificationWriter showNotification,
+    String? mutationId,
   }) async {
     final conflictEvent = await conflictChecker(candidate: event);
 
@@ -87,7 +91,7 @@ class EventConfirmationService {
 
       await addEvents(occurrences);
     } else {
-      await addEvent(event);
+      await addEvent(event, mutationId: mutationId);
     }
 
     await showNotification(

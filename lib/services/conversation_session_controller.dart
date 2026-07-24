@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../models/conversation_models.dart';
 import '../models/action_autonomy_policy.dart';
+import '../models/action_confirmation.dart';
 import '../models/conversation_epistemic_models.dart';
 import '../models/conversation_session_models.dart';
 import '../models/smart_planning_continuation.dart';
@@ -176,6 +177,9 @@ final class ConversationSessionController extends ChangeNotifier {
 
   UserProfile _profile;
   final ConversationCoordinator _coordinator;
+
+  ActionConfirmation? get activeActionConfirmation =>
+      _coordinator.activeConfirmation;
   final ConversationSessionActionExecutor _executeAction;
   final ConversationPendingResolver? _resolvePending;
   final ConversationSessionInvalidator? _invalidateSession;

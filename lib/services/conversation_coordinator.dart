@@ -1,5 +1,7 @@
 import '../models/conversation_models.dart';
 import '../models/action_autonomy_policy.dart';
+import '../models/action_confirmation.dart';
+import '../models/action_ledger.dart';
 import '../models/event_model.dart';
 import '../models/event_participant.dart';
 import '../models/event_mutation_models.dart';
@@ -15,6 +17,7 @@ import 'conversation_answer_classifier.dart';
 import 'conversation_context_service.dart';
 import 'conversation_grounding_policy.dart';
 import 'action_autonomy_policy_engine.dart';
+import 'action_confirmation_coordinator.dart';
 import 'memory_confirmation_copy.dart';
 import 'memory_lifecycle_engine.dart';
 import 'memory_lifecycle_repository.dart';
@@ -58,11 +61,14 @@ class ConversationCoordinator {
   final DateTime Function() _clock;
   final ConversationAutonomyPolicyLoader? _loadAutonomyPolicy;
   final ActionAutonomyPolicyEngine _autonomyEngine;
+  late final ActionConfirmationCoordinator _confirmationCoordinator;
 
   ConversationState _state = const ConversationState();
   bool _isSending = false;
   bool _isResolvingPendingAction = false;
   ActionAutonomyPolicy? _lastAutonomyPolicy;
+  String? _observedAccountScopeId;
+  int _confirmationSequence = 0;
   int _sessionGeneration = 0;
   final Map<String, PendingIdentityActionBinding> _identityActionBindings = {};
   final Map<String, PendingEventIdentityDraft> _eventIdentityDrafts = {};
@@ -88,6 +94,7 @@ class ConversationCoordinator {
     ConversationAutonomyPolicyLoader? loadAutonomyPolicy,
     ActionAutonomyPolicyEngine autonomyEngine =
         const ActionAutonomyPolicyEngine(),
+    ActionConfirmationCoordinator? confirmationCoordinator,
   })  : _memoryLifecycleRepository = memoryLifecycleRepository,
         identityClarificationService = identityClarificationService ??
             IdentityClarificationService(
@@ -103,15 +110,30 @@ class ConversationCoordinator {
             EventConversationMutationService(),
         _loadAutonomyPolicy = loadAutonomyPolicy,
         _autonomyEngine = autonomyEngine,
-        _clock = clock ?? DateTime.now;
+        _clock = clock ?? DateTime.now {
+    _confirmationCoordinator = confirmationCoordinator ??
+        ActionConfirmationCoordinator(
+          idGenerator: _nextConfirmationId,
+          policyLoader: _canonicalPolicy,
+          currentAccountScopeId: _confirmationAccountScope,
+          now: _clock,
+        );
+  }
 
   ConversationState get state => _state;
+  ActionConfirmation? get activeConfirmation =>
+      _state.pendingAction?.canonicalConfirmation;
+
+  String _nextConfirmationId() =>
+      'confirmation-$_sessionGeneration-${++_confirmationSequence}';
 
   void invalidateSession() {
+    _confirmationCoordinator.invalidateSession(_sessionGeneration + 1);
     _state = const ConversationState();
     _identityActionBindings.clear();
     _eventIdentityDrafts.clear();
     _eventParticipantMutationDrafts.clear();
+    _observedAccountScopeId = null;
     _isSending = false;
     _isResolvingPendingAction = false;
   }
@@ -128,14 +150,119 @@ class ConversationCoordinator {
       );
       return;
     }
-
+    final metadata = _pendingMetadata(ActionType.createEvent);
+    final mutationId = _actionDraftIdGenerator.generate();
+    final targetId =
+        event.id?.trim().isNotEmpty == true ? event.id!.trim() : mutationId;
+    final scope = ActionConfirmationScope(
+      type: ActionConfirmationScopeType.executeExactMutation,
+      targetId: targetId,
+      operation: 'createEvent',
+      expectedRevision: 0,
+      fields: [
+        ActionConfirmationField(
+          key: ActionConfirmationFieldKey.title,
+          value: event.title,
+        ),
+        ActionConfirmationField(
+          key: ActionConfirmationFieldKey.date,
+          value: event.date,
+        ),
+        ActionConfirmationField(
+          key: ActionConfirmationFieldKey.time,
+          value: event.time,
+        ),
+        ActionConfirmationField(
+          key: ActionConfirmationFieldKey.durationMinutes,
+          value: event.durationMinutes,
+        ),
+        ActionConfirmationField(
+          key: ActionConfirmationFieldKey.travelGoMinutes,
+          value: event.resolvedTravelGoMinutes,
+        ),
+        ActionConfirmationField(
+          key: ActionConfirmationFieldKey.travelBackMinutes,
+          value: event.resolvedTravelBackMinutes,
+        ),
+        ActionConfirmationField(
+          key: ActionConfirmationFieldKey.marginMinutes,
+          value: event.marginMinutes,
+        ),
+        ActionConfirmationField(
+          key: ActionConfirmationFieldKey.participantId,
+          value: participantIdentityEntityId,
+        ),
+        ActionConfirmationField(
+          key: ActionConfirmationFieldKey.recurrenceType,
+          value: event.isRecurring ? event.recurringType : null,
+        ),
+        ActionConfirmationField(
+          key: ActionConfirmationFieldKey.recurrenceWeekday,
+          value: event.isRecurring ? event.recurringWeekday : null,
+        ),
+        ActionConfirmationField(
+          key: ActionConfirmationFieldKey.recurrenceUntil,
+          value: event.isRecurring && event.recurringUntil.isNotEmpty
+              ? event.recurringUntil
+              : null,
+        ),
+      ],
+    );
+    final policy = _lastAutonomyPolicy ??
+        ActionAutonomyPolicy.restrictiveDefault(
+          accountScopeId: _confirmationAccountScope()!,
+          changedAt: _clock().toUtc(),
+        );
+    final canonical = _confirmationCoordinator.issueWithPolicy(
+      ActionConfirmationProposal(
+        accountScopeId: policy.accountScopeId,
+        sessionGeneration: _sessionGeneration,
+        actionPendingId: targetId,
+        actionType: ActionType.createEvent,
+        actionDomain: ActionLedgerDomain.event,
+        actionOrigin: ActionOrigin.structuredContinuation,
+        riskLevel: ActionRiskLevel.mutation,
+        scope: scope,
+        requirements: [
+          ActionConfirmationRequirement(
+            source: ActionConfirmationRequirementSource.domainRequired,
+            code: 'event_creation_confirmation',
+            scope: scope.type,
+            requiresFreshConfirmation: true,
+            requiresSeparateConfirmation: false,
+            policyVersionObserved: policy.schemaVersion,
+          ),
+          if (policy.mode == ActionAutonomyMode.suggestions)
+            ActionConfirmationRequirement(
+              source:
+                  ActionConfirmationRequirementSource.autonomySuggestionsMode,
+              code: 'autonomy_suggestions_confirmation',
+              scope: scope.type,
+              requiresFreshConfirmation: true,
+              requiresSeparateConfirmation: false,
+              policyVersionObserved: policy.schemaVersion,
+            ),
+        ],
+        mutationId: mutationId,
+        policyMode: policy.mode,
+        policyVersion: policy.schemaVersion,
+        presentation: ActionConfirmationPresentation(
+          title: 'Confirmer le rendez-vous',
+          summary: 'Ajouter « ${event.title} » à l’agenda.',
+          consequence: 'L’agenda sera modifié après une dernière vérification.',
+        ),
+        provenance: 'conversation_event_creation',
+      ),
+      policy: policy,
+    );
     _state = _state.copyWith(
       phase: ConversationPhase.awaitingActionConfirmation,
       pendingAction: PendingConversationAction.eventConfirmation(
         event,
         eventParticipant: participant,
         participantIdentityEntityId: participantIdentityEntityId,
-        autonomyMetadata: _pendingMetadata(ActionType.createEvent),
+        canonicalConfirmation: canonical.confirmation,
+        autonomyMetadata: metadata,
       ),
     );
   }
@@ -203,12 +330,73 @@ class ConversationCoordinator {
             PendingConversationActionType.identityCreation) {
       return;
     }
+    final policy = _lastAutonomyPolicy ??
+        ActionAutonomyPolicy.restrictiveDefault(
+          accountScopeId: _confirmationAccountScope()!,
+          changedAt: _clock().toUtc(),
+        );
+    final scope = ActionConfirmationScope(
+      type: ActionConfirmationScopeType.confirmMemoryConsent,
+      targetId: request.memoryId?.trim().isNotEmpty == true
+          ? request.memoryId!.trim()
+          : proposalId,
+      operation: request.action.name,
+      expectedRevision: 0,
+      fields: const [],
+    );
+    final canonical = _confirmationCoordinator.issueWithPolicy(
+      ActionConfirmationProposal(
+        accountScopeId: policy.accountScopeId,
+        sessionGeneration: _sessionGeneration,
+        actionPendingId: proposalId,
+        actionType: ActionType.confirmMemory,
+        actionDomain: ActionLedgerDomain.memory,
+        actionOrigin: ActionOrigin.structuredContinuation,
+        riskLevel: ActionRiskLevel.sensitiveMutation,
+        scope: scope,
+        requirements: [
+          ActionConfirmationRequirement(
+            source: ActionConfirmationRequirementSource.memoryPolicy,
+            code: 'memory_policy_confirmation',
+            scope: scope.type,
+            requiresFreshConfirmation: true,
+            requiresSeparateConfirmation: false,
+            policyVersionObserved: policy.schemaVersion,
+          ),
+          if (request.sensitivity.name == 'sensitive')
+            ActionConfirmationRequirement(
+              source: ActionConfirmationRequirementSource.healthPolicy,
+              code: 'sensitive_memory_confirmation',
+              scope: scope.type,
+              requiresFreshConfirmation: true,
+              requiresSeparateConfirmation: true,
+              policyVersionObserved: policy.schemaVersion,
+            ),
+        ],
+        mutationId: proposalId,
+        policyMode: policy.mode,
+        policyVersion: policy.schemaVersion,
+        presentation: ActionConfirmationPresentation(
+          title: 'Confirmer la mémoire',
+          summary: request.prompt.trim().isEmpty
+              ? 'Confirmer cette proposition de mémoire.'
+              : request.prompt.trim(),
+          consequence: request.consequence.trim().isEmpty
+              ? 'La mémoire ne sera modifiée qu’après confirmation.'
+              : request.consequence.trim(),
+          allowPostpone: true,
+        ),
+        provenance: 'conversation_memory_confirmation',
+      ),
+      policy: policy,
+    );
     _state = _state.copyWith(
       phase: ConversationPhase.awaitingActionConfirmation,
       pendingAction: PendingConversationAction.memoryConfirmation(
         proposalId: proposalId,
         createdAt: createdAt,
         expectedMemoryAction: request.action,
+        canonicalConfirmation: canonical.confirmation,
         autonomyMetadata: _pendingMetadata(ActionType.confirmMemory),
       ),
     );
@@ -241,18 +429,85 @@ class ConversationCoordinator {
   }) {
     final service = identityCreationService;
     if (_state.pendingAction != null || service == null) return null;
+    _observedAccountScopeId = request.scope.accountId;
     final pending = service.propose(
       applicationResult: applicationResult,
       request: request,
+    );
+    final canonical = _issueIdentityCreationConfirmation(
+      pending: pending,
+      accountScopeId: request.scope.accountId,
     );
     _state = _state.copyWith(
       phase: ConversationPhase.awaitingActionConfirmation,
       pendingAction: PendingConversationAction.identityCreation(
         pending,
+        canonicalConfirmation: canonical,
         autonomyMetadata: _pendingMetadata(ActionType.createIdentity),
       ),
     );
     return PendingConversationResolution(service.question(pending));
+  }
+
+  ActionConfirmation _issueIdentityCreationConfirmation({
+    required PendingIdentityCreation pending,
+    required String accountScopeId,
+  }) {
+    final service = identityCreationService!;
+    _observedAccountScopeId = accountScopeId;
+    final policy = _lastAutonomyPolicy ??
+        ActionAutonomyPolicy.restrictiveDefault(
+          accountScopeId: accountScopeId,
+          changedAt: _clock().toUtc(),
+        );
+    final scope = ActionConfirmationScope(
+      type: ActionConfirmationScopeType.confirmIdentityLink,
+      targetId: pending.entityId,
+      operation: 'createIdentity',
+      expectedRevision: 0,
+      fields: const [],
+    );
+    final canonical = _confirmationCoordinator.issueWithPolicy(
+      ActionConfirmationProposal(
+        accountScopeId: accountScopeId,
+        sessionGeneration: _sessionGeneration,
+        actionPendingId: pending.proposalId,
+        actionType: ActionType.createIdentity,
+        actionDomain: ActionLedgerDomain.identity,
+        actionOrigin: ActionOrigin.structuredContinuation,
+        riskLevel: ActionRiskLevel.sensitiveMutation,
+        scope: scope,
+        requirements: [
+          ActionConfirmationRequirement(
+            source: ActionConfirmationRequirementSource.identityPolicy,
+            code: 'identity_creation_confirmation',
+            scope: scope.type,
+            requiresFreshConfirmation: true,
+            requiresSeparateConfirmation: true,
+            policyVersionObserved: policy.schemaVersion,
+          ),
+          ActionConfirmationRequirement(
+            source: ActionConfirmationRequirementSource.sensitiveMutation,
+            code: 'sensitive_identity_confirmation',
+            scope: scope.type,
+            requiresFreshConfirmation: true,
+            requiresSeparateConfirmation: true,
+            policyVersionObserved: policy.schemaVersion,
+          ),
+        ],
+        mutationId: pending.proposalId,
+        policyMode: policy.mode,
+        policyVersion: policy.schemaVersion,
+        presentation: ActionConfirmationPresentation(
+          title: 'Confirmer l’identité',
+          summary: service.question(pending),
+          consequence: 'Une identité distincte sera créée.',
+        ),
+        provenance: 'conversation_identity_creation',
+      ),
+      policy: policy,
+    );
+    return canonical.confirmation;
   }
 
   Future<PendingConversationResolution> beginIdentityActionBinding({
@@ -312,10 +567,15 @@ class ConversationCoordinator {
       );
       final bindingResult =
           identityActionBindingService.pendingCreation(binding);
+      final canonical = _issueIdentityCreationConfirmation(
+        pending: pending,
+        accountScopeId: request.scope.accountId,
+      );
       _state = _state.copyWith(
         phase: ConversationPhase.awaitingActionConfirmation,
         pendingAction: PendingConversationAction.identityCreation(
           pending,
+          canonicalConfirmation: canonical,
           autonomyMetadata: _pendingMetadata(ActionType.createIdentity),
         ),
       );
@@ -428,10 +688,19 @@ class ConversationCoordinator {
       return null;
     }
     if (_isResolvingPendingAction) return null;
+    final canonical = pendingAction.canonicalConfirmation;
+    if (canonical == null) {
+      _clearPendingAction();
+      return const PendingConversationResolution(
+        'Cette confirmation n’est plus valide. Reformule ta demande.',
+        diagnosticCode: 'canonical_identity_confirmation_missing',
+      );
+    }
+    final answerType = answerClassifier.classify(answer);
     _isResolvingPendingAction = true;
     _state = _state.copyWith(phase: ConversationPhase.executingAction);
     try {
-      if (answerClassifier.classify(answer) != ConversationAnswer.negative) {
+      if (answerType != ConversationAnswer.negative) {
         final authorization =
             await _authorizeConfirmed(ActionType.createIdentity);
         if (authorization != null) {
@@ -443,6 +712,54 @@ class ConversationCoordinator {
             diagnosticCode: 'identity_blocked_by_autonomy',
           );
         }
+      }
+      if (answerType == ConversationAnswer.positive) {
+        final consumed = await _confirmationCoordinator.respond(
+          response: ActionConfirmationResponse(
+            responseId: _confirmationResponseId(
+              canonical,
+              ActionConfirmationResponseChoice.accept,
+            ),
+            confirmationId: canonical.confirmationId,
+            sessionGeneration: _sessionGeneration,
+            respondedAt: (referenceDate ?? _clock()).toUtc(),
+            choice: ActionConfirmationResponseChoice.accept,
+            actionFingerprint: canonical.actionFingerprint,
+          ),
+          currentSessionGeneration: _sessionGeneration,
+          c3Validator: (_) => true,
+          domainValidator: (_) => true,
+          revisionValidator: (_) => true,
+        );
+        if (!consumed.dispatchAllowed) {
+          _state = _state.copyWith(
+            phase: ConversationPhase.awaitingActionConfirmation,
+          );
+          return PendingConversationResolution(
+            consumed.type == ActionConfirmationResultType.blockedByPolicy
+                ? 'Les actions sont actuellement en pause.'
+                : 'Cette confirmation n’est plus valide. Reformule ta demande.',
+            diagnosticCode: consumed.reasonCode,
+          );
+        }
+      } else if (answerType == ConversationAnswer.negative) {
+        await _confirmationCoordinator.respond(
+          response: ActionConfirmationResponse(
+            responseId: _confirmationResponseId(
+              canonical,
+              ActionConfirmationResponseChoice.reject,
+            ),
+            confirmationId: canonical.confirmationId,
+            sessionGeneration: _sessionGeneration,
+            respondedAt: (referenceDate ?? _clock()).toUtc(),
+            choice: ActionConfirmationResponseChoice.reject,
+            actionFingerprint: canonical.actionFingerprint,
+          ),
+          currentSessionGeneration: _sessionGeneration,
+          c3Validator: (_) => true,
+          domainValidator: (_) => true,
+          revisionValidator: (_) => true,
+        );
       }
       final result = await service.process(
         pending: pendingAction.identityCreation!,
@@ -461,6 +778,12 @@ class ConversationCoordinator {
           accountScopeId: actionBinding!.accountScopeId,
           continuation: actionBinding.continuation,
         )] = bindingResult!.binding;
+      }
+      if (result.status == IdentityCreationStatus.created) {
+        _confirmationCoordinator.complete(
+          canonical.confirmationId,
+          completedAt: (referenceDate ?? _clock()).toUtc(),
+        );
       }
       if (result.status != IdentityCreationStatus.stillPending &&
           result.status != IdentityCreationStatus.repositoryFailure) {
@@ -647,6 +970,14 @@ class ConversationCoordinator {
       return null;
     }
     final confirmation = pending.eventMutationConfirmation!;
+    final canonical = pending.canonicalConfirmation;
+    if (canonical == null) {
+      _clearPendingAction();
+      return const PendingConversationResolution(
+        'Cette confirmation n’est plus valide. Reformule ta demande.',
+        diagnosticCode: 'canonical_event_mutation_confirmation_missing',
+      );
+    }
     if (confirmation.isExpiredAt(_clock().toUtc())) {
       _clearPendingAction();
       return const PendingConversationResolution(
@@ -662,6 +993,23 @@ class ConversationCoordinator {
       );
     }
     if (classified == ConversationAnswer.negative) {
+      await _confirmationCoordinator.respond(
+        response: ActionConfirmationResponse(
+          responseId: _confirmationResponseId(
+            canonical,
+            ActionConfirmationResponseChoice.reject,
+          ),
+          confirmationId: canonical.confirmationId,
+          sessionGeneration: _sessionGeneration,
+          respondedAt: _clock().toUtc(),
+          choice: ActionConfirmationResponseChoice.reject,
+          actionFingerprint: canonical.actionFingerprint,
+        ),
+        currentSessionGeneration: _sessionGeneration,
+        c3Validator: (_) => true,
+        domainValidator: (_) => true,
+        revisionValidator: (_) => true,
+      );
       _clearPendingAction();
       return const PendingConversationResolution(
         'D’accord, je ne modifie pas cet événement.',
@@ -721,12 +1069,46 @@ class ConversationCoordinator {
         );
         return PendingConversationResolution(authorization);
       }
+      final consumed = await _confirmationCoordinator.respond(
+        response: ActionConfirmationResponse(
+          responseId: _confirmationResponseId(
+            canonical,
+            ActionConfirmationResponseChoice.accept,
+          ),
+          confirmationId: canonical.confirmationId,
+          sessionGeneration: _sessionGeneration,
+          respondedAt: _clock().toUtc(),
+          choice: ActionConfirmationResponseChoice.accept,
+          actionFingerprint: canonical.actionFingerprint,
+        ),
+        currentSessionGeneration: _sessionGeneration,
+        c3Validator: (_) => true,
+        domainValidator: (_) => true,
+        revisionValidator: (_) =>
+            confirmation.original.eventRevision ==
+            canonical.confirmationScope.expectedRevision,
+      );
+      if (!consumed.dispatchAllowed) {
+        _state = _state.copyWith(
+          phase: ConversationPhase.awaitingActionConfirmation,
+        );
+        return PendingConversationResolution(
+          consumed.type == ActionConfirmationResultType.blockedByPolicy
+              ? 'Les actions sont actuellement en pause.'
+              : 'Cette modification a changé. Je dois la préparer à nouveau.',
+          diagnosticCode: consumed.reasonCode,
+        );
+      }
       final result = await eventConversationMutationService.execute(
         original: confirmation.original,
         proposed: confirmation.proposed,
         participantIntent: participantIntent,
       );
       if (result.status == EventMutationExecutionStatus.updated) {
+        _confirmationCoordinator.complete(
+          canonical.confirmationId,
+          completedAt: _clock().toUtc(),
+        );
         _clearPendingAction();
         return const PendingConversationResolution(
           'C’est fait, l’événement a été modifié.',
@@ -822,11 +1204,101 @@ class ConversationCoordinator {
     final now = _clock().toUtc();
     final message =
         _eventMutationConfirmationMessage(original, proposed, request);
+    final mutationId = _actionDraftIdGenerator.generate();
+    final targetId = original.id?.trim().isNotEmpty == true
+        ? original.id!.trim()
+        : 'event-${original.date}-${original.time}';
+    final scope = ActionConfirmationScope(
+      type: ActionConfirmationScopeType.executeExactMutation,
+      targetId: targetId,
+      operation: request.operation.name,
+      expectedRevision: original.eventRevision,
+      fields: [
+        ActionConfirmationField(
+          key: ActionConfirmationFieldKey.date,
+          value: proposed.date,
+        ),
+        ActionConfirmationField(
+          key: ActionConfirmationFieldKey.time,
+          value: proposed.time,
+        ),
+        ActionConfirmationField(
+          key: ActionConfirmationFieldKey.durationMinutes,
+          value: proposed.durationMinutes,
+        ),
+        ActionConfirmationField(
+          key: ActionConfirmationFieldKey.travelGoMinutes,
+          value: proposed.resolvedTravelGoMinutes,
+        ),
+        ActionConfirmationField(
+          key: ActionConfirmationFieldKey.travelBackMinutes,
+          value: proposed.resolvedTravelBackMinutes,
+        ),
+        ActionConfirmationField(
+          key: ActionConfirmationFieldKey.marginMinutes,
+          value: proposed.marginMinutes,
+        ),
+        ActionConfirmationField(
+          key: ActionConfirmationFieldKey.participantId,
+          value: participantIdentityEntityId,
+        ),
+        ActionConfirmationField(
+          key: ActionConfirmationFieldKey.recurrenceType,
+          value: proposed.isRecurring ? proposed.recurringType : null,
+        ),
+      ],
+    );
+    final policy = _lastAutonomyPolicy ??
+        ActionAutonomyPolicy.restrictiveDefault(
+          accountScopeId: _confirmationAccountScope()!,
+          changedAt: now,
+        );
+    final canonical = _confirmationCoordinator.issueWithPolicy(
+      ActionConfirmationProposal(
+        accountScopeId: policy.accountScopeId,
+        sessionGeneration: _sessionGeneration,
+        actionPendingId: mutationId,
+        actionType: request.operation ==
+                    EventMutationOperation.replaceParticipant ||
+                request.operation == EventMutationOperation.removeParticipant
+            ? ActionType.modifyParticipant
+            : ActionType.updateEvent,
+        actionDomain: ActionLedgerDomain.event,
+        actionOrigin: ActionOrigin.structuredContinuation,
+        riskLevel: request.operation ==
+                    EventMutationOperation.replaceParticipant ||
+                request.operation == EventMutationOperation.removeParticipant
+            ? ActionRiskLevel.sensitiveMutation
+            : ActionRiskLevel.mutation,
+        scope: scope,
+        requirements: [
+          ActionConfirmationRequirement(
+            source: ActionConfirmationRequirementSource.domainRequired,
+            code: 'event_mutation_confirmation',
+            scope: scope.type,
+            requiresFreshConfirmation: true,
+            requiresSeparateConfirmation: false,
+            policyVersionObserved: policy.schemaVersion,
+          ),
+        ],
+        mutationId: mutationId,
+        policyMode: policy.mode,
+        policyVersion: policy.schemaVersion,
+        presentation: ActionConfirmationPresentation(
+          title: 'Confirmer la modification',
+          summary: message,
+          consequence:
+              'L’événement sera modifié après une dernière vérification.',
+        ),
+        provenance: 'conversation_event_mutation',
+      ),
+      policy: policy,
+    );
     _state = _state.copyWith(
       phase: ConversationPhase.awaitingActionConfirmation,
       pendingAction: PendingConversationAction.eventMutationConfirmation(
         PendingEventMutationConfirmation(
-          mutationId: _actionDraftIdGenerator.generate(),
+          mutationId: mutationId,
           request: request,
           original: original,
           proposed: proposed,
@@ -835,6 +1307,7 @@ class ConversationCoordinator {
           createdAt: now,
           expiresAt: now.add(const Duration(minutes: 15)),
         ),
+        canonicalConfirmation: canonical.confirmation,
         autonomyMetadata: _pendingMetadata(ActionType.updateEvent),
       ),
     );
@@ -892,8 +1365,33 @@ class ConversationCoordinator {
         pending.type != PendingConversationActionType.eventConfirmation) {
       return null;
     }
+    final canonical = pending.canonicalConfirmation;
+    if (canonical == null) {
+      _clearPendingAction();
+      return const PendingConversationResolution(
+        'Cette confirmation n’est plus valide. Reformule ta demande.',
+        diagnosticCode: 'canonical_event_confirmation_missing',
+      );
+    }
 
     if (isNegativeAnswer(answer)) {
+      await _confirmationCoordinator.respond(
+        response: ActionConfirmationResponse(
+          responseId: _confirmationResponseId(
+            canonical,
+            ActionConfirmationResponseChoice.reject,
+          ),
+          confirmationId: canonical.confirmationId,
+          sessionGeneration: _sessionGeneration,
+          respondedAt: _clock().toUtc(),
+          choice: ActionConfirmationResponseChoice.reject,
+          actionFingerprint: canonical.actionFingerprint,
+        ),
+        currentSessionGeneration: _sessionGeneration,
+        c3Validator: (_) => true,
+        domainValidator: (_) => true,
+        revisionValidator: (_) => true,
+      );
       _state = _state.copyWith(
         phase: ConversationPhase.idle,
         clearPendingAction: true,
@@ -950,7 +1448,39 @@ class ConversationCoordinator {
         );
         return PendingConversationResolution(authorization);
       }
+      final consumed = await _confirmationCoordinator.respond(
+        response: ActionConfirmationResponse(
+          responseId: _confirmationResponseId(
+            canonical,
+            ActionConfirmationResponseChoice.accept,
+          ),
+          confirmationId: canonical.confirmationId,
+          sessionGeneration: _sessionGeneration,
+          respondedAt: _clock().toUtc(),
+          choice: ActionConfirmationResponseChoice.accept,
+          actionFingerprint: canonical.actionFingerprint,
+        ),
+        currentSessionGeneration: _sessionGeneration,
+        c3Validator: (_) => true,
+        domainValidator: (_) => true,
+        revisionValidator: (_) => true,
+      );
+      if (!consumed.dispatchAllowed) {
+        _state = _state.copyWith(
+          phase: ConversationPhase.awaitingActionConfirmation,
+        );
+        return PendingConversationResolution(
+          consumed.type == ActionConfirmationResultType.blockedByPolicy
+              ? 'Les actions sont actuellement en pause.'
+              : 'Cette confirmation n’est plus valide. Reformule ta demande.',
+          diagnosticCode: consumed.reasonCode,
+        );
+      }
       final message = await execute(event);
+      _confirmationCoordinator.complete(
+        canonical.confirmationId,
+        completedAt: _clock().toUtc(),
+      );
       _state = _state.copyWith(
         phase: ConversationPhase.idle,
         clearPendingAction: true,
@@ -974,6 +1504,11 @@ class ConversationCoordinator {
     if (pending == null ||
         pending.type != PendingConversationActionType.memoryConfirmation) {
       return null;
+    }
+    final canonical = pending.canonicalConfirmation;
+    if (canonical == null) {
+      _clearPendingAction();
+      return PendingConversationResolution(memoryCopy.unavailable);
     }
     final proposalId = pending.proposalId?.trim() ?? '';
     final repository = _repository;
@@ -1000,6 +1535,23 @@ class ConversationCoordinator {
         return PendingConversationResolution(memoryCopy.unavailable);
       }
       if (answerType == ConversationAnswer.negative) {
+        await _confirmationCoordinator.respond(
+          response: ActionConfirmationResponse(
+            responseId: _confirmationResponseId(
+              canonical,
+              ActionConfirmationResponseChoice.reject,
+            ),
+            confirmationId: canonical.confirmationId,
+            sessionGeneration: _sessionGeneration,
+            respondedAt: referenceDate.toUtc(),
+            choice: ActionConfirmationResponseChoice.reject,
+            actionFingerprint: canonical.actionFingerprint,
+          ),
+          currentSessionGeneration: _sessionGeneration,
+          c3Validator: (_) => true,
+          domainValidator: (_) => true,
+          revisionValidator: (_) => true,
+        );
         return await _rejectMemory(
           repository: repository,
           memory: memory,
@@ -1013,11 +1565,43 @@ class ConversationCoordinator {
         );
         return PendingConversationResolution(authorization);
       }
-      return await _confirmMemory(
+      final consumed = await _confirmationCoordinator.respond(
+        response: ActionConfirmationResponse(
+          responseId: _confirmationResponseId(
+            canonical,
+            ActionConfirmationResponseChoice.accept,
+          ),
+          confirmationId: canonical.confirmationId,
+          sessionGeneration: _sessionGeneration,
+          respondedAt: referenceDate.toUtc(),
+          choice: ActionConfirmationResponseChoice.accept,
+          actionFingerprint: canonical.actionFingerprint,
+        ),
+        currentSessionGeneration: _sessionGeneration,
+        c3Validator: (_) => true,
+        domainValidator: (_) =>
+            memory.lifecycleState == MemoryLifecycleState.proposed ||
+            memory.lifecycleState == MemoryLifecycleState.active,
+        revisionValidator: (_) => memory.id == proposalId,
+      );
+      if (!consumed.dispatchAllowed) {
+        return PendingConversationResolution(
+          consumed.type == ActionConfirmationResultType.blockedByPolicy
+              ? 'Les actions sont actuellement en pause.'
+              : memoryCopy.unavailable,
+          diagnosticCode: consumed.reasonCode,
+        );
+      }
+      final result = await _confirmMemory(
         repository: repository,
         memory: memory,
         referenceDate: referenceDate,
       );
+      _confirmationCoordinator.complete(
+        canonical.confirmationId,
+        completedAt: referenceDate.toUtc(),
+      );
+      return result;
     } catch (_) {
       _state = _state.copyWith(
         phase: ConversationPhase.awaitingActionConfirmation,
@@ -1038,6 +1622,42 @@ class ConversationCoordinator {
       return null;
     }
     var pending = wrapped!.autonomyPending!;
+    var canonical = wrapped.canonicalConfirmation;
+    if (canonical == null) {
+      _clearPendingAction();
+      return const PendingConversationResolution(
+        'Cette confirmation n’est plus valide. Reformule ta demande.',
+        diagnosticCode: 'canonical_confirmation_missing',
+      );
+    }
+    if (canonical.state == ActionConfirmationState.blockedByPolicy) {
+      final currentPolicy = await _canonicalPolicy();
+      if (currentPolicy.mode == ActionAutonomyMode.paused) {
+        return const PendingConversationResolution(
+          'Les actions sont actuellement en pause.',
+          diagnosticCode: 'confirmation_blocked_paused',
+        );
+      }
+      final renewed = _confirmationCoordinator.issueWithPolicy(
+        _confirmationProposalForPending(pending),
+        policy: currentPolicy,
+      );
+      canonical = renewed.confirmation;
+      _state = _state.copyWith(
+        phase: ConversationPhase.awaitingActionConfirmation,
+        pendingAction: PendingConversationAction.autonomyConfirmation(
+          pending.copyWith(
+            state: ActionPendingState.awaitingConfirmation,
+            hasFreshConfirmation: false,
+          ),
+          canonical,
+        ),
+      );
+      return const PendingConversationResolution(
+        'Le mode d’action a changé. Confirme à nouveau cette modification.',
+        diagnosticCode: 'confirmation_reissued_after_policy_change',
+      );
+    }
     pending.validate();
     if (pending.sessionGeneration != sessionGeneration) {
       _clearPendingAction();
@@ -1062,6 +1682,23 @@ class ConversationCoordinator {
     }
     final classified = answerClassifier.classify(answer);
     if (classified == ConversationAnswer.negative) {
+      await _confirmationCoordinator.respond(
+        response: ActionConfirmationResponse(
+          responseId: _confirmationResponseId(
+            canonical,
+            ActionConfirmationResponseChoice.reject,
+          ),
+          confirmationId: canonical.confirmationId,
+          sessionGeneration: sessionGeneration,
+          respondedAt: _clock().toUtc(),
+          choice: ActionConfirmationResponseChoice.reject,
+          actionFingerprint: canonical.actionFingerprint,
+        ),
+        currentSessionGeneration: sessionGeneration,
+        c3Validator: (_) => true,
+        domainValidator: (_) => true,
+        revisionValidator: (_) => true,
+      );
       _clearPendingAction();
       return const PendingConversationResolution(
         'D’accord, je ne modifie rien.',
@@ -1079,11 +1716,52 @@ class ConversationCoordinator {
       }
       pending = pending.copyWith(attemptCount: attempts);
       _state = _state.copyWith(
-        pendingAction: PendingConversationAction.autonomyConfirmation(pending),
+        pendingAction: PendingConversationAction.autonomyConfirmation(
+          pending,
+          canonical,
+        ),
       );
       return const PendingConversationResolution(
         'Réponds simplement oui pour confirmer, ou non pour annuler.',
         diagnosticCode: 'autonomy_pending_confirmation_ambiguous',
+      );
+    }
+    final consumed = await _confirmationCoordinator.respond(
+      response: ActionConfirmationResponse(
+        responseId: _confirmationResponseId(
+          canonical,
+          ActionConfirmationResponseChoice.accept,
+        ),
+        confirmationId: canonical.confirmationId,
+        sessionGeneration: sessionGeneration,
+        respondedAt: _clock().toUtc(),
+        choice: ActionConfirmationResponseChoice.accept,
+        actionFingerprint: canonical.actionFingerprint,
+      ),
+      currentSessionGeneration: sessionGeneration,
+      c3Validator: (_) => pending.wasGrounded && pending.wasComplete,
+      domainValidator: (_) => true,
+      revisionValidator: (_) => pending.state != ActionPendingState.completed,
+    );
+    if (!consumed.dispatchAllowed) {
+      pending = pending.copyWith(
+        state: consumed.type == ActionConfirmationResultType.blockedByPolicy
+            ? ActionPendingState.blockedByPolicy
+            : ActionPendingState.expired,
+        hasFreshConfirmation: false,
+      );
+      _state = _state.copyWith(
+        phase: ConversationPhase.awaitingActionConfirmation,
+        pendingAction: PendingConversationAction.autonomyConfirmation(
+          pending,
+          consumed.confirmation,
+        ),
+      );
+      return PendingConversationResolution(
+        consumed.type == ActionConfirmationResultType.blockedByPolicy
+            ? 'Les actions sont actuellement en pause.'
+            : 'Cette confirmation n’est plus valide. Reformule ta demande.',
+        diagnosticCode: consumed.reasonCode,
       );
     }
     final policy = await _loadAutonomyPolicy?.call();
@@ -1115,7 +1793,10 @@ class ConversationCoordinator {
       );
       _state = _state.copyWith(
         phase: ConversationPhase.awaitingActionConfirmation,
-        pendingAction: PendingConversationAction.autonomyConfirmation(pending),
+        pendingAction: PendingConversationAction.autonomyConfirmation(
+          pending,
+          consumed.confirmation,
+        ),
       );
       return PendingConversationResolution(
         _autonomyMessage(decision),
@@ -1129,10 +1810,17 @@ class ConversationCoordinator {
     );
     _state = _state.copyWith(
       phase: ConversationPhase.executingAction,
-      pendingAction: PendingConversationAction.autonomyConfirmation(pending),
+      pendingAction: PendingConversationAction.autonomyConfirmation(
+        pending,
+        consumed.confirmation,
+      ),
     );
     try {
       final outcome = await executeAction(_legacyAction(pending));
+      _confirmationCoordinator.complete(
+        canonical.confirmationId,
+        completedAt: _clock().toUtc(),
+      );
       _clearPendingAction();
       return PendingConversationResolution(
         outcome.message.isEmpty ? 'C’est fait.' : outcome.message,
@@ -1146,6 +1834,7 @@ class ConversationCoordinator {
             state: ActionPendingState.blockedByPolicy,
             hasFreshConfirmation: false,
           ),
+          consumed.confirmation,
         ),
       );
       rethrow;
@@ -1296,10 +1985,16 @@ class ConversationCoordinator {
               createdAt: now,
               expiresAt: now.add(const Duration(minutes: 15)),
             )..validate();
+            final confirmation = _confirmationCoordinator.issueWithPolicy(
+              _confirmationProposalForPending(pending),
+              policy: latestPolicy,
+            );
             _state = _state.copyWith(
               phase: ConversationPhase.awaitingActionConfirmation,
-              pendingAction:
-                  PendingConversationAction.autonomyConfirmation(pending),
+              pendingAction: PendingConversationAction.autonomyConfirmation(
+                pending,
+                confirmation.confirmation,
+              ),
             );
             actionMessages.add(
               'Je peux préparer cette modification. Veux-tu la confirmer ?',
@@ -1430,6 +2125,130 @@ class ConversationCoordinator {
     };
   }
 
+  ActionConfirmationProposal _confirmationProposalForPending(
+    ActionPending pending,
+  ) {
+    final fields = switch (pending.payload) {
+      PendingTaskPayload(
+        :final title,
+        :final dueDate,
+        :final notes,
+        :final planning,
+        :final priority,
+        :final isImportant,
+      ) =>
+        [
+          ActionConfirmationField(
+            key: ActionConfirmationFieldKey.title,
+            value: title,
+          ),
+          ActionConfirmationField(
+            key: ActionConfirmationFieldKey.dueDate,
+            value: dueDate.isEmpty ? null : dueDate,
+          ),
+          ActionConfirmationField(
+            key: ActionConfirmationFieldKey.category,
+            value: planning.isEmpty ? null : planning,
+          ),
+          ActionConfirmationField(
+            key: ActionConfirmationFieldKey.section,
+            value: priority.isEmpty ? null : priority,
+          ),
+          ActionConfirmationField(
+            key: ActionConfirmationFieldKey.choiceId,
+            value: isImportant,
+          ),
+          if (notes.isNotEmpty)
+            ActionConfirmationField(
+              key: ActionConfirmationFieldKey.operation,
+              value: notes,
+            ),
+        ],
+      PendingShoppingPayload(
+        :final title,
+        :final category,
+        :final notes,
+        :final section,
+        :final isUrgent,
+      ) =>
+        [
+          ActionConfirmationField(
+            key: ActionConfirmationFieldKey.title,
+            value: title,
+          ),
+          ActionConfirmationField(
+            key: ActionConfirmationFieldKey.category,
+            value: category.isEmpty ? null : category,
+          ),
+          ActionConfirmationField(
+            key: ActionConfirmationFieldKey.section,
+            value: section.isEmpty ? null : section,
+          ),
+          ActionConfirmationField(
+            key: ActionConfirmationFieldKey.choiceId,
+            value: isUrgent,
+          ),
+          if (notes.isNotEmpty)
+            ActionConfirmationField(
+              key: ActionConfirmationFieldKey.operation,
+              value: notes,
+            ),
+        ],
+    };
+    final isTask = pending.actionType == ActionType.createTask;
+    final scope = ActionConfirmationScope(
+      type: ActionConfirmationScopeType.executeExactMutation,
+      targetId: pending.pendingActionId,
+      operation: isTask ? 'createTask' : 'addShoppingItem',
+      expectedRevision: 0,
+      fields: fields,
+    );
+    return ActionConfirmationProposal(
+      accountScopeId: _confirmationAccountScope()!,
+      sessionGeneration: pending.sessionGeneration,
+      actionPendingId: pending.pendingActionId,
+      actionType: pending.actionType,
+      actionDomain:
+          isTask ? ActionLedgerDomain.task : ActionLedgerDomain.shopping,
+      actionOrigin: pending.origin,
+      riskLevel: pending.riskLevel,
+      scope: scope,
+      requirements: [
+        ActionConfirmationRequirement(
+          source: ActionConfirmationRequirementSource.autonomySuggestionsMode,
+          code: 'autonomy_suggestions_confirmation',
+          scope: scope.type,
+          requiresFreshConfirmation: true,
+          requiresSeparateConfirmation: false,
+          policyVersionObserved: pending.policyVersionAtCreation,
+        ),
+        ActionConfirmationRequirement(
+          source: ActionConfirmationRequirementSource.domainRequired,
+          code: 'exact_mutation_confirmation',
+          scope: scope.type,
+          requiresFreshConfirmation: true,
+          requiresSeparateConfirmation: false,
+          policyVersionObserved: pending.policyVersionAtCreation,
+        ),
+      ],
+      mutationId: pending.mutationId,
+      policyMode: pending.policyModeAtCreation,
+      policyVersion: pending.policyVersionAtCreation,
+      presentation: ActionConfirmationPresentation(
+        title: isTask ? 'Confirmer la tâche' : 'Confirmer l’ajout',
+        summary: isTask
+            ? 'Créer la tâche préparée.'
+            : 'Ajouter l’article préparé à la liste.',
+        consequence: isTask
+            ? 'La liste des tâches sera modifiée.'
+            : 'La liste de courses sera modifiée.',
+        allowPostpone: true,
+      ),
+      provenance: 'conversation_action_pending',
+      validity: const Duration(minutes: 15),
+    );
+  }
+
   static String _autonomyMessage(ActionAuthorizationDecision decision) {
     return switch (decision.decision) {
       ActionAuthorizationDecisionType.blockedPaused =>
@@ -1440,6 +2259,12 @@ class ConversationCoordinator {
       _ => 'Je ne peux pas appliquer cette action de façon sûre.',
     };
   }
+
+  static String _confirmationResponseId(
+    ActionConfirmation confirmation,
+    ActionConfirmationResponseChoice choice,
+  ) =>
+      '${confirmation.confirmationId}:${choice.name}';
 
   Future<String?> _authorizeConfirmed(ActionType actionType) async {
     final policy = await _loadAutonomyPolicy?.call();
@@ -1471,6 +2296,25 @@ class ConversationCoordinator {
           policy?.schemaVersion ?? ActionAutonomyPolicy.currentSchemaVersion,
       sessionGeneration: _sessionGeneration,
     );
+  }
+
+  String? _confirmationAccountScope() =>
+      _lastAutonomyPolicy?.accountScopeId ??
+      identityAccountScope?.accountId ??
+      _observedAccountScopeId ??
+      'conversation-local';
+
+  Future<ActionAutonomyPolicy> _canonicalPolicy() async {
+    final loaded = await _loadAutonomyPolicy?.call();
+    if (loaded != null) {
+      _lastAutonomyPolicy = loaded;
+      return loaded;
+    }
+    return _lastAutonomyPolicy ??
+        ActionAutonomyPolicy.restrictiveDefault(
+          accountScopeId: _confirmationAccountScope()!,
+          changedAt: _clock().toUtc(),
+        );
   }
 
   MemoryLifecycleRepository? get _repository {

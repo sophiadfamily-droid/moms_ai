@@ -4,6 +4,7 @@ import '../services/planning_proposal_engine.dart';
 import '../services/smart_planning_service.dart';
 import 'task_model.dart';
 import 'action_autonomy_policy.dart';
+import 'action_confirmation.dart';
 
 enum SmartPlanningContinuationType {
   taskPlanning,
@@ -90,6 +91,7 @@ final class SmartPlanningContinuation {
     this.origin = ActionOrigin.structuredContinuation,
     this.riskLevel = ActionRiskLevel.mutation,
     this.policyState = SmartPlanningPolicyState.active,
+    this.canonicalConfirmation,
   })  : groupedTasks = UnmodifiableListView(groupedTasks),
         options = UnmodifiableListView(options) {
     if (schemaVersion != currentSchemaVersion ||
@@ -137,6 +139,7 @@ final class SmartPlanningContinuation {
   final ActionOrigin origin;
   final ActionRiskLevel riskLevel;
   final SmartPlanningPolicyState policyState;
+  final ActionConfirmation? canonicalConfirmation;
 
   SmartPlanningContinuation copyWith({
     SmartPlanningContinuationType? type,
@@ -159,6 +162,8 @@ final class SmartPlanningContinuation {
     ActionAutonomyMode? policyModeAtCreation,
     int? policyVersionAtCreation,
     SmartPlanningPolicyState? policyState,
+    ActionConfirmation? canonicalConfirmation,
+    bool clearCanonicalConfirmation = false,
   }) =>
       SmartPlanningContinuation(
         id: id,
@@ -191,6 +196,9 @@ final class SmartPlanningContinuation {
         origin: origin,
         riskLevel: riskLevel,
         policyState: policyState ?? this.policyState,
+        canonicalConfirmation: clearCanonicalConfirmation
+            ? null
+            : canonicalConfirmation ?? this.canonicalConfirmation,
       );
 }
 

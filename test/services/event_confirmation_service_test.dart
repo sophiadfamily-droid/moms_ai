@@ -55,7 +55,7 @@ void main() {
       final result = await EventConfirmationService.confirm(
         event: event,
         conflictChecker: ({required candidate}) async => conflict,
-        addEvent: (_) async {
+        addEvent: (_, {mutationId}) async {
           singleWrites++;
         },
         addEvents: (_) async {
@@ -85,7 +85,7 @@ void main() {
       final result = await EventConfirmationService.confirm(
         event: event,
         conflictChecker: ({required candidate}) async => null,
-        addEvent: (createdEvent) async {
+        addEvent: (createdEvent, {mutationId}) async {
           singleWrites++;
           expect(createdEvent.title, 'Dentiste');
         },
@@ -116,7 +116,7 @@ void main() {
       final result = await EventConfirmationService.confirm(
         event: event,
         conflictChecker: ({required candidate}) async => null,
-        addEvent: (_) async {
+        addEvent: (_, {mutationId}) async {
           singleWrites++;
         },
         addEvents: (events) async {

@@ -5,6 +5,7 @@ import '../models/action_ledger.dart';
 import '../services/action_ledger_service.dart';
 import '../services/action_ledger_runtime.dart';
 import '../services/action_undo_coordinator.dart';
+import '../widgets/action_confirmation_dialog.dart';
 
 final class ActionHistoryScreen extends StatefulWidget {
   const ActionHistoryScreen({
@@ -81,34 +82,19 @@ final class _ActionHistoryScreenState extends State<ActionHistoryScreen> {
           _undoCoordinator ??= await ActionUndoCoordinator.production();
       var result = await coordinator.request(
         entry.ledgerEntryId,
-        confirmed: false,
       );
       if (!mounted) return;
       if (result.type == ActionUndoResultType.confirmationRequired) {
-        final confirmed = await showDialog<bool>(
-              context: context,
-              builder: (context) => AlertDialog(
-                title: const Text('Annuler cette action ?'),
-                content: const Text(
-                  'Les changements plus récents ne seront jamais écrasés.',
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context, false),
-                    child: const Text('Garder'),
-                  ),
-                  FilledButton(
-                    onPressed: () => Navigator.pop(context, true),
-                    child: const Text('Annuler l’action'),
-                  ),
-                ],
-              ),
-            ) ??
-            false;
-        if (!confirmed) return;
+        final confirmation = coordinator.confirmationFor(entry.ledgerEntryId);
+        if (confirmation == null) return;
+        final choice = await ActionConfirmationDialog.show(
+          context,
+          presentation: confirmation.userPresentation,
+        );
+        if (choice == null) return;
         result = await coordinator.request(
           entry.ledgerEntryId,
-          confirmed: true,
+          responseChoice: choice,
         );
       }
       if (!mounted) return;

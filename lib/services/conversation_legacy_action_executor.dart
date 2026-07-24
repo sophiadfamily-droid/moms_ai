@@ -43,6 +43,8 @@ final class ConversationLegacyActionExecutor {
       sessionGeneration: sessionGeneration,
     );
     if (planningResolution != null) return planningResolution;
+    final eventMutationId =
+        coordinator.state.pendingAction?.canonicalConfirmation?.mutationId;
     final eventResolution = await coordinator.resolvePendingEventConfirmation(
       answer: answer,
       isPositiveAnswer: PlannerEngineService.isPositiveAnswer,
@@ -57,6 +59,7 @@ final class ConversationLegacyActionExecutor {
           addEvent: EventService.addEvent,
           addEvents: EventService.addEvents,
           showNotification: NotificationService.showNotification,
+          mutationId: eventMutationId,
         );
         return result.message;
       },

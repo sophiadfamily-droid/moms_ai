@@ -1,11 +1,14 @@
 import '../models/conversation_models.dart';
 import '../models/action_autonomy_policy.dart';
+import '../models/action_confirmation.dart';
+import '../models/action_ledger.dart';
 import '../models/event_model.dart';
 import '../models/smart_planning_continuation.dart';
 import '../models/task_model.dart';
 import '../models/user_profile.dart';
 import 'chat_planning_helper_service.dart';
 import 'action_autonomy_policy_engine.dart';
+import 'action_confirmation_coordinator.dart';
 import 'event_service.dart';
 import 'memory_planning_compatibility_service.dart';
 import 'notification_service.dart';
@@ -144,6 +147,7 @@ final class SmartPlanningContinuationCoordinator {
     ActionAutonomyPolicyEngine autonomyEngine =
         const ActionAutonomyPolicyEngine(),
     ActionAutonomyPolicy? initialAutonomyPolicy,
+    ActionConfirmationCoordinator? confirmationCoordinator,
   })  : _gateway = gateway,
         _clock = clock ?? DateTime.now,
         _idGenerator = idGenerator ??
@@ -154,13 +158,22 @@ final class SmartPlanningContinuationCoordinator {
             ActionAutonomyPolicy.restrictiveDefault(
               accountScopeId: 'smart-planning-session',
               changedAt: (clock ?? DateTime.now)().toUtc(),
-            );
+            ) {
+    _confirmationCoordinator = confirmationCoordinator ??
+        ActionConfirmationCoordinator(
+          idGenerator: _idGenerator,
+          policyLoader: _canonicalPolicy,
+          currentAccountScopeId: () => _currentPolicy.accountScopeId,
+          now: _clock,
+        );
+  }
 
   final SmartPlanningContinuationGateway _gateway;
   final DateTime Function() _clock;
   final String Function() _idGenerator;
   final SmartPlanningAutonomyPolicyLoader? _loadAutonomyPolicy;
   final ActionAutonomyPolicyEngine _autonomyEngine;
+  late final ActionConfirmationCoordinator _confirmationCoordinator;
   ActionAutonomyPolicy _currentPolicy;
   SmartPlanningContinuation? _active;
   final Set<String> _completedMutationIds = <String>{};
@@ -168,7 +181,13 @@ final class SmartPlanningContinuationCoordinator {
   SmartPlanningContinuation? get active => _active;
   bool get hasActive => _active != null;
 
-  void invalidate() => _active = null;
+  void invalidate() {
+    final generation = _active?.sessionGeneration;
+    if (generation != null) {
+      _confirmationCoordinator.invalidateSession(generation + 1);
+    }
+    _active = null;
+  }
 
   void updateAutonomyPolicy(ActionAutonomyPolicy policy) {
     policy.validate();
@@ -494,7 +513,7 @@ final class SmartPlanningContinuationCoordinator {
       );
       final blocked = await _blockExecutableConfirmationIfNeeded(candidate);
       if (blocked != null) return blocked;
-      _active = candidate;
+      _active = _attachCanonicalConfirmation(candidate);
       return _result(
         SmartPlanningContinuationResultStatus.confirmationRequired,
         proposal.confirmationMessage,
@@ -536,7 +555,7 @@ final class SmartPlanningContinuationCoordinator {
     );
     final blocked = await _blockExecutableConfirmationIfNeeded(candidate);
     if (blocked != null) return blocked;
-    _active = candidate;
+    _active = _attachCanonicalConfirmation(candidate);
     return _result(
       SmartPlanningContinuationResultStatus.confirmationRequired,
       _recap(_active!),
@@ -547,7 +566,40 @@ final class SmartPlanningContinuationCoordinator {
     SmartPlanningContinuation continuation,
     String answer,
   ) async {
+    var canonical = continuation.canonicalConfirmation;
+    if (canonical == null) {
+      final policy = await _canonicalPolicy();
+      if (policy.mode == ActionAutonomyMode.paused) {
+        return _result(
+          SmartPlanningContinuationResultStatus.confirmationRequired,
+          'Les actions sont en pause. Je conserve cette proposition sans la réserver.',
+        );
+      }
+      final renewed = _attachCanonicalConfirmation(
+        continuation.copyWith(policyState: SmartPlanningPolicyState.active),
+      );
+      canonical = renewed.canonicalConfirmation;
+      _active = renewed;
+      return _result(
+        SmartPlanningContinuationResultStatus.confirmationRequired,
+        'Le mode d’action a changé. Confirme à nouveau ce créneau.',
+      );
+    }
     if (PlannerEngineService.isNegativeAnswer(answer)) {
+      await _confirmationCoordinator.respond(
+        response: ActionConfirmationResponse(
+          responseId: _idGenerator(),
+          confirmationId: canonical.confirmationId,
+          sessionGeneration: continuation.sessionGeneration,
+          respondedAt: _clock().toUtc(),
+          choice: ActionConfirmationResponseChoice.reject,
+          actionFingerprint: canonical.actionFingerprint,
+        ),
+        currentSessionGeneration: continuation.sessionGeneration,
+        c3Validator: (_) => true,
+        domainValidator: (_) => true,
+        revisionValidator: (_) => true,
+      );
       _active = null;
       return _result(
         SmartPlanningContinuationResultStatus.cancelled,
@@ -628,9 +680,41 @@ final class SmartPlanningContinuationCoordinator {
         'Je peux chercher un autre créneau si tu veux.',
       );
     }
+    final consumed = await _confirmationCoordinator.respond(
+      response: ActionConfirmationResponse(
+        responseId: _idGenerator(),
+        confirmationId: canonical.confirmationId,
+        sessionGeneration: continuation.sessionGeneration,
+        respondedAt: _clock().toUtc(),
+        choice: ActionConfirmationResponseChoice.accept,
+        actionFingerprint: canonical.actionFingerprint,
+      ),
+      currentSessionGeneration: continuation.sessionGeneration,
+      c3Validator: (_) => true,
+      domainValidator: (_) => true,
+      revisionValidator: (_) => true,
+    );
+    if (!consumed.dispatchAllowed) {
+      _active = continuation.copyWith(
+        policyState:
+            consumed.type == ActionConfirmationResultType.blockedByPolicy
+                ? SmartPlanningPolicyState.blockedByPolicy
+                : SmartPlanningPolicyState.expired,
+      );
+      return _result(
+        SmartPlanningContinuationResultStatus.confirmationRequired,
+        consumed.type == ActionConfirmationResultType.blockedByPolicy
+            ? 'Les actions sont en pause. Je conserve cette proposition sans la réserver.'
+            : 'Cette confirmation a expiré. Je dois préparer un nouveau créneau.',
+      );
+    }
     final finalBlocked = await _authorizeFinalExecution(continuation);
     if (finalBlocked != null) return finalBlocked;
     await _gateway.addEvent(event, mutationId: mutationId);
+    _confirmationCoordinator.complete(
+      canonical.confirmationId,
+      completedAt: _clock().toUtc(),
+    );
     _completedMutationIds.add(mutationId);
     if (_completedMutationIds.length > maximumCompletedMutationReceipts) {
       _completedMutationIds.remove(_completedMutationIds.first);
@@ -688,7 +772,7 @@ final class SmartPlanningContinuationCoordinator {
         );
         final blocked = await _blockExecutableConfirmationIfNeeded(candidate);
         if (blocked != null) return blocked;
-        _active = candidate;
+        _active = _attachCanonicalConfirmation(candidate);
         return _result(
           SmartPlanningContinuationResultStatus.confirmationRequired,
           'J’ai trouvé une autre possibilité 💕\n\n'
@@ -730,6 +814,113 @@ final class SmartPlanningContinuationCoordinator {
       policyModeAtCreation: _currentPolicy.mode,
       policyVersionAtCreation: _currentPolicy.schemaVersion,
     );
+  }
+
+  SmartPlanningContinuation _attachCanonicalConfirmation(
+    SmartPlanningContinuation continuation,
+  ) {
+    if (continuation.step != SmartPlanningContinuationStep.confirmation) {
+      return continuation.copyWith(clearCanonicalConfirmation: true);
+    }
+    final event = continuation.proposal != null
+        ? SmartPlanningService.eventFromProposal(continuation.proposal!)
+        : _eventFromSelected(continuation);
+    final mutationId = continuation.mutationId ?? _idGenerator();
+    if (event == null) return continuation;
+    final scope = ActionConfirmationScope(
+      type: ActionConfirmationScopeType.confirmSmartPlanningReservation,
+      targetId: continuation.id,
+      operation: 'smartPlanningReservation',
+      expectedRevision: 0,
+      fields: [
+        ActionConfirmationField(
+          key: ActionConfirmationFieldKey.date,
+          value: event.date,
+        ),
+        ActionConfirmationField(
+          key: ActionConfirmationFieldKey.time,
+          value: event.time,
+        ),
+        ActionConfirmationField(
+          key: ActionConfirmationFieldKey.durationMinutes,
+          value: event.durationMinutes,
+        ),
+        ActionConfirmationField(
+          key: ActionConfirmationFieldKey.travelGoMinutes,
+          value: event.resolvedTravelGoMinutes,
+        ),
+        ActionConfirmationField(
+          key: ActionConfirmationFieldKey.travelBackMinutes,
+          value: event.resolvedTravelBackMinutes,
+        ),
+        ActionConfirmationField(
+          key: ActionConfirmationFieldKey.marginMinutes,
+          value: event.marginMinutes,
+        ),
+        ActionConfirmationField(
+          key: ActionConfirmationFieldKey.participantId,
+          value: event.participantIdentity?.identity.entityId,
+        ),
+        ActionConfirmationField(
+          key: ActionConfirmationFieldKey.recurrenceType,
+          value: event.isRecurring ? event.recurringType : null,
+        ),
+      ],
+    );
+    final issued = _confirmationCoordinator.issueWithPolicy(
+      ActionConfirmationProposal(
+        accountScopeId: _currentPolicy.accountScopeId,
+        sessionGeneration: continuation.sessionGeneration,
+        actionPendingId: continuation.id,
+        actionType: ActionType.smartPlanningReservation,
+        actionDomain: ActionLedgerDomain.event,
+        actionOrigin: ActionOrigin.structuredContinuation,
+        riskLevel: ActionRiskLevel.mutation,
+        scope: scope,
+        requirements: [
+          ActionConfirmationRequirement(
+            source: ActionConfirmationRequirementSource.domainRequired,
+            code: 'smart_planning_reservation_confirmation',
+            scope: scope.type,
+            requiresFreshConfirmation: true,
+            requiresSeparateConfirmation: false,
+            policyVersionObserved: _currentPolicy.schemaVersion,
+          ),
+          if (_currentPolicy.mode == ActionAutonomyMode.suggestions)
+            ActionConfirmationRequirement(
+              source:
+                  ActionConfirmationRequirementSource.autonomySuggestionsMode,
+              code: 'autonomy_suggestions_confirmation',
+              scope: scope.type,
+              requiresFreshConfirmation: true,
+              requiresSeparateConfirmation: false,
+              policyVersionObserved: _currentPolicy.schemaVersion,
+            ),
+        ],
+        mutationId: mutationId,
+        policyMode: _currentPolicy.mode,
+        policyVersion: _currentPolicy.schemaVersion,
+        presentation: const ActionConfirmationPresentation(
+          title: 'Confirmer le créneau',
+          summary: 'Réserver le créneau sélectionné dans l’agenda.',
+          consequence:
+              'Le créneau sera revalidé avant toute modification de l’agenda.',
+        ),
+        provenance: 'smart_planning_final_confirmation',
+        validity: ActionConfirmationCoordinator.smartPlanningValidity,
+      ),
+      policy: _currentPolicy,
+    );
+    return continuation.copyWith(
+      mutationId: mutationId,
+      canonicalConfirmation: issued.confirmation,
+    );
+  }
+
+  Future<ActionAutonomyPolicy> _canonicalPolicy() async {
+    final loaded = await _loadAutonomyPolicy?.call();
+    if (loaded != null) updateAutonomyPolicy(loaded);
+    return _currentPolicy;
   }
 
   Future<SmartPlanningContinuationResult?> _blockExecutableConfirmationIfNeeded(

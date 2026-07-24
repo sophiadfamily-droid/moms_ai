@@ -79,6 +79,9 @@ void main() {
     );
     mode = ActionAutonomyMode.normal;
     expect(gateway.addedEvents, isEmpty);
+    final revalidated = await coordinator.resolve('oui', sessionGeneration: 7);
+    expect(revalidated!.reply, contains('Confirme à nouveau'));
+    expect(gateway.addedEvents, isEmpty);
     final completed = await coordinator.resolve('oui', sessionGeneration: 7);
     expect(completed!.reply, contains('C’est fait'));
     expect(gateway.addedEvents, hasLength(1));

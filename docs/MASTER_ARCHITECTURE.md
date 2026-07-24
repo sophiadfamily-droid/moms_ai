@@ -1642,7 +1642,62 @@ pas actives, Conversation reconstruit une projection bornée et Planning ne
 reçoit toujours aucune mémoire libre. Les conflits restent explicites sans
 merge automatique ni exposition de révision.
 
-## 26. Change policy for this document
+## 26. Confirmations d’actions canoniques — V1-A.3
+
+`ActionConfirmation` est l’unique contrat exécutable de confirmation. Il lie
+une action structurée à un compte interne, une génération de session, un
+`ActionPending`, une éventuelle entrée du ledger A.2, un `mutationId`, une
+portée fermée et une expiration obligatoire. Son empreinte est calculée de
+façon déterministe depuis le type, le domaine, la cible, l’opération, la
+révision attendue, le risque et les champs typés normalisés. Le texte affiché,
+la locale et les timestamps sans portée métier n’entrent jamais dans cette
+empreinte.
+
+`ActionConfirmationCoordinator` agrège les exigences A.1, métier, sensible,
+destructive, Memory/santé, Identity et conflit. Deux exigences ne partagent une
+confirmation que si elles visent exactement la même empreinte et une portée
+compatible. Une décision distincte — par exemple créer ou lier une Identity
+pendant une opération Event — conserve une confirmation distincte. Les actions
+tierces restent fermées et non exécutables.
+
+Le cycle fermé est : proposition, attente, réponse typée, acceptation,
+revalidation, consommation unique, dispatch, puis résultat métier réel. Une
+acceptation ne vaut jamais succès. Les réponses dupliquées sont idempotentes,
+les réponses divergentes sont refusées et une confirmation expirée, consommée,
+supplantée, issue d’un autre compte ou d’une autre session ne peut pas être
+réutilisée. Une modification du payload, une nouvelle alternative Smart
+Planning ou un conflit produit une nouvelle empreinte et une nouvelle
+confirmation.
+
+Les durées sont centralisées : cinq minutes pour les actions destructives et
+les conflits, dix minutes pour une réservation Smart Planning, quinze minutes
+pour une mutation simple. L’horloge est injectable. Le mode Suggestions ajoute
+une exigence fusionnable ; Pause bloque immédiatement toute confirmation
+exécutable et le retour à un mode actif n’exécute rien rétroactivement. A.1,
+C.3, les policies de domaine, la révision et le conflit sont relus avant le
+dispatch.
+
+Event, Smart Planning, Task et Shopping utilisent le contrat commun dans les
+parcours conversationnels. Smart Planning empreinte le créneau exact avec date,
+heure, durée, trajets aller/retour, marge, participant et récurrence. Routine
+peut adopter le même contrat pour ses mutations déjà supportées, mais A.3
+n’ajoute ni synchronisation Y.2 ni undo Routine. Memory, HumanModel et Identity
+conservent leurs protections propres ; leur présentation n’est fusionnée que
+pour une décision strictement identique.
+
+Le backend peut proposer `actionProposal` ou `confirmationRequired`, mais il
+ne peut fabriquer ni acceptation, ni identifiant, ni empreinte, ni token de
+confirmation, ni résultat métier. Flutter crée et détient la confirmation
+réelle. Le composant commun affiche uniquement une présentation française
+bornée et retourne un choix typé ; il ne charge aucune policy et n’appelle
+aucun service métier. Hors ligne, seul le résultat réel du domaine peut devenir
+`pendingSync`; aucun succès cloud n’est annoncé.
+
+Les diagnostics ne contiennent ni présentation, ni payload, ni empreinte
+complète, ni donnée personnelle. N.1, les intégrations tierces et Y.2 restent
+hors périmètre.
+
+## 27. Change policy for this document
 
 Change this document when:
 
@@ -1666,7 +1721,7 @@ Do not change this document solely because:
 
 Every change must be based on the verified repository and must preserve the distinction between current state and planned architecture.
 
-## 27. Definition of architectural readiness
+## 28. Definition of architectural readiness
 
 A ZELIA capability is architecturally ready when:
 
@@ -1684,7 +1739,7 @@ A ZELIA capability is architecturally ready when:
 
 Code existing in the repository does not by itself make an engine architecturally ready. Conversely, a planned engine should not be implemented as a broad new subsystem until its prerequisites and ownership are clear.
 
-## 28. Enduring direction
+## 29. Enduring direction
 
 ZELIA should grow by deepening trust, context, and deterministic coordination—not by accumulating disconnected “smart” features.
 

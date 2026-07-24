@@ -10,6 +10,7 @@ import 'event_mutation_models.dart';
 import 'event_participant.dart';
 import 'memory_lifecycle_state.dart';
 import 'action_autonomy_policy.dart';
+import 'action_confirmation.dart';
 import 'user_profile.dart';
 
 enum ConversationPhase {
@@ -532,12 +533,14 @@ class PendingConversationAction {
   final PendingEventTargetClarification? eventTargetClarification;
   final PendingEventMutationConfirmation? eventMutationConfirmation;
   final ActionPending? autonomyPending;
+  final ActionConfirmation? canonicalConfirmation;
   final ActionPendingMetadata autonomyMetadata;
 
   const PendingConversationAction.eventConfirmation(
     EventModel this._event, {
     this.eventParticipant,
     this.participantIdentityEntityId,
+    this.canonicalConfirmation,
     this.autonomyMetadata = const ActionPendingMetadata(
       actionType: ActionType.createEvent,
       origin: ActionOrigin.structuredContinuation,
@@ -560,6 +563,7 @@ class PendingConversationAction {
     required this.proposalId,
     required this.createdAt,
     required this.expectedMemoryAction,
+    this.canonicalConfirmation,
     this.autonomyMetadata = const ActionPendingMetadata(
       actionType: ActionType.confirmMemory,
       origin: ActionOrigin.structuredContinuation,
@@ -580,6 +584,7 @@ class PendingConversationAction {
 
   const PendingConversationAction.identityClarification(
     PendingIdentityClarification this.identityClarification, {
+    this.canonicalConfirmation,
     this.autonomyMetadata = const ActionPendingMetadata(
       actionType: ActionType.linkIdentity,
       origin: ActionOrigin.structuredContinuation,
@@ -602,6 +607,7 @@ class PendingConversationAction {
 
   const PendingConversationAction.identityCreation(
     PendingIdentityCreation this.identityCreation, {
+    this.canonicalConfirmation,
     this.autonomyMetadata = const ActionPendingMetadata(
       actionType: ActionType.createIdentity,
       origin: ActionOrigin.structuredContinuation,
@@ -624,6 +630,7 @@ class PendingConversationAction {
 
   const PendingConversationAction.eventTargetClarification(
     PendingEventTargetClarification this.eventTargetClarification, {
+    this.canonicalConfirmation,
     this.autonomyMetadata = const ActionPendingMetadata(
       actionType: ActionType.updateEvent,
       origin: ActionOrigin.structuredContinuation,
@@ -646,6 +653,7 @@ class PendingConversationAction {
 
   const PendingConversationAction.eventMutationConfirmation(
     PendingEventMutationConfirmation this.eventMutationConfirmation, {
+    this.canonicalConfirmation,
     this.autonomyMetadata = const ActionPendingMetadata(
       actionType: ActionType.updateEvent,
       origin: ActionOrigin.structuredContinuation,
@@ -668,6 +676,7 @@ class PendingConversationAction {
 
   PendingConversationAction.autonomyConfirmation(
     ActionPending this.autonomyPending,
+    this.canonicalConfirmation,
   )   : autonomyMetadata = ActionPendingMetadata(
           actionType: autonomyPending.actionType,
           origin: autonomyPending.origin,

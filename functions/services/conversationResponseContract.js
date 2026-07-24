@@ -81,6 +81,10 @@ const UNCERTAINTY_CODES = new Set([
   "conflictingSources", "missingRequiredInformation",
   "clarificationLimitReached", "groundingUnavailable",
 ]);
+const FORBIDDEN_MODEL_CONFIRMATION_KEYS = new Set([
+  "confirmationId", "responseId", "actionFingerprint", "mutationId",
+  "confirmationToken", "confirmationState", "accepted", "consumedAt",
+]);
 
 class ConversationResponseValidationError extends Error {
   constructor(code) {
@@ -140,6 +144,11 @@ function completeAction(action) {
     (action.usesSeparateTravelTimes !== true ||
       Number.isInteger(action.travelGoMinutes) &&
       Number.isInteger(action.travelBackMinutes));
+}
+
+function rejectsFabricatedConfirmation(action) {
+  return Object.keys(action).some((key) =>
+    FORBIDDEN_MODEL_CONFIRMATION_KEYS.has(key));
 }
 
 function validateGrounding(epistemic, context) {
@@ -289,7 +298,8 @@ function validateSemantics(response, request) {
     item && item.isRequired === true);
   const blockingContradiction = epistemic.contradictions.some((item) =>
     item && item.blocksAction === true);
-  if (response.actions.some((action) => !completeAction(action)) ||
+  if (response.actions.some((action) =>
+    !completeAction(action) || rejectsFabricatedConfirmation(action)) ||
       response.actions.length > 0 &&
         (blockingMissing || blockingContradiction ||
          !["actionProposal", "confirmationRequired"]

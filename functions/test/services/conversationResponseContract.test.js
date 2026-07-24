@@ -339,3 +339,16 @@ test("rejects unknown nested fields and excessive claims", () => {
   assert.throws(() => validateConversationResponse(tooMany, request()),
       /response_grounding_bounds/);
 });
+
+test("refuses a model-fabricated confirmation acceptance", () => {
+  const action = {
+    type: "task",
+    title: "Préparer le dossier",
+    accepted: true,
+  };
+  const value = response({
+    responseKind: "confirmationRequired",
+  }, [action]);
+  assert.throws(() => validateConversationResponse(value, request()),
+      /response_action_incomplete/);
+});

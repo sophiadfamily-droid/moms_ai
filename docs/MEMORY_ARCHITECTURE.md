@@ -323,3 +323,13 @@ projection et Planning continue d’exclure toute mémoire libre.
 - complete memory-management UI;
 - physical deletion and global Firestore migration;
 - relations, priorities, consequences, and proactive anticipation.
+
+# Confirmation d’action A.3
+
+Les confirmations exécutables de Memory utilisent désormais le contrat
+`ActionConfirmation` commun tout en laissant `MemoryPolicy`, le consentement
+santé et le cycle M.1–M.3 prioritaires. Des exigences identiques peuvent
+partager une présentation ; une autorisation santé de portée distincte reste
+séparée. Toute confirmation possède une empreinte, une session et une
+expiration, puis MemoryPolicy et la policy santé sont relues avant mutation.
+Une confirmation ne constitue jamais un résultat d’enregistrement.

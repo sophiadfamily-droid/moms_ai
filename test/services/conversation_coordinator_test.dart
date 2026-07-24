@@ -318,7 +318,17 @@ void main() {
           return const ConversationActionOutcome(message: 'Article ajouté.');
         },
       );
-      expect(completed?.message, 'Article ajouté.');
+      expect(completed?.message, contains('Confirme à nouveau'));
+      expect(executions, 0);
+      final reconfirmed = await coordinator.resolvePendingAutonomyConfirmation(
+        answer: 'oui',
+        sessionGeneration: 2,
+        executeAction: (_) async {
+          executions++;
+          return const ConversationActionOutcome(message: 'Article ajouté.');
+        },
+      );
+      expect(reconfirmed?.message, 'Article ajouté.');
       expect(executions, 1);
     });
 
