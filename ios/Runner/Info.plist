@@ -27,11 +27,11 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Zelia utilise le micro pour écouter votre voix.</string>
+	<string>Zélia utilise le microphone uniquement lorsque tu démarres une dictée. Aucun enregistrement audio n’est conservé.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Zelia accède aux photos que vous choisissez pour personnaliser votre profil.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Zelia utilise la reconnaissance vocale.</string>
+	<string>Zélia utilise la reconnaissance vocale pour convertir ta dictée en texte modifiable.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

@@ -30,6 +30,12 @@ void main() {
         'unknown': Object(),
         'status': 503,
         'retryable': true,
+        'transcript': 'dictée privée',
+        'eventType': 'partialResult',
+        'accepted': true,
+        'attemptCount': 1,
+        'sessionGeneration': 2,
+        'state': 'receivingPartialResult',
       },
     );
 
@@ -39,6 +45,12 @@ void main() {
     final decoded = jsonDecode(lines.single) as Map<String, dynamic>;
     expect(decoded['status'], 503);
     expect(decoded['retryable'], isTrue);
+    expect(decoded['eventType'], 'partialResult');
+    expect(decoded['accepted'], isTrue);
+    expect(decoded['attemptCount'], 1);
+    expect(decoded['sessionGeneration'], 2);
+    expect(decoded['state'], 'receivingPartialResult');
+    expect(decoded, isNot(contains('transcript')));
     expect(decoded['environment'], 'production');
   });
 

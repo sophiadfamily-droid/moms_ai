@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 
 import '../models/conversation_session_models.dart';
 import '../models/user_profile.dart';
+import '../models/voice_recognition.dart';
 import '../services/chat_backend_client.dart';
 import '../services/conversation_context_service.dart';
 import '../services/conversation_session_controller.dart';
 import '../services/identity/identity_production_services.dart';
-import '../services/voice_service.dart';
+import '../services/voice_recognition_coordinator.dart';
+import '../widgets/voice_input_control.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({
@@ -17,6 +19,7 @@ class ChatScreen extends StatefulWidget {
     this.conversationContextProvider,
     this.identityServices,
     this.sessionController,
+    this.voiceCoordinator,
   });
 
   final UserProfile profile;
@@ -25,6 +28,7 @@ class ChatScreen extends StatefulWidget {
   final ConversationContextProvider? conversationContextProvider;
   final IdentityProductionServices? identityServices;
   final ConversationSessionController? sessionController;
+  final VoiceRecognitionCoordinator? voiceCoordinator;
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -34,11 +38,10 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _textController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
-  final VoiceService _voiceService = VoiceService();
-
   late final ConversationSessionController _sessionController;
   late final bool _ownsSessionController;
-  bool _isListening = false;
+  late final VoiceRecognitionCoordinator _voiceCoordinator;
+  late final bool _ownsVoiceCoordinator;
 
   @override
   void initState() {
@@ -52,12 +55,20 @@ class _ChatScreenState extends State<ChatScreen> {
           identityServices: widget.identityServices,
           initialAssistantMessage: widget.initialAssistantMessage,
         );
+    _ownsVoiceCoordinator = widget.voiceCoordinator == null;
+    _voiceCoordinator =
+        widget.voiceCoordinator ?? VoiceRecognitionCoordinator.production();
     _sessionController.addListener(_onSessionChanged);
   }
 
   @override
   void didUpdateWidget(covariant ChatScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.profile != widget.profile) {
+      _voiceCoordinator.invalidateForContextChange(
+        VoiceInterruptionReason.accountChanged,
+      );
+    }
     if (oldWidget.initialAssistantMessage != widget.initialAssistantMessage) {
       _sessionController
           .addInitialAssistantMessage(widget.initialAssistantMessage);
@@ -84,29 +95,18 @@ class _ChatScreenState extends State<ChatScreen> {
     final text = _textController.text.trim();
     if (text.isEmpty || _sessionController.state.isBusy) return;
     _textController.clear();
-    await _voiceService.stop();
-    if (mounted) setState(() => _isListening = false);
+    await _voiceCoordinator.stop();
     await _sessionController.dispatch(SubmitConversationText(text));
   }
 
-  Future<void> _toggleVoice() async {
-    if (_isListening) {
-      await _voiceService.stop();
-      if (mounted) setState(() => _isListening = false);
-      return;
-    }
-    if (!await _voiceService.init()) return;
-    if (mounted) setState(() => _isListening = true);
-    await _voiceService.listen(
-      onResult: (text) {
-        if (!mounted) return;
-        setState(() {
-          _textController
-            ..text = text
-            ..selection = TextSelection.collapsed(offset: text.length);
-        });
-      },
-    );
+  void _useVoiceTranscript(String text) {
+    if (!mounted) return;
+    setState(() {
+      _textController
+        ..text = text
+        ..selection = TextSelection.collapsed(offset: text.length);
+    });
+    _focusNode.requestFocus();
   }
 
   void _scrollToLatest() {
@@ -122,7 +122,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     _sessionController.removeListener(_onSessionChanged);
     if (_ownsSessionController) _sessionController.dispose();
-    _voiceService.stop();
+    if (_ownsVoiceCoordinator) _voiceCoordinator.dispose();
     _textController.dispose();
     _focusNode.dispose();
     _scrollController.dispose();
@@ -155,51 +155,48 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _textController,
-                      focusNode: _focusNode,
-                      minLines: 1,
-                      maxLines: 5,
-                      textInputAction: TextInputAction.send,
-                      onChanged: (_) => setState(() {}),
-                      onSubmitted: (_) => _submit(),
-                      decoration: const InputDecoration(
-                        hintText: 'Écris ton message…',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
+                  VoiceInputControl(
+                    coordinator: _voiceCoordinator,
+                    conversationSessionGeneration: state.sessionGeneration,
+                    onTranscriptReady: _useVoiceTranscript,
+                    enabled: !state.isBusy && !hasText,
                   ),
-                  const SizedBox(width: 10),
-                  Semantics(
-                    button: true,
-                    label: hasText
-                        ? 'Envoyer le message'
-                        : _isListening
-                            ? 'Arrêter la dictée'
-                            : 'Démarrer la dictée',
-                    child: CircleAvatar(
-                      radius: 28,
-                      backgroundColor:
-                          _isListening ? Colors.red : const Color(0xFFC78372),
-                      child: IconButton(
-                        onPressed: state.isBusy
-                            ? null
-                            : hasText
-                                ? _submit
-                                : _toggleVoice,
-                        icon: Icon(
-                          hasText
-                              ? Icons.send
-                              : _isListening
-                                  ? Icons.stop
-                                  : Icons.mic,
-                          color: Colors.white,
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _textController,
+                          focusNode: _focusNode,
+                          minLines: 1,
+                          maxLines: 5,
+                          textInputAction: TextInputAction.send,
+                          onChanged: (_) => setState(() {}),
+                          onSubmitted: (_) => _submit(),
+                          decoration: const InputDecoration(
+                            hintText: 'Écris ton message…',
+                            border: OutlineInputBorder(),
+                          ),
                         ),
                       ),
-                    ),
+                      const SizedBox(width: 10),
+                      Semantics(
+                        button: true,
+                        label: 'Envoyer le message',
+                        child: CircleAvatar(
+                          radius: 28,
+                          backgroundColor: const Color(0xFFC78372),
+                          child: IconButton(
+                            onPressed:
+                                state.isBusy || !hasText ? null : _submit,
+                            icon: const Icon(Icons.send, color: Colors.white),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),

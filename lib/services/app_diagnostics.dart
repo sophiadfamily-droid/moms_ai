@@ -214,6 +214,11 @@ final class AppDiagnostics {
     'status',
     'count',
     'retryable',
+    'accepted',
+    'attemptCount',
+    'sessionGeneration',
+    'state',
+    'eventType',
   };
 
   static const Set<String> _forbiddenNames = {

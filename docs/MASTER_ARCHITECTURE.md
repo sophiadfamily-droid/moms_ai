@@ -316,10 +316,29 @@ durations. The coordinator delegates availability, protected periods,
 revalidation, conflicts and Event persistence to the existing Planning/Event
 services; it is not a second Planning Engine.
 
-`ChatScreen` is now a passive Flutter presentation. It owns only text, focus,
-scroll and voice controllers, renders the immutable state, consumes effects
-and dispatches closed UI intentions. It does not construct a backend request,
-load domains, parse responses or call a mutation service.
+`ChatScreen` is now a passive Flutter presentation. It owns only text, focus
+and scroll presentation, renders immutable state, consumes effects and
+dispatches closed UI intentions. It does not construct a backend request, load
+domains, parse responses or call a mutation service.
+
+**V.1 voice input boundary.** `VoiceRecognitionCoordinator` is the sole
+Speech-to-Text application coordinator. The injected
+`SpeechRecognitionPlatformGateway` isolates `speech_to_text`,
+`permission_handler`, native status and native errors. Closed availability,
+permission, failure, interruption and session states bind every callback to a
+voice-session ID and the current conversation generation. Partial results stay
+ephemeral; a final result remains editable and reaches only the composer after
+an explicit “Utiliser le texte”. The ordinary Send control is the only path
+from that text to `ConversationSessionController`.
+
+Permission reading is silent. A native prompt follows only the microphone
+gesture and a separate explanation/authorization action. Silence, maximum
+duration, result size, fragments, initialization and stopping are bounded.
+Inactive/background/detached states cancel or dispose recognition, invalidate
+late callbacks and never resume automatically. Account or conversation
+changes invalidate the active voice session. No audio file, audio cache,
+backend audio transport, transcript diagnostic, TTS, realtime, hotword or
+background listening exists in V.1.
 
 **Planned architecture:** The Conversation Engine owns workflow state and transitions. It does not own domain truth, persistence rules, planning conflict rules, security enforcement, or Life Context facts. It coordinates authoritative domain engines and repositories through typed contracts.
 
@@ -1296,10 +1315,14 @@ provider registration and enforcement remain a controlled deployment step.
 
 The current native permissions are deliberately limited. Android declares
 network, microphone, notification, vibration and boot-rescheduling access;
+its package-visibility query is limited to the system speech recognition
+service;
 gallery selection uses the modern system picker and no exact-alarm, broad
 storage, camera, location or contacts permission is requested. iOS declares
 microphone, speech-recognition and photo-library usage; notification permission
-is compiled but requested only after an explicit settings action. Distribution
+is compiled, as are the microphone and speech-recognition permission handlers,
+but each native prompt follows an explicit explained user action. No
+background-audio mode is enabled. Distribution
 signing and physical-device release validation remain deferred; local release
 validation does not require a paid Apple Developer membership.
 
