@@ -79,7 +79,7 @@ function validateEventMutation(action, userMessage = "") {
   for (const [key, maximum] of Object.entries({
     title: MAX_TITLE_LENGTH, date: 10, time: 5, category: MAX_CATEGORY_LENGTH,
   })) {
-    if (!(key in action.target)) continue;
+    if (!(key in action.target) || action.target[key] === null) continue;
     const value = cleanText(action.target[key], maximum);
     if (value == null || value === "") return null;
     target[key] = value;
@@ -134,7 +134,7 @@ function validateEventMutation(action, userMessage = "") {
   const textLimits = {title: MAX_TITLE_LENGTH, date: 10, time: 5,
     notes: MAX_NOTES_LENGTH, category: MAX_CATEGORY_LENGTH};
   for (const [key, maximum] of Object.entries(textLimits)) {
-    if (!(key in action.changes)) continue;
+    if (!(key in action.changes) || action.changes[key] === null) continue;
     const value = cleanText(action.changes[key], maximum);
     if (value == null || (key !== "notes" && value === "")) return null;
     changes[key] = value;
@@ -142,7 +142,7 @@ function validateEventMutation(action, userMessage = "") {
   const integerLimits = {durationMinutes: [1, 1440], travelGoMinutes: [0, 480],
     travelBackMinutes: [0, 480], marginMinutes: [0, 240]};
   for (const [key, limits] of Object.entries(integerLimits)) {
-    if (!(key in action.changes)) continue;
+    if (!(key in action.changes) || action.changes[key] === null) continue;
     if (!boundedInteger(action.changes[key], limits[0], limits[1])) return null;
     changes[key] = action.changes[key];
   }

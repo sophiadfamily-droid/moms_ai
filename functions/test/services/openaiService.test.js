@@ -68,10 +68,26 @@ test("omits temperature for GPT-5.6 models", () => {
     systemContent: "SYSTEM",
     userMessage: "USER",
     model: "gpt-5.6-luna",
+    reasoningEffort: "none",
   });
 
   assert.equal(
       Object.prototype.hasOwnProperty.call(request, "temperature"),
+      false,
+  );
+  assert.deepEqual(request.reasoning, {effort: "none"});
+});
+
+test("omits reasoning for the fallback model", () => {
+  const request = buildZeliaResponseRequest({
+    systemContent: "SYSTEM",
+    userMessage: "USER",
+    model: DEFAULT_MODEL,
+    reasoningEffort: "medium",
+  });
+
+  assert.equal(
+      Object.prototype.hasOwnProperty.call(request, "reasoning"),
       false,
   );
 });
@@ -169,6 +185,7 @@ test(
       } = require("../../services/openaiService");
 
       const calls = [];
+      const logs = [];
       const signal = new AbortController().signal;
 
       const client = {
@@ -196,20 +213,73 @@ test(
         systemContent: "SYSTEM",
         userMessage: "USER",
         model: "gpt-5.6-terra",
+        tier: "balanced",
+        reasoningEffort: "low",
         client,
+        logger: {
+          info: (...values) => logs.push(values),
+          warn: (...values) => logs.push(values),
+          error: (...values) => logs.push(values),
+        },
         signal,
       });
 
       assert.equal(calls.length, 2);
       assert.equal(calls[0].request.model, "gpt-5.6-terra");
+      assert.deepEqual(calls[0].request.reasoning, {effort: "low"});
       assert.equal(calls[1].request.model, DEFAULT_MODEL);
       assert.equal(calls[1].request.temperature, 0.03);
+      assert.equal("reasoning" in calls[1].request, false);
       assert.equal(calls[0].options.signal, signal);
       assert.equal(calls[1].options.signal, signal);
 
       assert.deepEqual(result, generatedResponse("Réponse de secours"));
+      assert.equal(JSON.stringify(logs).includes("SYSTEM"), false);
+      assert.equal(JSON.stringify(logs).includes("USER"), false);
     },
 );
+
+test("logs bounded provider diagnostics without sensitive data", async () => {
+  const logs = [];
+  const logger = {
+    info: (...values) => logs.push(values),
+    error: (...values) => logs.push(values),
+  };
+  const client = {
+    responses: {
+      async create() {
+        return {
+          _request_id: "req_technical",
+          output_text: JSON.stringify(generatedResponse()),
+        };
+      },
+    },
+  };
+
+  const {generateZeliaResponse} = require("../../services/openaiService");
+  await generateZeliaResponse({
+    apiKey: "private-key",
+    systemContent: "PRIVATE SYSTEM",
+    userMessage: "PRIVATE USER",
+    model: "gpt-5.6-sol",
+    tier: "reasoning",
+    reasoningEffort: "medium",
+    client,
+    logger,
+  });
+
+  assert.deepEqual(logs.map((line) => line[0]), [
+    "ZELIA_OPENAI_REQUEST",
+    "ZELIA_OPENAI_SUCCESS",
+  ]);
+  assert.equal(logs[1][1].requestId, "req_technical");
+  assert.equal(logs[1][1].reasoningEffort, "medium");
+  assert.equal(typeof logs[1][1].durationMs, "number");
+  const serialized = JSON.stringify(logs);
+  assert.equal(serialized.includes("private-key"), false);
+  assert.equal(serialized.includes("PRIVATE SYSTEM"), false);
+  assert.equal(serialized.includes("PRIVATE USER"), false);
+});
 
 test("does not hide a non-retryable request error", async () => {
   const {
@@ -217,6 +287,7 @@ test("does not hide a non-retryable request error", async () => {
   } = require("../../services/openaiService");
 
   const calls = [];
+  const logs = [];
 
   const client = {
     responses: {
@@ -236,10 +307,19 @@ test("does not hide a non-retryable request error", async () => {
         systemContent: "SYSTEM",
         userMessage: "USER",
         model: "gpt-5.6-sol",
+        tier: "reasoning",
+        reasoningEffort: "medium",
         client,
+        logger: {
+          info: (...values) => logs.push(values),
+          error: (...values) => logs.push(values),
+        },
       }),
       /Unsupported parameter/,
   );
 
   assert.equal(calls.length, 1);
+  assert.equal(logs.at(-1)[0], "ZELIA_OPENAI_ERROR");
+  assert.equal(logs.at(-1)[1].status, 400);
+  assert.equal(JSON.stringify(logs).includes("Unsupported parameter"), false);
 });

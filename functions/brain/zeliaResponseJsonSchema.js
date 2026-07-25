@@ -147,29 +147,47 @@ const eventMutationTargetSchema = Object.freeze({
   type: "object",
   additionalProperties: false,
   properties: {
-    title: {type: "string", maxLength: 120},
-    date: {type: "string"},
-    time: {type: "string"},
-    category: {type: "string", maxLength: 80},
+    title: {type: ["string", "null"], maxLength: 120},
+    date: {type: ["string", "null"]},
+    time: {type: ["string", "null"]},
+    category: {type: ["string", "null"], maxLength: 80},
   },
-  required: [],
+  required: ["title", "date", "time", "category"],
 });
 
 const eventMutationChangesSchema = Object.freeze({
   type: "object",
   additionalProperties: false,
   properties: {
-    title: {type: "string", maxLength: 120},
-    date: {type: "string"},
-    time: {type: "string"},
-    durationMinutes: {type: "integer", minimum: 1, maximum: 1440},
-    travelGoMinutes: {type: "integer", minimum: 0, maximum: 480},
-    travelBackMinutes: {type: "integer", minimum: 0, maximum: 480},
-    marginMinutes: {type: "integer", minimum: 0, maximum: 240},
-    notes: {type: "string", maxLength: 1000},
-    category: {type: "string", maxLength: 80},
+    title: {type: ["string", "null"], maxLength: 120},
+    date: {type: ["string", "null"]},
+    time: {type: ["string", "null"]},
+    durationMinutes: {
+      type: ["integer", "null"], minimum: 1, maximum: 1440,
+    },
+    travelGoMinutes: {
+      type: ["integer", "null"], minimum: 0, maximum: 480,
+    },
+    travelBackMinutes: {
+      type: ["integer", "null"], minimum: 0, maximum: 480,
+    },
+    marginMinutes: {
+      type: ["integer", "null"], minimum: 0, maximum: 240,
+    },
+    notes: {type: ["string", "null"], maxLength: 1000},
+    category: {type: ["string", "null"], maxLength: 80},
   },
-  required: [],
+  required: [
+    "title",
+    "date",
+    "time",
+    "durationMinutes",
+    "travelGoMinutes",
+    "travelBackMinutes",
+    "marginMinutes",
+    "notes",
+    "category",
+  ],
 });
 
 const eventMutationActionSchema = Object.freeze({

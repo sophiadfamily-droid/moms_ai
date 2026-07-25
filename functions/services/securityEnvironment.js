@@ -1,3 +1,14 @@
+const {defineBoolean} = require("firebase-functions/params");
+
+const ZELIA_ENFORCE_APP_CHECK_NAME = "ZELIA_ENFORCE_APP_CHECK";
+const zeliaEnforceAppCheck = defineBoolean(
+    ZELIA_ENFORCE_APP_CHECK_NAME,
+    {
+      default: true,
+      description: "Exige un jeton Firebase App Check valide pour le chat.",
+    },
+);
+
 const SECURITY_ENVIRONMENTS = Object.freeze({
   emulator: "emulator",
   development: "development",
@@ -30,18 +41,19 @@ function resolveSecurityEnvironment(env = process.env) {
 }
 
 /**
- * Seul l'émulateur local Firebase peut omettre App Check. Les builds debug
- * qui appellent un backend distant utilisent un jeton debug enregistré.
+ * Résout la décision App Check depuis le paramètre Firebase officiel.
  *
- * @param {Object} env variables d'environnement
+ * @param {Object} enforcementParam paramètre booléen injectable
  * @return {boolean} App Check requis
  */
-function requiresAppCheck(env = process.env) {
-  return resolveSecurityEnvironment(env) !== SECURITY_ENVIRONMENTS.emulator;
+function requiresAppCheck(enforcementParam = zeliaEnforceAppCheck) {
+  return enforcementParam.value();
 }
 
 module.exports = {
   SECURITY_ENVIRONMENTS,
+  ZELIA_ENFORCE_APP_CHECK_NAME,
   requiresAppCheck,
   resolveSecurityEnvironment,
+  zeliaEnforceAppCheck,
 };

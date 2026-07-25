@@ -25,9 +25,18 @@ test("redacts personal, authentication, medical and unknown fields", () => {
     unknown: {arbitrary: "object"},
     status: 503,
     retryable: true,
+    reasoningEffort: "low",
+    requestId: "req_technical",
+    providerCode: "rate_limit_exceeded",
   });
 
-  assert.deepEqual(safe, {status: 503, retryable: true});
+  assert.deepEqual(safe, {
+    status: 503,
+    retryable: true,
+    reasoningEffort: "low",
+    requestId: "req_technical",
+    providerCode: "rate_limit_exceeded",
+  });
 });
 
 test("unknown objects are never serialized by default", () => {

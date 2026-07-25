@@ -20,7 +20,7 @@ const {validateConversationRequest} =
 const {validateConversationResponse} =
   require("./conversationResponseContract");
 
-const OPENAI_TIMEOUT_MS = 22000;
+const OPENAI_TIMEOUT_MS = 45000;
 
 /**
  * Construit le contexte cerveau de Zelia.
@@ -165,21 +165,47 @@ ${buildBrainContext()}
       intent: detectedIntent.primaryIntent,
       tier: modelDecision.tier,
       model: modelDecision.model,
+      reasoningEffort: modelDecision.reasoningEffort,
     },
   });
 
-  const parsed = await runWithOpenAiDeadline(
-      (signal) => generateResponse({
-        apiKey: dependencies.apiKey,
-        systemContent,
-        userMessage: message,
-        model: modelDecision.model,
+  const startedAt = Date.now();
+  let parsed;
+  try {
+    parsed = await runWithOpenAiDeadline(
+        (signal) => generateResponse({
+          apiKey: dependencies.apiKey,
+          systemContent,
+          userMessage: message,
+          model: modelDecision.model,
+          tier: modelDecision.tier,
+          reasoningEffort: modelDecision.reasoningEffort,
+          logger,
+          env: dependencies.env || process.env,
+          signal,
+        }),
+        timeoutMs,
+    );
+  } catch (error) {
+    if (error && error.message === "OPENAI_TIMEOUT") {
+      writeDiagnostic({
         logger,
+        level: "error",
+        event: "ZELIA_OPENAI_TIMEOUT",
+        component: "chat_orchestration",
+        step: "openai_deadline",
+        code: "timeout",
         env: dependencies.env || process.env,
-        signal,
-      }),
-      timeoutMs,
-  );
+        metadata: {
+          model: modelDecision.model,
+          tier: modelDecision.tier,
+          reasoningEffort: modelDecision.reasoningEffort,
+          durationMs: Date.now() - startedAt,
+        },
+      });
+    }
+    throw error;
+  }
 
   const validatedResponse = validateConversationResponse({
     visibleText: parsed.visibleText,

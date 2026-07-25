@@ -88,8 +88,8 @@ function response(visibleText, actions = []) {
   };
 }
 
-test("uses a 22 second total OpenAI deadline", () => {
-  assert.equal(OPENAI_TIMEOUT_MS, 22000);
+test("uses a 45 second total OpenAI deadline", () => {
+  assert.equal(OPENAI_TIMEOUT_MS, 45000);
 });
 
 test("handles the canonical bounded payload without mutating it", async () => {
@@ -112,6 +112,8 @@ test("handles the canonical bounded payload without mutating it", async () => {
   assert.equal(calls[0].apiKey, "test-key");
   assert.equal(calls[0].userMessage, payload.message);
   assert.equal(calls[0].model, "test-fast");
+  assert.equal(calls[0].tier, "fast");
+  assert.equal(calls[0].reasoningEffort, "none");
   assert.ok(calls[0].signal instanceof AbortSignal);
   assert.deepEqual(result, {
     reply: "C'est noté.",
@@ -191,6 +193,35 @@ test(
       assert.equal(receivedSignal.aborted, true);
     },
 );
+
+test("logs a bounded timeout diagnostic without request content", async () => {
+  const logs = [];
+  await assert.rejects(
+      () => handleChatRequest(
+          request("PRIVATE USER MESSAGE"),
+          {uid: "test-uid"},
+          {
+            now: () => new Date("2026-07-20T10:00:00.000Z"),
+            openAiTimeoutMs: 5,
+            logger: {
+              info: (...values) => logs.push(values),
+              error: (...values) => logs.push(values),
+            },
+            generateResponse: async () => new Promise(() => {}),
+          },
+      ),
+      /OPENAI_TIMEOUT/,
+  );
+
+  const timeoutLog = logs.find((line) =>
+    line[0] === "ZELIA_OPENAI_TIMEOUT");
+  assert.ok(timeoutLog);
+  assert.equal(timeoutLog[1].code, "timeout");
+  assert.equal(timeoutLog[1].model, "gpt-5.6-terra");
+  assert.equal(timeoutLog[1].reasoningEffort, "low");
+  assert.ok(timeoutLog[1].durationMs >= 0);
+  assert.equal(JSON.stringify(logs).includes("PRIVATE USER MESSAGE"), false);
+});
 
 test(
     "uses one deadline and cleans it after real fallback success",

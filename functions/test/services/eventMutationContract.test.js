@@ -20,6 +20,39 @@ test("accepts a closed update mutation", () => {
   ), valid);
 });
 
+test("normalizes structured-output null placeholders", () => {
+  const structured = {
+    type: "event_mutation",
+    operation: "update",
+    target: {
+      title: "Rendez-vous médecin",
+      date: null,
+      time: null,
+      category: null,
+    },
+    changes: {
+      title: null,
+      date: null,
+      time: "11:00",
+      durationMinutes: null,
+      travelGoMinutes: null,
+      travelBackMinutes: null,
+      marginMinutes: null,
+      notes: null,
+      category: null,
+    },
+  };
+  assert.deepEqual(validateEventMutation(
+      structured,
+      "Décale mon Rendez-vous médecin à 11 h",
+  ), {
+    type: "event_mutation",
+    operation: "update",
+    target: {title: "Rendez-vous médecin"},
+    changes: {time: "11:00"},
+  });
+});
+
 test("accepts explicit participant replacement and removal", () => {
   const target = {title: "Rendez-vous médecin", date: "2026-07-23"};
   const participant = {
@@ -89,6 +122,24 @@ test("rejects unknown operations, empty target and empty changes", () => {
   );
   assert.equal(validateEventMutation({...valid, target: {}}, "modifie"), null);
   assert.equal(validateEventMutation({...valid, changes: {}}, "modifie"), null);
+  assert.equal(validateEventMutation({
+    ...valid,
+    target: {title: null, date: null, time: null, category: null},
+  }, "modifie"), null);
+  assert.equal(validateEventMutation({
+    ...valid,
+    changes: {
+      title: null,
+      date: null,
+      time: null,
+      durationMinutes: null,
+      travelGoMinutes: null,
+      travelBackMinutes: null,
+      marginMinutes: null,
+      notes: null,
+      category: null,
+    },
+  }, "modifie"), null);
 });
 
 test("rejects extra, identity, participant and id fields", () => {
@@ -107,7 +158,7 @@ test("rejects extra, identity, participant and id fields", () => {
 
 test("rejects malformed and out-of-bounds changes", () => {
   assert.equal(
-      validateEventMutation({...valid, changes: {time: null}}, "modifie"),
+      validateEventMutation({...valid, changes: {time: true}}, "modifie"),
       null,
   );
   assert.equal(validateEventMutation({

@@ -61,6 +61,7 @@ test("routes a simple shopping request to the fast model", () => {
   assert.deepEqual(result.decision, {
     tier: MODEL_TIERS.FAST,
     model: "test-fast-model",
+    reasoningEffort: "none",
   });
 });
 
@@ -77,6 +78,7 @@ test("routes a simple task to the fast model", () => {
   assert.deepEqual(result.decision, {
     tier: MODEL_TIERS.FAST,
     model: "test-fast-model",
+    reasoningEffort: "none",
   });
 });
 
@@ -93,6 +95,7 @@ test("routes a standard appointment to the balanced model", () => {
   assert.deepEqual(result.decision, {
     tier: MODEL_TIERS.BALANCED,
     model: "test-balanced-model",
+    reasoningEffort: "low",
   });
 });
 
@@ -109,6 +112,7 @@ test("keeps a simple slot search on the balanced model", () => {
   assert.deepEqual(result.decision, {
     tier: MODEL_TIERS.BALANCED,
     model: "test-balanced-model",
+    reasoningEffort: "low",
   });
 });
 
@@ -125,6 +129,7 @@ test("routes full-day organization to the reasoning model", () => {
   assert.deepEqual(result.decision, {
     tier: MODEL_TIERS.REASONING,
     model: "test-reasoning-model",
+    reasoningEffort: "medium",
   });
 });
 
@@ -140,6 +145,7 @@ test("routes weekly scenario comparison to the reasoning model", () => {
   assert.deepEqual(result.decision, {
     tier: MODEL_TIERS.REASONING,
     model: "test-reasoning-model",
+    reasoningEffort: "medium",
   });
 });
 
@@ -156,5 +162,6 @@ test("routes an ordinary general question to the balanced model", () => {
   assert.deepEqual(result.decision, {
     tier: MODEL_TIERS.BALANCED,
     model: "test-balanced-model",
+    reasoningEffort: "low",
   });
 });

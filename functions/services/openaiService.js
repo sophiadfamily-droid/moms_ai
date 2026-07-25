@@ -34,12 +34,14 @@ const RETRYABLE_RESPONSE_ERRORS = new Set([
  * @param {string} params.systemContent instructions système
  * @param {string} params.userMessage message utilisateur
  * @param {string} params.model modèle OpenAI
+ * @param {string} params.reasoningEffort effort de raisonnement sélectionné
  * @return {Object}
  */
 function buildZeliaResponseRequest({
   systemContent,
   userMessage,
   model = DEFAULT_MODEL,
+  reasoningEffort,
 }) {
   const request = {
     model,
@@ -57,7 +59,11 @@ function buildZeliaResponseRequest({
     },
   };
 
-  if (!model.startsWith("gpt-5.6-")) {
+  if (model.startsWith("gpt-5.6-")) {
+    request.reasoning = {
+      effort: reasoningEffort,
+    };
+  } else {
     request.temperature = 0.03;
   }
 
@@ -154,13 +160,79 @@ function shouldFallbackToDefaultModel(error, attemptedModel) {
  * Exécute une requête et retourne la réponse Zelia parsée.
  *
  * @param {Object} client client OpenAI
- * @param {Object} request requête Responses API
- * @param {AbortSignal} signal signal d'annulation partagé
+ * @param {Object} params paramètres d'exécution
  * @return {Promise<Object>}
  */
-async function executeZeliaRequest(client, request, signal) {
-  const response = await client.responses.create(request, {signal});
-  return parseZeliaResponse(response);
+async function executeZeliaRequest({
+  client,
+  request,
+  signal,
+  tier,
+  reasoningEffort,
+  logger,
+  env,
+}) {
+  const startedAt = Date.now();
+  const metadata = {
+    model: request.model,
+    tier,
+    reasoningEffort,
+  };
+
+  writeDiagnostic({
+    logger,
+    level: "info",
+    event: "ZELIA_OPENAI_REQUEST",
+    component: "openai",
+    step: "responses_create",
+    code: "provider-request",
+    env,
+    metadata,
+  });
+
+  try {
+    const response = await client.responses.create(request, {signal});
+    const requestId = response && (
+      response._request_id || response.request_id
+    );
+    writeDiagnostic({
+      logger,
+      level: "info",
+      event: "ZELIA_OPENAI_SUCCESS",
+      component: "openai",
+      step: "responses_create",
+      code: "provider-success",
+      env,
+      metadata: {
+        ...metadata,
+        durationMs: Date.now() - startedAt,
+        requestId,
+      },
+    });
+    return parseZeliaResponse(response);
+  } catch (error) {
+    writeDiagnostic({
+      logger,
+      level: "error",
+      event: "ZELIA_OPENAI_ERROR",
+      component: "openai",
+      step: "responses_create",
+      code: "provider-error",
+      env,
+      metadata: {
+        ...metadata,
+        durationMs: Date.now() - startedAt,
+        status: Number(error && error.status) || 0,
+        providerCode: error && typeof error.code === "string" ?
+          error.code :
+          "",
+        requestId: error && (
+          error.request_id || error.requestId
+        ),
+      },
+    });
+    throw error;
+  }
 }
 
 /**
@@ -174,6 +246,8 @@ async function executeZeliaRequest(client, request, signal) {
  * @param {string} params.systemContent instructions système
  * @param {string} params.userMessage message utilisateur
  * @param {string} params.model modèle OpenAI
+ * @param {string} params.tier niveau de routage
+ * @param {string} params.reasoningEffort effort de raisonnement sélectionné
  * @param {Object} params.client client injecté pour les tests
  * @param {AbortSignal} params.signal signal d'annulation partagé
  * @return {Promise<Object>}
@@ -183,6 +257,8 @@ async function generateZeliaResponse({
   systemContent,
   userMessage,
   model = DEFAULT_MODEL,
+  tier,
+  reasoningEffort,
   client = null,
   logger = console,
   env = process.env,
@@ -196,10 +272,19 @@ async function generateZeliaResponse({
     systemContent,
     userMessage,
     model,
+    reasoningEffort,
   });
 
   try {
-    return await executeZeliaRequest(openai, request, signal);
+    return await executeZeliaRequest({
+      client: openai,
+      request,
+      signal,
+      tier,
+      reasoningEffort,
+      logger,
+      env,
+    });
   } catch (error) {
     if (!shouldFallbackToDefaultModel(error, model)) {
       throw error;
@@ -226,7 +311,15 @@ async function generateZeliaResponse({
       model: DEFAULT_MODEL,
     });
 
-    return executeZeliaRequest(openai, fallbackRequest, signal);
+    return executeZeliaRequest({
+      client: openai,
+      request: fallbackRequest,
+      signal,
+      tier,
+      reasoningEffort,
+      logger,
+      env,
+    });
   }
 }
 

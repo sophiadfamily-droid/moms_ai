@@ -6,12 +6,15 @@ const path = require("node:path");
 const test = require("node:test");
 
 const {
+  CALLABLE_TIMEOUT_SECONDS,
   createCallableChatHandler,
   createCallableFunctionOptions,
   OPENAI_API_KEY_NAME,
 } = require("../../services/chatTransportAdapters");
 
 const response = {reply: "Réponse", actions: [], memories: []};
+const appCheckEnabled = {value: () => true};
+const appCheckDisabled = {value: () => false};
 
 class FakeHttpsError extends Error {
   constructor(code, message) {
@@ -27,6 +30,7 @@ function createHandler(overrides = {}) {
     consumeQuota: async () => ({remaining: 2}),
     HttpsErrorClass: FakeHttpsError,
     logger: {error() {}},
+    appCheckEnforcement: appCheckEnabled,
     env: {ZELIA_ENVIRONMENT: "production"},
     ...overrides,
   });
@@ -79,18 +83,23 @@ function secureRequest(data = validPayload()) {
 }
 
 test("provides fail-closed production callable options", () => {
+  assert.equal(CALLABLE_TIMEOUT_SECONDS, 60);
   const secret = {name: OPENAI_API_KEY_NAME};
-  assert.deepEqual(createCallableFunctionOptions(secret, {
-    ZELIA_ENVIRONMENT: "production",
-  }), {
+  const enabledOptions = createCallableFunctionOptions(
+      secret,
+      appCheckEnabled,
+  );
+  assert.deepEqual(enabledOptions, {
     region: "us-central1",
     secrets: [secret],
-    timeoutSeconds: 25,
-    enforceAppCheck: true,
+    timeoutSeconds: 60,
+    enforceAppCheck: appCheckEnabled,
   });
-  assert.equal(createCallableFunctionOptions(secret, {
-    FUNCTIONS_EMULATOR: "true",
-  }).enforceAppCheck, false);
+  assert.equal(enabledOptions.enforceAppCheck.value(), true);
+  assert.equal(createCallableFunctionOptions(
+      secret,
+      appCheckDisabled,
+  ).enforceAppCheck.value(), false);
 });
 
 test("accepts permanent and anonymous Firebase users", async () => {
@@ -135,19 +144,42 @@ test("rejects missing authentication before orchestration", async () => {
   assert.equal(handlerCalls, 0);
 });
 
-test("rejects absent App Check in production but allows emulator", async () => {
+test("rejects absent App Check when enforcement is enabled", async () => {
   await assert.rejects(
       () => createHandler()({...secureRequest(), app: undefined}),
       (error) => error.code === "failed-precondition",
   );
+});
 
-  const emulatorHandler = createHandler({
-    env: {FUNCTIONS_EMULATOR: "true"},
+test("disabled App Check still requires auth and consumes quota", async () => {
+  const quotaUids = [];
+  let handlerCalls = 0;
+  const handler = createHandler({
+    appCheckEnforcement: appCheckDisabled,
+    consumeQuota: async ({uid}) => quotaUids.push(uid),
+    handleChatRequest: async () => {
+      handlerCalls++;
+      return response;
+    },
   });
+
   assert.deepEqual(
-      await emulatorHandler({...secureRequest(), app: undefined}),
+      await handler({...secureRequest(), app: undefined}),
       response,
   );
+  assert.deepEqual(quotaUids, ["firebase-uid"]);
+  assert.equal(handlerCalls, 1);
+
+  await assert.rejects(
+      () => handler({
+        ...secureRequest(),
+        auth: undefined,
+        app: undefined,
+      }),
+      (error) => error.code === "unauthenticated",
+  );
+  assert.deepEqual(quotaUids, ["firebase-uid"]);
+  assert.equal(handlerCalls, 1);
 });
 
 test("rejects an invalid App Check context in production", async () => {

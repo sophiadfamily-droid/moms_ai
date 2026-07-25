@@ -1,13 +1,16 @@
 const {HttpsError} = require("firebase-functions/v2/https");
 const {ChatQuotaExceededError} = require("./chatQuotaService");
-const {requiresAppCheck} = require("./securityEnvironment");
+const {
+  requiresAppCheck,
+  zeliaEnforceAppCheck,
+} = require("./securityEnvironment");
 const {ERROR_CODES, writeDiagnostic} = require("./diagnostics");
 const {
   ConversationContextValidationError,
   validateConversationRequest,
 } = require("./conversationContextContract");
 
-const CALLABLE_TIMEOUT_SECONDS = 25;
+const CALLABLE_TIMEOUT_SECONDS = 60;
 const CHAT_FUNCTION_REGION = "us-central1";
 const OPENAI_API_KEY_NAME = "OPENAI_API_KEY";
 
@@ -15,15 +18,18 @@ const OPENAI_API_KEY_NAME = "OPENAI_API_KEY";
  * Construit les options du callable sécurisé.
  *
  * @param {Object} openaiApiKey secret Firebase OpenAI
- * @param {Object} env variables d'environnement
+ * @param {Object} appCheckEnforcement paramètre Firebase App Check
  * @return {Object}
  */
-function createCallableFunctionOptions(openaiApiKey, env = process.env) {
+function createCallableFunctionOptions(
+    openaiApiKey,
+    appCheckEnforcement = zeliaEnforceAppCheck,
+) {
   return {
     region: CHAT_FUNCTION_REGION,
     secrets: [openaiApiKey],
     timeoutSeconds: CALLABLE_TIMEOUT_SECONDS,
-    enforceAppCheck: requiresAppCheck(env),
+    enforceAppCheck: appCheckEnforcement,
   };
 }
 
@@ -46,6 +52,7 @@ function createCallableChatHandler({
   HttpsErrorClass = HttpsError,
   handlerDependencies = {},
   consumeQuota,
+  appCheckEnforcement = zeliaEnforceAppCheck,
   env = process.env,
 }) {
   return async (request) => {
@@ -60,7 +67,7 @@ function createCallableChatHandler({
     }
 
     const appId = request && request.app && request.app.appId;
-    if (requiresAppCheck(env) &&
+    if (requiresAppCheck(appCheckEnforcement) &&
         (typeof appId !== "string" || appId.trim().length === 0)) {
       throw new HttpsErrorClass(
           "failed-precondition",

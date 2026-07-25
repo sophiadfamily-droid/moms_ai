@@ -27,6 +27,9 @@ const ALLOWED_METADATA = new Set([
   "intent",
   "tier",
   "model",
+  "reasoningEffort",
+  "requestId",
+  "providerCode",
 ]);
 
 const FORBIDDEN_NAMES = [

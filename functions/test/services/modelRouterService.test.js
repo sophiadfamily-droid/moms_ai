@@ -3,6 +3,7 @@ const test = require("node:test");
 
 const {
   MODEL_TIERS,
+  REASONING_EFFORTS,
   selectModelTier,
   resolveModel,
   routeModel,
@@ -59,6 +60,14 @@ test("uses safe default models when no configuration exists", () => {
   );
 });
 
+test("selects an explicit reasoning effort for every tier", () => {
+  assert.deepEqual(REASONING_EFFORTS, {
+    [MODEL_TIERS.FAST]: "none",
+    [MODEL_TIERS.BALANCED]: "low",
+    [MODEL_TIERS.REASONING]: "medium",
+  });
+});
+
 test("uses configured models without changing application code", () => {
   const decision = routeModel({
     primaryIntent: "task",
@@ -70,5 +79,6 @@ test("uses configured models without changing application code", () => {
   assert.deepEqual(decision, {
     tier: MODEL_TIERS.FAST,
     model: "future-fast-model",
+    reasoningEffort: "none",
   });
 });

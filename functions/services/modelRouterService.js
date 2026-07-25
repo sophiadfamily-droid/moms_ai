@@ -10,6 +10,12 @@ const DEFAULT_MODELS = Object.freeze({
   [MODEL_TIERS.REASONING]: "gpt-5.6-sol",
 });
 
+const REASONING_EFFORTS = Object.freeze({
+  [MODEL_TIERS.FAST]: "none",
+  [MODEL_TIERS.BALANCED]: "low",
+  [MODEL_TIERS.REASONING]: "medium",
+});
+
 /**
  * Retourne le niveau de modèle adapté à l'intention détectée.
  *
@@ -64,7 +70,7 @@ function resolveModel(tier, env = process.env) {
  * @param {string} params.primaryIntent intention principale
  * @param {boolean} params.requiresComplexPlanning planification complexe
  * @param {Object} params.env variables d'environnement
- * @return {{tier: string, model: string}}
+ * @return {{tier: string, model: string, reasoningEffort: string}}
  */
 function routeModel({
   primaryIntent = "general",
@@ -79,12 +85,14 @@ function routeModel({
   return {
     tier,
     model: resolveModel(tier, env),
+    reasoningEffort: REASONING_EFFORTS[tier],
   };
 }
 
 module.exports = {
   MODEL_TIERS,
   DEFAULT_MODELS,
+  REASONING_EFFORTS,
   selectModelTier,
   resolveModel,
   routeModel,
