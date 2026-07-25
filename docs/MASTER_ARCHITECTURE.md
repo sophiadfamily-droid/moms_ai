@@ -327,9 +327,13 @@ Speech-to-Text application coordinator. The injected
 `permission_handler`, native status and native errors. Closed availability,
 permission, failure, interruption and session states bind every callback to a
 voice-session ID and the current conversation generation. Partial results stay
-ephemeral; a final result remains editable and reaches only the composer after
-an explicit “Utiliser le texte”. The ordinary Send control is the only path
-from that text to `ConversationSessionController`.
+ephemeral. During recognition, the text composer becomes a compact recording
+capsule whose visualization is driven by the plugin's native sound-level
+callback. Cancel discards only the active dictation. Validate stops recognition,
+briefly allows the last native result to arrive, then inserts the best available
+transcript at the reliable composer cursor (or appends it) without sending it.
+The ordinary Send control remains the only path from that editable text to
+`ConversationSessionController`.
 
 Permission reading is silent. A native prompt follows only the microphone
 gesture and a separate explanation/authorization action. Silence, maximum

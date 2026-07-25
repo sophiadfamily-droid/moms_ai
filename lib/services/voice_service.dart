@@ -24,11 +24,13 @@ final class SpeechRecognitionPlatformEvent {
     required this.type,
     this.transcript,
     this.failure,
+    this.soundLevel,
   });
 
   final SpeechRecognitionPlatformEventType type;
   final String? transcript;
   final VoiceRecognitionFailure? failure;
+  final double? soundLevel;
 }
 
 abstract interface class SpeechRecognitionPlatformGateway {
@@ -133,6 +135,7 @@ final class SpeechToTextPlatformGateway
     );
     await _speech.listen(
       onResult: _handleResult,
+      onSoundLevelChange: _handleSoundLevel,
       listenFor: listenFor,
       pauseFor: pauseFor,
       localeId: localeId,
@@ -184,6 +187,16 @@ final class SpeechToTextPlatformGateway
             ? SpeechRecognitionPlatformEventType.finalResult
             : SpeechRecognitionPlatformEventType.partialResult,
         transcript: transcript,
+      ),
+    );
+  }
+
+  void _handleSoundLevel(double level) {
+    if (!level.isFinite) return;
+    _onEvent?.call(
+      SpeechRecognitionPlatformEvent(
+        type: SpeechRecognitionPlatformEventType.soundLevel,
+        soundLevel: level,
       ),
     );
   }

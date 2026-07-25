@@ -71,7 +71,7 @@ void main() {
   });
 
   testWidgets(
-      'dictation stays editable and only the send button reaches Conversation',
+      'recording capsule validates editable text and only Send reaches Conversation',
       (tester) async {
     final backend = _WidgetBackend();
     final gateway = _WidgetVoiceGateway();
@@ -92,6 +92,14 @@ void main() {
 
     await tester.tap(find.byKey(const Key('voice-primary')));
     await tester.pump();
+    expect(find.byKey(const Key('voice-recording-capsule')), findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
+    expect(find.byKey(const Key('voice-use-text')), findsNothing);
+    expect(gateway.startCalls, 1);
+    await tester.tap(find.byKey(const Key('voice-recording-capsule')));
+    await tester.pump();
+    expect(gateway.startCalls, 1);
+
     gateway.emit(
       const SpeechRecognitionPlatformEvent(
         type: SpeechRecognitionPlatformEventType.partialResult,
@@ -100,7 +108,8 @@ void main() {
     );
     await tester.pump();
     expect(backend.requests, isEmpty);
-    expect(find.text('texte provisoire'), findsOneWidget);
+    expect(find.text('texte provisoire'), findsNothing);
+    expect(find.byType(TextField), findsNothing);
 
     gateway.emit(
       const SpeechRecognitionPlatformEvent(
@@ -110,22 +119,26 @@ void main() {
     );
     await tester.pump();
     expect(backend.requests, isEmpty);
-    await tester.tap(find.byKey(const Key('voice-use-text')));
-    await tester.pump();
+    await tester.tap(find.byKey(const Key('voice-validate')));
+    await tester.pump(const Duration(milliseconds: 300));
     expect(
       tester.widget<TextField>(find.byType(TextField)).controller?.text,
       'texte final',
     );
     expect(backend.requests, isEmpty);
+    expect(find.byKey(const Key('voice-use-text')), findsNothing);
+
+    await tester.enterText(find.byType(TextField), 'texte final corrigé');
+    await tester.pump();
 
     await tester.tap(find.byIcon(Icons.send));
     await tester.pumpAndSettle();
     expect(backend.requests, hasLength(1));
-    expect(backend.requests.single.message, 'texte final');
+    expect(backend.requests.single.message, 'texte final corrigé');
   });
 
   testWidgets(
-      'recovered Android partial only fills the composer after explicit use',
+      'recovered Android partial only fills the composer after validation',
       (tester) async {
     final backend = _WidgetBackend();
     final gateway = _WidgetVoiceGateway();
@@ -166,15 +179,179 @@ void main() {
     expect(backend.requests, isEmpty);
     expect(
         find.text("Je n'ai rien entendu. Tu peux recommencer."), findsNothing);
-    expect(find.byKey(const Key('voice-use-text')), findsOneWidget);
+    expect(find.byKey(const Key('voice-validate')), findsOneWidget);
     expect(find.byKey(const Key('voice-cancel')), findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
 
-    await tester.tap(find.byKey(const Key('voice-use-text')));
-    await tester.pump();
+    await tester.tap(find.byKey(const Key('voice-validate')));
+    await tester.pump(const Duration(milliseconds: 300));
     expect(
       tester.widget<TextField>(find.byType(TextField)).controller?.text,
       'partiel récupéré',
     );
+    expect(backend.requests, isEmpty);
+  });
+
+  testWidgets('cancel preserves an existing draft and sends nothing',
+      (tester) async {
+    final backend = _WidgetBackend();
+    final gateway = _WidgetVoiceGateway();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ChatScreen(
+          profile: _profile(),
+          backendClient: backend,
+          conversationContextProvider: _WidgetContextProvider(),
+          voiceCoordinator: VoiceRecognitionCoordinator(gateway: gateway),
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), 'Mon brouillon');
+    await tester.tap(find.byKey(const Key('voice-primary')));
+    await tester.pump();
+    gateway.emit(
+      const SpeechRecognitionPlatformEvent(
+        type: SpeechRecognitionPlatformEventType.partialResult,
+        transcript: 'à supprimer',
+      ),
+    );
+    await tester.tap(find.byKey(const Key('voice-cancel')));
+    await tester.pump();
+
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.controller?.text, 'Mon brouillon');
+    expect(backend.requests, isEmpty);
+  });
+
+  testWidgets('validation inserts at the cursor and never overwrites the draft',
+      (tester) async {
+    final backend = _WidgetBackend();
+    final gateway = _WidgetVoiceGateway();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ChatScreen(
+          profile: _profile(),
+          backendClient: backend,
+          conversationContextProvider: _WidgetContextProvider(),
+          voiceCoordinator: VoiceRecognitionCoordinator(gateway: gateway),
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), 'Bonjour demain');
+    final controller =
+        tester.widget<TextField>(find.byType(TextField)).controller!;
+    controller.selection = const TextSelection.collapsed(offset: 7);
+    await tester.tap(find.byKey(const Key('voice-primary')));
+    await tester.pump();
+    gateway.emit(
+      const SpeechRecognitionPlatformEvent(
+        type: SpeechRecognitionPlatformEventType.finalResult,
+        transcript: 'Zélia',
+      ),
+    );
+    await tester.tap(find.byKey(const Key('voice-validate')));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(controller.text, 'Bonjour Zélia demain');
+    expect(controller.selection, const TextSelection.collapsed(offset: 13));
+    expect(backend.requests, isEmpty);
+  });
+
+  testWidgets('empty validation inserts and sends nothing and shows feedback',
+      (tester) async {
+    final backend = _WidgetBackend();
+    final gateway = _WidgetVoiceGateway();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ChatScreen(
+          profile: _profile(),
+          backendClient: backend,
+          conversationContextProvider: _WidgetContextProvider(),
+          voiceCoordinator: VoiceRecognitionCoordinator(gateway: gateway),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('voice-primary')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('voice-validate')));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller?.text,
+      isEmpty,
+    );
+    expect(find.text('Je n’ai pas bien entendu. Réessaie.'), findsOneWidget);
+    expect(backend.requests, isEmpty);
+  });
+
+  testWidgets('double validation never duplicates the transcript',
+      (tester) async {
+    final gateway = _WidgetVoiceGateway();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ChatScreen(
+          profile: _profile(),
+          backendClient: _WidgetBackend(),
+          conversationContextProvider: _WidgetContextProvider(),
+          voiceCoordinator: VoiceRecognitionCoordinator(gateway: gateway),
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const Key('voice-primary')));
+    await tester.pump();
+    gateway.emit(
+      const SpeechRecognitionPlatformEvent(
+        type: SpeechRecognitionPlatformEventType.partialResult,
+        transcript: 'une seule fois',
+      ),
+    );
+    final validate = find.byKey(const Key('voice-validate'));
+    await tester.tap(validate);
+    await tester.tap(validate);
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller?.text,
+      'une seule fois',
+    );
+  });
+
+  testWidgets('background stops recording without inserting or sending',
+      (tester) async {
+    final backend = _WidgetBackend();
+    final gateway = _WidgetVoiceGateway();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ChatScreen(
+          profile: _profile(),
+          backendClient: backend,
+          conversationContextProvider: _WidgetContextProvider(),
+          voiceCoordinator: VoiceRecognitionCoordinator(gateway: gateway),
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const Key('voice-primary')));
+    await tester.pump();
+    gateway.emit(
+      const SpeechRecognitionPlatformEvent(
+        type: SpeechRecognitionPlatformEventType.partialResult,
+        transcript: 'ne pas insérer',
+      ),
+    );
+    tester.binding.handleAppLifecycleStateChanged(
+      AppLifecycleState.paused,
+    );
+    await tester.pump();
+
+    expect(find.byType(TextField), findsOneWidget);
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller?.text,
+      isEmpty,
+    );
+    expect(gateway.cancelCalls, 1);
     expect(backend.requests, isEmpty);
   });
 }
@@ -217,6 +394,8 @@ class _WidgetContextProvider implements ConversationContextProvider {
 
 final class _WidgetVoiceGateway implements SpeechRecognitionPlatformGateway {
   void Function(SpeechRecognitionPlatformEvent event)? _listener;
+  int startCalls = 0;
+  int cancelCalls = 0;
 
   void emit(SpeechRecognitionPlatformEvent event) => _listener?.call(event);
 
@@ -254,14 +433,18 @@ final class _WidgetVoiceGateway implements SpeechRecognitionPlatformGateway {
     required String localeId,
     required Duration listenFor,
     required Duration pauseFor,
-  }) async =>
-      'platform-widget';
+  }) async {
+    startCalls++;
+    return 'platform-widget';
+  }
 
   @override
   Future<void> stopListening() async {}
 
   @override
-  Future<void> cancelListening() async {}
+  Future<void> cancelListening() async {
+    cancelCalls++;
+  }
 
   @override
   Future<List<String>> supportedLocales() async => const ['fr_FR'];

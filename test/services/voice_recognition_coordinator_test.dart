@@ -115,6 +115,31 @@ void main() {
           VoiceRecognitionSessionState.receivingPartialResult);
     });
 
+    test('real platform sound levels update only the current session',
+        () async {
+      final gateway = _FakeGateway();
+      final coordinator = _coordinator(gateway);
+      await coordinator.begin(conversationSessionGeneration: 1);
+      final oldListener = gateway.listener!;
+
+      gateway.emit(
+        const SpeechRecognitionPlatformEvent(
+          type: SpeechRecognitionPlatformEventType.soundLevel,
+          soundLevel: -24.5,
+        ),
+      );
+      expect(coordinator.soundLevel, -24.5);
+
+      await coordinator.cancel();
+      oldListener(
+        const SpeechRecognitionPlatformEvent(
+          type: SpeechRecognitionPlatformEventType.soundLevel,
+          soundLevel: -2,
+        ),
+      );
+      expect(coordinator.soundLevel, 0);
+    });
+
     test('final result remains editable and is never dispatched', () async {
       final gateway = _FakeGateway();
       final coordinator = _coordinator(gateway);
@@ -419,6 +444,7 @@ void main() {
                 coordinator: coordinator,
                 conversationSessionGeneration: 1,
                 onTranscriptReady: (_) {},
+                idleBuilder: _idleVoiceButton,
               ),
             ),
           ),
@@ -441,6 +467,7 @@ void main() {
             coordinator: coordinator,
             conversationSessionGeneration: 1,
             onTranscriptReady: (_) {},
+            idleBuilder: _idleVoiceButton,
           ),
         ),
       ),
@@ -472,6 +499,7 @@ void main() {
                   coordinator: coordinator,
                   conversationSessionGeneration: 1,
                   onTranscriptReady: (_) {},
+                  idleBuilder: _idleVoiceButton,
                 ),
                 TextButton(
                   onPressed: () => setState(() {}),
@@ -491,12 +519,64 @@ void main() {
     expect(gateway.startCalls, 1);
     await coordinator.cancel();
   });
+
+  testWidgets('recording visualizer reacts to real sound-level callbacks',
+      (tester) async {
+    final gateway = _FakeGateway();
+    final coordinator = _coordinator(gateway);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: VoiceInputControl(
+            coordinator: coordinator,
+            conversationSessionGeneration: 1,
+            onTranscriptReady: (_) {},
+            idleBuilder: _idleVoiceButton,
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const Key('voice-primary')));
+    await tester.pump();
+    gateway.emit(
+      const SpeechRecognitionPlatformEvent(
+        type: SpeechRecognitionPlatformEventType.soundLevel,
+        soundLevel: -50,
+      ),
+    );
+    await tester.pump();
+    final quietValue =
+        tester.getSemantics(find.byKey(const Key('voice-sound-level'))).value;
+    gateway.emit(
+      const SpeechRecognitionPlatformEvent(
+        type: SpeechRecognitionPlatformEventType.soundLevel,
+        soundLevel: -10,
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    final loudValue =
+        tester.getSemantics(find.byKey(const Key('voice-sound-level'))).value;
+
+    expect(quietValue, isNot(loudValue));
+    expect(
+      int.parse(loudValue.replaceAll(RegExp(r'\D'), '')),
+      greaterThan(int.parse(quietValue.replaceAll(RegExp(r'\D'), ''))),
+    );
+    await coordinator.cancel();
+  });
 }
 
 VoiceRecognitionCoordinator _coordinator(_FakeGateway gateway) =>
     VoiceRecognitionCoordinator(
       gateway: gateway,
       idGenerator: () => 'voice-session',
+    );
+
+Widget _idleVoiceButton(BuildContext context, VoidCallback? onPressed) =>
+    IconButton(
+      key: const Key('voice-primary'),
+      onPressed: onPressed,
+      icon: const Icon(Icons.mic),
     );
 
 final class _FakeGateway implements SpeechRecognitionPlatformGateway {

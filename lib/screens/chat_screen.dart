@@ -101,13 +101,34 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _useVoiceTranscript(String text) {
     if (!mounted) return;
+    final transcript = text.trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (transcript.isEmpty) return;
+    final current = _textController.text;
+    final selection = _textController.selection;
+    final reliableCursor = selection.isValid &&
+        selection.isCollapsed &&
+        selection.start >= 0 &&
+        selection.start <= current.length;
+    final offset = reliableCursor ? selection.start : current.length;
+    final needsLeadingSpace =
+        offset > 0 && !_isWhitespace(current.codeUnitAt(offset - 1));
+    final needsTrailingSpace =
+        offset < current.length && !_isWhitespace(current.codeUnitAt(offset));
+    final insertion =
+        '${needsLeadingSpace ? ' ' : ''}$transcript${needsTrailingSpace ? ' ' : ''}';
+    final updated = current.replaceRange(offset, offset, insertion);
+    final cursorOffset =
+        offset + (needsLeadingSpace ? 1 : 0) + transcript.length;
     setState(() {
       _textController
-        ..text = text
-        ..selection = TextSelection.collapsed(offset: text.length);
+        ..text = updated
+        ..selection = TextSelection.collapsed(offset: cursorOffset);
     });
     _focusNode.requestFocus();
   }
+
+  bool _isWhitespace(int codeUnit) =>
+      String.fromCharCode(codeUnit).trim().isEmpty;
 
   void _scrollToLatest() {
     if (!_scrollController.hasClients) return;
@@ -162,41 +183,47 @@ class _ChatScreenState extends State<ChatScreen> {
                     coordinator: _voiceCoordinator,
                     conversationSessionGeneration: state.sessionGeneration,
                     onTranscriptReady: _useVoiceTranscript,
-                    enabled: !state.isBusy && !hasText,
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _textController,
-                          focusNode: _focusNode,
-                          minLines: 1,
-                          maxLines: 5,
-                          textInputAction: TextInputAction.send,
-                          onChanged: (_) => setState(() {}),
-                          onSubmitted: (_) => _submit(),
-                          decoration: const InputDecoration(
-                            hintText: 'Écris ton message…',
-                            border: OutlineInputBorder(),
+                    enabled: !state.isBusy,
+                    idleBuilder: (context, startDictation) => Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _textController,
+                            focusNode: _focusNode,
+                            minLines: 1,
+                            maxLines: 5,
+                            textInputAction: TextInputAction.send,
+                            onChanged: (_) => setState(() {}),
+                            onSubmitted: (_) => _submit(),
+                            decoration: const InputDecoration(
+                              hintText: 'Écris ton message…',
+                              border: OutlineInputBorder(),
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 10),
-                      Semantics(
-                        button: true,
-                        label: 'Envoyer le message',
-                        child: CircleAvatar(
-                          radius: 28,
-                          backgroundColor: const Color(0xFFC78372),
-                          child: IconButton(
-                            onPressed:
-                                state.isBusy || !hasText ? null : _submit,
-                            icon: const Icon(Icons.send, color: Colors.white),
+                        const SizedBox(width: 8),
+                        IconButton.filled(
+                          key: const Key('voice-primary'),
+                          tooltip: 'Dicter un message',
+                          onPressed: startDictation,
+                          icon: const Icon(Icons.mic),
+                        ),
+                        const SizedBox(width: 8),
+                        Semantics(
+                          button: true,
+                          label: 'Envoyer le message',
+                          child: CircleAvatar(
+                            radius: 28,
+                            backgroundColor: const Color(0xFFC78372),
+                            child: IconButton(
+                              onPressed:
+                                  state.isBusy || !hasText ? null : _submit,
+                              icon: const Icon(Icons.send, color: Colors.white),
+                            ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ],
               ),

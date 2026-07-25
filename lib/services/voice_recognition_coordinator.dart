@@ -42,6 +42,7 @@ final class VoiceRecognitionCoordinator extends ChangeNotifier {
   String? _pendingAccountScopeId;
   int _pendingConversationGeneration = 0;
   String _requestedLocale = 'fr_FR';
+  double soundLevel = 0;
 
   bool get isListening => {
         VoiceRecognitionSessionState.starting,
@@ -93,6 +94,7 @@ final class VoiceRecognitionCoordinator extends ChangeNotifier {
     _pendingConversationGeneration = conversationSessionGeneration;
     _requestedLocale = localeId;
     failure = null;
+    soundLevel = 0;
     permissionExplanationRequired = false;
     availability = VoiceRecognitionAvailability.checking;
     notifyListeners();
@@ -273,6 +275,7 @@ final class VoiceRecognitionCoordinator extends ChangeNotifier {
     _cancelTimers();
     await _gateway.cancelListening();
     _nativeStartedGeneration = null;
+    soundLevel = 0;
     final active = session;
     if (active != null) {
       session = active.copyWith(
@@ -291,6 +294,7 @@ final class VoiceRecognitionCoordinator extends ChangeNotifier {
     _cancelTimers();
     await _gateway.cancelListening();
     _nativeStartedGeneration = null;
+    soundLevel = 0;
     session = session!.copyWith(
       state: VoiceRecognitionSessionState.interrupted,
       stoppedAt: _clock().toUtc(),
@@ -342,12 +346,14 @@ final class VoiceRecognitionCoordinator extends ChangeNotifier {
     SpeechRecognitionPlatformEvent event,
   ) {
     final accepted = _isCurrent(generation) && session != null;
-    _record(
-      step: 'platform-event',
-      code: event.type.name,
-      accepted: accepted,
-      sessionGeneration: session?.conversationSessionGeneration,
-    );
+    if (event.type != SpeechRecognitionPlatformEventType.soundLevel) {
+      _record(
+        step: 'platform-event',
+        code: event.type.name,
+        accepted: accepted,
+        sessionGeneration: session?.conversationSessionGeneration,
+      );
+    }
     if (!accepted) return;
     switch (event.type) {
       case SpeechRecognitionPlatformEventType.partialResult:
@@ -380,7 +386,11 @@ final class VoiceRecognitionCoordinator extends ChangeNotifier {
         );
         notifyListeners();
       case SpeechRecognitionPlatformEventType.soundLevel:
-        break;
+        final level = event.soundLevel;
+        if (level != null && level.isFinite && soundLevel != level) {
+          soundLevel = level;
+          notifyListeners();
+        }
     }
   }
 
@@ -453,6 +463,7 @@ final class VoiceRecognitionCoordinator extends ChangeNotifier {
     _cancelTimers();
     unawaited(_gateway.cancelListening());
     _nativeStartedGeneration = null;
+    soundLevel = 0;
     session = session?.copyWith(
       state: VoiceRecognitionSessionState.timedOut,
       stoppedAt: _clock().toUtc(),
