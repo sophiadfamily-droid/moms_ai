@@ -6,9 +6,11 @@ import 'package:moms_ai/models/life_context/memory_context.dart';
 import 'package:moms_ai/models/memory_lifecycle.dart';
 import 'package:moms_ai/models/memory_lifecycle_state.dart';
 import 'package:moms_ai/models/memory_evidence.dart';
+import 'package:moms_ai/models/memory_semantic_identity.dart';
 import 'package:moms_ai/services/memory_lifecycle_engine.dart';
 import 'package:moms_ai/services/memory_lifecycle_repository.dart';
 import 'package:moms_ai/services/memory_proposal_factory.dart';
+import 'package:moms_ai/services/memory_semantic_identity_service.dart';
 
 void main() {
   const engine = MemoryLifecycleEngine();
@@ -182,6 +184,11 @@ void main() {
       expect(proposal?.semanticType, LifeMemorySemanticType.temporary);
       expect(proposal?.validUntil, isNull);
       expect(proposal?.expiresAt, isNull);
+      expect(proposal?.semanticIdentity, isNotNull);
+      expect(proposal?.semanticIdentity?.subjectScope,
+          MemorySemanticSubjectScope.unknown);
+      expect(proposal?.semanticIdentity?.eligibleForAutomaticContradiction,
+          isFalse);
     });
 
     test('invalid dates are ambiguous and produce no mutation', () {
@@ -511,6 +518,32 @@ void main() {
         subjectEntityId: 'person-42',
         evidenceRisks: const {MemoryEvidenceRisk.negation},
         isCorrection: true,
+        semanticIdentity: MemorySemanticIdentity(
+          domain: MemorySemanticDomain.planning,
+          attribute: MemorySemanticAttribute.preferredAppointmentPeriod,
+          subjectScope: MemorySemanticSubjectScope.structuredEntity,
+          subjectFingerprint: MemorySemanticIdentityService.fingerprint(
+            namespace: 'zelia-memory-subject-v1',
+            scope: 'structured_entity',
+            exactId: 'person-42',
+          ),
+          contextType: MemorySemanticContextType.personalAppointments,
+          contextFingerprint: null,
+          canonicalKey: MemorySemanticIdentity.buildCanonicalKey(
+            domain: MemorySemanticDomain.planning,
+            attribute: MemorySemanticAttribute.preferredAppointmentPeriod,
+            subjectScope: MemorySemanticSubjectScope.structuredEntity,
+            subjectFingerprint: MemorySemanticIdentityService.fingerprint(
+              namespace: 'zelia-memory-subject-v1',
+              scope: 'structured_entity',
+              exactId: 'person-42',
+            ),
+            contextType: MemorySemanticContextType.personalAppointments,
+            contextFingerprint: null,
+          ),
+          eligibleForAutomaticContradiction: true,
+        ),
+        semanticValue: 'morning',
       );
       final decision = engine.evaluateProposal(
         proposal: proposal,
@@ -534,6 +567,14 @@ void main() {
       expect(json['subjectEntityId'], 'person-42');
       expect(json['evidenceRisks'], ['negation']);
       expect(json['isCorrection'], isTrue);
+      expect(json['canonicalKey'], proposal.semanticIdentity?.canonicalKey);
+      expect(json['semanticValue'], 'morning');
+      expect(json['eligibleForAutomaticContradiction'], isTrue);
+      expect(json['semanticIdentity'], isA<Map<String, Object?>>());
+      final restored = MemorySemanticIdentity.fromJson(
+        json['semanticIdentity'],
+      );
+      expect(restored.toJson(), proposal.semanticIdentity?.toJson());
     });
 
     test('Firestore consolidates confirmation and activation atomically', () {
@@ -611,6 +652,8 @@ MemoryProposal _proposal({
   String? subjectEntityId,
   Set<MemoryEvidenceRisk> evidenceRisks = const {},
   bool isCorrection = false,
+  MemorySemanticIdentity? semanticIdentity,
+  String? semanticValue,
 }) {
   return MemoryProposal(
     id: id,
@@ -630,6 +673,8 @@ MemoryProposal _proposal({
     subjectEntityId: subjectEntityId,
     evidenceRisks: evidenceRisks.toList(),
     isCorrection: isCorrection,
+    semanticIdentity: semanticIdentity,
+    semanticValue: semanticValue,
   );
 }
 

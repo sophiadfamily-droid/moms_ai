@@ -10,6 +10,7 @@ import '../models/memory_lifecycle.dart';
 import '../models/memory_lifecycle_state.dart';
 import '../models/memory_policy.dart';
 import '../models/memory_evidence.dart';
+import '../models/memory_semantic_identity.dart';
 import '../models/user_profile.dart';
 import 'auth_service.dart';
 import 'app_diagnostics.dart';
@@ -52,6 +53,9 @@ abstract interface class MemoryConversationContextProvider {
   Future<MemoryConfirmationRequest?> proposeUserMemory(
     String message, {
     String? resolvedSubjectEntityId,
+    MemorySemanticSubjectScope? semanticSubjectScope,
+    MemorySemanticContextType? semanticContextType,
+    String? semanticContextEntityId,
   });
 
   Future<MemoryConfirmationRequest?> proposeResponseMemory(dynamic memory);
@@ -193,6 +197,9 @@ class DefaultConversationContextProvider
   Future<MemoryConfirmationRequest?> proposeUserMemory(
     String message, {
     String? resolvedSubjectEntityId,
+    MemorySemanticSubjectScope? semanticSubjectScope,
+    MemorySemanticContextType? semanticContextType,
+    String? semanticContextEntityId,
   }) async {
     if (!MemoryPipelineService.shouldProcessMemory(message)) return null;
     final evidenceQualification = _memoryEvidenceClassifier.classify(
@@ -214,7 +221,11 @@ class DefaultConversationContextProvider
       'importance': payload.importance,
     },
         source: 'explicit_user_message',
-        evidenceQualification: evidenceQualification);
+        evidenceQualification: evidenceQualification,
+        semanticSubjectScope: semanticSubjectScope,
+        semanticSubjectEntityId: resolvedSubjectEntityId,
+        semanticContextType: semanticContextType,
+        semanticContextEntityId: semanticContextEntityId);
   }
 
   @override
@@ -245,6 +256,10 @@ class DefaultConversationContextProvider
     Map<String, dynamic> payload, {
     required String source,
     required MemoryEvidenceQualification evidenceQualification,
+    MemorySemanticSubjectScope? semanticSubjectScope,
+    String? semanticSubjectEntityId,
+    MemorySemanticContextType? semanticContextType,
+    String? semanticContextEntityId,
   }) async {
     try {
       final repository = memoryLifecycleRepository;
@@ -258,6 +273,10 @@ class DefaultConversationContextProvider
         proposedAt: proposedAt,
         confirmationRequired: true,
         evidenceQualification: evidenceQualification,
+        semanticSubjectScope: semanticSubjectScope,
+        semanticSubjectEntityId: semanticSubjectEntityId,
+        semanticContextType: semanticContextType,
+        semanticContextEntityId: semanticContextEntityId,
       );
       if (proposal == null) return null;
       final existing = await repository.findCandidates(proposal);

@@ -4,6 +4,7 @@ import 'life_context/life_context_provenance.dart';
 import 'life_context/memory_context.dart';
 import 'memory_evidence.dart';
 import 'memory_lifecycle_state.dart';
+import 'memory_semantic_identity.dart';
 
 enum MemoryLifecycleDecisionType {
   createProposal,
@@ -100,6 +101,8 @@ final class MemoryProposal {
   final String? subjectEntityId;
   final List<MemoryEvidenceRisk> evidenceRisks;
   final bool isCorrection;
+  final MemorySemanticIdentity? semanticIdentity;
+  final String? semanticValue;
   final double? confidence;
 
   const MemoryProposal({
@@ -123,6 +126,8 @@ final class MemoryProposal {
     this.subjectEntityId,
     this.evidenceRisks = const [],
     this.isCorrection = false,
+    this.semanticIdentity,
+    this.semanticValue,
     this.confidence,
   });
 

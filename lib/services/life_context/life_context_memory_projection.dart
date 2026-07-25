@@ -1,6 +1,7 @@
 import '../../models/life_context/life_context_provenance.dart';
 import '../../models/life_context/memory_context.dart';
 import '../../models/memory_lifecycle_state.dart';
+import '../../models/memory_semantic_identity.dart';
 
 abstract interface class LifeContextMemoryProjection {
   MemoryContext project(Iterable<Map<String, dynamic>> documents);
@@ -80,6 +81,8 @@ final class HistoricalMemoryContextProjection
       lastConfirmedAt: _dateTime(snapshot['confirmedAt']),
       structuredDomain: _nullableText(snapshot['structuredDomain']),
       structuredReferenceId: _nullableText(snapshot['structuredReferenceId']),
+      semanticIdentityRead:
+          MemorySemanticIdentity.read(snapshot['semanticIdentity']),
       legacyData: _unknownFields(snapshot),
     );
   }

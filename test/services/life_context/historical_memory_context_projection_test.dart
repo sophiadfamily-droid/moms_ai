@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:moms_ai/models/life_context/life_context_provenance.dart';
 import 'package:moms_ai/models/life_context/memory_context.dart';
 import 'package:moms_ai/models/memory_lifecycle_state.dart';
+import 'package:moms_ai/models/memory_semantic_identity.dart';
 import 'package:moms_ai/services/life_context/life_context_memory_projection.dart';
 
 void main() {
@@ -48,6 +49,37 @@ void main() {
       expect(memory.confidence, 0.8);
       expect(memory.evidenceType, LifeContextEvidenceType.explicit);
       expect(memory.legacyData['historicalFlag'], true);
+      expect(
+        memory.semanticIdentityRead.status,
+        MemorySemanticIdentityReadStatus.absentLegacy,
+      );
+    });
+
+    test('distinguishes absent legacy and invalid modern identities', () {
+      final memories = projection.project([
+        {
+          'id': 'legacy',
+          'text': 'Mémoire historique',
+        },
+        {
+          'id': 'modern-incomplete',
+          'text': 'Mémoire moderne incomplète',
+          'semanticIdentity': {
+            'schemaVersion': 1,
+            'domain': 'planning',
+          },
+        },
+      ]).memories;
+
+      expect(
+        memories[0].semanticIdentityRead.status,
+        MemorySemanticIdentityReadStatus.absentLegacy,
+      );
+      expect(
+        memories[1].semanticIdentityRead.status,
+        MemorySemanticIdentityReadStatus.invalidModern,
+      );
+      expect(memories[1].semanticIdentityRead.identity, isNull);
     });
 
     test('projects missing fields without inventing evidence', () {

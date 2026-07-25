@@ -8,6 +8,7 @@ import 'package:moms_ai/models/life_context/memory_context.dart';
 import 'package:moms_ai/services/memory_consumption_policy.dart';
 import 'package:moms_ai/models/memory_lifecycle.dart';
 import 'package:moms_ai/models/memory_lifecycle_state.dart';
+import 'package:moms_ai/models/memory_semantic_identity.dart';
 import 'package:moms_ai/models/user_profile.dart';
 import 'package:moms_ai/services/chat_backend_client.dart';
 import 'package:moms_ai/services/conversation_answer_classifier.dart';
@@ -451,6 +452,9 @@ final class _MemoryContext extends _FakeContext
   Future<MemoryConfirmationRequest?> proposeUserMemory(
     String message, {
     String? resolvedSubjectEntityId,
+    MemorySemanticSubjectScope? semanticSubjectScope,
+    MemorySemanticContextType? semanticContextType,
+    String? semanticContextEntityId,
   }) async {
     return const MemoryConfirmationRequest(
       action: MemoryLifecycleAction.confirm,

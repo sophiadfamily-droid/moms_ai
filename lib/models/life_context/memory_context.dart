@@ -2,6 +2,7 @@ import 'dart:collection';
 
 import 'life_context_provenance.dart';
 import '../memory_lifecycle_state.dart';
+import '../memory_semantic_identity.dart';
 
 enum LifeMemorySemanticType {
   fact,
@@ -57,6 +58,7 @@ final class LifeMemoryFact {
   final DateTime? lastConfirmedAt;
   final String? structuredDomain;
   final String? structuredReferenceId;
+  final MemorySemanticIdentityReadResult semanticIdentityRead;
   final Map<String, Object?> _legacyData;
 
   LifeMemoryFact({
@@ -86,6 +88,7 @@ final class LifeMemoryFact {
     this.lastConfirmedAt,
     this.structuredDomain,
     this.structuredReferenceId,
+    this.semanticIdentityRead = MemorySemanticIdentityReadResult.absent,
     Map<String, Object?> legacyData = const {},
   }) : _legacyData = _freezeMap(legacyData);
 
@@ -120,6 +123,9 @@ final class LifeMemoryFact {
         if (structuredDomain != null) 'structuredDomain': structuredDomain,
         if (structuredReferenceId != null)
           'structuredReferenceId': structuredReferenceId,
+        'semanticIdentityStatus': semanticIdentityRead.status.name,
+        if (semanticIdentityRead.identity != null)
+          'semanticIdentity': semanticIdentityRead.identity!.toJson(),
         if (_legacyData.isNotEmpty) 'legacyData': _copyMap(_legacyData),
       };
 

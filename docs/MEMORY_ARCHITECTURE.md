@@ -77,6 +77,47 @@ supersede, delete, or rewrite an earlier memory; contradiction identity and
 replacement remain a separate future phase. Evidence diagnostics contain
 closed reason codes only, never the message text.
 
+## Semantic identity V1
+
+Every newly created proposal receives a `MemorySemanticIdentity` independently
+from its lifecycle and evidence qualification. The identity contains a closed
+domain and attribute, a subject scope, an optional stable subject identifier,
+an optional closed context type plus opaque entity fingerprint, a schema
+version, and a deterministic `canonicalKey`. The remembered value remains
+separate as `semanticValue`.
+
+The key format is
+`v1|domain|attribute|subject_scope|subject_fingerprint|context_type|context_fingerprint`.
+It contains neither the remembered value, the original sentence, nor a raw
+person, household, residence, or context identifier. Exact UTF-8 identifiers
+are fingerprinted as SHA-256 over
+`zelia-memory-subject-v1|scope|identifier` (or the corresponding
+`zelia-memory-context-v1` namespace), without lower-casing or punctuation
+rewrites. Thus distinct opaque identifiers remain distinct, while morning and
+afternoon appointment preferences share an identity and retain different
+values.
+
+First-person evidence maps to `authenticated_user`; a previously resolved
+entity contributes only its fingerprint. Structured entity, household, and
+residence scopes require a non-empty stable identifier; otherwise they become
+unknown. No primary household or residence is inferred. Unknown subjects
+receive a deterministic fingerprint derived from the already stable proposal
+identifier and
+`eligibleForAutomaticContradiction=false`, so two unresolved people cannot be
+treated as identical. Generic fallback attributes also remain ineligible; only
+a closed, coherent domain/attribute/context combination can be eligible.
+Context types are closed and optional context entity identifiers are
+fingerprinted, so free text never enters the key.
+
+Modern identities are read fail-closed: schema version, enums, field types,
+fingerprints, component coherence, recalculated key, and recalculated
+eligibility must all agree. The reader distinguishes a valid identity, an
+absent legacy identity, and an invalid modern identity. Absence remains
+backward-compatible; an incomplete or forged modern identity is never
+rehabilitated. Phase 3 only writes and validates this additive identity
+metadata. It does not detect contradictions, replace memories, or perform
+supersession.
+
 All transitions retain existing memories and pending proposals, approve
 nothing implicitly, change no Routine or other domain, and perform no
 retroactive ingestion after a pause. The minimal profile settings are stored

@@ -4,6 +4,7 @@ import 'package:moms_ai/models/user_profile.dart';
 import 'package:moms_ai/models/memory_lifecycle.dart';
 import 'package:moms_ai/models/memory_policy.dart';
 import 'package:moms_ai/models/memory_evidence.dart';
+import 'package:moms_ai/models/memory_semantic_identity.dart';
 import 'package:moms_ai/models/life_context/life_context_domains.dart';
 import 'package:moms_ai/models/life_context/life_context_graph.dart';
 import 'package:moms_ai/models/life_context/life_context_projection.dart';
@@ -142,6 +143,11 @@ void main() {
     );
     expect(repository.proposals.single.evidenceClassification,
         MemoryEvidenceClassification.directExplicit);
+    expect(repository.proposals.single.semanticIdentity?.domain,
+        MemorySemanticDomain.planning);
+    expect(repository.proposals.single.semanticIdentity?.attribute,
+        MemorySemanticAttribute.preferredAppointmentPeriod);
+    expect(repository.proposals.single.semanticValue, 'morning');
   });
 
   test('automatic accepte une contrainte négative claire et durable', () async {
@@ -245,6 +251,7 @@ void main() {
     expect(repository.proposals.single.isCorrection, isTrue);
     expect(repository.proposals.single.evidenceClassification,
         MemoryEvidenceClassification.correction);
+    expect(repository.proposals.single.semanticValue, 'afternoon');
     expect(repository.applied, hasLength(2));
   });
 
@@ -329,6 +336,34 @@ void main() {
     expect(repository.proposals.single.evidenceSubjectType,
         MemoryEvidenceSubjectType.structuredEntity);
     expect(repository.applied, hasLength(2));
+  });
+
+  test('un foyer explicite conserve son scope sans foyer par défaut', () async {
+    final repository = _FakeLifecycleRepository();
+    final provider = DefaultConversationContextProvider(
+      memoryLifecycleRepository: repository,
+      loadMemoryPolicy: () async => _policyWith(
+        MemoryGeneralMode.automatic,
+      ),
+    );
+
+    await provider.proposeUserMemory(
+      'Souviens-toi que ce foyer préfère les rendez-vous le matin',
+      resolvedSubjectEntityId: 'household-b',
+      semanticSubjectScope: MemorySemanticSubjectScope.household,
+      semanticContextType: MemorySemanticContextType.household,
+      semanticContextEntityId: 'calendar-shared',
+    );
+
+    expect(repository.proposals, hasLength(1));
+    expect(repository.proposals.single.semanticIdentity?.subjectScope,
+        MemorySemanticSubjectScope.household);
+    expect(repository.proposals.single.semanticIdentity?.subjectFingerprint,
+        isNot(contains('household-b')));
+    expect(repository.proposals.single.semanticIdentity?.contextType,
+        MemorySemanticContextType.household);
+    expect(repository.proposals.single.semanticIdentity?.contextFingerprint,
+        isNot(contains('calendar-shared')));
   });
 
   test('automatic général ne mémorise pas la santé désactivée', () async {

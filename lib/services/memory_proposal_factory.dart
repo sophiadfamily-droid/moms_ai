@@ -1,15 +1,21 @@
 import '../models/life_context/life_context_provenance.dart';
 import '../models/memory_lifecycle.dart';
 import '../models/memory_evidence.dart';
+import '../models/memory_semantic_identity.dart';
 import 'life_context/life_context_memory_projection.dart';
+import 'memory_semantic_identity_service.dart';
 
 final class MemoryProposalFactory {
   final LifeContextMemoryProjection _projection;
+  final MemorySemanticIdentityService _identityService;
 
   const MemoryProposalFactory({
     LifeContextMemoryProjection projection =
         const HistoricalMemoryContextProjection(),
-  }) : _projection = projection;
+    MemorySemanticIdentityService identityService =
+        const MemorySemanticIdentityService(),
+  })  : _projection = projection,
+        _identityService = identityService;
 
   MemoryProposal? fromHistoricalPayload({
     required String id,
@@ -18,6 +24,10 @@ final class MemoryProposalFactory {
     required DateTime proposedAt,
     bool confirmationRequired = true,
     MemoryEvidenceQualification? evidenceQualification,
+    MemorySemanticSubjectScope? semanticSubjectScope,
+    String? semanticSubjectEntityId,
+    MemorySemanticContextType? semanticContextType,
+    String? semanticContextEntityId,
   }) {
     if (id.trim().isEmpty) return null;
     final text = payload['text']?.toString() ?? '';
@@ -41,6 +51,16 @@ final class MemoryProposalFactory {
     if (fact.text.trim().isEmpty || fact.normalizedText.trim().isEmpty) {
       return null;
     }
+    final semantic = _identityService.resolve(
+      proposalId: id,
+      text: fact.text,
+      semanticType: fact.semanticType,
+      evidence: evidenceQualification,
+      explicitSubjectScope: semanticSubjectScope,
+      explicitSubjectEntityId: semanticSubjectEntityId,
+      contextType: semanticContextType,
+      contextEntityId: semanticContextEntityId,
+    );
     return MemoryProposal(
       id: id,
       text: fact.text,
@@ -64,6 +84,8 @@ final class MemoryProposalFactory {
       subjectEntityId: evidenceQualification?.subjectEntityId,
       evidenceRisks: evidenceQualification?.risks.toList() ?? const [],
       isCorrection: evidenceQualification?.isCorrection ?? false,
+      semanticIdentity: semantic.identity,
+      semanticValue: semantic.value,
       confidence: fact.confidence,
     );
   }

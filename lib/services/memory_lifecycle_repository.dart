@@ -221,6 +221,13 @@ final class MemoryLifecycleFirestoreSerializer {
         'isCorrection': proposal.isCorrection,
         if (proposal.subjectEntityId != null)
           'subjectEntityId': proposal.subjectEntityId,
+        if (proposal.semanticIdentity != null) ...{
+          'semanticIdentity': proposal.semanticIdentity!.toJson(),
+          'canonicalKey': proposal.semanticIdentity!.canonicalKey,
+          'semanticValue': proposal.semanticValue,
+          'eligibleForAutomaticContradiction':
+              proposal.semanticIdentity!.eligibleForAutomaticContradiction,
+        },
         'lastMutationId': mutation.record.idempotencyKey,
         'tombstone': false,
         if (proposal.validFrom != null) 'validFrom': proposal.validFrom,
