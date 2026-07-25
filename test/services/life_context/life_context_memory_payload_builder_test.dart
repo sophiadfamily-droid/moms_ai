@@ -5,6 +5,7 @@ import 'package:moms_ai/services/life_context/life_context_memory_projection.dar
 void main() {
   const projection = HistoricalMemoryContextProjection();
   const builder = LifeContextMemoryPayloadBuilder();
+  final referenceDate = DateTime.utc(2026, 7, 20);
 
   test('selects relevant memories and respects the limit', () {
     final context = projection.project([
@@ -13,18 +14,21 @@ void main() {
         'text': 'Je travaille au bureau le lundi',
         'category': 'work',
         'importance': 2,
+        'source': 'user',
       },
       {
         'id': 'food',
         'text': 'Je préfère les pâtes',
         'category': 'preferences',
         'importance': 3,
+        'source': 'user',
       },
     ]);
 
     final payload = builder.build(
       context: context,
       message: 'Comment organiser mon travail au bureau ?',
+      referenceDate: referenceDate,
       limit: 1,
     );
 
@@ -35,20 +39,37 @@ void main() {
   test('excludes sensitive memories unless their domain is requested', () {
     final context = projection.project([
       {
+        'schemaVersion': 1,
+        'id': 'confirmed-sensitive',
+        'memoryId': 'confirmed-sensitive',
+        'accountScopeId': 'account-a',
         'text': 'Mon enfant est allergique aux arachides',
+        'normalizedText': 'mon enfant est allergique aux arachides',
         'category': 'children',
+        'semanticType': 'fact',
+        'provenance': 'memory',
         'importance': 3,
+        'source': 'user',
+        'confirmationStatus': 'confirmed',
+        'lifecycleState': 'active',
+        'evidenceType': 'explicit',
+        'confirmedAt': referenceDate.subtract(const Duration(days: 1)),
       },
     ]);
 
     expect(
-      builder.build(context: context, message: 'Organise ma journée'),
+      builder.build(
+        context: context,
+        message: 'Organise ma journée',
+        referenceDate: referenceDate,
+      ),
       isEmpty,
     );
     expect(
       builder.build(
         context: context,
         message: 'Quelle allergie concerne mon enfant ?',
+        referenceDate: referenceDate,
       ),
       hasLength(1),
     );
@@ -61,7 +82,7 @@ void main() {
         'text': 'Routine du lundi',
         'category': 'routine',
         'importance': 3,
-        'source': 'chat',
+        'source': 'user',
         'createdAt': '2026-07-01T08:00:00.000Z',
       },
     ]);
@@ -69,6 +90,7 @@ void main() {
     final payload = builder.build(
       context: context,
       message: 'Planifie un créneau lundi',
+      referenceDate: referenceDate,
     );
 
     expect(payload.single.keys, {
@@ -86,6 +108,53 @@ void main() {
       builder.build(
         context: projection.project(const []),
         message: 'Bonjour',
+        referenceDate: referenceDate,
+      ),
+      isEmpty,
+    );
+  });
+
+  test('does not send an expired memory to chat', () {
+    final context = projection.project([
+      {
+        'id': 'expired',
+        'text': 'Je travaille au bureau le lundi',
+        'category': 'work',
+        'source': 'user',
+        'expiresAt': referenceDate,
+      },
+    ]);
+
+    expect(
+      builder.build(
+        context: context,
+        message: 'Comment organiser mon travail au bureau ?',
+        referenceDate: referenceDate,
+      ),
+      isEmpty,
+    );
+  });
+
+  test('does not send an ambiguous source chat memory to chat', () {
+    final createdAt = DateTime.utc(2026, 7, 1, 8);
+    final context = projection.project([
+      {
+        'id': 'legacy-chat',
+        'text': 'Je préfère travailler le matin',
+        'normalizedText': 'je préfère travailler le matin',
+        'category': 'preferences',
+        'importance': 2,
+        'createdAt': createdAt,
+        'updatedAt': createdAt,
+        'source': 'chat',
+      },
+    ]);
+
+    expect(
+      builder.build(
+        context: context,
+        message: 'Quand est-ce que je préfère travailler ?',
+        referenceDate: referenceDate,
       ),
       isEmpty,
     );
@@ -97,18 +166,21 @@ void main() {
         'id': 'proposal',
         'text': 'Routine proposée lundi',
         'category': 'routine',
+        'source': 'user',
         'lifecycleState': 'proposed',
       },
       {
         'id': 'historical',
         'text': 'Routine historique lundi',
         'category': 'routine',
+        'source': 'user',
       },
     ]);
 
     final result = const LifeContextMemoryPayloadBuilder().select(
       context: context,
       message: 'Planifie lundi selon ma routine',
+      referenceDate: referenceDate,
     );
 
     expect(result.memories.map((memory) => memory.id), ['historical']);

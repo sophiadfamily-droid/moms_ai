@@ -25,6 +25,7 @@ void main() {
           'id': 'memory-b',
           'text': 'Préférence B',
           'category': 'preference',
+          'source': 'user',
           'lifecycleState': 'active',
           'confirmationStatus': 'confirmed',
           'unknownLegacyField': 'préservé dans le lecteur legacy',
@@ -33,7 +34,18 @@ void main() {
           'id': 'memory-a',
           'text': 'Préférence A',
           'category': 'preference',
+          'source': 'user',
           'lifecycleState': 'proposed',
+        },
+        {
+          'id': 'memory-chat-quarantined',
+          'text': 'Préférence historique ambiguë',
+          'normalizedText': 'préférence historique ambiguë',
+          'category': 'preference',
+          'importance': 2,
+          'createdAt': now.subtract(const Duration(days: 30)),
+          'updatedAt': now.subtract(const Duration(days: 30)),
+          'source': 'chat',
         },
       ],
       loadPolicy: (scope) async => MemoryPolicy(
@@ -52,10 +64,10 @@ void main() {
     );
 
     expect(section.domain, LifeContextDomain.memory);
-    expect(section.memories.map((item) => item.id), ['memory-a', 'memory-b']);
+    expect(section.memories.map((item) => item.id), ['memory-b']);
     expect(section.policyGeneralMode, 'paused');
     expect(section.metadata.syncStatus, 'paused');
-    expect(section.metadata.itemCount, 2);
+    expect(section.metadata.itemCount, 1);
   });
 
   test('scope incorrect et corruption restent explicites', () async {

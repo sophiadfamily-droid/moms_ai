@@ -5,6 +5,7 @@ import 'package:moms_ai/models/conversation_models.dart';
 import 'package:moms_ai/models/event_model.dart';
 import 'package:moms_ai/models/life_context/life_context_provenance.dart';
 import 'package:moms_ai/models/life_context/memory_context.dart';
+import 'package:moms_ai/services/memory_consumption_policy.dart';
 import 'package:moms_ai/models/memory_lifecycle.dart';
 import 'package:moms_ai/models/memory_lifecycle_state.dart';
 import 'package:moms_ai/models/user_profile.dart';
@@ -108,7 +109,10 @@ void main() {
         isTrue,
       );
       expect(
-        MemoryContext(memories: [repository.memory]).consumableMemories,
+        MemoryConsumptionPolicy.consumable(
+          MemoryContext(memories: [repository.memory]).memories,
+          referenceDate: now,
+        ),
         hasLength(1),
       );
       expect(coordinator.state.pendingAction, isNull);
@@ -128,7 +132,10 @@ void main() {
       expect(repository.memory.lifecycleState, MemoryLifecycleState.rejected);
       expect(repository.applied, hasLength(1));
       expect(
-        MemoryContext(memories: [repository.memory]).consumableMemories,
+        MemoryConsumptionPolicy.consumable(
+          MemoryContext(memories: [repository.memory]).memories,
+          referenceDate: now,
+        ),
         isEmpty,
       );
     });
@@ -316,6 +323,8 @@ LifeMemoryFact _memory({
     evidenceType: LifeContextEvidenceType.explicit,
     lifecycleState: state,
     lifecycleStateIsExplicit: true,
+    schemaVersion: 1,
+    consumptionTrust: MemoryConsumptionTrust.modernValid,
     validUntil: validUntil,
   );
 }
@@ -380,6 +389,10 @@ LifeMemoryFact _copyWithState(
     updatedAt: memory.updatedAt,
     validFrom: memory.validFrom,
     validUntil: memory.validUntil,
+    schemaVersion: memory.schemaVersion,
+    consumptionTrust: memory.consumptionTrust,
+    hasInvalidExpiration: memory.hasInvalidExpiration,
+    hasRestrictedSecret: memory.hasRestrictedSecret,
     confirmationStatus: state == MemoryLifecycleState.active
         ? MemoryConfirmationStatus.confirmed
         : memory.confirmationStatus,

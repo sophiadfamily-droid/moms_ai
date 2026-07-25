@@ -134,11 +134,10 @@ engine.
 
 ## Historical compatibility
 
-All lifecycle fields are optional. Legacy `text`, `normalizedText`, `category`,
-`importance`, `createdAt`, `updatedAt`, and `source` remain unchanged and
-readable. Unknown historical fields remain in immutable legacy metadata.
-Existing routines therefore retain their creation anchors and planning
-behavior.
+Legacy `text`, `normalizedText`, `category`, `importance`, `createdAt`,
+`updatedAt`, and `source` remain unchanged and readable. Unknown historical
+fields remain in immutable legacy metadata. Lifecycle, confirmation, evidence
+and sensitivity markers are validated as a closed coherent set when present.
 
 `MemoryContext` schema v1 adapts historical records without rewriting them. It
 keeps stable identifiers, lifecycle, confirmation, dates, provenance,
@@ -146,6 +145,20 @@ sensitivity, explicit health classification, and optional structured-domain
 references. Missing dates remain absent; ambiguous legacy provenance remains
 unconfirmed; unknown fields stay in the legacy reader metadata. No old key or
 record is deleted.
+
+The old `MemoryService.saveMemory` writer persisted `source: "chat"` but no
+field proving whether the text was a direct user statement or an assistant
+inference. Records with this exact provenance are therefore classified
+`legacyQuarantined` at read time. They remain intact in Firestore but are not
+sent to Conversation or Planning and cannot create a `blocked_period`. A
+future explicit confirmation or a controlled provenance migration is required
+before they can be consumed; this compatibility reader performs no migration.
+
+Persisted sensitivity markers take precedence over lexical classification.
+Unknown or contradictory markers fail closed. Credentials, secret codes,
+access tokens, keys and payment-card data are never consumable as
+personalizing memory. Other sensitive legacy records remain quarantined
+because the historical document does not carry sufficient consent evidence.
 
 The LC.1 `MemoryLifeContextAdapter` reads this source through an account-bound
 service and returns a typed section distinguishing available, empty, stale,
@@ -162,10 +175,11 @@ Text is normalized and bounded. Confirmation and minimal provenance remain
 visible to the typed consumer.
 
 Planning excludes the Memory domain. For backward compatibility only,
-historical memories explicitly typed as Routine may still pass through
-`MemoryPlanningCompatibilityService` so existing recurrence anchors and
-blocked periods keep working until their Routine migration. Free preferences,
-facts, habits, or constraints are never interpreted as Planning rules.
+historical memories explicitly typed as Routine and accepted by the central
+consumption policy may pass through `MemoryPlanningCompatibilityService`.
+Quarantined routines, including ambiguous `source: "chat"` records, never
+produce blocked periods. Free preferences, facts, habits, or constraints are
+never interpreted as Planning rules.
 
 `MemoryProjectionBackendSerializer` is the only Memory-to-backend boundary. It
 accepts either the filtered Conversation projection or, during the controlled

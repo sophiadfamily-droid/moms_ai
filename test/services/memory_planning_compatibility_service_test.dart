@@ -12,6 +12,7 @@ void main() {
           'id': 'routine-1',
           'text': 'Tous les lundis de 18h à 19h yoga',
           'category': 'routine',
+          'source': 'user',
           'confirmationStatus': 'confirmed',
           'lifecycleState': 'active',
         },
@@ -19,8 +20,19 @@ void main() {
           'id': 'preference-1',
           'text': 'Je préfère partir tôt',
           'category': 'preference',
+          'source': 'user',
           'confirmationStatus': 'confirmed',
           'lifecycleState': 'active',
+        },
+        {
+          'id': 'routine-chat',
+          'text': 'Tous les mardis de 18h à 19h course',
+          'normalizedText': 'tous les mardis de 18h à 19h course',
+          'category': 'routine',
+          'importance': 2,
+          'createdAt': DateTime.utc(2026, 7, 1),
+          'updatedAt': DateTime.utc(2026, 7, 1),
+          'source': 'chat',
         },
       ],
     );
@@ -34,6 +46,12 @@ void main() {
         (item) => item['source'] == 'Tous les lundis de 18h à 19h yoga',
       ),
       isNotEmpty,
+    );
+    expect(
+      reasoning.where(
+        (item) => item['source'] == 'Tous les mardis de 18h à 19h course',
+      ),
+      isEmpty,
     );
   });
 }

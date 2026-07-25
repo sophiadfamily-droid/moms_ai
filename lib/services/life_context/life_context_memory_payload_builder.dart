@@ -1,5 +1,6 @@
 import '../../models/life_context/life_context_provenance.dart';
 import '../../models/life_context/memory_context.dart';
+import '../memory_consumption_policy.dart';
 import 'memory_projection_backend_serializer.dart';
 
 final class LifeContextMemoryPayloadBuilder {
@@ -8,11 +9,13 @@ final class LifeContextMemoryPayloadBuilder {
   List<Map<String, dynamic>> build({
     required MemoryContext context,
     required String message,
+    required DateTime referenceDate,
     int limit = 12,
   }) {
     final selected = select(
       context: context,
       message: message,
+      referenceDate: referenceDate,
       limit: limit,
     );
     return MemoryProjectionBackendSerializer.serializeLegacySelection(
@@ -23,6 +26,7 @@ final class LifeContextMemoryPayloadBuilder {
   MemoryContext select({
     required MemoryContext context,
     required String message,
+    required DateTime referenceDate,
     int limit = 12,
   }) {
     if (limit <= 0 || context.isEmpty) return MemoryContext.empty;
@@ -40,7 +44,10 @@ final class LifeContextMemoryPayloadBuilder {
     ]);
     final sensitiveDomains = _requestedSensitiveDomains(query);
 
-    final scored = context.consumableMemories.where((memory) {
+    final scored = MemoryConsumptionPolicy.consumable(
+      context.memories,
+      referenceDate: referenceDate,
+    ).where((memory) {
       if (memory.text.trim().isEmpty) return false;
       if (memory.sensitivity == LifeContextSensitivity.sensitive &&
           !_isSensitiveMemoryRequested(memory, sensitiveDomains)) {

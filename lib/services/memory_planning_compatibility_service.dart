@@ -27,11 +27,15 @@ final class MemoryPlanningCompatibilityService {
     );
     final planningMemory = LifeContextMemorySerializer.selectForPlanning(
       snapshot.memory,
+      referenceDate: snapshot.generatedAt,
     );
 
     return [
       ...ProfileReasoningService.buildReasoningFromSnapshot(snapshot),
-      ...MemoryReasoningService.buildReasoningFromContext(planningMemory),
+      ...MemoryReasoningService.buildReasoningFromContext(
+        planningMemory,
+        referenceDate: snapshot.generatedAt,
+      ),
     ];
   }
 }

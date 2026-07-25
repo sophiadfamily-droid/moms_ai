@@ -23,6 +23,13 @@ enum MemoryConfirmationStatus {
   obsolete,
 }
 
+enum MemoryConsumptionTrust {
+  legacyTrusted,
+  modernValid,
+  legacyQuarantined,
+  invalidModern,
+}
+
 final class LifeMemoryFact {
   final String id;
   final String text;
@@ -36,6 +43,10 @@ final class LifeMemoryFact {
   final DateTime? updatedAt;
   final DateTime? validFrom;
   final DateTime? validUntil;
+  final int schemaVersion;
+  final MemoryConsumptionTrust consumptionTrust;
+  final bool hasInvalidExpiration;
+  final bool hasRestrictedSecret;
   final MemoryConfirmationStatus confirmationStatus;
   final MemoryLifecycleState lifecycleState;
   final bool lifecycleStateIsExplicit;
@@ -64,6 +75,10 @@ final class LifeMemoryFact {
     this.updatedAt,
     this.validFrom,
     this.validUntil,
+    this.schemaVersion = 0,
+    this.consumptionTrust = MemoryConsumptionTrust.legacyQuarantined,
+    this.hasInvalidExpiration = false,
+    this.hasRestrictedSecret = false,
     this.confidence,
     this.lifecycleState = MemoryLifecycleState.proposed,
     this.lifecycleStateIsExplicit = false,
@@ -89,6 +104,10 @@ final class LifeMemoryFact {
         'updatedAt': updatedAt?.toIso8601String(),
         'validFrom': validFrom?.toIso8601String(),
         'validUntil': validUntil?.toIso8601String(),
+        'schemaVersion': schemaVersion,
+        'consumptionTrust': consumptionTrust.name,
+        'hasInvalidExpiration': hasInvalidExpiration,
+        'hasRestrictedSecret': hasRestrictedSecret,
         'confirmationStatus': confirmationStatus.name,
         'lifecycleState': lifecycleState.name,
         'lifecycleStateIsExplicit': lifecycleStateIsExplicit,
@@ -155,11 +174,6 @@ final class MemoryContext {
   }
 
   bool get isEmpty => memories.isEmpty;
-
-  Iterable<LifeMemoryFact> get consumableMemories => memories.where((memory) {
-        return !memory.lifecycleStateIsExplicit ||
-            memory.lifecycleState == MemoryLifecycleState.active;
-      });
 
   Map<String, dynamic> toJson() => {
         'schemaVersion': schemaVersion,

@@ -7,6 +7,7 @@ import '../../models/user_profile.dart';
 import '../../models/memory_policy.dart';
 import '../../models/memory_sync.dart';
 import '../memory_sync_local_repository.dart';
+import '../memory_consumption_policy.dart';
 import 'life_context_adapter.dart';
 import 'life_context_memory_projection.dart';
 
@@ -706,7 +707,10 @@ final class MemoryLifeContextAdapter implements LifeContextDomainAdapter {
         raw.where((item) => item['tombstone'] != true),
       );
       final syncState = await _loadSyncState?.call(request.accountScopeId);
-      final memories = context.memories
+      final memories = MemoryConsumptionPolicy.consumable(
+        context.memories,
+        referenceDate: request.readAt,
+      )
           .map(
             (memory) => MemoryContextItem(
               id: memory.id,

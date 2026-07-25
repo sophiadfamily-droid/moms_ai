@@ -4,6 +4,37 @@ import 'package:moms_ai/services/memory_reasoning_service.dart';
 import 'package:moms_ai/services/recurring_memory_schedule_service.dart';
 import 'package:moms_ai/services/smart_planning_service.dart';
 
+final _memoryReferenceDate = DateTime.utc(2026, 7, 20, 12);
+
+List<Map<String, dynamic>> _memoryReasoning(
+  List<Map<String, dynamic>> memories,
+) =>
+    MemoryReasoningService.buildReasoning(
+      memories
+          .map(
+            (memory) => {
+              'schemaVersion': 1,
+              'id': 'trusted-routine',
+              'memoryId': 'trusted-routine',
+              'accountScopeId': 'account-a',
+              'text': '',
+              'category': 'routine',
+              'semanticType': 'routine',
+              'provenance': 'memory',
+              'source': 'user',
+              'confirmationStatus': 'confirmed',
+              'lifecycleState': 'active',
+              'evidenceType': 'explicit',
+              'confirmedAt': _memoryReferenceDate,
+              ...memory,
+              'normalizedText':
+                  memory['text']?.toString().trim().toLowerCase() ?? '',
+            },
+          )
+          .toList(),
+      referenceDate: _memoryReferenceDate,
+    );
+
 void main() {
   group('RecurringMemoryScheduleService biweekly', () {
     test('extracts one Wednesday out of two', () {
@@ -80,7 +111,7 @@ void main() {
 
   group('MemoryReasoningService biweekly', () {
     test('uses memory createdAt as anchor source', () {
-      final reasoning = MemoryReasoningService.buildReasoning(
+      final reasoning = _memoryReasoning(
         [
           {
             'text': 'Un mercredi sur deux de 18h30 à 20h.',
@@ -99,7 +130,7 @@ void main() {
     });
 
     test('supports createdAtIso', () {
-      final reasoning = MemoryReasoningService.buildReasoning(
+      final reasoning = _memoryReasoning(
         [
           {
             'text': 'Un mercredi sur deux de 18h30 à 20h.',
@@ -116,7 +147,7 @@ void main() {
     });
 
     test('blocks only alternating weeks', () {
-      final reasoning = MemoryReasoningService.buildReasoning(
+      final reasoning = _memoryReasoning(
         [
           {
             'text': 'Un mercredi sur deux de 18h30 à 20h.',

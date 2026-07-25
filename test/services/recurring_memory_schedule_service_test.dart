@@ -4,9 +4,40 @@ import 'package:moms_ai/services/memory_reasoning_service.dart';
 import 'package:moms_ai/services/recurring_memory_schedule_service.dart';
 import 'package:moms_ai/services/smart_planning_service.dart';
 
+final _memoryReferenceDate = DateTime.utc(2026, 7, 20, 12);
+
+List<Map<String, dynamic>> _memoryReasoning(
+  List<Map<String, dynamic>> memories,
+) =>
+    MemoryReasoningService.buildReasoning(
+      memories
+          .map(
+            (memory) => {
+              'schemaVersion': 1,
+              'id': 'trusted-routine',
+              'memoryId': 'trusted-routine',
+              'accountScopeId': 'account-a',
+              'text': '',
+              'category': 'routine',
+              'semanticType': 'routine',
+              'provenance': 'memory',
+              'source': 'user',
+              'confirmationStatus': 'confirmed',
+              'lifecycleState': 'active',
+              'evidenceType': 'explicit',
+              'confirmedAt': _memoryReferenceDate,
+              ...memory,
+              'normalizedText':
+                  memory['text']?.toString().trim().toLowerCase() ?? '',
+            },
+          )
+          .toList(),
+      referenceDate: _memoryReferenceDate,
+    );
+
 void main() {
   test('explicit lifecycle proposals do not block planning', () {
-    final reasoning = MemoryReasoningService.buildReasoning([
+    final reasoning = _memoryReasoning([
       {
         'id': 'proposal-routine',
         'text': 'Tous les lundis de 09h à 10h',
@@ -14,6 +45,46 @@ void main() {
         'lifecycleState': 'proposed',
       },
     ]);
+
+    expect(
+      reasoning.where((item) => item['type'] == 'blocked_period'),
+      isEmpty,
+    );
+  });
+
+  test('expired routines do not block planning', () {
+    final reasoning = _memoryReasoning([
+      {
+        'id': 'expired-routine',
+        'text': 'Tous les lundis de 09h à 10h',
+        'category': 'routine',
+        'expiresAt': _memoryReferenceDate,
+      },
+    ]);
+
+    expect(
+      reasoning.where((item) => item['type'] == 'blocked_period'),
+      isEmpty,
+    );
+  });
+
+  test('ambiguous source chat routines do not block planning', () {
+    final createdAt = DateTime.utc(2026, 7, 1, 8);
+    final reasoning = MemoryReasoningService.buildReasoning(
+      [
+        {
+          'id': 'legacy-chat-routine',
+          'text': 'Tous les lundis de 09h à 10h',
+          'normalizedText': 'tous les lundis de 09h à 10h',
+          'category': 'routine',
+          'importance': 2,
+          'createdAt': createdAt,
+          'updatedAt': createdAt,
+          'source': 'chat',
+        },
+      ],
+      referenceDate: _memoryReferenceDate,
+    );
 
     expect(
       reasoning.where((item) => item['type'] == 'blocked_period'),
@@ -169,7 +240,7 @@ void main() {
 
   group('MemoryReasoningService weekdays blocked periods', () {
     test('creates a weekdays blocked period from memory', () {
-      final reasoning = MemoryReasoningService.buildReasoning(
+      final reasoning = _memoryReasoning(
         const [
           {
             'text': 'Tous les jours ouvrés de 9h à 10h.',
@@ -192,7 +263,7 @@ void main() {
     });
 
     test('blocks weekdays but leaves weekends available', () {
-      final reasoning = MemoryReasoningService.buildReasoning(
+      final reasoning = _memoryReasoning(
         const [
           {
             'text': 'Tous les jours ouvrés de 9h à 10h.',
@@ -223,7 +294,7 @@ void main() {
 
   group('MemoryReasoningService recurring blocked periods', () {
     test('keeps routine reasoning and adds a blocked period', () {
-      final reasoning = MemoryReasoningService.buildReasoning(
+      final reasoning = _memoryReasoning(
         const [
           {
             'text': 'Tous les mercredis de 18h30 à 20h, activité familiale.',
@@ -247,7 +318,7 @@ void main() {
     });
 
     test('blocks only the recurring weekday in planning', () {
-      final reasoning = MemoryReasoningService.buildReasoning(
+      final reasoning = _memoryReasoning(
         const [
           {
             'text': 'Tous les mercredis de 18h30 à 20h, activité familiale.',
@@ -276,7 +347,7 @@ void main() {
     });
 
     test('does not create a blocked period without a complete range', () {
-      final reasoning = MemoryReasoningService.buildReasoning(
+      final reasoning = _memoryReasoning(
         const [
           {
             'text': 'Tous les mercredis à 18h30, activité familiale.',
@@ -296,7 +367,7 @@ void main() {
       );
     });
     test('blocks outbound travel before a recurring routine', () {
-      final reasoning = MemoryReasoningService.buildReasoning(
+      final reasoning = _memoryReasoning(
         const [
           {
             'text':
@@ -317,7 +388,7 @@ void main() {
     });
 
     test('blocks return travel after a recurring routine', () {
-      final reasoning = MemoryReasoningService.buildReasoning(
+      final reasoning = _memoryReasoning(
         const [
           {
             'text':

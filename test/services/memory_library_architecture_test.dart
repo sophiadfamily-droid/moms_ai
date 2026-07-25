@@ -48,10 +48,19 @@ void main() {
 
   test('Conversation et Planning ne reçoivent ni tombstone ni mémoire libre',
       () {
-    final context = read('lib/models/life_context/memory_context.dart');
+    final policy = read('lib/services/memory_consumption_policy.dart');
+    final adapter =
+        read('lib/services/life_context/life_context_domain_adapters.dart');
+    final serializer =
+        read('lib/services/life_context/life_context_memory_serializer.dart');
     final projection =
         read('lib/services/life_context/life_context_projection_engine.dart');
-    expect(context, contains('MemoryLifecycleState.active'));
+    expect(policy, contains('MemoryLifecycleState.active'));
+    expect(policy, contains('MemoryConsumptionTrust.modernValid'));
+    expect(policy, isNot(contains('AppDiagnostics')));
+    expect(policy, isNot(contains('print(')));
+    expect(adapter, contains('MemoryConsumptionPolicy.consumable'));
+    expect(serializer, contains('MemoryConsumptionPolicy.consumable'));
     expect(projection, contains('LifeContextConsumerPurpose.planning'));
     expect(projection, contains('LifeContextDomain.memory'));
   });
