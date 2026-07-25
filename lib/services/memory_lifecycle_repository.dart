@@ -214,6 +214,13 @@ final class MemoryLifecycleFirestoreSerializer {
         'confirmationStatus': 'unconfirmed',
         'lifecycleState': mutation.newState.name,
         'lifecycleStatus': mutation.newState.name,
+        'evidenceClassification': proposal.evidenceClassification.name,
+        'evidenceSubjectType': proposal.evidenceSubjectType.name,
+        'evidenceRisks':
+            proposal.evidenceRisks.map((risk) => risk.name).toList(),
+        'isCorrection': proposal.isCorrection,
+        if (proposal.subjectEntityId != null)
+          'subjectEntityId': proposal.subjectEntityId,
         'lastMutationId': mutation.record.idempotencyKey,
         'tombstone': false,
         if (proposal.validFrom != null) 'validFrom': proposal.validFrom,

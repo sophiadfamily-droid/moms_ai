@@ -5,6 +5,7 @@ import 'package:moms_ai/models/life_context/life_context_provenance.dart';
 import 'package:moms_ai/models/life_context/memory_context.dart';
 import 'package:moms_ai/models/memory_lifecycle.dart';
 import 'package:moms_ai/models/memory_lifecycle_state.dart';
+import 'package:moms_ai/models/memory_evidence.dart';
 import 'package:moms_ai/services/memory_lifecycle_engine.dart';
 import 'package:moms_ai/services/memory_lifecycle_repository.dart';
 import 'package:moms_ai/services/memory_proposal_factory.dart';
@@ -503,7 +504,14 @@ void main() {
     });
 
     test('Firestore proposal serialization is additive and compatible', () {
-      final proposal = _proposal(id: 'persisted');
+      final proposal = _proposal(
+        id: 'persisted',
+        evidenceClassification: MemoryEvidenceClassification.correction,
+        evidenceSubjectType: MemoryEvidenceSubjectType.structuredEntity,
+        subjectEntityId: 'person-42',
+        evidenceRisks: const {MemoryEvidenceRisk.negation},
+        isCorrection: true,
+      );
       final decision = engine.evaluateProposal(
         proposal: proposal,
         existingMemories: const [],
@@ -521,6 +529,11 @@ void main() {
       expect(json['confirmationStatus'], 'unconfirmed');
       expect(json['lifecycleState'], 'proposed');
       expect(json['lifecycleHistory'], isA<List>());
+      expect(json['evidenceClassification'], 'correction');
+      expect(json['evidenceSubjectType'], 'structuredEntity');
+      expect(json['subjectEntityId'], 'person-42');
+      expect(json['evidenceRisks'], ['negation']);
+      expect(json['isCorrection'], isTrue);
     });
 
     test('Firestore consolidates confirmation and activation atomically', () {
@@ -591,6 +604,13 @@ MemoryProposal _proposal({
   bool confirmationRequired = true,
   DateTime? validFrom,
   DateTime? validUntil,
+  MemoryEvidenceClassification evidenceClassification =
+      MemoryEvidenceClassification.unknown,
+  MemoryEvidenceSubjectType evidenceSubjectType =
+      MemoryEvidenceSubjectType.unknown,
+  String? subjectEntityId,
+  Set<MemoryEvidenceRisk> evidenceRisks = const {},
+  bool isCorrection = false,
 }) {
   return MemoryProposal(
     id: id,
@@ -605,6 +625,11 @@ MemoryProposal _proposal({
     confirmationRequired: confirmationRequired,
     validFrom: validFrom,
     validUntil: validUntil,
+    evidenceClassification: evidenceClassification,
+    evidenceSubjectType: evidenceSubjectType,
+    subjectEntityId: subjectEntityId,
+    evidenceRisks: evidenceRisks.toList(),
+    isCorrection: isCorrection,
   );
 }
 

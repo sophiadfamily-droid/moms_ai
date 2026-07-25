@@ -2,6 +2,7 @@ import 'dart:collection';
 
 import 'life_context/life_context_provenance.dart';
 import 'life_context/memory_context.dart';
+import 'memory_evidence.dart';
 import 'memory_lifecycle_state.dart';
 
 enum MemoryLifecycleDecisionType {
@@ -94,6 +95,11 @@ final class MemoryProposal {
   final DateTime? validUntil;
   final DateTime? expiresAt;
   final String? evidence;
+  final MemoryEvidenceClassification evidenceClassification;
+  final MemoryEvidenceSubjectType evidenceSubjectType;
+  final String? subjectEntityId;
+  final List<MemoryEvidenceRisk> evidenceRisks;
+  final bool isCorrection;
   final double? confidence;
 
   const MemoryProposal({
@@ -112,6 +118,11 @@ final class MemoryProposal {
     this.validUntil,
     this.expiresAt,
     this.evidence,
+    this.evidenceClassification = MemoryEvidenceClassification.unknown,
+    this.evidenceSubjectType = MemoryEvidenceSubjectType.unknown,
+    this.subjectEntityId,
+    this.evidenceRisks = const [],
+    this.isCorrection = false,
     this.confidence,
   });
 

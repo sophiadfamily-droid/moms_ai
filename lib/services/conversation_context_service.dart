@@ -9,6 +9,7 @@ import '../models/life_context/memory_context.dart';
 import '../models/memory_lifecycle.dart';
 import '../models/memory_lifecycle_state.dart';
 import '../models/memory_policy.dart';
+import '../models/memory_evidence.dart';
 import '../models/user_profile.dart';
 import 'auth_service.dart';
 import 'app_diagnostics.dart';
@@ -24,6 +25,7 @@ import 'action_autonomy_policy_service.dart';
 import 'memory_policy_engine.dart';
 import 'memory_policy_service.dart';
 import 'memory_proposal_factory.dart';
+import 'memory_evidence_classifier.dart';
 import 'conversation_context_assembler.dart';
 
 typedef ConversationMemoryPolicyLoader = Future<MemoryPolicy> Function();
@@ -47,7 +49,10 @@ abstract class ConversationContextProvider {
 abstract interface class MemoryConversationContextProvider {
   MemoryLifecycleRepository get memoryLifecycleRepository;
 
-  Future<MemoryConfirmationRequest?> proposeUserMemory(String message);
+  Future<MemoryConfirmationRequest?> proposeUserMemory(
+    String message, {
+    String? resolvedSubjectEntityId,
+  });
 
   Future<MemoryConfirmationRequest?> proposeResponseMemory(dynamic memory);
 }
@@ -60,6 +65,7 @@ class DefaultConversationContextProvider
   final MemoryProposalFactory _memoryProposalFactory;
   final MemoryLifecycleRepository? _memoryLifecycleRepository;
   final MemoryPolicyEngine _memoryPolicyEngine;
+  final MemoryEvidenceClassifier _memoryEvidenceClassifier;
   final ConversationMemoryPolicyLoader? _loadMemoryPolicy;
 
   const DefaultConversationContextProvider({
@@ -72,6 +78,8 @@ class DefaultConversationContextProvider
     MemoryProposalFactory memoryProposalFactory = const MemoryProposalFactory(),
     MemoryLifecycleRepository? memoryLifecycleRepository,
     MemoryPolicyEngine memoryPolicyEngine = const MemoryPolicyEngine(),
+    MemoryEvidenceClassifier memoryEvidenceClassifier =
+        const MemoryEvidenceClassifier(),
     ConversationMemoryPolicyLoader? loadMemoryPolicy,
   })  : _loadProjection = loadProjection,
         _loadAccountScope = loadAccountScope,
@@ -79,6 +87,7 @@ class DefaultConversationContextProvider
         _memoryProposalFactory = memoryProposalFactory,
         _memoryLifecycleRepository = memoryLifecycleRepository,
         _memoryPolicyEngine = memoryPolicyEngine,
+        _memoryEvidenceClassifier = memoryEvidenceClassifier,
         _loadMemoryPolicy = loadMemoryPolicy;
 
   @override
@@ -181,18 +190,31 @@ class DefaultConversationContextProvider
   }
 
   @override
-  Future<MemoryConfirmationRequest?> proposeUserMemory(String message) async {
+  Future<MemoryConfirmationRequest?> proposeUserMemory(
+    String message, {
+    String? resolvedSubjectEntityId,
+  }) async {
     if (!MemoryPipelineService.shouldProcessMemory(message)) return null;
-    final memory = MemoryPipelineService.buildMemory(message);
+    final evidenceQualification = _memoryEvidenceClassifier.classify(
+      message,
+      resolvedSubjectEntityId: resolvedSubjectEntityId,
+    );
+    final statement =
+        evidenceQualification.statementForMemory?.trim().isNotEmpty == true
+            ? evidenceQualification.statementForMemory!
+            : message;
+    final memory = MemoryPipelineService.buildMemory(statement);
     final payload = MemoryPipelineService.buildSavePayload(
       memory,
-      fallbackText: message,
+      fallbackText: statement,
     );
     return _proposeMemory({
       'text': payload.text,
       'category': payload.category,
       'importance': payload.importance,
-    }, source: 'explicit_user_message');
+    },
+        source: 'explicit_user_message',
+        evidenceQualification: evidenceQualification);
   }
 
   @override
@@ -214,12 +236,15 @@ class DefaultConversationContextProvider
       'text': payload.text,
       'category': payload.category,
       'importance': payload.importance,
-    }, source: 'assistant_memory_candidate');
+    },
+        source: 'assistant_memory_candidate',
+        evidenceQualification: _memoryEvidenceClassifier.assistantCandidate());
   }
 
   Future<MemoryConfirmationRequest?> _proposeMemory(
     Map<String, dynamic> payload, {
     required String source,
+    required MemoryEvidenceQualification evidenceQualification,
   }) async {
     try {
       final repository = memoryLifecycleRepository;
@@ -232,6 +257,7 @@ class DefaultConversationContextProvider
         source: source,
         proposedAt: proposedAt,
         confirmationRequired: true,
+        evidenceQualification: evidenceQualification,
       );
       if (proposal == null) return null;
       final existing = await repository.findCandidates(proposal);
@@ -245,7 +271,9 @@ class DefaultConversationContextProvider
               ? MemoryProposalSensitivity.sensitive
               : MemoryProposalSensitivity.ordinary,
           isExplicitHealth: isHealth,
-          hasExplicitUserEvidence: source == 'explicit_user_message',
+          hasExplicitUserEvidence:
+              evidenceQualification.canConfirmImmediately &&
+                  evidenceQualification.hasAttributableSubject,
           isDuplicate: existing.any(
             (item) =>
                 item.semanticType == proposal.semanticType &&

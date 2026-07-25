@@ -448,7 +448,10 @@ final class _MemoryContext extends _FakeContext
   }
 
   @override
-  Future<MemoryConfirmationRequest?> proposeUserMemory(String message) async {
+  Future<MemoryConfirmationRequest?> proposeUserMemory(
+    String message, {
+    String? resolvedSubjectEntityId,
+  }) async {
     return const MemoryConfirmationRequest(
       action: MemoryLifecycleAction.confirm,
       proposalId: 'proposal-1',

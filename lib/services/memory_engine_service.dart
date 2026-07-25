@@ -18,6 +18,7 @@ class MemoryEngineService {
 
     if (_hasExplicitMemoryTrigger(lower)) return 3;
     if (_hasRoutineTrigger(lower) && _hasPersonalAnchor(lower)) return 3;
+    if (_hasConstraintTrigger(lower) && _hasPersonalAnchor(lower)) return 3;
     if (_hasFamilyAnchor(lower) && _hasStableFact(lower)) return 3;
     if (_hasWorkAnchor(lower) && _hasStableFact(lower)) return 2;
     if (_hasPreferenceTrigger(lower)) return 2;
@@ -222,6 +223,10 @@ class MemoryEngineService {
       return "routine";
     }
 
+    if (_hasConstraintTrigger(lower)) {
+      return "constraint";
+    }
+
     if (_hasPreferenceTrigger(lower)) {
       return "preferences";
     }
@@ -301,6 +306,16 @@ class MemoryEngineService {
       "habituellement",
       "régulièrement",
       "regulierement",
+    ]);
+  }
+
+  static bool _hasConstraintTrigger(String lower) {
+    return _containsAny(lower, [
+      "je ne peux jamais",
+      "je ne suis jamais disponible",
+      "je ne peux pas tous les",
+      "je ne peux pas le ",
+      "je suis indisponible tous les",
     ]);
   }
 

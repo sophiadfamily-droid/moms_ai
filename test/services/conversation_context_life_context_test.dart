@@ -3,6 +3,7 @@ import 'package:moms_ai/models/life_context/memory_context.dart';
 import 'package:moms_ai/models/user_profile.dart';
 import 'package:moms_ai/models/memory_lifecycle.dart';
 import 'package:moms_ai/models/memory_policy.dart';
+import 'package:moms_ai/models/memory_evidence.dart';
 import 'package:moms_ai/models/life_context/life_context_domains.dart';
 import 'package:moms_ai/models/life_context/life_context_graph.dart';
 import 'package:moms_ai/models/life_context/life_context_projection.dart';
@@ -139,6 +140,195 @@ void main() {
       repository.applied.map((mutation) => mutation.newState.name),
       ['confirmed', 'active'],
     );
+    expect(repository.proposals.single.evidenceClassification,
+        MemoryEvidenceClassification.directExplicit);
+  });
+
+  test('automatic accepte une contrainte négative claire et durable', () async {
+    final repository = _FakeLifecycleRepository();
+    final provider = DefaultConversationContextProvider(
+      memoryLifecycleRepository: repository,
+      loadMemoryPolicy: () async => _policyWith(
+        MemoryGeneralMode.automatic,
+      ),
+    );
+
+    await provider.proposeUserMemory(
+      'Je ne suis jamais disponible le mardi après 18 h',
+    );
+
+    expect(repository.proposals, hasLength(1));
+    expect(repository.proposals.single.category, 'constraint');
+    expect(repository.proposals.single.evidenceRisks,
+        contains(MemoryEvidenceRisk.negation));
+    expect(repository.applied, hasLength(2));
+  });
+
+  test('automatic garde une préférence ambiguë comme proposition', () async {
+    final repository = _FakeLifecycleRepository();
+    final provider = DefaultConversationContextProvider(
+      memoryLifecycleRepository: repository,
+      loadMemoryPolicy: () async => _policyWith(
+        MemoryGeneralMode.automatic,
+      ),
+    );
+
+    final request = await provider.proposeUserMemory(
+      'Je crois que je préfère les rendez-vous le matin',
+    );
+
+    expect(request, isNotNull);
+    expect(repository.proposals, hasLength(1));
+    expect(repository.proposals.single.evidenceClassification,
+        MemoryEvidenceClassification.ambiguous);
+    expect(repository.applied, isEmpty);
+  });
+
+  for (final message in const [
+    'Il est possible que je préfère les rendez-vous le matin',
+    'Je ne crois pas que je préfère les rendez-vous le matin',
+  ]) {
+    test('automatic garde proposed: $message', () async {
+      final repository = _FakeLifecycleRepository();
+      final provider = DefaultConversationContextProvider(
+        memoryLifecycleRepository: repository,
+        loadMemoryPolicy: () async => _policyWith(
+          MemoryGeneralMode.automatic,
+        ),
+      );
+
+      final request = await provider.proposeUserMemory(message);
+
+      expect(request, isNotNull);
+      expect(repository.proposals, hasLength(1));
+      expect(repository.proposals.single.evidenceClassification,
+          isNot(MemoryEvidenceClassification.directExplicit));
+      expect(repository.applied, isEmpty);
+    });
+  }
+
+  test('automatic ne confirme jamais un candidat assistant', () async {
+    final repository = _FakeLifecycleRepository();
+    final provider = DefaultConversationContextProvider(
+      memoryLifecycleRepository: repository,
+      loadMemoryPolicy: () async => _policyWith(
+        MemoryGeneralMode.automatic,
+      ),
+    );
+
+    await provider.proposeResponseMemory({
+      'text': 'Souviens-toi que je préfère les rendez-vous le matin',
+      'category': 'preference',
+      'importance': 3,
+    });
+
+    expect(repository.proposals, hasLength(1));
+    expect(repository.proposals.single.evidenceClassification,
+        MemoryEvidenceClassification.unknown);
+    expect(repository.applied, isEmpty);
+  });
+
+  test('une correction est marquée sans supersession automatique', () async {
+    final repository = _FakeLifecycleRepository();
+    final provider = DefaultConversationContextProvider(
+      memoryLifecycleRepository: repository,
+      loadMemoryPolicy: () async => _policyWith(
+        MemoryGeneralMode.automatic,
+      ),
+    );
+
+    await provider.proposeUserMemory(
+      'Finalement, je préfère les rendez-vous l’après-midi',
+    );
+
+    expect(repository.proposals, hasLength(1));
+    expect(repository.proposals.single.isCorrection, isTrue);
+    expect(repository.proposals.single.evidenceClassification,
+        MemoryEvidenceClassification.correction);
+    expect(repository.applied, hasLength(2));
+  });
+
+  test('une correction composée ne persiste que la valeur actuelle', () async {
+    final repository = _FakeLifecycleRepository();
+    final provider = DefaultConversationContextProvider(
+      memoryLifecycleRepository: repository,
+      loadMemoryPolicy: () async => _policyWith(
+        MemoryGeneralMode.automatic,
+      ),
+    );
+
+    await provider.proposeUserMemory(
+      'Avant je préférais le matin, mais maintenant je préfère l’après-midi',
+    );
+
+    expect(repository.proposals, hasLength(1));
+    expect(repository.proposals.single.text, 'je préfère l’après-midi');
+    expect(repository.proposals.single.isCorrection, isTrue);
+    expect(repository.proposals.single.evidenceClassification,
+        MemoryEvidenceClassification.correction);
+    expect(repository.applied, hasLength(2));
+  });
+
+  test('une correction composée ambiguë reste proposed', () async {
+    final repository = _FakeLifecycleRepository();
+    final provider = DefaultConversationContextProvider(
+      memoryLifecycleRepository: repository,
+      loadMemoryPolicy: () async => _policyWith(
+        MemoryGeneralMode.automatic,
+      ),
+    );
+
+    final request = await provider.proposeUserMemory(
+      'Avant je préférais le matin, mais maintenant je crois que je préfère '
+      'l’après-midi',
+    );
+
+    expect(request, isNotNull);
+    expect(repository.proposals.single.text,
+        'je crois que je préfère l’après-midi');
+    expect(repository.proposals.single.isCorrection, isTrue);
+    expect(repository.proposals.single.evidenceClassification,
+        MemoryEvidenceClassification.ambiguous);
+    expect(repository.applied, isEmpty);
+  });
+
+  test('un tiers non résolu reste proposé même en mode automatique', () async {
+    final repository = _FakeLifecycleRepository();
+    final provider = DefaultConversationContextProvider(
+      memoryLifecycleRepository: repository,
+      loadMemoryPolicy: () async => _policyWith(
+        MemoryGeneralMode.automatic,
+      ),
+    );
+
+    final request = await provider.proposeUserMemory(
+      'Souviens-toi que ma sœur préfère les rendez-vous le matin',
+    );
+
+    expect(request, isNotNull);
+    expect(repository.proposals.single.evidenceSubjectType,
+        MemoryEvidenceSubjectType.unresolvedThirdParty);
+    expect(repository.applied, isEmpty);
+  });
+
+  test('une entité structurée résolue peut être attribuée', () async {
+    final repository = _FakeLifecycleRepository();
+    final provider = DefaultConversationContextProvider(
+      memoryLifecycleRepository: repository,
+      loadMemoryPolicy: () async => _policyWith(
+        MemoryGeneralMode.automatic,
+      ),
+    );
+
+    await provider.proposeUserMemory(
+      'Souviens-toi que ma sœur préfère les rendez-vous le matin',
+      resolvedSubjectEntityId: 'person-42',
+    );
+
+    expect(repository.proposals.single.subjectEntityId, 'person-42');
+    expect(repository.proposals.single.evidenceSubjectType,
+        MemoryEvidenceSubjectType.structuredEntity);
+    expect(repository.applied, hasLength(2));
   });
 
   test('automatic général ne mémorise pas la santé désactivée', () async {

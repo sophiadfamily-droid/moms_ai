@@ -50,6 +50,33 @@ contradiction, sensitive/highly-sensitive rejection, health-consent rejection,
 pause, or invalid proposal. It neither parses free conversation nor reads,
 writes, or calls a model.
 
+Before this policy is evaluated, `MemoryEvidenceClassifier` deterministically
+qualifies the current user message. Provenance and evidence are deliberately
+separate: `source: explicit_user_message` only records where a candidate came
+from and is never sufficient evidence for automatic confirmation. The closed
+qualification records a primary classification, minimal subject attribution,
+risk codes, and whether immediate confirmation is allowed. Only a direct,
+declarative, present or durable statement with an attributable subject and no
+ambiguity, hypothesis, conditional, quotation, unresolved third party,
+question, past-only state, or temporary-only state may enter the policy's
+explicit-evidence path. Assistant candidates always remain proposed.
+
+Qualification is fail-closed. The deterministic order is: quotation, unresolved
+third party or question; bounded correction and its current clause; hypothesis,
+conditional or uncertainty; temporary state; past-only state; negated positive
+claim; explicit durable negative constraint; positively recognized direct
+statement; then `unknown`. First-person grammar alone never proves a direct
+statement, and the policy receives explicit evidence only when this classifier
+allows immediate confirmation.
+
+Clear corrections such as “finalement” or “en fait” carry `isCorrection` and
+the `correction` evidence classification. For bounded past-to-present forms,
+only the current clause is proposed as the new memory. An uncertain current
+clause retains `isCorrection` but remains proposed. This metadata does not
+supersede, delete, or rewrite an earlier memory; contradiction identity and
+replacement remain a separate future phase. Evidence diagnostics contain
+closed reason codes only, never the message text.
+
 All transitions retain existing memories and pending proposals, approve
 nothing implicitly, change no Routine or other domain, and perform no
 retroactive ingestion after a pause. The minimal profile settings are stored

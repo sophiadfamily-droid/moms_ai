@@ -1,5 +1,6 @@
 import '../models/life_context/life_context_provenance.dart';
 import '../models/memory_lifecycle.dart';
+import '../models/memory_evidence.dart';
 import 'life_context/life_context_memory_projection.dart';
 
 final class MemoryProposalFactory {
@@ -16,6 +17,7 @@ final class MemoryProposalFactory {
     required String source,
     required DateTime proposedAt,
     bool confirmationRequired = true,
+    MemoryEvidenceQualification? evidenceQualification,
   }) {
     if (id.trim().isEmpty) return null;
     final text = payload['text']?.toString() ?? '';
@@ -54,6 +56,14 @@ final class MemoryProposalFactory {
       validFrom: fact.validFrom,
       validUntil: fact.validUntil,
       expiresAt: fact.validUntil,
+      evidence: evidenceQualification?.classification.name,
+      evidenceClassification: evidenceQualification?.classification ??
+          MemoryEvidenceClassification.unknown,
+      evidenceSubjectType: evidenceQualification?.subjectType ??
+          MemoryEvidenceSubjectType.unknown,
+      subjectEntityId: evidenceQualification?.subjectEntityId,
+      evidenceRisks: evidenceQualification?.risks.toList() ?? const [],
+      isCorrection: evidenceQualification?.isCorrection ?? false,
       confidence: fact.confidence,
     );
   }
