@@ -83,6 +83,11 @@ final class HistoricalMemoryContextProjection
       structuredReferenceId: _nullableText(snapshot['structuredReferenceId']),
       semanticIdentityRead:
           MemorySemanticIdentity.read(snapshot['semanticIdentity']),
+      memoryRevision: snapshot['memoryRevision'] is int
+          ? snapshot['memoryRevision'] as int
+          : null,
+      semanticValue: _nullableText(snapshot['semanticValue']),
+      accountScopeId: _nullableText(snapshot['accountScopeId']),
       legacyData: _unknownFields(snapshot),
     );
   }

@@ -6,6 +6,30 @@ This document describes the implemented Memory Lifecycle Engine V1 and the
 consent-aware M.1 policy. The Firestore collection remains
 `users/{uid}/memories`; no migration or new collection is required.
 
+## Phase 4A contradiction detection
+
+Potential replacement detection is read-only for the existing memory. It
+requires a valid modern semantic identity, an exact `canonicalKey`, matching
+subject and context, supported revisions, direct or explicitly corrective
+user evidence, and a deterministic closed-attribute value comparator. The
+only automatic comparator currently supported is
+`preferred_appointment_period` with the structured values `morning`,
+`afternoon`, and `evening`. Other attributes fail closed.
+
+The Firestore repository performs a bounded single-field `canonicalKey` query
+inside the authenticated `users/{uid}/memories` collection and applies
+lifecycle and trust checks locally. This requires no new composite index. A
+future server-side lifecycle filter would require a composite index on
+`canonicalKey` and `lifecycleState`; it is intentionally neither configured
+nor deployed in Phase 4A.
+
+Detection creates the new `proposed` document and a separately addressable,
+deterministically identified pending replacement action in one transaction.
+That transaction reads and writes only these two new workflow documents; it
+never reads for update or changes the existing memory. Replacement execution
+and any atomic transaction involving the existing memory remain deferred to
+Phase 4B.
+
 ## Ownership
 
 Memory owns durable preferences, declared habits, goals, constraints,

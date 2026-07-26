@@ -195,6 +195,7 @@ final class ConversationSessionController extends ChangeNotifier {
   int _requestSequence = 0;
   int _retryCount = 0;
   String? _lastSubmittedText;
+  String? _lastLogicalRequestId;
   ConversationClarificationLedger _clarificationLedger =
       const ConversationClarificationLedger();
 
@@ -228,7 +229,7 @@ final class ConversationSessionController extends ChangeNotifier {
     if (_disposed || text.isEmpty || _state.isBusy) return;
     _lastSubmittedText = text;
     _retryCount = 0;
-    _appendMessage(ConversationMessageRole.user, text);
+    _lastLogicalRequestId = _appendMessage(ConversationMessageRole.user, text);
     await _runRequest(text, addUserMessage: false);
   }
 
@@ -268,6 +269,7 @@ final class ConversationSessionController extends ChangeNotifier {
               message: text,
               profile: _profile,
               sessionGeneration: generation,
+              logicalRequestId: _lastLogicalRequestId,
             ),
             executeAction: (action) => _executeAction(action, text, generation),
           );
@@ -397,14 +399,15 @@ final class ConversationSessionController extends ChangeNotifier {
       ),
     );
     _lastSubmittedText = null;
+    _lastLogicalRequestId = null;
     _retryCount = 0;
     _clarificationLedger = ConversationClarificationLedger(
       sessionGeneration: generation,
     );
   }
 
-  void _appendMessage(ConversationMessageRole role, String text) {
-    if (_disposed || text.trim().isEmpty) return;
+  String? _appendMessage(ConversationMessageRole role, String text) {
+    if (_disposed || text.trim().isEmpty) return null;
     final message = ConversationVisibleMessage(
       id: _idGenerator(),
       role: role,
@@ -421,6 +424,7 @@ final class ConversationSessionController extends ChangeNotifier {
         .save(sessionId: _state.sessionId, role: role, text: message.text)
         .ignore();
     _emit(ConversationUiEffectType.scrollToLatest);
+    return message.id;
   }
 
   void _emit(ConversationUiEffectType type, {String? message}) {

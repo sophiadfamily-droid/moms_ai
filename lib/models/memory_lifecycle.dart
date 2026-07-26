@@ -3,6 +3,7 @@ import 'dart:collection';
 import 'life_context/life_context_provenance.dart';
 import 'life_context/memory_context.dart';
 import 'memory_evidence.dart';
+import 'memory_contradiction.dart';
 import 'memory_lifecycle_state.dart';
 import 'memory_semantic_identity.dart';
 
@@ -171,6 +172,8 @@ final class MemoryConfirmationRequest {
   final String changeType;
   final LifeContextSensitivity sensitivity;
   final String consequence;
+  final MemoryContradictionCandidate? contradictionCandidate;
+  final MemoryReplacementPendingAction? replacementPendingAction;
 
   const MemoryConfirmationRequest({
     required this.action,
@@ -182,6 +185,8 @@ final class MemoryConfirmationRequest {
     this.memoryId,
     this.previousValue,
     this.newValue,
+    this.contradictionCandidate,
+    this.replacementPendingAction,
   });
 }
 
@@ -193,6 +198,8 @@ final class MemoryLifecycleDecision {
   final List<MemoryLifecycleMutation> mutations;
   final MemoryConfirmationRequest? confirmationRequest;
   final MemoryProposal? proposal;
+  final MemoryContradictionCandidate? contradictionCandidate;
+  final MemoryContradictionMatch? contradictionMatch;
 
   MemoryLifecycleDecision({
     required this.type,
@@ -202,6 +209,8 @@ final class MemoryLifecycleDecision {
     List<MemoryLifecycleMutation> mutations = const [],
     this.confirmationRequest,
     this.proposal,
+    this.contradictionCandidate,
+    this.contradictionMatch,
   })  : memoryIds = List.unmodifiable(memoryIds),
         reasons = List.unmodifiable(reasons),
         risks = List.unmodifiable(risks),

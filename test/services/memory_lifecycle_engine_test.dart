@@ -89,8 +89,7 @@ void main() {
       expect(result.type, MemoryLifecycleDecisionType.createProposal);
     });
 
-    test('a potential contradiction remains separate and asks confirmation',
-        () {
+    test('unstructured different text remains a normal proposal', () {
       final result = engine.evaluateProposal(
         proposal: _proposal(
           id: 'thursday',
@@ -105,13 +104,11 @@ void main() {
         referenceDate: now,
       );
 
-      expect(
-        result.type,
-        MemoryLifecycleDecisionType.needsUserConfirmation,
-      );
-      expect(result.memoryIds, ['wednesday', 'thursday']);
-      expect(result.hasMutations, isFalse);
-      expect(result.risks, contains(MemoryLifecycleSignal.possibleConflict));
+      expect(result.type, MemoryLifecycleDecisionType.createProposal);
+      expect(result.memoryIds, ['thursday']);
+      expect(result.mutations.single.newState, MemoryLifecycleState.proposed);
+      expect(result.risks,
+          isNot(contains(MemoryLifecycleSignal.possibleConflict)));
     });
 
     test('profile precedence prevents a silent memory replacement', () {

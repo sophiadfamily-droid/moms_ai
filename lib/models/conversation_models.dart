@@ -9,6 +9,7 @@ import 'event_model.dart';
 import 'event_mutation_models.dart';
 import 'event_participant.dart';
 import 'memory_lifecycle_state.dart';
+import 'memory_contradiction.dart';
 import 'action_autonomy_policy.dart';
 import 'action_confirmation.dart';
 import 'user_profile.dart';
@@ -24,11 +25,13 @@ class ConversationInput {
   final String message;
   final UserProfile profile;
   final int sessionGeneration;
+  final String? logicalRequestId;
 
   const ConversationInput({
     required this.message,
     required this.profile,
     this.sessionGeneration = 0,
+    this.logicalRequestId,
   });
 }
 
@@ -535,6 +538,8 @@ class PendingConversationAction {
   final ActionPending? autonomyPending;
   final ActionConfirmation? canonicalConfirmation;
   final ActionPendingMetadata autonomyMetadata;
+  final MemoryContradictionCandidate? memoryContradiction;
+  final MemoryReplacementPendingAction? memoryReplacementAction;
 
   const PendingConversationAction.eventConfirmation(
     EventModel this._event, {
@@ -557,12 +562,16 @@ class PendingConversationAction {
         identityCreation = null,
         eventTargetClarification = null,
         eventMutationConfirmation = null,
-        autonomyPending = null;
+        autonomyPending = null,
+        memoryContradiction = null,
+        memoryReplacementAction = null;
 
   const PendingConversationAction.memoryConfirmation({
     required this.proposalId,
     required this.createdAt,
     required this.expectedMemoryAction,
+    this.memoryContradiction,
+    this.memoryReplacementAction,
     this.canonicalConfirmation,
     this.autonomyMetadata = const ActionPendingMetadata(
       actionType: ActionType.confirmMemory,
@@ -603,7 +612,9 @@ class PendingConversationAction {
         identityCreation = null,
         eventTargetClarification = null,
         eventMutationConfirmation = null,
-        autonomyPending = null;
+        autonomyPending = null,
+        memoryContradiction = null,
+        memoryReplacementAction = null;
 
   const PendingConversationAction.identityCreation(
     PendingIdentityCreation this.identityCreation, {
@@ -626,7 +637,9 @@ class PendingConversationAction {
         identityClarification = null,
         eventTargetClarification = null,
         eventMutationConfirmation = null,
-        autonomyPending = null;
+        autonomyPending = null,
+        memoryContradiction = null,
+        memoryReplacementAction = null;
 
   const PendingConversationAction.eventTargetClarification(
     PendingEventTargetClarification this.eventTargetClarification, {
@@ -649,7 +662,9 @@ class PendingConversationAction {
         identityClarification = null,
         identityCreation = null,
         eventMutationConfirmation = null,
-        autonomyPending = null;
+        autonomyPending = null,
+        memoryContradiction = null,
+        memoryReplacementAction = null;
 
   const PendingConversationAction.eventMutationConfirmation(
     PendingEventMutationConfirmation this.eventMutationConfirmation, {
@@ -672,7 +687,9 @@ class PendingConversationAction {
         identityClarification = null,
         identityCreation = null,
         eventTargetClarification = null,
-        autonomyPending = null;
+        autonomyPending = null,
+        memoryContradiction = null,
+        memoryReplacementAction = null;
 
   PendingConversationAction.autonomyConfirmation(
     ActionPending this.autonomyPending,
@@ -695,7 +712,9 @@ class PendingConversationAction {
         identityClarification = null,
         identityCreation = null,
         eventTargetClarification = null,
-        eventMutationConfirmation = null;
+        eventMutationConfirmation = null,
+        memoryContradiction = null,
+        memoryReplacementAction = null;
 
   EventModel get event => _event!;
 }

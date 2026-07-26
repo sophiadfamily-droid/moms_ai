@@ -4,6 +4,10 @@ final class MemoryConfirmationCopy {
   const MemoryConfirmationCopy();
 
   String proposal(MemoryConfirmationRequest request) {
+    if (request.changeType == 'memoryReplacementConfirmation' &&
+        request.prompt.trim().isNotEmpty) {
+      return request.prompt.trim();
+    }
     final value = request.newValue?.trim() ?? '';
     return value.isEmpty
         ? 'Souhaites-tu que je retienne cette information ?'

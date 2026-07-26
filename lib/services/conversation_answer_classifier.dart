@@ -21,6 +21,7 @@ final class ConversationAnswerClassifier {
       'tu peux la memoriser',
       'oui retiens le',
       'oui retiens la',
+      'oui je confirme',
     };
     if (exact.contains(value)) return true;
     return value.startsWith('oui ') &&
@@ -37,6 +38,8 @@ final class ConversationAnswerClassifier {
       'ne retiens pas cette information',
       'je ne veux pas que tu le memorises',
       'je ne veux pas que tu la memorises',
+      'ne remplace pas',
+      'garde l ancienne information',
     };
     if (exact.contains(value)) return true;
     return value.startsWith('non ') || value.startsWith('ne retiens pas ');

@@ -2,9 +2,16 @@ import '../models/life_context/life_context_provenance.dart';
 import '../models/life_context/memory_context.dart';
 import '../models/memory_lifecycle.dart';
 import '../models/memory_lifecycle_state.dart';
+import '../models/memory_contradiction.dart';
+import 'memory_contradiction_detector.dart';
 
 final class MemoryLifecycleEngine {
-  const MemoryLifecycleEngine();
+  const MemoryLifecycleEngine({
+    MemoryContradictionDetector contradictionDetector =
+        const MemoryContradictionDetector(),
+  }) : _contradictionDetector = contradictionDetector;
+
+  final MemoryContradictionDetector _contradictionDetector;
 
   static const Map<MemoryLifecycleState, Set<MemoryLifecycleState>>
       allowedTransitions = {
@@ -34,6 +41,7 @@ final class MemoryLifecycleEngine {
     required MemoryProposal proposal,
     required Iterable<LifeMemoryFact> existingMemories,
     required DateTime referenceDate,
+    String? accountScopeId,
     String? conflictingProfileField,
   }) {
     if (!_validProposal(proposal)) {
@@ -86,14 +94,32 @@ final class MemoryLifecycleEngine {
       }
     }
 
-    final conflicts = existingMemories.where((existing) {
-      return _canCompete(existing) &&
-          existing.semanticType == proposal.semanticType &&
-          _category(existing.category) == _category(proposal.category) &&
-          existing.normalizedText != proposal.normalizedText;
-    }).toList();
-    if (conflicts.isNotEmpty) {
-      final existing = conflicts.first;
+    final contradictions = accountScopeId == null
+        ? const <MemoryContradictionMatch>[]
+        : existingMemories
+            .map(
+              (existing) => _contradictionDetector.detect(
+                accountScopeId: accountScopeId,
+                proposal: proposal,
+                existing: existing,
+                detectedAt: referenceDate,
+              ),
+            )
+            .whereType<MemoryContradictionMatch>()
+            .toList(growable: false);
+    if (contradictions.length > 1) {
+      return _decision(
+        MemoryLifecycleDecisionType.ambiguous,
+        proposal: proposal,
+        reasons: const ['multiple_memory_contradictions'],
+        risks: const [MemoryLifecycleSignal.possibleConflict],
+      );
+    }
+    if (contradictions.length == 1) {
+      final contradiction = contradictions.single;
+      final existing = existingMemories.firstWhere(
+        (item) => item.id == contradiction.existingMemoryId,
+      );
       return _decision(
         MemoryLifecycleDecisionType.needsUserConfirmation,
         proposal: proposal,
@@ -108,13 +134,30 @@ final class MemoryLifecycleEngine {
           proposalId: proposal.id,
           memoryId: existing.id,
           prompt:
-              'J’avais enregistré « ${existing.text} ». Veux-tu remplacer cette information par « ${proposal.text} » ?',
-          previousValue: existing.text,
-          newValue: proposal.text,
-          changeType: 'possibleReplacement',
+              'Une information déjà mémorisée semble différente de celle que '
+              'tu viens d’indiquer. Veux-tu enregistrer la nouvelle '
+              'information à la place de l’ancienne ?',
+          previousValue: null,
+          newValue: null,
+          changeType: 'memoryReplacementConfirmation',
           sensitivity: proposal.sensitivity,
-          consequence: 'L’ancienne mémoire sera conservée comme remplacée.',
+          consequence:
+              'Le remplacement restera en attente de son exécution sécurisée.',
         ),
+        contradictionMatch: contradiction,
+        mutations: [
+          _mutation(
+            memoryId: proposal.id,
+            action: MemoryLifecycleAction.propose,
+            previousState: null,
+            newState: MemoryLifecycleState.proposed,
+            at: referenceDate,
+            source: proposal.source,
+            actor: MemoryLifecycleActor.assistant,
+            reason: 'memory_replacement_candidate_created',
+            expiresAt: proposal.expiresAt ?? proposal.validUntil,
+          ),
+        ],
       );
     }
 
@@ -495,6 +538,8 @@ final class MemoryLifecycleEngine {
     List<MemoryLifecycleMutation> mutations = const [],
     MemoryConfirmationRequest? confirmationRequest,
     MemoryProposal? proposal,
+    MemoryContradictionCandidate? contradictionCandidate,
+    MemoryContradictionMatch? contradictionMatch,
   }) =>
       MemoryLifecycleDecision(
         type: type,
@@ -504,5 +549,7 @@ final class MemoryLifecycleEngine {
         mutations: mutations,
         confirmationRequest: confirmationRequest,
         proposal: proposal,
+        contradictionCandidate: contradictionCandidate,
+        contradictionMatch: contradictionMatch,
       );
 }

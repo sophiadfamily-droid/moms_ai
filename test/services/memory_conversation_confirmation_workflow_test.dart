@@ -7,6 +7,7 @@ import 'package:moms_ai/models/life_context/life_context_provenance.dart';
 import 'package:moms_ai/models/life_context/memory_context.dart';
 import 'package:moms_ai/services/memory_consumption_policy.dart';
 import 'package:moms_ai/models/memory_lifecycle.dart';
+import 'package:moms_ai/models/memory_contradiction.dart';
 import 'package:moms_ai/models/memory_lifecycle_state.dart';
 import 'package:moms_ai/models/memory_semantic_identity.dart';
 import 'package:moms_ai/models/user_profile.dart';
@@ -30,6 +31,7 @@ void main() {
         'confirme',
         'garde cette information',
         'tu peux la mémoriser',
+        'oui je confirme',
       ]) {
         expect(classifier.classify(answer), ConversationAnswer.positive);
       }
@@ -39,6 +41,9 @@ void main() {
         'oublie',
         'annule',
         'je ne veux pas que tu le mémorises',
+        'non merci',
+        'ne remplace pas',
+        'garde l’ancienne information',
       ]) {
         expect(classifier.classify(answer), ConversationAnswer.negative);
       }
@@ -57,6 +62,128 @@ void main() {
   });
 
   group('memory conversational confirmation', () {
+    test('replacement confirmation remains explicitly non executable',
+        () async {
+      final repository = _FakeRepository(_memory());
+      final coordinator = _coordinator(repository);
+      final fingerprint = 'a' * 64;
+      coordinator.setPendingMemoryConfirmation(
+        MemoryConfirmationRequest(
+          action: MemoryLifecycleAction.replace,
+          proposalId: 'proposal-1',
+          memoryId: 'existing-1',
+          prompt: 'Veux-tu remplacer cette préférence ?',
+          changeType: 'memoryReplacementConfirmation',
+          sensitivity: LifeContextSensitivity.standard,
+          consequence: 'Replacement pending',
+          contradictionCandidate: MemoryContradictionCandidate(
+            contradictionId: 'b' * 64,
+            existingMemoryId: 'existing-1',
+            proposedMemoryId: 'proposal-1',
+            canonicalKey: 'canonical-key',
+            existingRevision: 2,
+            proposedRevision: 1,
+            existingValueFingerprint: fingerprint,
+            proposedValueFingerprint: 'c' * 64,
+            subjectScope: 'authenticated_user',
+            detectedAt: now,
+            reasonCode:
+                MemoryContradictionReasonCode.incompatibleClosedAttributeValues,
+            eligibleForReplacement: true,
+          ),
+          replacementPendingAction: MemoryReplacementPendingAction(
+            actionId: 'd' * 64,
+            accountScopeFingerprint: 'e' * 64,
+            existingMemoryId: 'existing-1',
+            proposedMemoryId: 'proposal-1',
+            canonicalKey: 'v1|planning|preferred_appointment_period|'
+                'authenticated_user|scope|personal_appointments|none',
+            expectedExistingRevision: 2,
+            expectedProposedRevision: 1,
+            contradictionId: 'b' * 64,
+            reasonCode:
+                MemoryContradictionReasonCode.incompatibleClosedAttributeValues,
+            state: MemoryReplacementActionState.pending,
+            logicalRequestFingerprint: 'f' * 64,
+            createdAt: now,
+            updatedAt: now,
+          ),
+        ),
+        createdAt: now,
+      );
+
+      final result = await coordinator.resolvePendingMemoryConfirmation(
+        answer: 'oui',
+        referenceDate: now,
+      );
+
+      expect(result?.diagnosticCode, 'replacementPendingImplementation');
+      expect(repository.applied, isEmpty);
+      expect(coordinator.state.pendingAction, isNotNull);
+      expect(repository.replacementAction?.state,
+          MemoryReplacementActionState.acceptedPendingExecution);
+      expect(repository.applied, isEmpty);
+    });
+
+    test('replacement refusal declines durable action without memory mutation',
+        () async {
+      final repository = _FakeRepository(_memory());
+      final coordinator = _coordinator(repository);
+      coordinator.setPendingMemoryConfirmation(
+        _replacementRequest(now),
+        createdAt: now,
+      );
+
+      final result = await coordinator.resolvePendingMemoryConfirmation(
+        answer: 'garde l’ancienne information',
+        referenceDate: now,
+      );
+
+      expect(result?.diagnosticCode, 'memoryReplacementDeclined');
+      expect(result?.message, contains('rien n’a été remplacé'));
+      expect(repository.replacementAction?.state,
+          MemoryReplacementActionState.declined);
+      expect(repository.applied, isEmpty);
+      expect(coordinator.state.pendingAction, isNull);
+    });
+
+    test('ambiguous replacement answer leaves durable action pending',
+        () async {
+      final repository = _FakeRepository(_memory());
+      final coordinator = _coordinator(repository);
+      coordinator.setPendingMemoryConfirmation(
+        _replacementRequest(now),
+        createdAt: now,
+      );
+
+      final result = await coordinator.resolvePendingMemoryConfirmation(
+        answer: 'plus tard',
+        referenceDate: now,
+      );
+
+      expect(result?.message, contains('oui ou non'));
+      expect(repository.replacementAction, isNull);
+      expect(repository.applied, isEmpty);
+      expect(coordinator.state.pendingAction, isNotNull);
+    });
+
+    test('coordinator reconstruction restores a durable pending action',
+        () async {
+      final repository = _FakeRepository(_memory())
+        ..replacementAction = _replacementRequest(now).replacementPendingAction;
+      final coordinator = _coordinator(repository);
+
+      final restored = await coordinator.restorePendingMemoryReplacement(
+        accountScopeId: 'account-test',
+        logicalRequestId: 'logical-1',
+        restoredAt: now,
+      );
+
+      expect(restored, isTrue);
+      expect(coordinator.state.pendingAction?.memoryReplacementAction?.actionId,
+          'd' * 64);
+    });
+
     test('presents a stable proposal before calling the backend', () async {
       final repository = _FakeRepository(_memory());
       final backend = _FakeBackend();
@@ -282,6 +409,35 @@ void main() {
   });
 }
 
+MemoryConfirmationRequest _replacementRequest(DateTime now) {
+  return MemoryConfirmationRequest(
+    action: MemoryLifecycleAction.replace,
+    proposalId: 'proposal-1',
+    memoryId: 'existing-1',
+    prompt: 'Veux-tu remplacer cette préférence ?',
+    changeType: 'memoryReplacementConfirmation',
+    sensitivity: LifeContextSensitivity.standard,
+    consequence: 'Replacement pending',
+    replacementPendingAction: MemoryReplacementPendingAction(
+      actionId: 'd' * 64,
+      accountScopeFingerprint: 'e' * 64,
+      existingMemoryId: 'existing-1',
+      proposedMemoryId: 'proposal-1',
+      canonicalKey: 'v1|planning|preferred_appointment_period|'
+          'authenticated_user|scope|personal_appointments|none',
+      expectedExistingRevision: 2,
+      expectedProposedRevision: 1,
+      contradictionId: 'b' * 64,
+      reasonCode:
+          MemoryContradictionReasonCode.incompatibleClosedAttributeValues,
+      state: MemoryReplacementActionState.pending,
+      logicalRequestFingerprint: 'f' * 64,
+      createdAt: now,
+      updatedAt: now,
+    ),
+  );
+}
+
 void _setPending(ConversationCoordinator coordinator, DateTime createdAt) {
   coordinator.setPendingMemoryConfirmation(
     const MemoryConfirmationRequest(
@@ -330,10 +486,12 @@ LifeMemoryFact _memory({
   );
 }
 
-final class _FakeRepository implements MemoryLifecycleRepository {
+final class _FakeRepository
+    implements MemoryLifecycleRepository, MemoryReplacementPendingRepository {
   LifeMemoryFact? _memory;
   final bool failWrites;
   final List<MemoryLifecycleMutation> applied = [];
+  MemoryReplacementPendingAction? replacementAction;
 
   _FakeRepository(this._memory, {this.failWrites = false});
 
@@ -370,6 +528,34 @@ final class _FakeRepository implements MemoryLifecycleRepository {
   @override
   Future<LifeMemoryFact?> getById(String memoryId) async {
     return _memory?.id == memoryId ? _memory : null;
+  }
+
+  @override
+  Future<MemoryReplacementPersistenceResult?> persistReplacementProposal({
+    required MemoryProposal proposal,
+    required MemoryLifecycleMutation mutation,
+    required MemoryContradictionMatch match,
+    required String accountScopeId,
+    required String logicalRequestId,
+    required DateTime createdAt,
+  }) async =>
+      null;
+
+  @override
+  Future<MemoryReplacementPendingAction?> findPendingReplacement({
+    required String accountScopeId,
+    required String logicalRequestId,
+  }) async =>
+      replacementAction;
+
+  @override
+  Future<MemoryReplacementPendingAction> updatePendingReplacementState({
+    required MemoryReplacementPendingAction action,
+    required MemoryReplacementActionState state,
+    required DateTime updatedAt,
+  }) async {
+    replacementAction = action.withState(state, updatedAt);
+    return replacementAction!;
   }
 }
 
@@ -451,6 +637,7 @@ final class _MemoryContext extends _FakeContext
   @override
   Future<MemoryConfirmationRequest?> proposeUserMemory(
     String message, {
+    String? logicalRequestId,
     String? resolvedSubjectEntityId,
     MemorySemanticSubjectScope? semanticSubjectScope,
     MemorySemanticContextType? semanticContextType,

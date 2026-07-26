@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:crypto/crypto.dart';
 import '../models/chat_backend_request.dart';
 import '../models/conversation_context_envelope.dart';
 import '../models/event_model.dart';
@@ -7,6 +9,7 @@ import '../models/life_context/life_context_projection.dart';
 import '../models/life_context/life_context_provenance.dart';
 import '../models/life_context/memory_context.dart';
 import '../models/memory_lifecycle.dart';
+import '../models/memory_contradiction.dart';
 import '../models/memory_lifecycle_state.dart';
 import '../models/memory_policy.dart';
 import '../models/memory_evidence.dart';
@@ -52,6 +55,7 @@ abstract interface class MemoryConversationContextProvider {
 
   Future<MemoryConfirmationRequest?> proposeUserMemory(
     String message, {
+    String? logicalRequestId,
     String? resolvedSubjectEntityId,
     MemorySemanticSubjectScope? semanticSubjectScope,
     MemorySemanticContextType? semanticContextType,
@@ -196,6 +200,7 @@ class DefaultConversationContextProvider
   @override
   Future<MemoryConfirmationRequest?> proposeUserMemory(
     String message, {
+    String? logicalRequestId,
     String? resolvedSubjectEntityId,
     MemorySemanticSubjectScope? semanticSubjectScope,
     MemorySemanticContextType? semanticContextType,
@@ -225,7 +230,8 @@ class DefaultConversationContextProvider
         semanticSubjectScope: semanticSubjectScope,
         semanticSubjectEntityId: resolvedSubjectEntityId,
         semanticContextType: semanticContextType,
-        semanticContextEntityId: semanticContextEntityId);
+        semanticContextEntityId: semanticContextEntityId,
+        logicalRequestId: logicalRequestId);
   }
 
   @override
@@ -260,13 +266,16 @@ class DefaultConversationContextProvider
     String? semanticSubjectEntityId,
     MemorySemanticContextType? semanticContextType,
     String? semanticContextEntityId,
+    String? logicalRequestId,
   }) async {
     try {
       final repository = memoryLifecycleRepository;
+      final policy = await _policy();
+      final accountScopeId = policy.accountScopeId;
       final proposalId = await repository.allocateProposalId();
       if (proposalId == null || proposalId.isEmpty) return null;
       final proposedAt = DateTime.now();
-      final proposal = _memoryProposalFactory.fromHistoricalPayload(
+      var proposal = _memoryProposalFactory.fromHistoricalPayload(
         id: proposalId,
         payload: payload,
         source: source,
@@ -279,28 +288,66 @@ class DefaultConversationContextProvider
         semanticContextEntityId: semanticContextEntityId,
       );
       if (proposal == null) return null;
-      final existing = await repository.findCandidates(proposal);
-      final policy = await _policy();
-      final isHealth = _isExplicitHealthCategory(proposal.category);
+      final effectiveLogicalRequestId =
+          logicalRequestId?.trim().isNotEmpty == true
+              ? logicalRequestId!.trim()
+              : proposalId;
+      final identity = proposal.semanticIdentity;
+      if (identity != null &&
+          identity.eligibleForAutomaticContradiction &&
+          proposal.semanticValue?.trim().isNotEmpty == true) {
+        final accountFingerprint = sha256
+            .convert(
+              utf8.encode(
+                'zelia-memory-proposal-account-v1|$accountScopeId',
+              ),
+            )
+            .toString();
+        final stableId = sha256
+            .convert(
+              utf8.encode(
+                'zelia-memory-proposal-v1|$accountFingerprint|'
+                '${sha256.convert(utf8.encode('zelia-memory-logical-request-v1|$effectiveLogicalRequestId'))}',
+              ),
+            )
+            .toString();
+        proposal = _memoryProposalFactory.fromHistoricalPayload(
+          id: stableId,
+          payload: payload,
+          source: source,
+          proposedAt: proposedAt,
+          confirmationRequired: true,
+          evidenceQualification: evidenceQualification,
+          semanticSubjectScope: semanticSubjectScope,
+          semanticSubjectEntityId: semanticSubjectEntityId,
+          semanticContextType: semanticContextType,
+          semanticContextEntityId: semanticContextEntityId,
+        );
+        if (proposal == null) return null;
+      }
+      final effectiveProposal = proposal;
+      final existing = await repository.findCandidates(effectiveProposal);
+      final isHealth = _isExplicitHealthCategory(effectiveProposal.category);
       final policyDecision = _memoryPolicyEngine.evaluate(
         policy: policy,
         input: MemoryPolicyProposal(
-          proposal: proposal,
-          sensitivity: proposal.sensitivity == LifeContextSensitivity.sensitive
-              ? MemoryProposalSensitivity.sensitive
-              : MemoryProposalSensitivity.ordinary,
+          proposal: effectiveProposal,
+          sensitivity:
+              effectiveProposal.sensitivity == LifeContextSensitivity.sensitive
+                  ? MemoryProposalSensitivity.sensitive
+                  : MemoryProposalSensitivity.ordinary,
           isExplicitHealth: isHealth,
           hasExplicitUserEvidence:
               evidenceQualification.canConfirmImmediately &&
                   evidenceQualification.hasAttributableSubject,
           isDuplicate: existing.any(
             (item) =>
-                item.semanticType == proposal.semanticType &&
+                item.semanticType == effectiveProposal.semanticType &&
                 item.category.trim().toLowerCase() ==
-                    proposal.category.trim().toLowerCase() &&
-                item.normalizedText == proposal.normalizedText,
+                    effectiveProposal.category.trim().toLowerCase() &&
+                item.normalizedText == effectiveProposal.normalizedText,
           ),
-          structuredDomain: _structuredOwner(proposal.semanticType),
+          structuredDomain: _structuredOwner(effectiveProposal.semanticType),
         ),
       );
       if (policyDecision.type == MemoryPolicyDecisionType.paused ||
@@ -308,21 +355,58 @@ class DefaultConversationContextProvider
         return null;
       }
       final decision = _memoryLifecycleEngine.evaluateProposal(
-        proposal: proposal,
+        proposal: effectiveProposal,
         existingMemories: existing,
         referenceDate: proposedAt,
+        accountScopeId: accountScopeId,
       );
       if (decision.type ==
           MemoryLifecycleDecisionType.confirmExistingProposal) {
         return decision.confirmationRequest;
       }
-      if (decision.type != MemoryLifecycleDecisionType.createProposal ||
+      if ((decision.type != MemoryLifecycleDecisionType.createProposal &&
+              decision.contradictionMatch == null) ||
           decision.mutations.isEmpty) {
         return null;
       }
-      await repository.createProposal(proposal, decision.mutations.single);
+      final proposalMutation = decision.mutations.single;
+      final contradictionMatch = decision.contradictionMatch;
+      if (contradictionMatch != null) {
+        final replacementRepository = repository;
+        if (replacementRepository is! MemoryReplacementPendingRepository) {
+          return null;
+        }
+        final persisted =
+            await (replacementRepository as MemoryReplacementPendingRepository)
+                .persistReplacementProposal(
+          proposal: effectiveProposal,
+          mutation: proposalMutation,
+          match: contradictionMatch,
+          accountScopeId: accountScopeId,
+          logicalRequestId: effectiveLogicalRequestId,
+          createdAt: proposedAt,
+        );
+        if (persisted == null ||
+            persisted.action.state != MemoryReplacementActionState.pending) {
+          return null;
+        }
+        final request = decision.confirmationRequest;
+        if (request == null) return null;
+        return MemoryConfirmationRequest(
+          action: request.action,
+          proposalId: request.proposalId,
+          memoryId: request.memoryId,
+          prompt: request.prompt,
+          changeType: request.changeType,
+          sensitivity: request.sensitivity,
+          consequence: request.consequence,
+          contradictionCandidate: persisted.candidate,
+          replacementPendingAction: persisted.action,
+        );
+      }
+      await repository.createProposal(effectiveProposal, proposalMutation);
       if (policyDecision.type == MemoryPolicyDecisionType.saveAutomatically) {
-        await _activateAutomatically(repository, proposal, proposedAt);
+        await _activateAutomatically(repository, effectiveProposal, proposedAt);
         return null;
       }
       return decision.confirmationRequest;

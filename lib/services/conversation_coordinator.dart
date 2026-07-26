@@ -9,7 +9,9 @@ import '../core/identity/entity_id_generator.dart';
 import '../core/identity/entity_reference.dart';
 import '../core/identity/entity_types.dart';
 import '../models/life_context/memory_context.dart';
+import '../models/life_context/life_context_provenance.dart';
 import '../models/memory_lifecycle.dart';
+import '../models/memory_contradiction.dart';
 import '../models/memory_lifecycle_state.dart';
 import '../core/identity/uuid_v7_entity_id_generator.dart';
 import 'chat_backend_client.dart';
@@ -396,10 +398,49 @@ class ConversationCoordinator {
         proposalId: proposalId,
         createdAt: createdAt,
         expectedMemoryAction: request.action,
+        memoryContradiction: request.contradictionCandidate,
+        memoryReplacementAction: request.replacementPendingAction,
         canonicalConfirmation: canonical.confirmation,
         autonomyMetadata: _pendingMetadata(ActionType.confirmMemory),
       ),
     );
+  }
+
+  Future<bool> restorePendingMemoryReplacement({
+    required String accountScopeId,
+    required String logicalRequestId,
+    required DateTime restoredAt,
+  }) async {
+    if (_state.pendingAction != null) return false;
+    final repository = _repository;
+    if (repository is! MemoryReplacementPendingRepository) return false;
+    final action = await (repository as MemoryReplacementPendingRepository)
+        .findPendingReplacement(
+      accountScopeId: accountScopeId,
+      logicalRequestId: logicalRequestId,
+    );
+    if (action == null ||
+        action.state == MemoryReplacementActionState.declined ||
+        action.state == MemoryReplacementActionState.cancelled) {
+      return false;
+    }
+    setPendingMemoryConfirmation(
+      MemoryConfirmationRequest(
+        action: MemoryLifecycleAction.replace,
+        proposalId: action.proposedMemoryId,
+        memoryId: action.existingMemoryId,
+        prompt: 'Une information déjà mémorisée semble différente de celle que '
+            'tu viens d’indiquer. Veux-tu enregistrer la nouvelle '
+            'information à la place de l’ancienne ?',
+        changeType: 'memoryReplacementConfirmation',
+        sensitivity: LifeContextSensitivity.standard,
+        consequence:
+            'Aucune mémoire ne sera remplacée avant exécution sécurisée.',
+        replacementPendingAction: action,
+      ),
+      createdAt: restoredAt,
+    );
+    return _state.pendingAction != null;
   }
 
   PendingConversationResolution? beginIdentityClarification({
@@ -1520,6 +1561,42 @@ class ConversationCoordinator {
     if (answerType == ConversationAnswer.ambiguous) {
       return PendingConversationResolution(memoryCopy.clarification);
     }
+    if (pending.expectedMemoryAction == MemoryLifecycleAction.replace) {
+      final durableAction = pending.memoryReplacementAction;
+      final replacementRepository = repository;
+      if (durableAction == null ||
+          replacementRepository is! MemoryReplacementPendingRepository) {
+        _clearPendingAction();
+        return PendingConversationResolution(memoryCopy.unavailable);
+      }
+      if (answerType == ConversationAnswer.negative) {
+        await (replacementRepository as MemoryReplacementPendingRepository)
+            .updatePendingReplacementState(
+          action: durableAction,
+          state: MemoryReplacementActionState.declined,
+          updatedAt: referenceDate,
+        );
+        _clearPendingAction();
+        return const PendingConversationResolution(
+          'D’accord, rien n’a été remplacé.',
+          diagnosticCode: 'memoryReplacementDeclined',
+        );
+      }
+      await (replacementRepository as MemoryReplacementPendingRepository)
+          .updatePendingReplacementState(
+        action: durableAction,
+        state: MemoryReplacementActionState.acceptedPendingExecution,
+        updatedAt: referenceDate,
+      );
+      _state = _state.copyWith(
+        phase: ConversationPhase.awaitingActionConfirmation,
+      );
+      return const PendingConversationResolution(
+        'Le remplacement est bien en attente, mais son exécution sécurisée '
+        'sera disponible dans une prochaine étape.',
+        diagnosticCode: 'replacementPendingImplementation',
+      );
+    }
     if (_isResolvingPendingAction) return null;
     _isResolvingPendingAction = true;
     _state = _state.copyWith(phase: ConversationPhase.executingAction);
@@ -1896,8 +1973,10 @@ class ConversationCoordinator {
       final memoryContext = contextProvider is MemoryConversationContextProvider
           ? contextProvider as MemoryConversationContextProvider
           : null;
-      final userProposal =
-          await memoryContext?.proposeUserMemory(input.message);
+      final userProposal = await memoryContext?.proposeUserMemory(
+        input.message,
+        logicalRequestId: input.logicalRequestId,
+      );
       if (userProposal != null && _state.pendingAction == null) {
         setPendingMemoryConfirmation(
           userProposal,

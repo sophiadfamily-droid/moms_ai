@@ -59,6 +59,9 @@ final class LifeMemoryFact {
   final String? structuredDomain;
   final String? structuredReferenceId;
   final MemorySemanticIdentityReadResult semanticIdentityRead;
+  final int? memoryRevision;
+  final String? semanticValue;
+  final String? accountScopeId;
   final Map<String, Object?> _legacyData;
 
   LifeMemoryFact({
@@ -89,6 +92,9 @@ final class LifeMemoryFact {
     this.structuredDomain,
     this.structuredReferenceId,
     this.semanticIdentityRead = MemorySemanticIdentityReadResult.absent,
+    this.memoryRevision,
+    this.semanticValue,
+    this.accountScopeId,
     Map<String, Object?> legacyData = const {},
   }) : _legacyData = _freezeMap(legacyData);
 
@@ -126,6 +132,7 @@ final class LifeMemoryFact {
         'semanticIdentityStatus': semanticIdentityRead.status.name,
         if (semanticIdentityRead.identity != null)
           'semanticIdentity': semanticIdentityRead.identity!.toJson(),
+        if (memoryRevision != null) 'memoryRevision': memoryRevision,
         if (_legacyData.isNotEmpty) 'legacyData': _copyMap(_legacyData),
       };
 

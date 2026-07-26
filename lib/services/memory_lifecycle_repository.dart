@@ -1,9 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
 
 import '../models/memory_lifecycle.dart';
 import '../models/memory_lifecycle_state.dart';
 import '../models/life_context/memory_context.dart';
 import '../models/life_context/life_context_provenance.dart';
+import '../models/memory_contradiction.dart';
 import 'auth_service.dart';
 import 'life_context/life_context_memory_projection.dart';
 
@@ -43,8 +46,42 @@ abstract interface class MemoryLifecycleRepository {
   Future<void> applyMutations(List<MemoryLifecycleMutation> mutations);
 }
 
+final class MemoryReplacementPersistenceResult {
+  const MemoryReplacementPersistenceResult({
+    required this.action,
+    required this.candidate,
+  });
+  final MemoryReplacementPendingAction action;
+  final MemoryContradictionCandidate candidate;
+}
+
+abstract interface class MemoryReplacementPendingRepository {
+  Future<MemoryReplacementPersistenceResult?> persistReplacementProposal({
+    required MemoryProposal proposal,
+    required MemoryLifecycleMutation mutation,
+    required MemoryContradictionMatch match,
+    required String accountScopeId,
+    required String logicalRequestId,
+    required DateTime createdAt,
+  });
+
+  Future<MemoryReplacementPendingAction?> findPendingReplacement({
+    required String accountScopeId,
+    required String logicalRequestId,
+  });
+
+  Future<MemoryReplacementPendingAction> updatePendingReplacementState({
+    required MemoryReplacementPendingAction action,
+    required MemoryReplacementActionState state,
+    required DateTime updatedAt,
+  });
+}
+
 final class FirestoreMemoryLifecycleRepository
-    implements MemoryLifecycleRepository, MemoryLifecycleReceiptReader {
+    implements
+        MemoryLifecycleRepository,
+        MemoryLifecycleReceiptReader,
+        MemoryReplacementPendingRepository {
   final FirebaseFirestore _firestore;
 
   FirestoreMemoryLifecycleRepository({FirebaseFirestore? firestore})
@@ -54,6 +91,15 @@ final class FirestoreMemoryLifecycleRepository
     final uid = AuthService.currentUserId;
     if (uid == null || uid.isEmpty) return null;
     return _firestore.collection('users').doc(uid).collection('memories');
+  }
+
+  CollectionReference<Map<String, dynamic>>? _replacementActionsRef() {
+    final uid = AuthService.currentUserId;
+    if (uid == null || uid.isEmpty) return null;
+    return _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('memoryReplacementActions');
   }
 
   @override
@@ -67,11 +113,23 @@ final class FirestoreMemoryLifecycleRepository
     final ref = _memoriesRef();
     if (ref == null || limit <= 0) return const [];
     final documents = <String, Map<String, dynamic>>{};
-    final exact = await ref
-        .where('normalizedText', isEqualTo: proposal.normalizedText)
-        .limit(1)
-        .get();
-    for (final document in exact.docs) {
+    final canonicalKey = proposal.semanticIdentity?.canonicalKey;
+    if (canonicalKey != null && canonicalKey.isNotEmpty) {
+      final comparable = await ref
+          .where('canonicalKey', isEqualTo: canonicalKey)
+          .limit(limit)
+          .get();
+      for (final document in comparable.docs) {
+        documents[document.id] = {...document.data(), 'id': document.id};
+      }
+    }
+    final exact = documents.length >= limit
+        ? null
+        : await ref
+            .where('normalizedText', isEqualTo: proposal.normalizedText)
+            .limit(1)
+            .get();
+    for (final document in exact?.docs ?? const []) {
       documents[document.id] = {...document.data(), 'id': document.id};
     }
     if (proposal.category.trim().isNotEmpty && documents.length < limit) {
@@ -150,6 +208,196 @@ final class FirestoreMemoryLifecycleRepository
       );
     });
   }
+
+  @override
+  Future<MemoryReplacementPersistenceResult?> persistReplacementProposal({
+    required MemoryProposal proposal,
+    required MemoryLifecycleMutation mutation,
+    required MemoryContradictionMatch match,
+    required String accountScopeId,
+    required String logicalRequestId,
+    required DateTime createdAt,
+  }) async {
+    final memories = _memoriesRef();
+    final actions = _replacementActionsRef();
+    final uid = AuthService.currentUserId;
+    if (memories == null ||
+        actions == null ||
+        uid == null ||
+        uid != accountScopeId ||
+        logicalRequestId.trim().isEmpty) {
+      return null;
+    }
+    final scopeFingerprint = _hash(
+      'zelia-memory-replacement-account-v1',
+      accountScopeId,
+    );
+    final requestFingerprint = _hash(
+      'zelia-memory-replacement-request-v1',
+      logicalRequestId,
+    );
+    final actionId = _hash(
+      'zelia-memory-replacement-action-v1',
+      '$scopeFingerprint|$requestFingerprint|${proposal.id}|'
+          '${match.existingMemoryId}|${match.canonicalKey}|'
+          '${match.existingRevision}',
+    );
+    final proposalRef = memories.doc(proposal.id);
+    final actionRef = actions.doc(actionId);
+    return _firestore.runTransaction((transaction) async {
+      final proposalSnapshot = await transaction.get(proposalRef);
+      final actionSnapshot = await transaction.get(actionRef);
+      final proposalData = proposalSnapshot.data();
+      int proposedRevision;
+      if (proposalSnapshot.exists) {
+        if (proposalData == null ||
+            proposalData['memoryId'] != proposal.id ||
+            proposalData['accountScopeId'] != accountScopeId ||
+            proposalData['canonicalKey'] != match.canonicalKey ||
+            proposalData['lifecycleState'] !=
+                MemoryLifecycleState.proposed.name ||
+            proposalData['logicalRequestFingerprint'] != requestFingerprint) {
+          throw const FormatException(
+            'memory_replacement_partial_proposal_incoherent',
+          );
+        }
+        final revision = proposalData['memoryRevision'];
+        if (revision is! int || revision < 1) {
+          throw const FormatException('memory_revision_invalid');
+        }
+        proposedRevision = revision;
+      } else {
+        proposedRevision = 1;
+      }
+      final contradictionId = _hash(
+        'zelia-memory-contradiction-id-v1',
+        '$scopeFingerprint|${match.existingMemoryId}|${proposal.id}|'
+            '${match.canonicalKey}|${match.existingRevision}|'
+            '$proposedRevision',
+      );
+      final candidate = MemoryContradictionCandidate(
+        contradictionId: contradictionId,
+        existingMemoryId: match.existingMemoryId,
+        proposedMemoryId: proposal.id,
+        canonicalKey: match.canonicalKey,
+        existingRevision: match.existingRevision,
+        proposedRevision: proposedRevision,
+        existingValueFingerprint: match.existingValueFingerprint,
+        proposedValueFingerprint: match.proposedValueFingerprint,
+        subjectScope: match.subjectScope,
+        detectedAt: createdAt.toUtc(),
+        reasonCode: match.reasonCode,
+        eligibleForReplacement: true,
+      );
+      final action = MemoryReplacementPendingAction(
+        actionId: actionId,
+        accountScopeFingerprint: scopeFingerprint,
+        existingMemoryId: match.existingMemoryId,
+        proposedMemoryId: proposal.id,
+        canonicalKey: match.canonicalKey,
+        expectedExistingRevision: match.existingRevision,
+        expectedProposedRevision: proposedRevision,
+        contradictionId: contradictionId,
+        reasonCode: match.reasonCode,
+        state: MemoryReplacementActionState.pending,
+        logicalRequestFingerprint: requestFingerprint,
+        createdAt: createdAt.toUtc(),
+        updatedAt: createdAt.toUtc(),
+      );
+      if (actionSnapshot.exists) {
+        final current =
+            MemoryReplacementPendingAction.fromJson(actionSnapshot.data());
+        if (current.proposedMemoryId != proposal.id ||
+            current.contradictionId != contradictionId ||
+            current.expectedProposedRevision != proposedRevision) {
+          throw const FormatException(
+            'memory_replacement_action_idempotency_conflict',
+          );
+        }
+        return MemoryReplacementPersistenceResult(
+          action: current,
+          candidate: candidate,
+        );
+      }
+      if (!proposalSnapshot.exists) {
+        transaction.set(proposalRef, {
+          ...MemoryLifecycleFirestoreSerializer.proposal(
+            proposal,
+            mutation,
+            accountScopeId: accountScopeId,
+          ),
+          'logicalRequestFingerprint': requestFingerprint,
+        });
+      }
+      transaction.set(actionRef, {
+        ...action.toJson(),
+        'contradictionCandidate': candidate.toJson(),
+      });
+      return MemoryReplacementPersistenceResult(
+        action: action,
+        candidate: candidate,
+      );
+    });
+  }
+
+  @override
+  Future<MemoryReplacementPendingAction?> findPendingReplacement({
+    required String accountScopeId,
+    required String logicalRequestId,
+  }) async {
+    if (AuthService.currentUserId != accountScopeId) return null;
+    final ref = _replacementActionsRef();
+    if (ref == null) return null;
+    final fingerprint = _hash(
+      'zelia-memory-replacement-request-v1',
+      logicalRequestId,
+    );
+    final snapshot = await ref
+        .where('logicalRequestFingerprint', isEqualTo: fingerprint)
+        .limit(2)
+        .get();
+    if (snapshot.docs.length > 1) {
+      throw const FormatException('multiple_memory_replacement_actions');
+    }
+    return snapshot.docs.isEmpty
+        ? null
+        : MemoryReplacementPendingAction.fromJson(
+            snapshot.docs.single.data(),
+          );
+  }
+
+  @override
+  Future<MemoryReplacementPendingAction> updatePendingReplacementState({
+    required MemoryReplacementPendingAction action,
+    required MemoryReplacementActionState state,
+    required DateTime updatedAt,
+  }) async {
+    final ref = _replacementActionsRef();
+    if (ref == null) {
+      throw const FormatException('memory_replacement_repository_unavailable');
+    }
+    final next = action.withState(state, updatedAt);
+    await _firestore.runTransaction((transaction) async {
+      final reference = ref.doc(action.actionId);
+      final snapshot = await transaction.get(reference);
+      if (!snapshot.exists) {
+        throw const FormatException('memory_replacement_action_not_found');
+      }
+      final current = MemoryReplacementPendingAction.fromJson(snapshot.data());
+      if (current.state == state) return;
+      if (current.state != MemoryReplacementActionState.pending) {
+        throw const FormatException('memory_replacement_action_terminal');
+      }
+      transaction.update(reference, {
+        'state': state.name,
+        'updatedAt': next.updatedAt.toIso8601String(),
+      });
+    });
+    return next;
+  }
+
+  static String _hash(String namespace, String value) =>
+      sha256.convert(utf8.encode('$namespace|$value')).toString();
 
   @override
   Future<void> applyMutations(List<MemoryLifecycleMutation> mutations) async {

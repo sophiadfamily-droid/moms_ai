@@ -4,11 +4,15 @@ import '../models/life_context/memory_context.dart';
 import '../models/memory_lifecycle.dart';
 import '../models/memory_lifecycle_state.dart';
 import '../models/memory_policy.dart';
+import '../models/memory_contradiction.dart';
 import 'action_ledger_service.dart';
 import 'memory_lifecycle_repository.dart';
 
 final class LedgeredMemoryLifecycleRepository
-    implements MemoryLifecycleRepository, MemoryLifecycleReceiptReader {
+    implements
+        MemoryLifecycleRepository,
+        MemoryLifecycleReceiptReader,
+        MemoryReplacementPendingRepository {
   const LedgeredMemoryLifecycleRepository({
     required MemoryLifecycleRepository delegate,
     required ActionLedgerService ledger,
@@ -37,6 +41,56 @@ final class LedgeredMemoryLifecycleRepository
   @override
   Future<LifeMemoryFact?> getById(String memoryId) =>
       _delegate.getById(memoryId);
+
+  MemoryReplacementPendingRepository get _replacementDelegate {
+    final delegate = _delegate;
+    if (delegate is! MemoryReplacementPendingRepository) {
+      throw const FormatException(
+        'memory_replacement_repository_unsupported',
+      );
+    }
+    return delegate as MemoryReplacementPendingRepository;
+  }
+
+  @override
+  Future<MemoryReplacementPersistenceResult?> persistReplacementProposal({
+    required MemoryProposal proposal,
+    required MemoryLifecycleMutation mutation,
+    required MemoryContradictionMatch match,
+    required String accountScopeId,
+    required String logicalRequestId,
+    required DateTime createdAt,
+  }) =>
+      _replacementDelegate.persistReplacementProposal(
+        proposal: proposal,
+        mutation: mutation,
+        match: match,
+        accountScopeId: accountScopeId,
+        logicalRequestId: logicalRequestId,
+        createdAt: createdAt,
+      );
+
+  @override
+  Future<MemoryReplacementPendingAction?> findPendingReplacement({
+    required String accountScopeId,
+    required String logicalRequestId,
+  }) =>
+      _replacementDelegate.findPendingReplacement(
+        accountScopeId: accountScopeId,
+        logicalRequestId: logicalRequestId,
+      );
+
+  @override
+  Future<MemoryReplacementPendingAction> updatePendingReplacementState({
+    required MemoryReplacementPendingAction action,
+    required MemoryReplacementActionState state,
+    required DateTime updatedAt,
+  }) =>
+      _replacementDelegate.updatePendingReplacementState(
+        action: action,
+        state: state,
+        updatedAt: updatedAt,
+      );
 
   @override
   Future<void> createProposal(
