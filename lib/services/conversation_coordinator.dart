@@ -23,6 +23,7 @@ import 'action_confirmation_coordinator.dart';
 import 'memory_confirmation_copy.dart';
 import 'memory_lifecycle_engine.dart';
 import 'memory_lifecycle_repository.dart';
+import 'routine_conversation_service.dart';
 import 'identity/identity_application_models.dart';
 import 'identity/identity_application_service.dart';
 import 'identity/identity_action_binding_service.dart';
@@ -63,6 +64,7 @@ class ConversationCoordinator {
   final DateTime Function() _clock;
   final ConversationAutonomyPolicyLoader? _loadAutonomyPolicy;
   final ActionAutonomyPolicyEngine _autonomyEngine;
+  final RoutineConversationService? routineConversationService;
   late final ActionConfirmationCoordinator _confirmationCoordinator;
 
   ConversationState _state = const ConversationState();
@@ -96,6 +98,7 @@ class ConversationCoordinator {
     ConversationAutonomyPolicyLoader? loadAutonomyPolicy,
     ActionAutonomyPolicyEngine autonomyEngine =
         const ActionAutonomyPolicyEngine(),
+    this.routineConversationService,
     ActionConfirmationCoordinator? confirmationCoordinator,
   })  : _memoryLifecycleRepository = memoryLifecycleRepository,
         identityClarificationService = identityClarificationService ??
@@ -1990,6 +1993,20 @@ class ConversationCoordinator {
     required ConversationActionExecutor executeAction,
   }) async {
     _sessionGeneration = input.sessionGeneration;
+    final routineResult = await routineConversationService?.process(
+      input.message,
+      logicalRequestId:
+          input.logicalRequestId ?? _actionDraftIdGenerator.generate(),
+    );
+    if (routineResult != null &&
+        routineResult.type != RoutineConversationResultType.notRoutine) {
+      _state = _state.copyWith(
+        phase: routineConversationService!.hasPending
+            ? ConversationPhase.awaitingActionConfirmation
+            : ConversationPhase.idle,
+      );
+      return ConversationOutcome(reply: routineResult.message);
+    }
     final eventMutationResolution = await resolvePendingEventMutation(
       answer: input.message,
     );

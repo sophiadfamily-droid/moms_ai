@@ -54,6 +54,12 @@ final class PlanningProjectionRoutine {
     required this.startTime,
     required this.endTime,
     required this.travelMinutes,
+    this.recurrenceType,
+    this.anchorDateIso,
+    this.weekOfMonth,
+    this.travelGoMinutes = 0,
+    this.travelBackMinutes = 0,
+    this.marginMinutes = 0,
   });
 
   final String id;
@@ -61,6 +67,25 @@ final class PlanningProjectionRoutine {
   final String? startTime;
   final String? endTime;
   final int? travelMinutes;
+  final String? recurrenceType;
+  final String? anchorDateIso;
+  final int? weekOfMonth;
+  final int travelGoMinutes;
+  final int travelBackMinutes;
+  final int marginMinutes;
+
+  Map<String, dynamic> toBlockedPeriod() => {
+        'type': 'blocked_period',
+        'recurrenceType': recurrenceType ?? 'weekly',
+        'days': days,
+        if (startTime != null) 'start': startTime,
+        if (endTime != null) 'end': endTime,
+        'travelGoMinutes': travelGoMinutes,
+        'travelBackMinutes': travelBackMinutes,
+        'marginMinutes': marginMinutes,
+        if (anchorDateIso != null) 'anchorDateIso': anchorDateIso,
+        if (weekOfMonth != null) 'weekOfMonth': weekOfMonth,
+      };
 }
 
 final class PlanningProjectionContext {
@@ -137,6 +162,25 @@ abstract final class LifeContextPlanningProjectionAdapter {
               travelMinutes: int.tryParse(
                 facts[LifeContextProjectionFactKeys.travelMinutes] ?? '',
               ),
+              recurrenceType:
+                  facts[LifeContextProjectionFactKeys.recurringType],
+              anchorDateIso: facts[LifeContextProjectionFactKeys.anchorDateIso],
+              weekOfMonth: int.tryParse(
+                facts[LifeContextProjectionFactKeys.weekOfMonth] ?? '',
+              ),
+              travelGoMinutes: int.tryParse(
+                    facts[LifeContextProjectionFactKeys.travelGoMinutes] ?? '',
+                  ) ??
+                  0,
+              travelBackMinutes: int.tryParse(
+                    facts[LifeContextProjectionFactKeys.travelBackMinutes] ??
+                        '',
+                  ) ??
+                  0,
+              marginMinutes: int.tryParse(
+                    facts[LifeContextProjectionFactKeys.marginMinutes] ?? '',
+                  ) ??
+                  0,
             ),
           );
         }

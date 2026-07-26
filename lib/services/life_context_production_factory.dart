@@ -9,6 +9,7 @@ import 'memory_service.dart';
 import 'task_service.dart';
 import 'memory_sync_local_repository.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'routine_repository.dart';
 
 abstract final class LifeContextProductionFactory {
   static Future<LifeContextEngine> create() async {
@@ -18,6 +19,7 @@ abstract final class LifeContextProductionFactory {
     );
     final memorySyncLocal =
         MemorySyncLocalRepository(await SharedPreferences.getInstance());
+    final routineRepository = FirestoreRoutineRepository();
     Future<HumanModelLocalState?> loadHuman(String scope) =>
         humanService.loadState(scope);
 
@@ -34,7 +36,10 @@ abstract final class LifeContextProductionFactory {
           load: TaskService.getTasksForLifeContext,
           loadSyncMetadata: TaskService.getTaskSyncMetadataForLifeContext,
         ),
-        RoutineLifeContextAdapter(loadHuman: loadHuman),
+        RoutineLifeContextAdapter(
+          loadHuman: loadHuman,
+          loadCanonical: routineRepository.listForAccount,
+        ),
         MemoryLifeContextAdapter(
           loadMemories: MemoryService.getMemoriesForLifeContext,
           loadSyncState: memorySyncLocal.load,

@@ -366,6 +366,12 @@ final class RoutineContextItem {
     required this.startTime,
     required this.endTime,
     required this.travelMinutes,
+    this.recurrenceType,
+    this.anchorDateIso,
+    this.weekOfMonth,
+    this.travelGoMinutes = 0,
+    this.travelBackMinutes = 0,
+    this.marginMinutes = 0,
     this.humanPersonId,
   });
 
@@ -376,6 +382,12 @@ final class RoutineContextItem {
   final String? startTime;
   final String? endTime;
   final int? travelMinutes;
+  final String? recurrenceType;
+  final String? anchorDateIso;
+  final int? weekOfMonth;
+  final int travelGoMinutes;
+  final int travelBackMinutes;
+  final int marginMinutes;
   final String? humanPersonId;
 
   Map<String, Object?> toJson() => {
@@ -386,6 +398,12 @@ final class RoutineContextItem {
         if (startTime != null) 'startTime': startTime,
         if (endTime != null) 'endTime': endTime,
         if (travelMinutes != null) 'travelMinutes': travelMinutes,
+        if (recurrenceType != null) 'recurrenceType': recurrenceType,
+        if (anchorDateIso != null) 'anchorDateIso': anchorDateIso,
+        if (weekOfMonth != null) 'weekOfMonth': weekOfMonth,
+        'travelGoMinutes': travelGoMinutes,
+        'travelBackMinutes': travelBackMinutes,
+        'marginMinutes': marginMinutes,
         if (humanPersonId != null) 'humanPersonId': humanPersonId,
       };
 }

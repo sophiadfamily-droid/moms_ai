@@ -6,6 +6,7 @@ import '../../models/task_model.dart';
 import '../../models/user_profile.dart';
 import '../../models/memory_policy.dart';
 import '../../models/memory_sync.dart';
+import '../../models/routine_model.dart';
 import '../memory_sync_local_repository.dart';
 import '../memory_consumption_policy.dart';
 import 'life_context_adapter.dart';
@@ -33,6 +34,9 @@ typedef MemoryPolicyContextLoader = Future<MemoryPolicy> Function(
   String accountScopeId,
 );
 typedef MemorySyncStateLoader = Future<MemorySyncLocalState?> Function(
+  String accountScopeId,
+);
+typedef RoutineContextLoader = Future<List<RoutineModel>> Function(
   String accountScopeId,
 );
 
@@ -534,10 +538,14 @@ final class TaskLifeContextAdapter implements LifeContextDomainAdapter {
 }
 
 final class RoutineLifeContextAdapter implements LifeContextDomainAdapter {
-  const RoutineLifeContextAdapter({required HumanContextLoader loadHuman})
-      : _loadHuman = loadHuman;
+  const RoutineLifeContextAdapter({
+    required HumanContextLoader loadHuman,
+    RoutineContextLoader? loadCanonical,
+  })  : _loadHuman = loadHuman,
+        _loadCanonical = loadCanonical;
 
   final HumanContextLoader _loadHuman;
+  final RoutineContextLoader? _loadCanonical;
 
   @override
   LifeContextDomain get domain => LifeContextDomain.routine;
@@ -548,20 +556,8 @@ final class RoutineLifeContextAdapter implements LifeContextDomainAdapter {
   ) async {
     try {
       final state = await _loadHuman(request.accountScopeId);
-      if (state == null) {
-        return RoutineDomainSection(
-          metadata: _metadata(
-            request,
-            domain,
-            LifeContextSourceKind.legacyProfileRoutine,
-            LifeContextAvailability.empty,
-            LifeContextFreshness.unknown,
-            true,
-            0,
-          ),
-        );
-      }
-      if (state.model.accountScopeId != request.accountScopeId) {
+      if (state != null &&
+          state.model.accountScopeId != request.accountScopeId) {
         return RoutineDomainSection(
           metadata: _metadata(
             request,
@@ -575,12 +571,48 @@ final class RoutineLifeContextAdapter implements LifeContextDomainAdapter {
           ),
         );
       }
-      final profile = UserProfile.fromJson(
-        Map<String, dynamic>.from(state.model.legacyProfile),
-      );
+      final profile = state == null
+          ? null
+          : UserProfile.fromJson(
+              Map<String, dynamic>.from(state.model.legacyProfile),
+            );
       final routines = <RoutineContextItem>[];
-      for (var index = 0; index < profile.personalActivities.length; index++) {
-        final activity = profile.personalActivities[index];
+      final canonical = await _loadCanonical?.call(request.accountScopeId) ??
+          const <RoutineModel>[];
+      for (final routine in canonical) {
+        if (routine.accountScopeId != request.accountScopeId ||
+            routine.status != RoutineStatus.active) {
+          throw const FormatException('invalid_canonical_routine');
+        }
+        routines.add(
+          RoutineContextItem(
+            id: routine.id,
+            source: 'routine.v1',
+            label: routine.title,
+            days: routine.days.map((day) => '$day').toList(growable: false),
+            startTime: routine.startTime,
+            endTime: routine.endTime,
+            travelMinutes: routine.travelGoMinutes + routine.travelBackMinutes,
+            recurrenceType: switch (routine.recurrenceType) {
+              RoutineRecurrenceType.weekly => 'weekly',
+              RoutineRecurrenceType.weekdays => 'weekdays',
+              RoutineRecurrenceType.biweekly => 'biweekly',
+              RoutineRecurrenceType.monthlyNthWeekday => 'monthly_nth_weekday',
+            },
+            anchorDateIso: routine.anchorDateIso,
+            weekOfMonth: routine.weekOfMonth,
+            travelGoMinutes: routine.travelGoMinutes,
+            travelBackMinutes: routine.travelBackMinutes,
+            marginMinutes: routine.marginMinutes,
+            humanPersonId: routine.humanPersonId,
+          ),
+        );
+      }
+      for (var index = 0;
+          index < (profile?.personalActivities.length ?? 0);
+          index++) {
+        final effectiveProfile = profile!;
+        final activity = effectiveProfile.personalActivities[index];
         if (activity.timeRanges.isEmpty) {
           routines.add(
             RoutineContextItem(
@@ -613,9 +645,9 @@ final class RoutineLifeContextAdapter implements LifeContextDomainAdapter {
         }
       }
       for (var childIndex = 0;
-          childIndex < profile.children.length;
+          childIndex < (profile?.children.length ?? 0);
           childIndex++) {
-        final child = profile.children[childIndex];
+        final child = profile!.children[childIndex];
         for (var rangeIndex = 0;
             rangeIndex < child.schoolTimeRanges.length;
             rangeIndex++) {
@@ -648,8 +680,9 @@ final class RoutineLifeContextAdapter implements LifeContextDomainAdapter {
               : LifeContextFreshness.stale,
           true,
           routines.length,
-          revision: state.knownCloudRevision,
-          syncStatus: 'legacyCompatibility',
+          revision: state?.knownCloudRevision,
+          syncStatus:
+              canonical.isNotEmpty ? 'canonical' : 'legacyCompatibility',
         ),
         routines: routines,
       );

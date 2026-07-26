@@ -504,6 +504,39 @@ final class LifeContextProjectionEngine {
             '${routine.travelMinutes}',
             LifeContextSensitivityLevel.publicTechnical,
           ),
+        if (routine.recurrenceType != null)
+          _fact(
+            LifeContextProjectionFactKeys.recurringType,
+            routine.recurrenceType!,
+            LifeContextSensitivityLevel.publicTechnical,
+          ),
+        _fact(
+          LifeContextProjectionFactKeys.travelGoMinutes,
+          '${routine.travelGoMinutes}',
+          LifeContextSensitivityLevel.publicTechnical,
+        ),
+        _fact(
+          LifeContextProjectionFactKeys.travelBackMinutes,
+          '${routine.travelBackMinutes}',
+          LifeContextSensitivityLevel.publicTechnical,
+        ),
+        _fact(
+          LifeContextProjectionFactKeys.marginMinutes,
+          '${routine.marginMinutes}',
+          LifeContextSensitivityLevel.publicTechnical,
+        ),
+        if (routine.anchorDateIso != null)
+          _fact(
+            LifeContextProjectionFactKeys.anchorDateIso,
+            routine.anchorDateIso!,
+            LifeContextSensitivityLevel.publicTechnical,
+          ),
+        if (routine.weekOfMonth != null)
+          _fact(
+            LifeContextProjectionFactKeys.weekOfMonth,
+            '${routine.weekOfMonth}',
+            LifeContextSensitivityLevel.publicTechnical,
+          ),
         if (contract.purpose == LifeContextConsumerPurpose.conversation &&
             routine.label != null)
           _fact(

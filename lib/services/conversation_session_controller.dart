@@ -17,6 +17,7 @@ import 'conversation_context_service.dart';
 import 'conversation_coordinator.dart';
 import 'conversation_grounding_policy.dart';
 import 'conversation_legacy_action_executor.dart';
+import 'routine_conversation_service.dart';
 import 'identity/identity_production_services.dart';
 import 'smart_planning_continuation_coordinator.dart';
 
@@ -134,6 +135,7 @@ final class ConversationSessionController extends ChangeNotifier {
       eventParticipantIdentityValidationService:
           identityServices?.eventParticipantValidation,
       loadAutonomyPolicy: loadAutonomyPolicy,
+      routineConversationService: RoutineConversationService.production(),
     );
     final smartPlanningGateway =
         ProductionSmartPlanningContinuationGateway(profile);

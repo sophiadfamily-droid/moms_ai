@@ -497,6 +497,251 @@ service cloud.firestore {
         && data.tombstone is bool;
     }
 
+    function isValidRoutineTime(value) {
+      return value is string
+        && value.matches('^(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]$');
+    }
+
+    function isValidRoutineDate(value) {
+      return value is string
+        && value.matches(
+          '^(19|20|21)[0-9][0-9]-(0[1-9]|1[0-2])-'
+          + '(0[1-9]|[12][0-9]|3[01])$'
+        );
+    }
+
+    function hasValidRoutineDays(data) {
+      return data.days is list
+        && data.days.size() <= 7
+        && data.days.hasOnly([1, 2, 3, 4, 5, 6, 7]);
+    }
+
+    function hasValidOptionalRoutineReferences(data) {
+      return (data.humanPersonId == null
+          || (data.humanPersonId is string
+            && data.humanPersonId.size() > 0
+            && data.humanPersonId.size() <= 200))
+        && (data.locationEntityId == null
+          || (data.locationEntityId is string
+            && data.locationEntityId.size() > 0
+            && data.locationEntityId.size() <= 200));
+    }
+
+    function hasCompatiblePartialRoutineRecurrence(data) {
+      return (data.recurrenceType == null
+          && data.anchorDateIso == null
+          && data.weekOfMonth == null)
+        || (data.recurrenceType == 'weekly'
+          && data.anchorDateIso == null
+          && data.weekOfMonth == null)
+        || (data.recurrenceType == 'weekdays'
+          && data.days.size() == 0
+          && data.anchorDateIso == null
+          && data.weekOfMonth == null)
+        || (data.recurrenceType == 'biweekly'
+          && data.weekOfMonth == null
+          && (data.anchorDateIso == null
+            || isValidRoutineDate(data.anchorDateIso)))
+        || (data.recurrenceType == 'monthlyNthWeekday'
+          && data.days.size() <= 1
+          && data.anchorDateIso == null
+          && (data.weekOfMonth == null
+            || data.weekOfMonth in [-1, 1, 2, 3, 4, 5]));
+    }
+
+    function hasCompleteRoutinePayload(data) {
+      return data.keys().hasAll([
+          'title', 'recurrenceType', 'days', 'startTime', 'durationMinutes',
+          'travelGoMinutes', 'travelBackMinutes', 'marginMinutes'
+        ])
+        && data.title is string
+        && data.title.size() > 0
+        && data.title.size() <= 300
+        && isValidRoutineTime(data.startTime)
+        && data.durationMinutes is int
+        && data.durationMinutes > 0
+        && data.durationMinutes <= 10080
+        && (
+          (data.recurrenceType == 'weekly'
+            && data.days.size() > 0
+            && data.anchorDateIso == null
+            && data.weekOfMonth == null)
+          || (data.recurrenceType == 'weekdays'
+            && data.days.size() == 0
+            && data.anchorDateIso == null
+            && data.weekOfMonth == null)
+          || (data.recurrenceType == 'biweekly'
+            && data.days.size() > 0
+            && isValidRoutineDate(data.anchorDateIso)
+            && data.weekOfMonth == null)
+          || (data.recurrenceType == 'monthlyNthWeekday'
+            && data.days.size() == 1
+            && data.weekOfMonth in [-1, 1, 2, 3, 4, 5]
+            && data.anchorDateIso == null)
+        );
+    }
+
+    function hasValidRoutineScalarFields(data) {
+      return hasValidRoutineDays(data)
+        && data.travelGoMinutes is int
+        && data.travelGoMinutes >= 0
+        && data.travelGoMinutes <= 1440
+        && data.travelBackMinutes is int
+        && data.travelBackMinutes >= 0
+        && data.travelBackMinutes <= 1440
+        && data.marginMinutes is int
+        && data.marginMinutes >= 0
+        && data.marginMinutes <= 1440
+        && (data.title == null
+          || (data.title is string
+            && data.title.size() > 0
+            && data.title.size() <= 300))
+        && (data.recurrenceType == null
+          || data.recurrenceType in [
+            'weekly', 'weekdays', 'biweekly', 'monthlyNthWeekday'
+          ])
+        && (data.startTime == null || isValidRoutineTime(data.startTime))
+        && (data.durationMinutes == null
+          || (data.durationMinutes is int
+            && data.durationMinutes > 0
+            && data.durationMinutes <= 10080))
+        && (data.anchorDateIso == null
+          || isValidRoutineDate(data.anchorDateIso))
+        && (data.weekOfMonth == null
+          || data.weekOfMonth in [-1, 1, 2, 3, 4, 5])
+        && hasValidOptionalRoutineReferences(data)
+        && hasCompatiblePartialRoutineRecurrence(data);
+    }
+
+    function hasValidRoutineShape(userId, routineId) {
+      let data = request.resource.data;
+      return data.keys().hasOnly([
+          'schemaVersion', 'id', 'proposalId', 'accountScopeId',
+          'logicalRequestId', 'title', 'humanPersonId', 'recurrenceType',
+          'days', 'startTime', 'durationMinutes', 'anchorDateIso',
+          'weekOfMonth', 'travelGoMinutes', 'travelBackMinutes',
+          'marginMinutes', 'locationEntityId', 'status', 'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasAll([
+          'schemaVersion', 'id', 'proposalId', 'accountScopeId',
+          'logicalRequestId', 'title', 'recurrenceType', 'days', 'startTime',
+          'durationMinutes', 'humanPersonId', 'anchorDateIso', 'weekOfMonth',
+          'travelGoMinutes', 'travelBackMinutes', 'marginMinutes',
+          'locationEntityId', 'status', 'createdAt', 'updatedAt'
+        ])
+        && data.schemaVersion == 1
+        && data.id == routineId
+        && data.proposalId == routineId
+        && data.id is string
+        && data.id.size() == 64
+        && data.accountScopeId == userId
+        && data.logicalRequestId is string
+        && data.logicalRequestId.size() > 0
+        && data.logicalRequestId.size() <= 200
+        && data.status == 'active'
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && hasValidRoutineScalarFields(data)
+        && hasCompleteRoutinePayload(data);
+    }
+
+    function hasValidRoutineProposalShape(userId, proposalId) {
+      let data = request.resource.data;
+      return data.keys().hasOnly([
+          'schemaVersion', 'proposalId', 'logicalRequestId', 'accountScopeId',
+          'state', 'title', 'humanPersonId', 'recurrenceType', 'days',
+          'startTime', 'durationMinutes', 'anchorDateIso', 'weekOfMonth',
+          'travelGoMinutes', 'travelBackMinutes', 'marginMinutes',
+          'locationEntityId', 'createdAt', 'updatedAt', 'expiresAt'
+        ])
+        && data.keys().hasAll([
+          'schemaVersion', 'proposalId', 'logicalRequestId', 'accountScopeId',
+          'state', 'title', 'humanPersonId', 'recurrenceType', 'days',
+          'startTime', 'durationMinutes', 'anchorDateIso', 'weekOfMonth',
+          'travelGoMinutes', 'travelBackMinutes', 'marginMinutes',
+          'locationEntityId', 'createdAt', 'updatedAt', 'expiresAt'
+        ])
+        && data.schemaVersion == 1
+        && data.proposalId == proposalId
+        && data.proposalId is string
+        && data.proposalId.size() == 64
+        && data.accountScopeId == userId
+        && data.logicalRequestId is string
+        && data.logicalRequestId.size() > 0
+        && data.logicalRequestId.size() <= 200
+        && data.state in [
+          'collecting', 'awaitingConfirmation', 'declined', 'committed',
+          'cancelled'
+        ]
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && data.expiresAt is timestamp
+        && data.expiresAt > data.createdAt
+        && hasValidRoutineScalarFields(data)
+        && (
+          data.state == 'collecting'
+          || hasCompleteRoutinePayload(data)
+        );
+    }
+
+    function routineMatchesProposal(routine, proposal) {
+      return routine.id == proposal.proposalId
+        && routine.proposalId == proposal.proposalId
+        && routine.accountScopeId == proposal.accountScopeId
+        && routine.logicalRequestId == proposal.logicalRequestId
+        && routine.title == proposal.title
+        && routine.recurrenceType == proposal.recurrenceType
+        && routine.days == proposal.days
+        && routine.startTime == proposal.startTime
+        && routine.durationMinutes == proposal.durationMinutes
+        && routine.travelGoMinutes == proposal.travelGoMinutes
+        && routine.travelBackMinutes == proposal.travelBackMinutes
+        && routine.marginMinutes == proposal.marginMinutes
+        && routine.schemaVersion == proposal.schemaVersion
+        && routine.status == 'active'
+        && routine.humanPersonId == proposal.humanPersonId
+        && routine.locationEntityId == proposal.locationEntityId
+        && routine.anchorDateIso == proposal.anchorDateIso
+        && routine.weekOfMonth == proposal.weekOfMonth;
+    }
+
+    function routineProposalPath(userId, proposalId) {
+      return /databases/$(database)/documents/users/$(userId)/routineProposals/$(proposalId);
+    }
+
+    function routinePath(userId, routineId) {
+      return /databases/$(database)/documents/users/$(userId)/routines/$(routineId);
+    }
+
+    function canCreateRoutineFromProposal(userId, routineId, routine) {
+      let proposal = get(
+        routineProposalPath(userId, routineId)
+      ).data;
+      return proposal.state == 'awaitingConfirmation'
+        && proposal.accountScopeId == userId
+        && proposal.proposalId == routineId
+        && request.time < proposal.expiresAt
+        && routineMatchesProposal(routine, proposal);
+    }
+
+    function canCommitRoutineProposal(userId, proposalId, proposal) {
+      let routine = getAfter(routinePath(userId, proposalId)).data;
+      return request.time < proposal.expiresAt
+        && routineMatchesProposal(routine, proposal);
+    }
+
+    function validRoutineProposalTransition(previous, next) {
+      return
+        (previous.state == 'collecting'
+          && next.state in [
+            'collecting', 'awaitingConfirmation', 'declined', 'cancelled'
+          ])
+        || (previous.state == 'awaitingConfirmation'
+          && next.state in ['awaitingConfirmation', 'declined', 'committed',
+            'cancelled']);
+    }
+
     match /users/{userId} {
       allow read, write: if isOwner(userId);
 
@@ -629,6 +874,54 @@ service cloud.firestore {
         allow delete: if false;
       }
 
+      match /routines/{routineId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId)
+          && hasValidRoutineShape(userId, routineId)
+          && canCreateRoutineFromProposal(
+            userId,
+            routineId,
+            request.resource.data
+          );
+        allow update: if false;
+        allow delete: if false;
+      }
+
+      match /routineProposals/{proposalId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId)
+          && hasValidRoutineProposalShape(userId, proposalId)
+          && request.resource.data.state in [
+            'collecting', 'awaitingConfirmation'
+          ];
+        allow update: if isOwner(userId)
+          && hasValidRoutineProposalShape(userId, proposalId)
+          && request.resource.data.accountScopeId == resource.data.accountScopeId
+          && request.resource.data.proposalId == resource.data.proposalId
+          && request.resource.data.logicalRequestId == resource.data.logicalRequestId
+          && request.resource.data.schemaVersion == resource.data.schemaVersion
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.expiresAt == resource.data.expiresAt
+          && (
+            resource.data.state != 'awaitingConfirmation'
+            || request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['state', 'updatedAt'])
+          )
+          && validRoutineProposalTransition(
+            resource.data,
+            request.resource.data
+          )
+          && (
+            request.resource.data.state != 'committed'
+            || canCommitRoutineProposal(
+              userId,
+              proposalId,
+              request.resource.data
+            )
+          );
+        allow delete: if false;
+      }
+
       match /{collection}/{document=**} {
         allow read, write: if isOwner(userId)
           && collection != 'identities'
@@ -637,7 +930,9 @@ service cloud.firestore {
           && collection != 'shopping_items'
           && collection != 'actionLedger'
           && collection != 'private'
-          && collection != 'memories';
+          && collection != 'memories'
+          && collection != 'routines'
+          && collection != 'routineProposals';
       }
     }
 
