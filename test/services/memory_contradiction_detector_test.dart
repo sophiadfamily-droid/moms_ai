@@ -346,5 +346,44 @@ void main() {
       }),
       throwsFormatException,
     );
+    for (final invalid in [
+      {...json, 'state': 'unknown'},
+      {...json, 'state': 'executed'},
+      {
+        ...json,
+        'state': 'conflict',
+        'executionCode': MemoryReplacementExecutionCode.executed.name,
+      },
+      {...json, 'executedAt': 'invalid-date'},
+    ]) {
+      expect(
+        () => MemoryReplacementPendingAction.fromJson(invalid),
+        throwsFormatException,
+      );
+    }
+
+    final executed = MemoryReplacementPendingAction(
+      actionId: action.actionId,
+      accountScopeFingerprint: action.accountScopeFingerprint,
+      existingMemoryId: action.existingMemoryId,
+      proposedMemoryId: action.proposedMemoryId,
+      canonicalKey: action.canonicalKey,
+      expectedExistingRevision: action.expectedExistingRevision,
+      expectedProposedRevision: action.expectedProposedRevision,
+      contradictionId: action.contradictionId,
+      reasonCode: action.reasonCode,
+      state: MemoryReplacementActionState.executed,
+      logicalRequestFingerprint: action.logicalRequestFingerprint,
+      createdAt: now,
+      updatedAt: now,
+      executedAt: now,
+      executionCode: MemoryReplacementExecutionCode.executed,
+      finalExistingRevision: 5,
+      finalProposedRevision: 3,
+    );
+    expect(
+      MemoryReplacementPendingAction.fromJson(executed.toJson()).state,
+      MemoryReplacementActionState.executed,
+    );
   });
 }

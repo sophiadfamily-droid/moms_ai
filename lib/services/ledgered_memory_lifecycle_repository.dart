@@ -93,6 +93,18 @@ final class LedgeredMemoryLifecycleRepository
       );
 
   @override
+  Future<MemoryReplacementExecutionResult> executeAcceptedMemoryReplacement({
+    required MemoryReplacementPendingAction action,
+    required String accountScopeId,
+    required DateTime referenceDate,
+  }) =>
+      _replacementDelegate.executeAcceptedMemoryReplacement(
+        action: action,
+        accountScopeId: accountScopeId,
+        referenceDate: referenceDate,
+      );
+
+  @override
   Future<void> createProposal(
     MemoryProposal proposal,
     MemoryLifecycleMutation mutation,

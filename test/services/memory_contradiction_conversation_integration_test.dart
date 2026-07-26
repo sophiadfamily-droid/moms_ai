@@ -208,4 +208,14 @@ final class _Repository
     pending = action.withState(state, updatedAt);
     return pending!;
   }
+
+  @override
+  Future<MemoryReplacementExecutionResult> executeAcceptedMemoryReplacement({
+    required MemoryReplacementPendingAction action,
+    required String accountScopeId,
+    required DateTime referenceDate,
+  }) async =>
+      const MemoryReplacementExecutionResult(
+        MemoryReplacementExecutionCode.executed,
+      );
 }

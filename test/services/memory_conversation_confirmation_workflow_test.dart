@@ -62,7 +62,7 @@ void main() {
   });
 
   group('memory conversational confirmation', () {
-    test('replacement confirmation remains explicitly non executable',
+    test('replacement confirmation executes after explicit acceptance',
         () async {
       final repository = _FakeRepository(_memory());
       final coordinator = _coordinator(repository);
@@ -117,11 +117,11 @@ void main() {
         referenceDate: now,
       );
 
-      expect(result?.diagnosticCode, 'replacementPendingImplementation');
+      expect(result?.diagnosticCode, 'memoryReplacementExecuted');
+      expect(result?.message, isNot(contains('Generic preference')));
       expect(repository.applied, isEmpty);
-      expect(coordinator.state.pendingAction, isNotNull);
-      expect(repository.replacementAction?.state,
-          MemoryReplacementActionState.acceptedPendingExecution);
+      expect(coordinator.state.pendingAction, isNull);
+      expect(repository.executionCalls, 1);
       expect(repository.applied, isEmpty);
     });
 
@@ -167,6 +167,49 @@ void main() {
       expect(coordinator.state.pendingAction, isNotNull);
     });
 
+    test('replacement conflict never announces success', () async {
+      final repository = _FakeRepository(_memory())
+        ..executionCode = MemoryReplacementExecutionCode.revisionConflict;
+      final coordinator = _coordinator(repository);
+      coordinator.setPendingMemoryConfirmation(
+        _replacementRequest(now),
+        createdAt: now,
+      );
+
+      final result = await coordinator.resolvePendingMemoryConfirmation(
+        answer: 'oui',
+        referenceDate: now,
+      );
+
+      expect(result?.diagnosticCode, 'memoryReplacementConflict');
+      expect(result?.message, contains('revérifier'));
+      expect(result?.message, isNot(contains('Generic preference')));
+      expect(coordinator.state.pendingAction, isNull);
+    });
+
+    test('unavailable replacement remains retryable without success claim',
+        () async {
+      final repository = _FakeRepository(_memory())
+        ..executionCode = MemoryReplacementExecutionCode.unavailable;
+      final coordinator = _coordinator(repository);
+      coordinator.setPendingMemoryConfirmation(
+        _replacementRequest(now),
+        createdAt: now,
+      );
+
+      final result = await coordinator.resolvePendingMemoryConfirmation(
+        answer: 'oui',
+        referenceDate: now,
+      );
+
+      expect(result?.diagnosticCode, 'memoryReplacementUnavailable');
+      expect(result?.message, isNot(contains('mis à jour')));
+      expect(
+        coordinator.state.pendingAction?.memoryReplacementAction?.state,
+        MemoryReplacementActionState.acceptedPendingExecution,
+      );
+    });
+
     test('coordinator reconstruction restores a durable pending action',
         () async {
       final repository = _FakeRepository(_memory())
@@ -182,6 +225,27 @@ void main() {
       expect(restored, isTrue);
       expect(coordinator.state.pendingAction?.memoryReplacementAction?.actionId,
           'd' * 64);
+    });
+
+    test('coordinator reconstruction executes an already accepted action',
+        () async {
+      final repository = _FakeRepository(_memory())
+        ..replacementAction =
+            _replacementRequest(now).replacementPendingAction!.withState(
+                  MemoryReplacementActionState.acceptedPendingExecution,
+                  now,
+                );
+      final coordinator = _coordinator(repository);
+
+      final restored = await coordinator.restorePendingMemoryReplacement(
+        accountScopeId: 'account-test',
+        logicalRequestId: 'logical-1',
+        restoredAt: now,
+      );
+
+      expect(restored, isTrue);
+      expect(repository.executionCalls, 1);
+      expect(coordinator.state.pendingAction, isNull);
     });
 
     test('presents a stable proposal before calling the backend', () async {
@@ -492,6 +556,9 @@ final class _FakeRepository
   final bool failWrites;
   final List<MemoryLifecycleMutation> applied = [];
   MemoryReplacementPendingAction? replacementAction;
+  int executionCalls = 0;
+  MemoryReplacementExecutionCode executionCode =
+      MemoryReplacementExecutionCode.executed;
 
   _FakeRepository(this._memory, {this.failWrites = false});
 
@@ -556,6 +623,16 @@ final class _FakeRepository
   }) async {
     replacementAction = action.withState(state, updatedAt);
     return replacementAction!;
+  }
+
+  @override
+  Future<MemoryReplacementExecutionResult> executeAcceptedMemoryReplacement({
+    required MemoryReplacementPendingAction action,
+    required String accountScopeId,
+    required DateTime referenceDate,
+  }) async {
+    executionCalls++;
+    return MemoryReplacementExecutionResult(executionCode);
   }
 }
 

@@ -421,8 +421,19 @@ class ConversationCoordinator {
     );
     if (action == null ||
         action.state == MemoryReplacementActionState.declined ||
+        action.state == MemoryReplacementActionState.conflict ||
         action.state == MemoryReplacementActionState.cancelled) {
       return false;
+    }
+    if (action.state == MemoryReplacementActionState.executed) return true;
+    if (action.state == MemoryReplacementActionState.acceptedPendingExecution) {
+      final result = await (repository as MemoryReplacementPendingRepository)
+          .executeAcceptedMemoryReplacement(
+        action: action,
+        accountScopeId: accountScopeId,
+        referenceDate: restoredAt,
+      );
+      return result.isSuccess;
     }
     setPendingMemoryConfirmation(
       MemoryConfirmationRequest(
@@ -1582,19 +1593,75 @@ class ConversationCoordinator {
           diagnosticCode: 'memoryReplacementDeclined',
         );
       }
-      await (replacementRepository as MemoryReplacementPendingRepository)
-          .updatePendingReplacementState(
-        action: durableAction,
-        state: MemoryReplacementActionState.acceptedPendingExecution,
-        updatedAt: referenceDate,
+      MemoryReplacementPendingAction accepted;
+      try {
+        accepted =
+            await (replacementRepository as MemoryReplacementPendingRepository)
+                .updatePendingReplacementState(
+          action: durableAction,
+          state: MemoryReplacementActionState.acceptedPendingExecution,
+          updatedAt: referenceDate,
+        );
+      } catch (_) {
+        _state = _state.copyWith(
+          phase: ConversationPhase.awaitingActionConfirmation,
+        );
+        return const PendingConversationResolution(
+          'Je n’ai pas pu vérifier le résultat pour le moment. Je réessaierai '
+          'sans dupliquer la modification.',
+          diagnosticCode: 'memoryReplacementUnavailable',
+        );
+      }
+      final accountScopeId = _confirmationAccountScope();
+      if (accountScopeId == null) {
+        _state = _state.copyWith(
+          phase: ConversationPhase.awaitingActionConfirmation,
+        );
+        return const PendingConversationResolution(
+          'Je n’ai pas pu vérifier le résultat pour le moment. Je réessaierai '
+          'sans dupliquer la modification.',
+          diagnosticCode: 'memoryReplacementUnavailable',
+        );
+      }
+      final execution =
+          await (replacementRepository as MemoryReplacementPendingRepository)
+              .executeAcceptedMemoryReplacement(
+        action: accepted,
+        accountScopeId: accountScopeId,
+        referenceDate: referenceDate,
       );
-      _state = _state.copyWith(
-        phase: ConversationPhase.awaitingActionConfirmation,
-      );
+      if (execution.isSuccess) {
+        _clearPendingAction();
+        return const PendingConversationResolution(
+          'C’est mis à jour. Je prendrai désormais en compte la nouvelle '
+          'information.',
+          diagnosticCode: 'memoryReplacementExecuted',
+        );
+      }
+      if (execution.retryable) {
+        _state = _state.copyWith(
+          phase: ConversationPhase.awaitingActionConfirmation,
+          pendingAction: PendingConversationAction.memoryConfirmation(
+            proposalId: accepted.proposedMemoryId,
+            createdAt: accepted.createdAt,
+            expectedMemoryAction: MemoryLifecycleAction.replace,
+            memoryContradiction: pending.memoryContradiction,
+            memoryReplacementAction: accepted,
+            canonicalConfirmation: pending.canonicalConfirmation,
+            autonomyMetadata: pending.autonomyMetadata,
+          ),
+        );
+        return const PendingConversationResolution(
+          'Je n’ai pas pu vérifier le résultat pour le moment. Je réessaierai '
+          'sans dupliquer la modification.',
+          diagnosticCode: 'memoryReplacementUnavailable',
+        );
+      }
+      _clearPendingAction();
       return const PendingConversationResolution(
-        'Le remplacement est bien en attente, mais son exécution sécurisée '
-        'sera disponible dans une prochaine étape.',
-        diagnosticCode: 'replacementPendingImplementation',
+        'L’information a changé entre-temps. Je préfère la revérifier avec '
+        'toi avant de la remplacer.',
+        diagnosticCode: 'memoryReplacementConflict',
       );
     }
     if (_isResolvingPendingAction) return null;

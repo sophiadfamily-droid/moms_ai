@@ -8,7 +8,21 @@ enum MemoryReplacementActionState {
   pending,
   declined,
   acceptedPendingExecution,
+  executed,
+  conflict,
   cancelled,
+}
+
+enum MemoryReplacementExecutionCode {
+  executed,
+  alreadyExecuted,
+  revisionConflict,
+  invalidState,
+  missingDocument,
+  scopeMismatch,
+  identityMismatch,
+  expired,
+  unavailable,
 }
 
 final class MemoryContradictionMatch {
@@ -166,6 +180,10 @@ final class MemoryReplacementPendingAction {
     required this.logicalRequestFingerprint,
     required this.createdAt,
     required this.updatedAt,
+    this.executedAt,
+    this.executionCode,
+    this.finalExistingRevision,
+    this.finalProposedRevision,
     this.schemaVersion = currentSchemaVersion,
   }) {
     if (!_fingerprint(actionId) ||
@@ -182,6 +200,24 @@ final class MemoryReplacementPendingAction {
         !createdAt.isUtc ||
         !updatedAt.isUtc ||
         updatedAt.isBefore(createdAt) ||
+        (executedAt != null && !executedAt!.isUtc) ||
+        (state == MemoryReplacementActionState.executed &&
+            (executedAt == null ||
+                executionCode != MemoryReplacementExecutionCode.executed ||
+                finalExistingRevision == null ||
+                finalProposedRevision == null)) ||
+        (state != MemoryReplacementActionState.executed &&
+            (executedAt != null ||
+                finalExistingRevision != null ||
+                finalProposedRevision != null)) ||
+        (state == MemoryReplacementActionState.conflict &&
+            (executionCode == null ||
+                executionCode == MemoryReplacementExecutionCode.executed ||
+                executionCode ==
+                    MemoryReplacementExecutionCode.alreadyExecuted)) ||
+        (state != MemoryReplacementActionState.executed &&
+            state != MemoryReplacementActionState.conflict &&
+            executionCode != null) ||
         schemaVersion != currentSchemaVersion) {
       throw const FormatException('invalid_memory_replacement_pending_action');
     }
@@ -201,6 +237,10 @@ final class MemoryReplacementPendingAction {
   final String logicalRequestFingerprint;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final DateTime? executedAt;
+  final MemoryReplacementExecutionCode? executionCode;
+  final int? finalExistingRevision;
+  final int? finalProposedRevision;
   final int schemaVersion;
 
   MemoryReplacementPendingAction withState(
@@ -240,6 +280,12 @@ final class MemoryReplacementPendingAction {
         'logicalRequestFingerprint': logicalRequestFingerprint,
         'createdAt': createdAt.toIso8601String(),
         'updatedAt': updatedAt.toIso8601String(),
+        if (executedAt != null) 'executedAt': executedAt!.toIso8601String(),
+        if (executionCode != null) 'executionCode': executionCode!.name,
+        if (finalExistingRevision != null)
+          'finalExistingRevision': finalExistingRevision,
+        if (finalProposedRevision != null)
+          'finalProposedRevision': finalProposedRevision,
       };
 
   factory MemoryReplacementPendingAction.fromJson(Object? value) {
@@ -270,7 +316,12 @@ final class MemoryReplacementPendingAction {
 
     final createdAt = DateTime.tryParse(map['createdAt']?.toString() ?? '');
     final updatedAt = DateTime.tryParse(map['updatedAt']?.toString() ?? '');
-    if (createdAt == null || updatedAt == null) {
+    final executedAt = map['executedAt'] == null
+        ? null
+        : DateTime.tryParse(map['executedAt']?.toString() ?? '');
+    if (createdAt == null ||
+        updatedAt == null ||
+        (map.containsKey('executedAt') && executedAt == null)) {
       throw const FormatException('invalid_memory_replacement_pending_action');
     }
     return MemoryReplacementPendingAction(
@@ -293,6 +344,19 @@ final class MemoryReplacementPendingAction {
           map['logicalRequestFingerprint']?.toString() ?? '',
       createdAt: createdAt.toUtc(),
       updatedAt: updatedAt.toUtc(),
+      executedAt: executedAt?.toUtc(),
+      executionCode: map['executionCode'] == null
+          ? null
+          : parseEnum(
+              MemoryReplacementExecutionCode.values,
+              'executionCode',
+            ),
+      finalExistingRevision: map['finalExistingRevision'] is int
+          ? map['finalExistingRevision'] as int
+          : null,
+      finalProposedRevision: map['finalProposedRevision'] is int
+          ? map['finalProposedRevision'] as int
+          : null,
       schemaVersion:
           map['schemaVersion'] is int ? map['schemaVersion'] as int : 0,
     );
