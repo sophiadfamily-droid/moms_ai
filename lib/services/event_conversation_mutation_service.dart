@@ -49,6 +49,68 @@ final class EventConversationMutationService {
     );
   }
 
+  Future<EventTargetSelectionResult> selectVerifiedIds(
+    List<String> eventIds,
+  ) async {
+    final ids = eventIds
+        .where((id) => id.trim().isNotEmpty)
+        .map((id) => id.trim())
+        .toSet();
+    final matches = (await _loadEvents())
+        .where((event) => event.id != null && ids.contains(event.id))
+        .toList()
+      ..sort((first, second) => first.id!.compareTo(second.id!));
+    if (matches.isEmpty) {
+      return EventTargetSelectionResult(
+        status: EventTargetSelectionStatus.notFound,
+        diagnosticCode: 'event_reference_ids_not_found',
+      );
+    }
+    if (matches.length == 1) {
+      return EventTargetSelectionResult(
+        status: EventTargetSelectionStatus.selected,
+        selected: matches.single,
+        diagnosticCode: 'event_reference_id_verified',
+      );
+    }
+    return EventTargetSelectionResult(
+      status: EventTargetSelectionStatus.ambiguous,
+      candidates: matches.take(EventTargetSelector.maxCandidates).toList(),
+      diagnosticCode: 'event_reference_ids_ambiguous',
+    );
+  }
+
+  Future<EventTargetSelectionResult> revalidateClarificationCandidate({
+    required String eventId,
+    required EventModel presented,
+    required EventMutationRequest request,
+  }) async {
+    final events = await _loadEvents();
+    final current = events.where((event) => event.id == eventId).firstOrNull;
+    if (current == null ||
+        jsonEncode(current.toJson()) != jsonEncode(presented.toJson())) {
+      return EventTargetSelectionResult(
+        status: EventTargetSelectionStatus.notFound,
+        diagnosticCode: 'event_clarification_candidate_changed',
+      );
+    }
+    final matching = EventTargetSelector.select(
+      events: [current],
+      target: request.target,
+    );
+    if (matching.status != EventTargetSelectionStatus.selected) {
+      return EventTargetSelectionResult(
+        status: EventTargetSelectionStatus.notFound,
+        diagnosticCode: 'event_clarification_constraints_changed',
+      );
+    }
+    return EventTargetSelectionResult(
+      status: EventTargetSelectionStatus.selected,
+      selected: current,
+      diagnosticCode: 'event_clarification_candidate_revalidated',
+    );
+  }
+
   EventModel propose(EventModel original, EventMutationChanges changes) {
     final date = changes.date ?? original.date;
     final time = changes.time ?? original.time;

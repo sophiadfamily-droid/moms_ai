@@ -8,6 +8,7 @@ import 'package:moms_ai/core/identity/life_entity.dart';
 import 'package:moms_ai/models/chat_backend_request.dart';
 import 'package:moms_ai/models/chat_backend_response.dart';
 import 'package:moms_ai/models/conversation_models.dart';
+import 'package:moms_ai/models/conversation_reference_resolution.dart';
 import 'package:moms_ai/models/event_model.dart';
 import 'package:moms_ai/models/user_profile.dart';
 import 'package:moms_ai/repositories/identity/fake_identity_repository.dart';
@@ -39,6 +40,11 @@ void main() {
         IdentityActionBindingStatus.attached,
       );
       expect(result.identityActionBindingResult?.resolvedEntityId, 'entity-1');
+      expect(
+        result.referenceResolution?.status,
+        ConversationReferenceResolutionStatus.resolved,
+      );
+      expect(result.referenceResolution?.entityId, 'entity-1');
       expect(
           result.identityActionBindingResult?.actionDraftId, 'event-draft-1');
       expect(fixture.coordinator.state.pendingAction, isNull);
@@ -101,6 +107,10 @@ void main() {
           IdentityActionBindingStatus.invalid,
         );
         expect(result.identityActionBindingResult?.resolvedEntityId, isNull);
+        expect(
+          result.referenceResolution?.status,
+          isNot(ConversationReferenceResolutionStatus.resolved),
+        );
       }
       expect(fixture.coordinator.state.pendingAction, isNull);
       expect(fixture.repository.writeCalls, 0);

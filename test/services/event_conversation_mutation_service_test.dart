@@ -7,6 +7,7 @@ import 'package:moms_ai/models/event_participant_identity_link.dart';
 import 'package:moms_ai/services/event_conversation_mutation_service.dart';
 import 'package:moms_ai/services/event_mutation_service.dart';
 import 'package:moms_ai/services/event_mutation_result.dart';
+import 'package:moms_ai/services/event_target_selector.dart';
 
 void main() {
   test('proposes every allowed change while preserving Identity', () {
@@ -96,6 +97,25 @@ void main() {
     expect(
         (await conflict.execute(original: original, proposed: proposed)).status,
         EventMutationExecutionStatus.conflict);
+  });
+
+  test('locally revalidates stable event IDs from conversation state',
+      () async {
+    final service = EventConversationMutationService(
+      loadEvents: () async => [_event(), _event(id: 'event-2')],
+    );
+
+    final selected = await service.selectVerifiedIds(['event-1']);
+    final ambiguous = await service.selectVerifiedIds(['event-2', 'event-1']);
+    final forged = await service.selectVerifiedIds(['backend-only']);
+
+    expect(selected.selected?.id, 'event-1');
+    expect(ambiguous.status, EventTargetSelectionStatus.ambiguous);
+    expect(
+      ambiguous.candidates.map((event) => event.id),
+      ['event-1', 'event-2'],
+    );
+    expect(forged.status, EventTargetSelectionStatus.notFound);
   });
 }
 

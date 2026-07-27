@@ -5,6 +5,7 @@ import '../core/identity/entity_reference.dart';
 import '../core/identity/entity_types.dart';
 import 'chat_backend_request.dart';
 import 'conversation_epistemic_models.dart';
+import 'conversation_reference_resolution.dart';
 import 'event_model.dart';
 import 'event_mutation_models.dart';
 import 'event_participant.dart';
@@ -763,6 +764,7 @@ class ConversationOutcome {
   final IdentityCreationResult? identityCreationResult;
   final ConversationResponseKind? responseKind;
   final ConversationClarification? epistemicClarification;
+  final ConversationReferenceResolution? referenceResolution;
 
   const ConversationOutcome({
     required this.reply,
@@ -772,6 +774,7 @@ class ConversationOutcome {
     this.identityCreationResult,
     this.responseKind,
     this.epistemicClarification,
+    this.referenceResolution,
   });
 }
 
@@ -781,6 +784,7 @@ class PendingConversationResolution {
   final IdentityClarificationResult? identityClarificationResult;
   final IdentityActionBindingResult? identityActionBindingResult;
   final IdentityCreationResult? identityCreationResult;
+  final ConversationReferenceResolution? referenceResolution;
 
   const PendingConversationResolution(
     this.message, {
@@ -788,5 +792,6 @@ class PendingConversationResolution {
     this.identityClarificationResult,
     this.identityActionBindingResult,
     this.identityCreationResult,
+    this.referenceResolution,
   });
 }

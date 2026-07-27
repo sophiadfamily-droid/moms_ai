@@ -17,6 +17,9 @@ import 'conversation_context_service.dart';
 import 'conversation_coordinator.dart';
 import 'conversation_grounding_policy.dart';
 import 'conversation_legacy_action_executor.dart';
+import 'conversation_reference_history_store.dart';
+import 'conversation_reference_resolver.dart';
+import 'event_conversation_mutation_service.dart';
 import 'routine_conversation_service.dart';
 import 'identity/identity_production_services.dart';
 import 'smart_planning_continuation_coordinator.dart';
@@ -75,6 +78,8 @@ final class ConversationSessionController extends ChangeNotifier {
     ConversationApplicationPendingPhase? applicationPendingPhase,
     ConversationMessageStore messageStore =
         const DefaultConversationMessageStore(),
+    ConversationReferenceHistoryStore? referenceHistoryStore,
+    String? accountScopeId,
     ChatBackendClient? ownedBackend,
     DateTime Function()? clock,
     String Function()? idGenerator,
@@ -87,6 +92,8 @@ final class ConversationSessionController extends ChangeNotifier {
         _invalidateSession = invalidateSession,
         _applicationPendingPhase = applicationPendingPhase,
         _messageStore = messageStore,
+        _referenceHistoryStore = referenceHistoryStore,
+        _accountScopeId = accountScopeId?.trim(),
         _ownedBackend = ownedBackend,
         _clock = clock ?? DateTime.now,
         _idGenerator = idGenerator ?? _defaultId,
@@ -107,9 +114,22 @@ final class ConversationSessionController extends ChangeNotifier {
     ConversationContextProvider? contextProvider,
     IdentityProductionServices? identityServices,
     ConversationSessionActionExecutor? executeAction,
+    EventConversationMutationService? eventConversationMutationService,
+    ConversationReferenceHistoryStore? referenceHistoryStore,
+    ConversationMessageStore messageStore =
+        const DefaultConversationMessageStore(),
+    DateTime Function()? clock,
+    String Function()? idGenerator,
+    String? accountScopeId,
     String? initialAssistantMessage,
   }) {
     final backend = backendClient ?? createDefaultChatBackendClient();
+    final resolvedAccountScopeId = accountScopeId?.trim().isNotEmpty == true
+        ? accountScopeId!.trim()
+        : identityServices?.scope.accountId ??
+            (backendClient == null
+                ? FirebaseAuth.instance.currentUser?.uid
+                : null);
     Future<ActionAutonomyPolicyService>? autonomyService;
     Future<ActionAutonomyPolicyService> loadAutonomyService() =>
         autonomyService ??= ActionAutonomyPolicyService.local(
@@ -118,7 +138,7 @@ final class ConversationSessionController extends ChangeNotifier {
     Future<ActionAutonomyPolicy> loadAutonomyPolicy() async {
       if (backendClient != null) {
         return ActionAutonomyPolicy.restrictiveDefault(
-          accountScopeId: 'injected-session',
+          accountScopeId: resolvedAccountScopeId ?? 'injected-session',
           changedAt: DateTime.now().toUtc(),
         );
       }
@@ -134,8 +154,10 @@ final class ConversationSessionController extends ChangeNotifier {
       identityAccountScope: identityServices?.scope,
       eventParticipantIdentityValidationService:
           identityServices?.eventParticipantValidation,
+      eventConversationMutationService: eventConversationMutationService,
       loadAutonomyPolicy: loadAutonomyPolicy,
       routineConversationService: RoutineConversationService.production(),
+      clock: clock,
     );
     final smartPlanningGateway =
         ProductionSmartPlanningContinuationGateway(profile);
@@ -169,7 +191,13 @@ final class ConversationSessionController extends ChangeNotifier {
           _ => ConversationSessionPhase.awaitingClarification,
         };
       },
+      messageStore: messageStore,
       ownedBackend: backendClient == null ? backend : null,
+      referenceHistoryStore: referenceHistoryStore ??
+          const SharedPreferencesConversationReferenceHistoryStore(),
+      accountScopeId: resolvedAccountScopeId,
+      clock: clock,
+      idGenerator: idGenerator,
       initialAssistantMessage:
           "Coucou 💕 Moi c'est Zelia. Je suis là pour t'aider à organiser ton quotidien ✨",
     );
@@ -187,6 +215,8 @@ final class ConversationSessionController extends ChangeNotifier {
   final ConversationSessionInvalidator? _invalidateSession;
   final ConversationApplicationPendingPhase? _applicationPendingPhase;
   final ConversationMessageStore _messageStore;
+  final ConversationReferenceHistoryStore? _referenceHistoryStore;
+  String? _accountScopeId;
   final ChatBackendClient? _ownedBackend;
   final DateTime Function() _clock;
   final String Function() _idGenerator;
@@ -200,6 +230,7 @@ final class ConversationSessionController extends ChangeNotifier {
   String? _lastLogicalRequestId;
   ConversationClarificationLedger _clarificationLedger =
       const ConversationClarificationLedger();
+  bool _referenceHistoryLoaded = false;
 
   Future<void> dispatch(ConversationUiIntent intent) => switch (intent) {
         SubmitConversationText(:final text) => submitText(text),
@@ -264,6 +295,7 @@ final class ConversationSessionController extends ChangeNotifier {
       ),
     );
     try {
+      await _loadReferenceHistory();
       final pendingOutcome = await _resolvePending?.call(text, generation);
       final outcome = pendingOutcome ??
           await _coordinator.send(
@@ -276,6 +308,8 @@ final class ConversationSessionController extends ChangeNotifier {
             executeAction: (action) => _executeAction(action, text, generation),
           );
       if (!_isCurrent(requestId, generation) || outcome == null) return;
+      await _saveReferenceHistory();
+      if (!_isCurrent(requestId, generation)) return;
       _setState(
           _state.copyWith(phase: ConversationSessionPhase.validatingResponse));
       if (outcome.reply.trim().isEmpty) {
@@ -406,6 +440,51 @@ final class ConversationSessionController extends ChangeNotifier {
     _clarificationLedger = ConversationClarificationLedger(
       sessionGeneration: generation,
     );
+    _coordinator.restoreValidatedReferenceHistory(
+      const [],
+      accountScopeId: _accountScopeId ?? 'unavailable-account',
+      referenceDate: _clock().toUtc(),
+    );
+    _accountScopeId = null;
+    _referenceHistoryLoaded = false;
+  }
+
+  Future<void> _loadReferenceHistory() async {
+    if (_referenceHistoryLoaded) return;
+    _referenceHistoryLoaded = true;
+    final store = _referenceHistoryStore;
+    final scope = _accountScopeId;
+    if (store == null || scope == null || scope.isEmpty) return;
+    final now = _clock().toUtc();
+    List<ValidatedConversationReference> references;
+    try {
+      references = await store.load(
+        accountScopeId: scope,
+        referenceDate: now,
+      );
+    } catch (_) {
+      references = const [];
+    }
+    _coordinator.restoreValidatedReferenceHistory(
+      references,
+      accountScopeId: scope,
+      referenceDate: now,
+    );
+  }
+
+  Future<void> _saveReferenceHistory() async {
+    final store = _referenceHistoryStore;
+    final scope = _accountScopeId;
+    if (store == null || scope == null || scope.isEmpty) return;
+    try {
+      await store.save(
+        accountScopeId: scope,
+        references: _coordinator.validatedReferenceHistory,
+        referenceDate: _clock().toUtc(),
+      );
+    } catch (_) {
+      // Reference persistence must never turn a safe response into an error.
+    }
   }
 
   String? _appendMessage(ConversationMessageRole role, String text) {

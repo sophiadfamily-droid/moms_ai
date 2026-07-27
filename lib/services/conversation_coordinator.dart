@@ -1,4 +1,5 @@
 import '../models/conversation_models.dart';
+import '../models/conversation_reference_resolution.dart';
 import '../models/action_autonomy_policy.dart';
 import '../models/action_confirmation.dart';
 import '../models/action_ledger.dart';
@@ -17,6 +18,7 @@ import '../core/identity/uuid_v7_entity_id_generator.dart';
 import 'chat_backend_client.dart';
 import 'conversation_answer_classifier.dart';
 import 'conversation_context_service.dart';
+import 'conversation_reference_resolver.dart';
 import 'conversation_grounding_policy.dart';
 import 'action_autonomy_policy_engine.dart';
 import 'action_confirmation_coordinator.dart';
@@ -61,6 +63,7 @@ class ConversationCoordinator {
       eventParticipantIdentityValidationService;
   final EntityIdGenerator _actionDraftIdGenerator;
   final EventConversationMutationService eventConversationMutationService;
+  final ConversationReferenceResolver conversationReferenceResolver;
   final DateTime Function() _clock;
   final ConversationAutonomyPolicyLoader? _loadAutonomyPolicy;
   final ActionAutonomyPolicyEngine _autonomyEngine;
@@ -78,6 +81,7 @@ class ConversationCoordinator {
   final Map<String, PendingEventIdentityDraft> _eventIdentityDrafts = {};
   final Map<String, PendingEventParticipantMutationDraft>
       _eventParticipantMutationDrafts = {};
+  final List<ValidatedConversationReference> _validatedReferenceHistory;
 
   ConversationCoordinator({
     required this.backend,
@@ -94,6 +98,8 @@ class ConversationCoordinator {
     this.eventParticipantIdentityValidationService,
     EntityIdGenerator? actionDraftIdGenerator,
     EventConversationMutationService? eventConversationMutationService,
+    this.conversationReferenceResolver = const ConversationReferenceResolver(),
+    List<ValidatedConversationReference> validatedReferenceHistory = const [],
     DateTime Function()? clock,
     ConversationAutonomyPolicyLoader? loadAutonomyPolicy,
     ActionAutonomyPolicyEngine autonomyEngine =
@@ -113,6 +119,8 @@ class ConversationCoordinator {
             actionDraftIdGenerator ?? UuidV7EntityIdGenerator(),
         eventConversationMutationService = eventConversationMutationService ??
             EventConversationMutationService(),
+        _validatedReferenceHistory =
+            List<ValidatedConversationReference>.of(validatedReferenceHistory),
         _loadAutonomyPolicy = loadAutonomyPolicy,
         _autonomyEngine = autonomyEngine,
         _clock = clock ?? DateTime.now {
@@ -126,6 +134,24 @@ class ConversationCoordinator {
   }
 
   ConversationState get state => _state;
+  List<ValidatedConversationReference> get validatedReferenceHistory =>
+      List.unmodifiable(_validatedReferenceHistory);
+
+  void restoreValidatedReferenceHistory(
+    List<ValidatedConversationReference> references, {
+    required String accountScopeId,
+    required DateTime referenceDate,
+  }) {
+    _validatedReferenceHistory
+      ..clear()
+      ..addAll(
+        references
+            .where((item) => item.accountScopeId == accountScopeId)
+            .where((item) => item.isValidAt(referenceDate.toUtc()))
+            .take(ConversationReferenceResolution.maximumCandidateIds),
+      );
+  }
+
   ActionConfirmation? get activeConfirmation =>
       _state.pendingAction?.canonicalConfirmation;
 
@@ -610,6 +636,13 @@ class ConversationCoordinator {
     }
 
     final applicationResult = await applicationService.resolve(request);
+    final referenceResolution =
+        conversationReferenceResolver.fromIdentityApplication(
+      application: applicationResult,
+      referenceType: _identityReferenceType(request.reference),
+      source: _identityReferenceSource(request.reference),
+      expectedType: request.reference.expectedType,
+    );
     final creationService = identityCreationService;
     if (applicationResult.status == IdentityApplicationStatus.notFound &&
         creationRequest != null &&
@@ -637,6 +670,7 @@ class ConversationCoordinator {
       return PendingConversationResolution(
         creationService.question(pending),
         identityActionBindingResult: bindingResult,
+        referenceResolution: referenceResolution,
       );
     }
     var bindingResult = identityActionBindingService.fromApplicationResult(
@@ -651,6 +685,7 @@ class ConversationCoordinator {
       return PendingConversationResolution(
         _bindingMessage(bindingResult.status),
         identityActionBindingResult: bindingResult,
+        referenceResolution: referenceResolution,
       );
     }
 
@@ -678,6 +713,7 @@ class ConversationCoordinator {
     return PendingConversationResolution(
       identityClarificationService.question(pending),
       identityActionBindingResult: bindingResult,
+      referenceResolution: referenceResolution,
     );
   }
 
@@ -943,18 +979,60 @@ class ConversationCoordinator {
         diagnosticCode: 'pending_action_exists',
       );
     }
-    final selection = await eventConversationMutationService.select(request);
+    var referenceSource = ConversationReferenceSource.currentMessage;
+    EventTargetSelectionResult selection;
+    if (_eventTargetIsImplicit(request)) {
+      final historyResolution = conversationReferenceResolver.resolve(
+        ConversationReferenceRequest(
+          accountScopeId: _confirmationAccountScope()!,
+          referenceType: _eventReferenceType(request),
+          entityType: ConversationReferenceEntityType.event,
+          validatedHistory: _validatedReferenceHistory,
+        ),
+        referenceDate: _clock().toUtc(),
+      );
+      if (historyResolution.status ==
+              ConversationReferenceResolutionStatus.resolved ||
+          historyResolution.status ==
+              ConversationReferenceResolutionStatus.ambiguous) {
+        selection = await eventConversationMutationService.selectVerifiedIds(
+          historyResolution.status ==
+                  ConversationReferenceResolutionStatus.resolved
+              ? [historyResolution.entityId!]
+              : historyResolution.candidateIds,
+        );
+        referenceSource =
+            ConversationReferenceSource.validatedConversationHistory;
+      } else {
+        return PendingConversationResolution(
+          'De quel événement parles-tu ?',
+          diagnosticCode: 'event_reference_missing_antecedent',
+          referenceResolution: historyResolution,
+        );
+      }
+    } else {
+      selection = await eventConversationMutationService.select(request);
+    }
+    final referenceResolution =
+        conversationReferenceResolver.fromEventSelection(
+      selection: selection,
+      accountScopeId: _confirmationAccountScope()!,
+      referenceType: _eventReferenceType(request),
+      source: referenceSource,
+    );
     switch (selection.status) {
       case EventTargetSelectionStatus.notFound:
-        return const PendingConversationResolution(
+        return PendingConversationResolution(
           'Je ne trouve pas cet événement. Peux-tu préciser le titre, '
           'la date ou l’heure ?',
           diagnosticCode: 'event_target_not_found',
+          referenceResolution: referenceResolution,
         );
       case EventTargetSelectionStatus.invalid:
-        return const PendingConversationResolution(
+        return PendingConversationResolution(
           'Cet événement ne peut pas être modifié de façon sûre.',
           diagnosticCode: 'event_target_invalid',
+          referenceResolution: referenceResolution,
         );
       case EventTargetSelectionStatus.ambiguous:
         final now = _clock().toUtc();
@@ -975,11 +1053,16 @@ class ConversationCoordinator {
         return PendingConversationResolution(
           _eventTargetQuestion(pending),
           diagnosticCode: selection.diagnosticCode,
+          referenceResolution: referenceResolution,
         );
       case EventTargetSelectionStatus.selected:
-        return _continueSelectedEventMutation(
-          request: request,
-          original: selection.selected!,
+        _rememberValidatedEvent(selection.selected!.id!);
+        return _withReferenceResolution(
+          await _continueSelectedEventMutation(
+            request: request,
+            original: selection.selected!,
+          ),
+          referenceResolution,
         );
     }
   }
@@ -1014,10 +1097,46 @@ class ConversationCoordinator {
           diagnosticCode: 'event_target_clarification_ambiguous',
         );
       }
-      _clearPendingAction();
-      return await _continueSelectedEventMutation(
+      final presented = clarification.candidates[index];
+      final selection = await eventConversationMutationService
+          .revalidateClarificationCandidate(
+        eventId: presented.id!,
+        presented: presented,
         request: clarification.request,
-        original: clarification.candidates[index],
+      );
+      if (selection.status != EventTargetSelectionStatus.selected) {
+        _clearPendingAction();
+        return PendingConversationResolution(
+          'Cet événement n’est plus disponible. Reformule ta demande.',
+          diagnosticCode: selection.diagnosticCode,
+          referenceResolution: ConversationReferenceResolution(
+            status: ConversationReferenceResolutionStatus.unresolved,
+            referenceType: _eventReferenceType(clarification.request),
+            entityType: ConversationReferenceEntityType.event,
+            source: ConversationReferenceSource.pendingAction,
+            reasonCode: ConversationReferenceReasonCode.inactiveOrDeletedEntity,
+          ),
+        );
+      }
+      _clearPendingAction();
+      final selected = selection.selected!;
+      _rememberValidatedEvent(selected.id!);
+      final resolution = conversationReferenceResolver.fromEventSelection(
+        selection: EventTargetSelectionResult(
+          status: EventTargetSelectionStatus.selected,
+          selected: selected,
+          diagnosticCode: 'event_target_selected_after_clarification',
+        ),
+        accountScopeId: _confirmationAccountScope()!,
+        referenceType: _eventReferenceType(clarification.request),
+        source: ConversationReferenceSource.pendingAction,
+      );
+      return _withReferenceResolution(
+        await _continueSelectedEventMutation(
+          request: clarification.request,
+          original: selected,
+        ),
+        resolution,
       );
     }
     if (pending.type !=
@@ -1382,6 +1501,89 @@ class ConversationCoordinator {
     }
     return lines.join('\n');
   }
+
+  static ConversationReferenceType _eventReferenceType(
+    EventMutationRequest request,
+  ) {
+    if (_eventTargetIsImplicit(request)) {
+      return ConversationReferenceType.demonstrative;
+    }
+    final target = request.target;
+    if (target.title?.trim().isNotEmpty == true) {
+      return ConversationReferenceType.explicitMention;
+    }
+    if (target.date != null || target.time != null) {
+      return ConversationReferenceType.temporalTarget;
+    }
+    return ConversationReferenceType.demonstrative;
+  }
+
+  static bool _eventTargetIsImplicit(EventMutationRequest request) {
+    final target = request.target;
+    final title = target.title?.trim().toLowerCase();
+    return (title == null ||
+            const {
+              'le',
+              'la',
+              'lui',
+              'celui-ci',
+              'celle-ci',
+              'celui',
+              'celle',
+            }.contains(title)) &&
+        target.date == null &&
+        target.time == null &&
+        target.category == null;
+  }
+
+  void _rememberValidatedEvent(String eventId) {
+    final now = _clock().toUtc();
+    _validatedReferenceHistory.removeWhere(
+      (item) =>
+          !item.isValidAt(now) ||
+          item.entityType == ConversationReferenceEntityType.event,
+    );
+    _validatedReferenceHistory.add(
+      ValidatedConversationReference(
+        entityId: eventId,
+        entityType: ConversationReferenceEntityType.event,
+        accountScopeId: _confirmationAccountScope()!,
+        validatedAt: now,
+        expiresAt: now.add(const Duration(minutes: 15)),
+      ),
+    );
+  }
+
+  static ConversationReferenceType _identityReferenceType(
+    EntityReference reference,
+  ) =>
+      switch (reference.kind) {
+        EntityReferenceKind.pronoun => ConversationReferenceType.pronoun,
+        EntityReferenceKind.relationalExpression =>
+          ConversationReferenceType.possessive,
+        _ => ConversationReferenceType.explicitMention,
+      };
+
+  static ConversationReferenceSource _identityReferenceSource(
+    EntityReference reference,
+  ) =>
+      reference.kind == EntityReferenceKind.pronoun ||
+              reference.conversationTargetEntityId != null
+          ? ConversationReferenceSource.pendingAction
+          : ConversationReferenceSource.explicitEntityMention;
+
+  static PendingConversationResolution _withReferenceResolution(
+    PendingConversationResolution value,
+    ConversationReferenceResolution referenceResolution,
+  ) =>
+      PendingConversationResolution(
+        value.message,
+        diagnosticCode: value.diagnosticCode,
+        identityClarificationResult: value.identityClarificationResult,
+        identityActionBindingResult: value.identityActionBindingResult,
+        identityCreationResult: value.identityCreationResult,
+        referenceResolution: referenceResolution,
+      );
 
   static int? _choiceIndex(String answer, int length) {
     final match = RegExp(r'\d+').firstMatch(answer.trim());
@@ -2011,7 +2213,10 @@ class ConversationCoordinator {
       answer: input.message,
     );
     if (eventMutationResolution != null) {
-      return ConversationOutcome(reply: eventMutationResolution.message);
+      return ConversationOutcome(
+        reply: eventMutationResolution.message,
+        referenceResolution: eventMutationResolution.referenceResolution,
+      );
     }
     final creationResolution = await resolvePendingIdentityCreation(
       answer: input.message,
@@ -2093,6 +2298,7 @@ class ConversationCoordinator {
       final taskTitles = <String>[];
       final eventTitles = <String>[];
       String? planningTitle;
+      ConversationReferenceResolution? referenceResolution;
 
       for (final rawAction in response.actions) {
         final guarded = ZeliaActionGuardService.guard(rawAction);
@@ -2171,6 +2377,7 @@ class ConversationCoordinator {
             action['eventMutation'] as EventMutationRequest,
           );
           actionMessages.add(mutation.message);
+          referenceResolution = mutation.referenceResolution;
           continue;
         }
         final title = action['title']?.toString() ?? '';
@@ -2221,6 +2428,7 @@ class ConversationCoordinator {
         request: request,
         responseKind: epistemic?.responseKind,
         epistemicClarification: epistemic?.clarification,
+        referenceResolution: referenceResolution,
       );
     } finally {
       _isSending = false;
