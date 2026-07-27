@@ -184,6 +184,8 @@ final class PriorityCandidate {
     this.temporalStart,
     this.createdAt,
     this.effortMinutes,
+    this.travelGoMinutes,
+    this.marginMinutes,
     this.flexibility = PriorityFlexibility.unknown,
     this.explicitImportance,
     this.explicitUrgency,
@@ -212,6 +214,8 @@ final class PriorityCandidate {
   final DateTime? temporalStart;
   final DateTime? createdAt;
   final int? effortMinutes;
+  final int? travelGoMinutes;
+  final int? marginMinutes;
   final PriorityFlexibility flexibility;
   final double? explicitImportance;
   final double? explicitUrgency;
@@ -235,6 +239,8 @@ final class PriorityCandidate {
         sourceId.trim().isEmpty ||
         syncStatus.trim().isEmpty ||
         effortMinutes != null && effortMinutes! <= 0 ||
+        travelGoMinutes != null && travelGoMinutes! < 0 ||
+        marginMinutes != null && marginMinutes! < 0 ||
         sourceRevision != null && sourceRevision! < 0 ||
         subjectEntityId != null && subjectEntityId!.trim().isEmpty ||
         (consequenceType == PriorityConsequenceType.unknown) !=
@@ -265,6 +271,8 @@ final class PriorityCandidate {
         if (createdAt != null)
           'createdAt': createdAt!.toUtc().toIso8601String(),
         if (effortMinutes != null) 'effortMinutes': effortMinutes,
+        if (travelGoMinutes != null) 'travelGoMinutes': travelGoMinutes,
+        if (marginMinutes != null) 'marginMinutes': marginMinutes,
         'flexibility': flexibility.name,
         if (explicitImportance != null)
           'explicitImportance': explicitImportance,

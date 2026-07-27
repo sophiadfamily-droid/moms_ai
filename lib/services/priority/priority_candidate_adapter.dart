@@ -190,6 +190,10 @@ final class PriorityCandidateAdapter {
       createdAt: _parseDate(facts[LifeContextProjectionFactKeys.createdAt]),
       effortMinutes: _parsePositiveInt(
           facts[LifeContextProjectionFactKeys.durationMinutes]),
+      travelGoMinutes: _parseNonNegativeInt(
+          facts[LifeContextProjectionFactKeys.travelGoMinutes]),
+      marginMinutes: _parseNonNegativeInt(
+          facts[LifeContextProjectionFactKeys.marginMinutes]),
       flexibility: source == PrioritySourceDomain.event
           ? PriorityFlexibility.fixed
           : _flexibility(facts[LifeContextProjectionFactKeys.flexibility]),
@@ -235,6 +239,11 @@ final class PriorityCandidateAdapter {
   int? _parsePositiveInt(String? value) {
     final parsed = value == null ? null : int.tryParse(value);
     return parsed != null && parsed > 0 ? parsed : null;
+  }
+
+  int? _parseNonNegativeInt(String? value) {
+    final parsed = value == null ? null : int.tryParse(value);
+    return parsed != null && parsed >= 0 ? parsed : null;
   }
 
   double? _parseUnit(String? value) {

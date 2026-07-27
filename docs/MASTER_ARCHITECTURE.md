@@ -706,6 +706,52 @@ visible n’est modifié. Une future frontière C.1 pourra consommer une
 représentation courte et bornée, mais R.3 ne modifie ni payload conversationnel
 ni prompt.
 
+#### V1-R.4 — Suggestions informatives de priorité
+
+`PrioritySuggestionBuilder` est une projection pure et bornée de
+`PriorityRanking`. Il ne reclasse pas les candidats, ne lit aucun repository,
+ne persiste rien et ne crée ni action, ni notification, ni proposition de
+planning. Une passe utilise une seule date injectée, refuse un classement futur
+ou âgé de quinze minutes, et produit au plus trois suggestions.
+Les candidats sont parcourus strictement dans l’ordre déjà fourni par
+`PriorityRanking`; le type, la sévérité et l’horizon d’une suggestion ne
+constituent jamais un second classement. Un candidat sans suggestion est
+simplement ignoré, puis la lecture continue jusqu’à trois résultats.
+
+Les types fermés actuellement retenus sont `actSoon`, `prepare`,
+`clarifyMissingInformation`, `reviewConflict`, `protectFixedCommitment`,
+`reviewOverdueItem` et `monitorDeadline`. Une suggestion est émise seulement
+si une intervention informative est prouvée : proximité temporelle, retard
+avec conséquence structurée, engagement fixe futur, information manquante qui
+bloque réellement l’évaluation, ou conflit déjà confirmé par N.2. Les candidats
+ordinaires, lointains ou en cours ne deviennent pas artificiellement urgents.
+
+Les horizons sont `now`, `nextTwoHours`, `today`, `nextTwentyFourHours`,
+`nextThreeDays` et `later`. La préparation avec trajet exige un trajet aller
+structuré; le trajet retour n’est jamais substitué et une marge absente reste
+absente. R.4 ne calcule aucun chevauchement : `reviewConflict` consomme
+exclusivement un signal N.2 actuel fondé sur la frontière de conflit canonique.
+Tous les participants techniques du signal doivent être présents dans le
+ranking. Les preuves équivalentes sont canonicalisées par participants,
+révisions et intervalles; une preuve partielle ou plusieurs preuves
+incompatibles concernant le même participant échouent fermées. R.4 informe et
+propose une revue; il ne choisit aucun gagnant et toute future modification
+reste soumise aux confirmations A.1–A.3.
+
+L’identité d’une suggestion est une empreinte déterministe du scope, du type,
+des identifiants techniques triés, des versions et de l’horizon. Elle ne
+contient aucun texte, titre, nom, lieu, relation ou donnée médicale. Une seule
+suggestion principale est conservée par candidat et les preuves équivalentes
+de conflit sont regroupées. Il n’existe volontairement ni persistance,
+cooldown, registre ni connexion au scheduler dans R.4.
+
+`PrioritySuggestionConversationContextBuilder` fournit une projection locale,
+en lecture seule, avec des formulations françaises fermées. Elle n’est pas
+ajoutée au schéma Functions et ne permet donc pas au modèle de recalculer
+l’ordre ou d’inventer une suggestion. Le branchement produit à une réponse
+locale du chat reste une étape d’intégration ultérieure : cette phase n’ajoute
+ni nouveau payload backend, ni écran, ni interception du chat classique.
+
 ### 7.8 Reasoning Engine
 
 **Current state:** Reasoning is distributed across profile reasoning, memory reasoning, planning services, prompt context, and model selection. There is no single verified general-purpose Reasoning Engine.

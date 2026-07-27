@@ -59,4 +59,34 @@ void main() {
       endsWith('lib/services/priority/priority_formula.dart'),
     ]);
   });
+
+  test('R.4 suggestion projection is read-only and has no delivery boundary',
+      () {
+    final builder =
+        File('lib/services/priority/priority_suggestion_builder.dart')
+            .readAsStringSync()
+            .toLowerCase();
+    final conversation = File(
+      'lib/services/priority/priority_suggestion_conversation_context.dart',
+    ).readAsStringSync().toLowerCase();
+    final combined = '$builder\n$conversation';
+    for (final forbidden in [
+      'firebase',
+      'firestore',
+      'sharedpreferences',
+      'notificationservice',
+      'localnotificationscheduler',
+      'planningservice',
+      'eventservice',
+      'taskservice',
+      'routineservice',
+      'chatbackendclient',
+      'openai',
+    ]) {
+      expect(combined, isNot(contains(forbidden)), reason: forbidden);
+    }
+    expect(builder, contains('maximumsuggestions'));
+    expect(builder, contains('required datetime referencedate'));
+    expect(conversation, contains('local read-only presentation boundary'));
+  });
 }
