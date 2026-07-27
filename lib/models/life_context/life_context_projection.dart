@@ -3,7 +3,12 @@ import 'dart:collection';
 import 'life_context_domains.dart';
 import 'life_context_graph.dart';
 
-enum LifeContextConsumerPurpose { conversation, planning, internalTechnical }
+enum LifeContextConsumerPurpose {
+  conversation,
+  planning,
+  internalTechnical,
+  proactivePriority,
+}
 
 enum LifeContextSensitivityLevel {
   publicTechnical,
@@ -242,6 +247,39 @@ final class LifeContextConsumerContract {
           maxRelationDepth: 1,
           maxRelations: 5,
           maxItems: 20,
+          maxTextLength: 0,
+          truncationPolicy: LifeContextTruncationPolicy.omitWholeItem,
+        ),
+      LifeContextConsumerPurpose.proactivePriority =>
+        LifeContextConsumerContract._(
+          schemaVersion: schemaVersion,
+          purpose: purpose,
+          purposeId: 'proactive_priority.context.v1',
+          allowedSections: LifeContextProjectionSectionType.values.toSet(),
+          allowedSensitivities: const {
+            LifeContextSensitivityLevel.publicTechnical,
+          },
+          globalBudget: 515,
+          sectionBudgets: const {
+            LifeContextProjectionSectionType.human: 55,
+            LifeContextProjectionSectionType.identity: 10,
+            LifeContextProjectionSectionType.event: 50,
+            LifeContextProjectionSectionType.task: 300,
+            LifeContextProjectionSectionType.routine: 20,
+            LifeContextProjectionSectionType.memory: 30,
+            LifeContextProjectionSectionType.relation: 50,
+          },
+          pastWindow: const Duration(days: 7),
+          futureWindow: const Duration(days: 30),
+          includeHistorical: false,
+          includeFuture: true,
+          includeUncertain: true,
+          allowStale: true,
+          allowPartial: true,
+          requiredDomains: const {LifeContextDomain.human},
+          maxRelationDepth: 1,
+          maxRelations: 12,
+          maxItems: 140,
           maxTextLength: 0,
           truncationPolicy: LifeContextTruncationPolicy.omitWholeItem,
         ),

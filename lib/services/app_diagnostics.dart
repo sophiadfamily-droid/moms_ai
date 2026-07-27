@@ -20,6 +20,9 @@ enum AppErrorCode {
   cancelled('cancelled'),
   storageFailure('storage-failure'),
   syncFailure('sync-failure'),
+  proactiveShow('proactive-show'),
+  proactiveNoShow('proactive-no-show'),
+  proactivePersistenceFailure('proactive-persistence-failure'),
   unknown('unknown');
 
   const AppErrorCode(this.value);
@@ -167,6 +170,32 @@ final class AppErrorCatalog {
           true,
           id,
         ),
+      AppErrorCode.proactiveShow => _descriptor(
+          code,
+          AppErrorCategory.persistence,
+          'Une suggestion utile est disponible.',
+          'Eligible proactive suggestion selected.',
+          false,
+          id,
+          severity: AppErrorSeverity.info,
+        ),
+      AppErrorCode.proactiveNoShow => _descriptor(
+          code,
+          AppErrorCategory.persistence,
+          'Aucune suggestion n’est nécessaire pour le moment.',
+          'No proactive suggestion selected.',
+          false,
+          id,
+          severity: AppErrorSeverity.info,
+        ),
+      AppErrorCode.proactivePersistenceFailure => _descriptor(
+          code,
+          AppErrorCategory.persistence,
+          'La suggestion ne peut pas être affichée pour le moment.',
+          'Proactive suggestion receipt persistence failed.',
+          true,
+          id,
+        ),
       AppErrorCode.unknown => _descriptor(
           code,
           AppErrorCategory.unknown,
@@ -219,6 +248,17 @@ final class AppDiagnostics {
     'sessionGeneration',
     'state',
     'eventType',
+    'result',
+    'candidateCount',
+    'suggestionType',
+    'reasonCodes',
+    'decision',
+    'interactionActive',
+    'tabActive',
+    'historyState',
+    'sessionQuotaConsumed',
+    'sourceRevision',
+    'evaluationGeneration',
   };
 
   static const Set<String> _forbiddenNames = {

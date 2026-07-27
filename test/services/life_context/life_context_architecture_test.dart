@@ -121,7 +121,9 @@ void main() {
           file.path.endsWith('conversation_context_service.dart') ||
           // N.2 is an explicit read-only canonical consumer. It adapts one
           // validated snapshot and never persists or sends it.
-          file.path.endsWith('proactive_detection_production.dart')) {
+          file.path.endsWith('proactive_detection_production.dart') ||
+          // Priority 2C is an explicit local, read-only Dashboard consumer.
+          file.path.endsWith('proactive_priority_production.dart')) {
         continue;
       }
       expect(

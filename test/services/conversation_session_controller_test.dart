@@ -6,6 +6,9 @@ import 'package:moms_ai/models/chat_backend_response.dart';
 import 'package:moms_ai/models/conversation_models.dart';
 import 'package:moms_ai/models/conversation_epistemic_models.dart';
 import 'package:moms_ai/models/conversation_session_models.dart';
+import 'package:moms_ai/models/priority/proactive_priority_models.dart';
+import 'package:moms_ai/models/smart_planning_continuation.dart';
+import 'package:moms_ai/models/task_model.dart';
 import 'package:moms_ai/models/user_profile.dart';
 import 'package:moms_ai/services/chat_backend_client.dart';
 import 'package:moms_ai/services/conversation_context_service.dart';
@@ -189,6 +192,120 @@ void main() {
       await request;
       expect(harness.backend.calls, 1);
     });
+
+    test('proactive duration handoff arms pending before showing its question',
+        () async {
+      TaskModel? targetedTask;
+      final task = TaskModel(
+        id: 'task-stable',
+        title: 'Préparer le dossier',
+        category: 'To-do',
+        isDone: false,
+        createdAt: DateTime.utc(2026, 7, 23),
+      );
+      final harness = _Harness(
+        startTaskDuration: ({
+          required task,
+          required question,
+          required sessionGeneration,
+          required logicalRequestId,
+          required sourceSuggestionId,
+        }) {
+          targetedTask = task;
+          expect(logicalRequestId, 'logical-duration');
+          expect(sourceSuggestionId, 'suggestion-1');
+          return SmartPlanningContinuationResult(
+            status: SmartPlanningContinuationResultStatus
+                .clarificationStillRequired,
+            message: question,
+            handled: true,
+          );
+        },
+        applicationPendingPhase: () =>
+            ConversationSessionPhase.awaitingClarification,
+        resolvePending: (answer, generation) async {
+          expect(answer, 'une heure');
+          expect(targetedTask?.id, 'task-stable');
+          return const ConversationOutcome(
+            reply: 'Durée comprise : 60 minutes.',
+          );
+        },
+      );
+      final handoff = ProactiveTaskDurationHandoff(
+        taskId: 'task-stable',
+        logicalRequestId: 'logical-duration',
+        sourceSuggestionId: 'suggestion-1',
+        sourceEntityReference: 'priority:task:task-stable',
+        taskTitle: task.title,
+        question:
+            'Combien de temps veux-tu prévoir pour “Préparer le dossier” ?',
+        createdAt: DateTime.utc(2026, 7, 23),
+        task: task,
+      );
+
+      harness.controller.beginProactiveTaskDuration(handoff: handoff);
+
+      expect(targetedTask, same(task));
+      expect(
+        harness.controller.state.phase,
+        ConversationSessionPhase.awaitingClarification,
+      );
+      expect(harness.controller.state.hasPendingAction, isTrue);
+      expect(harness.controller.state.messages.last.text, handoff.question);
+      expect(harness.controller.activeLogicalRequestId, 'logical-duration');
+
+      await harness.controller.submitText('une heure');
+
+      expect(harness.backend.calls, 0);
+      expect(harness.controller.activeLogicalRequestId, 'logical-duration');
+      expect(
+        harness.controller.state.messages.last.text,
+        'Durée comprise : 60 minutes.',
+      );
+      harness.dispose();
+    });
+
+    test('production composition shares the typed Smart Planning pending', () {
+      final task = TaskModel(
+        id: 'production-task',
+        title: 'Préparer le dossier',
+        category: 'To-do',
+        isDone: false,
+        createdAt: DateTime.utc(2026, 7, 23),
+      );
+      final controller = ConversationSessionController.production(
+        profile: _profile(),
+        backendClient: _Backend(),
+        contextProvider: _Context(),
+        messageStore: _Store(),
+        accountScopeId: 'account',
+        clock: () => DateTime.utc(2026, 7, 23),
+        idGenerator: () => 'production-id',
+      );
+      final handoff = ProactiveTaskDurationHandoff(
+        taskId: task.id!,
+        logicalRequestId: 'production-logical',
+        sourceSuggestionId: 'production-suggestion',
+        sourceEntityReference: 'priority:task:production-task',
+        taskTitle: task.title,
+        question:
+            'Combien de temps veux-tu prévoir pour “Préparer le dossier” ?',
+        createdAt: DateTime.utc(2026, 7, 23),
+        task: task,
+      );
+
+      controller.beginProactiveTaskDuration(handoff: handoff);
+
+      final pending = controller.activeSmartPlanningContinuation;
+      expect(pending, isNotNull);
+      expect(pending!.task.id, 'production-task');
+      expect(pending.step, SmartPlanningContinuationStep.duration);
+      expect(pending.logicalRequestId, 'production-logical');
+      expect(pending.sourceSuggestionId, 'production-suggestion');
+      expect(controller.state.phase,
+          ConversationSessionPhase.awaitingClarification);
+      controller.dispose();
+    });
   });
 }
 
@@ -197,6 +314,8 @@ final class _Harness {
     Future<ChatBackendResponse>? pending,
     Object? error,
     ConversationPendingResolver? resolvePending,
+    ConversationTaskDurationStarter? startTaskDuration,
+    ConversationApplicationPendingPhase? applicationPendingPhase,
   })  : backend = _Backend(pending: pending, error: error),
         context = _Context(),
         store = _Store() {
@@ -210,6 +329,8 @@ final class _Harness {
       coordinator: coordinator,
       executeAction: (_, __, ___) async => const ConversationActionOutcome(),
       resolvePending: resolvePending,
+      startTaskDuration: startTaskDuration,
+      applicationPendingPhase: applicationPendingPhase,
       messageStore: store,
       idGenerator: () => 'technical-${++id}',
       clock: () => DateTime.utc(2026, 7, 23),

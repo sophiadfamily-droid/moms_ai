@@ -126,6 +126,68 @@ void main() {
     expect(coordinator.active, isNull);
   });
 
+  test('proactive duration handoff keeps the stable task target', () async {
+    final targeted = task().copyWith(id: 'task-stable');
+    final started = coordinator.beginTaskDurationCompletion(
+      task: targeted,
+      originalMessage: 'Combien de temps veux-tu prévoir pour “Dentiste” ?',
+      sessionGeneration: 8,
+      logicalRequestId: 'logical-8',
+      sourceSuggestionId: 'suggestion-8',
+    );
+
+    expect(started.message, contains('Dentiste'));
+    expect(coordinator.active!.step, SmartPlanningContinuationStep.duration);
+    expect(coordinator.active!.task.id, 'task-stable');
+
+    final result = await coordinator.resolve('une heure', sessionGeneration: 8);
+
+    expect(result!.reply, isNot(contains('quelle activité')));
+    expect(coordinator.active!.task.id, 'task-stable');
+    expect(coordinator.active!.actionMinutes, 60);
+  });
+
+  test('proactive duration handoff accepts canonical French durations',
+      () async {
+    for (final entry in const {
+      '1 h': 60,
+      '45 minutes': 45,
+      'une heure et demie': 90,
+    }.entries) {
+      coordinator = SmartPlanningContinuationCoordinator(
+        gateway: gateway,
+        clock: () => now,
+        idGenerator: () => 'duration-${++id}',
+      );
+      coordinator.beginTaskDurationCompletion(
+        task: task().copyWith(id: 'task-${entry.value}'),
+        originalMessage: 'Combien de temps veux-tu prévoir ?',
+        sessionGeneration: 9,
+        logicalRequestId: 'logical-${entry.value}',
+        sourceSuggestionId: 'suggestion-${entry.value}',
+      );
+
+      await coordinator.resolve(entry.key, sessionGeneration: 9);
+
+      expect(coordinator.active!.actionMinutes, entry.value, reason: entry.key);
+    }
+  });
+
+  test('proactive duration cancellation clears its continuation', () async {
+    coordinator.beginTaskDurationCompletion(
+      task: task().copyWith(id: 'task-cancel'),
+      originalMessage: 'Combien de temps veux-tu prévoir ?',
+      sessionGeneration: 10,
+      logicalRequestId: 'logical-cancel',
+      sourceSuggestionId: 'suggestion-cancel',
+    );
+
+    final result = await coordinator.resolve('annule', sessionGeneration: 10);
+
+    expect(result!.reply, contains('ferme'));
+    expect(coordinator.active, isNull);
+  });
+
   test('explicit slot request follows duration and both travel steps',
       () async {
     final started = await coordinator.resolve(

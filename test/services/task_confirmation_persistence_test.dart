@@ -14,6 +14,7 @@ import 'package:moms_ai/services/conversation_coordinator.dart';
 import 'package:moms_ai/services/conversation_legacy_action_executor.dart';
 import 'package:moms_ai/services/conversation_session_controller.dart';
 import 'package:moms_ai/services/smart_planning_continuation_coordinator.dart';
+import 'package:moms_ai/services/priority/proactive_interaction_registry.dart';
 import 'package:moms_ai/services/task_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -172,6 +173,42 @@ void main() {
 
     expect(outcome?.reply, contains('seulement dans ta to-do'));
     expect(fixture.smartPlanning.active, isNull);
+  });
+
+  test('production Task planning consent releases its owned registry source',
+      () async {
+    SharedPreferences.setMockInitialValues({});
+    final registry = ProactiveInteractionRegistry();
+    final controller = ConversationSessionController.production(
+      profile: _profile(),
+      backendClient: CallableChatBackendClient.withInvoker(
+        (_) async => _taskClarificationJson(),
+      ),
+      contextProvider: _ContextProvider(_request()),
+      messageStore: const _NoopMessageStore(),
+      accountScopeId: 'synthetic-account',
+      proactiveInteractionRegistry: registry,
+      clock: () => DateTime.utc(2026, 7, 27, 10),
+    );
+    addTearDown(controller.dispose);
+
+    await controller.submitText('Crée une tâche prioritaire pour demain.');
+    await controller.submitText('Préparer les documents.');
+    await controller.submitText('oui');
+
+    expect(
+      registry.activeSources('synthetic-account'),
+      {ProactiveInteractionSource.smartPlanningConsent},
+    );
+    expect(
+      registry.snapshot('synthetic-account').lastTransition,
+      contains('smartPlanningConsent'),
+    );
+
+    await controller.submitText('non');
+
+    expect(registry.activeSources('synthetic-account'), isEmpty);
+    expect(registry.isActive('synthetic-account'), isFalse);
   });
 
   test('planning consent releases an independent general message', () async {

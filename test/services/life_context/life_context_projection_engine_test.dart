@@ -135,6 +135,35 @@ void main() {
           ));
     });
 
+    test('Priority proactive retains 100 compact Tasks and truncates overflow',
+        () {
+      final complete = _build(
+        _snapshot(now, taskCount: 100, allTasksActive: true),
+        LifeContextConsumerPurpose.proactivePriority,
+      );
+      final completeTasks =
+          _section(complete, LifeContextProjectionSectionType.task);
+      expect(completeTasks.items, hasLength(100));
+      expect(completeTasks.truncated, isFalse);
+      expect(complete.state, LifeContextProjectionState.complete);
+      expect(
+        completeTasks.items.expand((item) => item.facts),
+        isNot(contains(predicate<LifeContextProjectionFact>(
+          (fact) => fact.key == LifeContextProjectionFactKeys.title,
+        ))),
+      );
+
+      final overflow = _build(
+        _snapshot(now, taskCount: 101, allTasksActive: true),
+        LifeContextConsumerPurpose.proactivePriority,
+      );
+      final overflowTasks =
+          _section(overflow, LifeContextProjectionSectionType.task);
+      expect(overflowTasks.truncated, isTrue);
+      expect(overflow.warningCodes, contains('projection_truncated'));
+      expect(overflow.state, LifeContextProjectionState.partial);
+    });
+
     test('texte libre est nettoyé et borné', () {
       final projection = _build(
         _snapshot(now, eventTitle: '${'A' * 100}\nsecret'),
@@ -454,6 +483,8 @@ LifeContextSnapshot _snapshot(
   bool includeOutsideEvent = false,
   LifeContextAvailability eventAvailability = LifeContextAvailability.available,
   LifeContextAvailability taskAvailability = LifeContextAvailability.available,
+  int taskCount = 2,
+  bool allTasksActive = false,
   bool routineStale = false,
   bool expiredResponsibility = false,
 }) {
@@ -659,23 +690,24 @@ LifeContextSnapshot _snapshot(
         taskAvailability,
       ),
       tasks: taskAvailability == LifeContextAvailability.available
-          ? const [
-              TaskContextItem(
-                id: 'task-active',
-                title: 'Task active',
-                isCompleted: false,
-                dueDate: '2026-07-25',
-                durationMinutes: null,
-                syncStatus: 'synced',
-              ),
-              TaskContextItem(
-                id: 'task-done',
-                title: 'Task done',
-                isCompleted: true,
-                dueDate: null,
-                durationMinutes: null,
-                syncStatus: 'synced',
-              ),
+          ? [
+              for (var index = 0; index < taskCount; index++)
+                TaskContextItem(
+                  id: !allTasksActive && taskCount == 2
+                      ? index == 0
+                          ? 'task-active'
+                          : 'task-done'
+                      : 'task-$index',
+                  title: !allTasksActive && taskCount == 2
+                      ? index == 0
+                          ? 'Task active'
+                          : 'Task done'
+                      : 'Task $index',
+                  isCompleted: !allTasksActive && index == 1,
+                  dueDate: !allTasksActive && index == 1 ? null : '2026-07-25',
+                  durationMinutes: null,
+                  syncStatus: 'synced',
+                ),
             ]
           : const [],
     ),

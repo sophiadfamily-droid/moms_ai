@@ -79,7 +79,7 @@ void main() {
   });
 
   test('taxonomy exposes stable French messages and retry policy', () {
-    expect(AppErrorCode.values, hasLength(15));
+    expect(AppErrorCode.values, hasLength(18));
     for (final code in AppErrorCode.values) {
       final descriptor = AppErrorCatalog.describe(
         code,

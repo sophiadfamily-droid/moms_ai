@@ -667,17 +667,26 @@ final class RoutineLifeContextAdapter implements LifeContextDomainAdapter {
         }
       }
       routines.sort((a, b) => a.id.compareTo(b.id));
+      final legacyRoutineCount = routines.length - canonical.length;
+      final legacySourceFresh = legacyRoutineCount == 0 ||
+          state?.syncStatus == HumanModelSyncStatus.synced;
+      final availability = routines.isEmpty
+          ? LifeContextAvailability.empty
+          : legacySourceFresh
+              ? LifeContextAvailability.available
+              : LifeContextAvailability.availableStale;
+      final freshness = routines.isEmpty
+          ? LifeContextFreshness.unknown
+          : legacySourceFresh
+              ? LifeContextFreshness.current
+              : LifeContextFreshness.stale;
       return RoutineDomainSection(
         metadata: _metadata(
           request,
           domain,
           LifeContextSourceKind.legacyProfileRoutine,
-          routines.isEmpty
-              ? LifeContextAvailability.empty
-              : LifeContextAvailability.availableStale,
-          routines.isEmpty
-              ? LifeContextFreshness.unknown
-              : LifeContextFreshness.stale,
+          availability,
+          freshness,
           true,
           routines.length,
           revision: state?.knownCloudRevision,

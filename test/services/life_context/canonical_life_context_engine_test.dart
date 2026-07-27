@@ -274,7 +274,31 @@ void main() {
       expect(section.routines, hasLength(2));
       expect(
           section.metadata.source, LifeContextSourceKind.legacyProfileRoutine);
+      expect(section.metadata.availability, LifeContextAvailability.available);
+      expect(section.metadata.freshness, LifeContextFreshness.current);
       expect(section.toJson().toString(), isNot(contains('memory')));
+    });
+
+    test('Routine keeps unsynced legacy state stale and empty distinct',
+        () async {
+      final stale = await RoutineLifeContextAdapter(
+        loadHuman: (_) async =>
+            _humanState(syncStatus: HumanModelSyncStatus.pendingUpload),
+      ).load(
+          LifeContextAdapterRequest(accountScopeId: 'account-a', readAt: now));
+      expect(
+        stale.metadata.availability,
+        LifeContextAvailability.availableStale,
+      );
+      expect(stale.metadata.freshness, LifeContextFreshness.stale);
+
+      final empty = await RoutineLifeContextAdapter(
+        loadHuman: (_) async => null,
+        loadCanonical: (_) async => const [],
+      ).load(
+          LifeContextAdapterRequest(accountScopeId: 'account-a', readAt: now));
+      expect(empty.metadata.availability, LifeContextAvailability.empty);
+      expect(empty.routines, isEmpty);
     });
 
     test('empty is distinct from unavailable', () async {

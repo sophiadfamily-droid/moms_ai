@@ -146,9 +146,15 @@ final class PrioritySuggestion {
       };
 }
 
+abstract final class PrioritySuggestionLimits {
+  static const int chatConsultation = 3;
+  static const int proactiveEvaluation = 20;
+  static const int maximumBoundedWindow = proactiveEvaluation;
+}
+
 final class PrioritySuggestionResult {
   static const currentSchemaVersion = 1;
-  static const maximumSuggestions = 3;
+  static const maximumSuggestions = PrioritySuggestionLimits.chatConsultation;
 
   PrioritySuggestionResult({
     this.schemaVersion = currentSchemaVersion,
@@ -158,13 +164,19 @@ final class PrioritySuggestionResult {
     required this.expiresAt,
     required List<PrioritySuggestion> suggestions,
     Set<PrioritySuggestionWarning> warnings = const {},
+    this.appliedLimit = PrioritySuggestionLimits.chatConsultation,
+    int? sourceCandidateCount,
   })  : suggestions = UnmodifiableListView(suggestions),
-        warnings = UnmodifiableSetView(warnings) {
+        warnings = UnmodifiableSetView(warnings),
+        sourceCandidateCount = sourceCandidateCount ?? suggestions.length {
     if (schemaVersion != currentSchemaVersion ||
         accountScopeId.trim().isEmpty ||
         calculationVersion < 1 ||
         !expiresAt.isAfter(referenceDate) ||
-        suggestions.length > maximumSuggestions ||
+        appliedLimit < 1 ||
+        appliedLimit > PrioritySuggestionLimits.maximumBoundedWindow ||
+        suggestions.length > appliedLimit ||
+        this.sourceCandidateCount < suggestions.length ||
         suggestions.map((item) => item.suggestionId).toSet().length !=
             suggestions.length ||
         suggestions.any((item) => item.accountScopeId != accountScopeId)) {
@@ -179,4 +191,9 @@ final class PrioritySuggestionResult {
   final DateTime expiresAt;
   final List<PrioritySuggestion> suggestions;
   final Set<PrioritySuggestionWarning> warnings;
+  final int appliedLimit;
+  final int sourceCandidateCount;
+  bool get candidateWindowExhausted =>
+      suggestions.length == appliedLimit &&
+      sourceCandidateCount > suggestions.length;
 }

@@ -2,7 +2,10 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../models/user_profile.dart';
+import '../models/priority/proactive_priority_models.dart';
+import '../services/conversation_session_controller.dart';
 import '../services/identity/identity_production_services.dart';
+import '../services/priority/proactive_interaction_registry.dart';
 
 import 'home_screen.dart';
 import 'chat_screen.dart';
@@ -20,6 +23,7 @@ class MainNavigation extends StatefulWidget {
   )? profileScreenBuilder;
   final List<Widget>? testScreens;
   final IdentityProductionServices? identityServices;
+  final ProactiveInteractionRegistry? proactiveInteractionRegistry;
 
   const MainNavigation({
     super.key,
@@ -28,6 +32,7 @@ class MainNavigation extends StatefulWidget {
     this.profileScreenBuilder,
     this.testScreens,
     this.identityServices,
+    this.proactiveInteractionRegistry,
   });
 
   @override
@@ -39,12 +44,22 @@ class _MainNavigationState extends State<MainNavigation> {
 
   late UserProfile currentProfile;
 
-  String? zeliaSuggestionMessage;
+  late final ProactiveInteractionRegistry _proactiveInteractionRegistry;
+  ConversationSessionController? _conversationSessionController;
 
   @override
   void initState() {
     super.initState();
     currentProfile = widget.profile;
+    _proactiveInteractionRegistry = widget.proactiveInteractionRegistry ??
+        ProactiveInteractionRegistry.instance;
+    if (widget.testScreens == null) {
+      _conversationSessionController = ConversationSessionController.production(
+        profile: currentProfile,
+        identityServices: widget.identityServices,
+        proactiveInteractionRegistry: _proactiveInteractionRegistry,
+      );
+    }
   }
 
   @override
@@ -64,9 +79,11 @@ class _MainNavigationState extends State<MainNavigation> {
     });
   }
 
-  void openChatWithSuggestion(String message) {
+  void openChatWithSuggestion(ProactiveTaskDurationHandoff handoff) {
+    _conversationSessionController!.beginProactiveTaskDuration(
+      handoff: handoff,
+    );
     setState(() {
-      zeliaSuggestionMessage = message;
       currentIndex = 1;
     });
   }
@@ -77,6 +94,13 @@ class _MainNavigationState extends State<MainNavigation> {
     });
 
     widget.onProfileUpdated?.call(updatedProfile);
+    _conversationSessionController?.changeAccount(updatedProfile);
+  }
+
+  @override
+  void dispose() {
+    _conversationSessionController?.dispose();
+    super.dispose();
   }
 
   @override
@@ -89,12 +113,16 @@ class _MainNavigationState extends State<MainNavigation> {
           ),
           ChatScreen(
             profile: currentProfile,
-            initialAssistantMessage: zeliaSuggestionMessage,
             identityServices: widget.identityServices,
+            sessionController: _conversationSessionController!,
+            proactiveInteractionRegistry: _proactiveInteractionRegistry,
           ),
           const CalendarScreen(),
           TasksScreen(
             onOpenZeliaSuggestion: openChatWithSuggestion,
+            onNavigate: changeTab,
+            isDashboardActive: currentIndex == 3,
+            proactiveInteractionRegistry: _proactiveInteractionRegistry,
           ),
           const ShoppingScreen(),
           widget.profileScreenBuilder?.call(

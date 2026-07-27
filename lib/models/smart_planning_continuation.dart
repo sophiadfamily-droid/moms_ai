@@ -92,6 +92,8 @@ final class SmartPlanningContinuation {
     this.riskLevel = ActionRiskLevel.mutation,
     this.policyState = SmartPlanningPolicyState.active,
     this.canonicalConfirmation,
+    this.logicalRequestId,
+    this.sourceSuggestionId,
   })  : groupedTasks = UnmodifiableListView(groupedTasks),
         options = UnmodifiableListView(options) {
     if (schemaVersion != currentSchemaVersion ||
@@ -104,7 +106,9 @@ final class SmartPlanningContinuation {
         travelGoMinutes < 0 ||
         travelBackMinutes < 0 ||
         marginMinutes < 0 ||
-        mutationId != null && mutationId!.trim().isEmpty) {
+        mutationId != null && mutationId!.trim().isEmpty ||
+        logicalRequestId != null && logicalRequestId!.trim().isEmpty ||
+        sourceSuggestionId != null && sourceSuggestionId!.trim().isEmpty) {
       throw const FormatException('invalid_smart_planning_continuation');
     }
   }
@@ -140,6 +144,8 @@ final class SmartPlanningContinuation {
   final ActionRiskLevel riskLevel;
   final SmartPlanningPolicyState policyState;
   final ActionConfirmation? canonicalConfirmation;
+  final String? logicalRequestId;
+  final String? sourceSuggestionId;
 
   SmartPlanningContinuation copyWith({
     SmartPlanningContinuationType? type,
@@ -164,6 +170,8 @@ final class SmartPlanningContinuation {
     SmartPlanningPolicyState? policyState,
     ActionConfirmation? canonicalConfirmation,
     bool clearCanonicalConfirmation = false,
+    String? logicalRequestId,
+    String? sourceSuggestionId,
   }) =>
       SmartPlanningContinuation(
         id: id,
@@ -199,6 +207,8 @@ final class SmartPlanningContinuation {
         canonicalConfirmation: clearCanonicalConfirmation
             ? null
             : canonicalConfirmation ?? this.canonicalConfirmation,
+        logicalRequestId: logicalRequestId ?? this.logicalRequestId,
+        sourceSuggestionId: sourceSuggestionId ?? this.sourceSuggestionId,
       );
 }
 

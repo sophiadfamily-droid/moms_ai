@@ -7,6 +7,8 @@ import '../models/action_confirmation.dart';
 import '../models/conversation_epistemic_models.dart';
 import '../models/conversation_session_models.dart';
 import '../models/smart_planning_continuation.dart';
+import '../models/task_model.dart';
+import '../models/priority/proactive_priority_models.dart';
 import '../models/user_profile.dart';
 import 'app_diagnostics.dart';
 import 'action_autonomy_policy_service.dart';
@@ -22,6 +24,7 @@ import 'conversation_reference_resolver.dart';
 import 'event_conversation_mutation_service.dart';
 import 'routine_conversation_service.dart';
 import 'identity/identity_production_services.dart';
+import 'priority/proactive_interaction_registry.dart';
 import 'smart_planning_continuation_coordinator.dart';
 
 typedef ConversationSessionActionExecutor = Future<ConversationActionOutcome>
@@ -39,6 +42,18 @@ typedef ConversationSessionInvalidator = void Function(
   int sessionGeneration,
 );
 typedef ConversationApplicationPendingPhase = ConversationSessionPhase?
+    Function();
+typedef ConversationApplicationInteractionSources
+    = Set<ProactiveInteractionSource> Function();
+typedef ConversationTaskDurationStarter = SmartPlanningContinuationResult
+    Function({
+  required TaskModel task,
+  required String question,
+  required int sessionGeneration,
+  required String logicalRequestId,
+  required String sourceSuggestionId,
+});
+typedef ConversationActiveSmartPlanningContinuation = SmartPlanningContinuation?
     Function();
 
 abstract interface class ConversationMessageStore {
@@ -76,10 +91,15 @@ final class ConversationSessionController extends ChangeNotifier {
     ConversationPendingResolver? resolvePending,
     ConversationSessionInvalidator? invalidateSession,
     ConversationApplicationPendingPhase? applicationPendingPhase,
+    ConversationApplicationInteractionSources? applicationInteractionSources,
+    ConversationTaskDurationStarter? startTaskDuration,
+    ConversationActiveSmartPlanningContinuation?
+        applicationSmartPlanningContinuation,
     ConversationMessageStore messageStore =
         const DefaultConversationMessageStore(),
     ConversationReferenceHistoryStore? referenceHistoryStore,
     String? accountScopeId,
+    ProactiveInteractionRegistry? proactiveInteractionRegistry,
     ChatBackendClient? ownedBackend,
     DateTime Function()? clock,
     String Function()? idGenerator,
@@ -91,9 +111,15 @@ final class ConversationSessionController extends ChangeNotifier {
         _resolvePending = resolvePending,
         _invalidateSession = invalidateSession,
         _applicationPendingPhase = applicationPendingPhase,
+        _applicationInteractionSources = applicationInteractionSources,
+        _startTaskDuration = startTaskDuration,
+        _applicationSmartPlanningContinuation =
+            applicationSmartPlanningContinuation,
         _messageStore = messageStore,
         _referenceHistoryStore = referenceHistoryStore,
         _accountScopeId = accountScopeId?.trim(),
+        _proactiveInteractionRegistry = proactiveInteractionRegistry ??
+            ProactiveInteractionRegistry.instance,
         _ownedBackend = ownedBackend,
         _clock = clock ?? DateTime.now,
         _idGenerator = idGenerator ?? _defaultId,
@@ -121,6 +147,7 @@ final class ConversationSessionController extends ChangeNotifier {
     DateTime Function()? clock,
     String Function()? idGenerator,
     String? accountScopeId,
+    ProactiveInteractionRegistry? proactiveInteractionRegistry,
     String? initialAssistantMessage,
   }) {
     final backend = backendClient ?? createDefaultChatBackendClient();
@@ -191,11 +218,46 @@ final class ConversationSessionController extends ChangeNotifier {
           _ => ConversationSessionPhase.awaitingClarification,
         };
       },
+      applicationInteractionSources: () {
+        final active = smartPlanning.active;
+        if (active == null) return const {};
+        return {
+          switch (active.step) {
+            SmartPlanningContinuationStep.planningConsent =>
+              ProactiveInteractionSource.smartPlanningConsent,
+            SmartPlanningContinuationStep.duration ||
+            SmartPlanningContinuationStep.travelGo ||
+            SmartPlanningContinuationStep.travelBack =>
+              ProactiveInteractionSource.smartPlanningDuration,
+            SmartPlanningContinuationStep.optionChoice =>
+              ProactiveInteractionSource.smartPlanningSlotSelection,
+            SmartPlanningContinuationStep.confirmation ||
+            SmartPlanningContinuationStep.alternativeConfirmation =>
+              ProactiveInteractionSource.smartPlanningFinalConfirmation,
+          },
+        };
+      },
+      startTaskDuration: ({
+        required task,
+        required question,
+        required sessionGeneration,
+        required logicalRequestId,
+        required sourceSuggestionId,
+      }) =>
+          smartPlanning.beginTaskDurationCompletion(
+        task: task,
+        originalMessage: question,
+        sessionGeneration: sessionGeneration,
+        logicalRequestId: logicalRequestId,
+        sourceSuggestionId: sourceSuggestionId,
+      ),
+      applicationSmartPlanningContinuation: () => smartPlanning.active,
       messageStore: messageStore,
       ownedBackend: backendClient == null ? backend : null,
       referenceHistoryStore: referenceHistoryStore ??
           const SharedPreferencesConversationReferenceHistoryStore(),
       accountScopeId: resolvedAccountScopeId,
+      proactiveInteractionRegistry: proactiveInteractionRegistry,
       clock: clock,
       idGenerator: idGenerator,
       initialAssistantMessage:
@@ -214,20 +276,29 @@ final class ConversationSessionController extends ChangeNotifier {
   final ConversationPendingResolver? _resolvePending;
   final ConversationSessionInvalidator? _invalidateSession;
   final ConversationApplicationPendingPhase? _applicationPendingPhase;
+  final ConversationApplicationInteractionSources?
+      _applicationInteractionSources;
+  final ConversationTaskDurationStarter? _startTaskDuration;
+  final ConversationActiveSmartPlanningContinuation?
+      _applicationSmartPlanningContinuation;
   final ConversationMessageStore _messageStore;
   final ConversationReferenceHistoryStore? _referenceHistoryStore;
   String? _accountScopeId;
+  final ProactiveInteractionRegistry _proactiveInteractionRegistry;
   final ChatBackendClient? _ownedBackend;
   final DateTime Function() _clock;
   final String Function() _idGenerator;
 
   ConversationSessionState _state;
   ConversationSessionState get state => _state;
+  SmartPlanningContinuation? get activeSmartPlanningContinuation =>
+      _applicationSmartPlanningContinuation?.call();
   bool _disposed = false;
   int _requestSequence = 0;
   int _retryCount = 0;
   String? _lastSubmittedText;
   String? _lastLogicalRequestId;
+  String? get activeLogicalRequestId => _lastLogicalRequestId;
   ConversationClarificationLedger _clarificationLedger =
       const ConversationClarificationLedger();
   bool _referenceHistoryLoaded = false;
@@ -257,12 +328,46 @@ final class ConversationSessionController extends ChangeNotifier {
     _appendMessage(ConversationMessageRole.assistant, value);
   }
 
+  void beginProactiveTaskDuration({
+    required ProactiveTaskDurationHandoff handoff,
+  }) {
+    final task = handoff.task;
+    if (_disposed ||
+        task.id != handoff.taskId ||
+        task.title != handoff.taskTitle ||
+        _startTaskDuration == null) {
+      throw const FormatException('invalid_proactive_duration_target');
+    }
+    final result = _startTaskDuration(
+      task: task,
+      question: handoff.question,
+      sessionGeneration: _state.sessionGeneration,
+      logicalRequestId: handoff.logicalRequestId,
+      sourceSuggestionId: handoff.sourceSuggestionId,
+    );
+    _lastLogicalRequestId = handoff.logicalRequestId;
+    _appendMessage(ConversationMessageRole.assistant, result.message);
+    _setState(
+      _state.copyWith(
+        phase: ConversationSessionPhase.awaitingClarification,
+        hasPendingAction: true,
+        clearCurrentRequest: true,
+      ),
+    );
+    _emit(ConversationUiEffectType.showClarification);
+  }
+
   Future<void> submitText(String rawText) async {
     final text = rawText.trim();
     if (_disposed || text.isEmpty || _state.isBusy) return;
     _lastSubmittedText = text;
     _retryCount = 0;
-    _lastLogicalRequestId = _appendMessage(ConversationMessageRole.user, text);
+    final submittedMessageId =
+        _appendMessage(ConversationMessageRole.user, text);
+    if (_applicationPendingPhase?.call() == null ||
+        _lastLogicalRequestId == null) {
+      _lastLogicalRequestId = submittedMessageId;
+    }
     await _runRequest(text, addUserMessage: false);
   }
 
@@ -424,6 +529,10 @@ final class ConversationSessionController extends ChangeNotifier {
 
   void changeAccount(UserProfile profile) {
     if (_disposed || identical(profile, _profile)) return;
+    _proactiveInteractionRegistry.deactivateOwner(
+      _accountScopeId,
+      ownerId: _interactionOwnerId,
+    );
     _profile = profile;
     final generation = _state.sessionGeneration + 1;
     _invalidateSession?.call(profile, generation);
@@ -549,8 +658,62 @@ final class ConversationSessionController extends ChangeNotifier {
   void _setState(ConversationSessionState value) {
     if (_disposed) return;
     _state = value;
+    _proactiveInteractionRegistry.replaceOwnerSources(
+      _accountScopeId,
+      ownerId: _interactionOwnerId,
+      sources: _currentInteractionSources(value),
+    );
     notifyListeners();
   }
+
+  String get _interactionOwnerId => 'conversation:${_state.sessionId}';
+
+  Set<ProactiveInteractionSource> _currentInteractionSources(
+    ConversationSessionState value,
+  ) {
+    if (value.isBusy || value.phase == ConversationSessionPhase.pendingSync) {
+      return const {ProactiveInteractionSource.conversationRequest};
+    }
+    final application = _applicationInteractionSources?.call() ?? const {};
+    if (application.isNotEmpty) return application;
+    final pending = _coordinator.state.pendingAction;
+    if (pending == null) return const {};
+    return {
+      switch (pending.type) {
+        PendingConversationActionType.taskClarification =>
+          ProactiveInteractionSource.taskClarification,
+        PendingConversationActionType.eventConfirmation ||
+        PendingConversationActionType.eventTargetClarification ||
+        PendingConversationActionType.eventMutationConfirmation =>
+          ProactiveInteractionSource.eventConfirmation,
+        PendingConversationActionType.identityClarification =>
+          ProactiveInteractionSource.identityClarification,
+        PendingConversationActionType.identityCreation =>
+          ProactiveInteractionSource.identityConfirmation,
+        PendingConversationActionType.memoryConfirmation =>
+          ProactiveInteractionSource.memoryConfirmation,
+        PendingConversationActionType.autonomyConfirmation =>
+          _autonomyInteractionSource(pending.autonomyMetadata.actionType),
+      },
+    };
+  }
+
+  static ProactiveInteractionSource _autonomyInteractionSource(
+    ActionType actionType,
+  ) =>
+      switch (actionType) {
+        ActionType.createTask => ProactiveInteractionSource.taskConfirmation,
+        ActionType.createRoutine =>
+          ProactiveInteractionSource.routineConfirmation,
+        ActionType.confirmMemory =>
+          ProactiveInteractionSource.memoryConfirmation,
+        ActionType.createEvent ||
+        ActionType.updateEvent ||
+        ActionType.deleteEvent ||
+        ActionType.smartPlanningReservation =>
+          ProactiveInteractionSource.eventConfirmation,
+        _ => ProactiveInteractionSource.identityConfirmation,
+      };
 
   static ConversationSessionPhase _pendingPhase(
     PendingConversationActionType type,
@@ -568,11 +731,16 @@ final class ConversationSessionController extends ChangeNotifier {
   @override
   void dispose() {
     if (_disposed) return;
+    final interactionOwnerId = _interactionOwnerId;
     _disposed = true;
     _state = _state.copyWith(
       sessionGeneration: _state.sessionGeneration + 1,
       phase: ConversationSessionPhase.disposed,
       clearCurrentRequest: true,
+    );
+    _proactiveInteractionRegistry.deactivateOwner(
+      _accountScopeId,
+      ownerId: interactionOwnerId,
     );
     _clarificationLedger = ConversationClarificationLedger(
       sessionGeneration: _state.sessionGeneration,

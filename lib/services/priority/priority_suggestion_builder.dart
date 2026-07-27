@@ -20,7 +20,11 @@ final class PrioritySuggestionBuilder {
     required String accountScopeId,
     required DateTime referenceDate,
     Iterable<ProactiveDetectionSignal> detectionSignals = const [],
+    int limit = PrioritySuggestionResult.maximumSuggestions,
   }) {
+    if (limit < 1 || limit > PrioritySuggestionLimits.maximumBoundedWindow) {
+      throw const PriorityException('invalid_priority_suggestion_limit');
+    }
     final now = referenceDate.toUtc();
     final rankingExpiresAt = ranking.evaluatedAt.toUtc().add(rankingValidity);
     final ownExpiry = now.add(suggestionValidity);
@@ -35,6 +39,8 @@ final class PrioritySuggestionBuilder {
         expiresAt: ownExpiry,
         suggestions: const [],
         warnings: {warning},
+        appliedLimit: limit,
+        sourceCandidateCount: ranking.items.length,
       );
     }
 
@@ -70,7 +76,7 @@ final class PrioritySuggestionBuilder {
         expiresAt: expiresAt,
         formulaVersion: ranking.formulaVersion,
       ));
-      if (selected.length == PrioritySuggestionResult.maximumSuggestions) {
+      if (selected.length == limit) {
         break;
       }
     }
@@ -85,6 +91,8 @@ final class PrioritySuggestionBuilder {
           PrioritySuggestionWarning.invalidEvidence,
         if (selected.isEmpty) PrioritySuggestionWarning.noEligibleSuggestion,
       },
+      appliedLimit: limit,
+      sourceCandidateCount: ranking.items.length,
     );
   }
 

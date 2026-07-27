@@ -11,6 +11,7 @@ import 'action_autonomy_policy_engine.dart';
 import 'action_confirmation_coordinator.dart';
 import 'event_service.dart';
 import 'memory_planning_compatibility_service.dart';
+import 'natural_duration_service.dart';
 import 'notification_service.dart';
 import 'planner_engine_service.dart';
 import 'planning_proposal_engine.dart';
@@ -219,6 +220,32 @@ final class SmartPlanningContinuationCoordinator {
     );
   }
 
+  SmartPlanningContinuationResult beginTaskDurationCompletion({
+    required TaskModel task,
+    required String originalMessage,
+    required int sessionGeneration,
+    required String logicalRequestId,
+    required String sourceSuggestionId,
+  }) {
+    if (task.id?.trim().isEmpty != false) {
+      throw const FormatException('missing_task_duration_target');
+    }
+    _active = _new(
+      type: SmartPlanningContinuationType.taskPlanning,
+      step: SmartPlanningContinuationStep.duration,
+      task: task,
+      originalMessage: originalMessage,
+      sessionGeneration: sessionGeneration,
+      logicalRequestId: logicalRequestId,
+      sourceSuggestionId: sourceSuggestionId,
+    );
+    return SmartPlanningContinuationResult(
+      status: SmartPlanningContinuationResultStatus.clarificationStillRequired,
+      message: originalMessage,
+      handled: true,
+    );
+  }
+
   Future<SmartPlanningContinuationResult?> tryStartExplicitSlotRequest({
     required String text,
     required int sessionGeneration,
@@ -370,9 +397,18 @@ final class SmartPlanningContinuationCoordinator {
     SmartPlanningContinuation continuation,
     String answer,
   ) async {
+    if (PlannerEngineService.isNegativeAnswer(answer) ||
+        answer.trim().toLowerCase() == 'annule') {
+      _active = null;
+      return _result(
+        SmartPlanningContinuationResultStatus.cancelled,
+        'D’accord. Je ferme cette demande de durée.',
+      );
+    }
     var minutes = PlannerEngineService.isPositiveAnswer(answer)
         ? continuation.estimatedMinutes
         : ChatPlanningHelperService.parseDurationMinutes(answer);
+    if (minutes <= 0) minutes = NaturalDurationService.parseMinutes(answer);
     if (minutes <= 0) minutes = SmartPlanningService.parseTravelMinutes(answer);
     if (minutes <= 0) {
       return _result(
@@ -797,6 +833,8 @@ final class SmartPlanningContinuationCoordinator {
     required String originalMessage,
     required int sessionGeneration,
     DateTime? startDate,
+    String? logicalRequestId,
+    String? sourceSuggestionId,
   }) {
     final now = _clock().toUtc();
     return SmartPlanningContinuation(
@@ -813,6 +851,8 @@ final class SmartPlanningContinuationCoordinator {
       mutationId: _idGenerator(),
       policyModeAtCreation: _currentPolicy.mode,
       policyVersionAtCreation: _currentPolicy.schemaVersion,
+      logicalRequestId: logicalRequestId,
+      sourceSuggestionId: sourceSuggestionId,
     );
   }
 

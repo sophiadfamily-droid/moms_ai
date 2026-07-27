@@ -764,6 +764,32 @@ utilise une `referenceDate` unique, puis appelle dans l'ordre
 payload d'action, mémoire, notification ou état persistant de suggestion
 n'intervient dans ce parcours.
 
+**Current state (V1-R.6 / Priority 2C):** la proactivité de priorité reste une
+projection locale, déterministe et sans effet de bord. Après chargement complet
+du Life Context canonique, le Dashboard des tâches réutilise strictement
+`PriorityCandidateAdapter`, `PriorityEngine` et `PrioritySuggestionBuilder`,
+puis soumet leur ordre inchangé à `ProactiveSuggestionPolicy`. La décision
+fermée est soit `noSuggestion`, soit `showSuggestion`, avec au maximum une
+suggestion visible dans la carte `Suggestion Zelia` existante.
+
+La politique échoue fermée lorsque le contexte est partiel, qu'une interaction
+conversationnelle ou Smart Planning attend une réponse, qu'aucune action V1
+n'est disponible, que les preuves sont insuffisantes, ou que la même situation
+matérielle a déjà été présentée. Les identités et empreintes sont dérivées des
+types, références techniques, raisons, horizon et révisions, jamais du texte
+d'affichage. Un registre local account-scoped, borné et sauvegardé conserve les
+présentations, rejets, actions et accomplissements; une journée civile locale
+borne la répétition. Le quota de session n'est consommé qu'après confirmation
+du rendu et écriture du reçu `shown`; une décision `noSuggestion` ou une simple
+réservation de présentation ne le consomme jamais. Une suggestion `dismissed`
+ou `completed` ne réapparaît pas sans changement matériel.
+
+La fermeture est explicite et un CTA ouvre uniquement le parcours Task ou
+Agenda existant. Aucune tâche, aucun événement, aucune mémoire et aucune
+confirmation ne sont créés implicitement. Cette phase n'appelle ni OpenAI ni
+Firebase Functions, n'injecte aucun message dans le chat et ne programme aucune
+notification push.
+
 ### 7.8 Reasoning Engine
 
 **Current state:** Reasoning is distributed across profile reasoning, memory reasoning, planning services, prompt context, and model selection. There is no single verified general-purpose Reasoning Engine.

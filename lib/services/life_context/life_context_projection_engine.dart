@@ -428,7 +428,8 @@ final class LifeContextProjectionEngine {
     LifeContextSnapshot snapshot,
     LifeContextConsumerContract contract,
   ) {
-    if (contract.purpose != LifeContextConsumerPurpose.conversation) {
+    if (contract.purpose != LifeContextConsumerPurpose.conversation &&
+        contract.purpose != LifeContextConsumerPurpose.proactivePriority) {
       return const [];
     }
     final section = snapshot.taskDomain!;

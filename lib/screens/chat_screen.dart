@@ -7,6 +7,7 @@ import '../services/chat_backend_client.dart';
 import '../services/conversation_context_service.dart';
 import '../services/conversation_session_controller.dart';
 import '../services/identity/identity_production_services.dart';
+import '../services/priority/proactive_interaction_registry.dart';
 import '../services/voice_recognition_coordinator.dart';
 import '../widgets/voice_input_control.dart';
 
@@ -20,6 +21,7 @@ class ChatScreen extends StatefulWidget {
     this.identityServices,
     this.sessionController,
     this.voiceCoordinator,
+    this.proactiveInteractionRegistry,
   });
 
   final UserProfile profile;
@@ -29,6 +31,7 @@ class ChatScreen extends StatefulWidget {
   final IdentityProductionServices? identityServices;
   final ConversationSessionController? sessionController;
   final VoiceRecognitionCoordinator? voiceCoordinator;
+  final ProactiveInteractionRegistry? proactiveInteractionRegistry;
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -53,6 +56,7 @@ class _ChatScreenState extends State<ChatScreen> {
           backendClient: widget.backendClient,
           contextProvider: widget.conversationContextProvider,
           identityServices: widget.identityServices,
+          proactiveInteractionRegistry: widget.proactiveInteractionRegistry,
           initialAssistantMessage: widget.initialAssistantMessage,
         );
     _ownsVoiceCoordinator = widget.voiceCoordinator == null;
