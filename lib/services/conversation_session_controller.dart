@@ -373,7 +373,9 @@ final class ConversationSessionController extends ChangeNotifier {
       if (!_isCurrent(requestId, generation)) return;
       final descriptor = error is ChatBackendException
           ? error.descriptor
-          : AppErrorCatalog.describe(AppErrorCode.unknown);
+          : error is ConversationTaskPersistenceException
+              ? AppErrorCatalog.describe(AppErrorCode.storageFailure)
+              : AppErrorCatalog.describe(AppErrorCode.unknown);
       AppDiagnostics.record(
         component: 'conversation',
         step: 'orchestrate',

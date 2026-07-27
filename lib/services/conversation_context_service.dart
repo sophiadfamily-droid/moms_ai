@@ -65,8 +65,15 @@ abstract interface class MemoryConversationContextProvider {
   Future<MemoryConfirmationRequest?> proposeResponseMemory(dynamic memory);
 }
 
+abstract interface class PriorityConversationContextProvider {
+  Future<LifeContextProjection> loadPriorityProjection();
+}
+
 class DefaultConversationContextProvider
-    implements ConversationContextProvider, MemoryConversationContextProvider {
+    implements
+        ConversationContextProvider,
+        MemoryConversationContextProvider,
+        PriorityConversationContextProvider {
   final ConversationProjectionLoader? _loadProjection;
   final ConversationAccountScopeLoader _loadAccountScope;
   final MemoryLifecycleEngine _memoryLifecycleEngine;
@@ -173,6 +180,20 @@ class DefaultConversationContextProvider
         LifeContextConsumerPurpose.conversation,
       ),
     );
+  }
+
+  @override
+  Future<LifeContextProjection> loadPriorityProjection() async {
+    final scope = await _loadAccountScope();
+    final projection = await (_loadProjection ?? _loadCanonicalProjection)(
+      scope,
+    ).timeout(ConversationTransportContract.contextTimeout);
+    if (projection.accountScopeId != scope) {
+      throw const LifeContextProjectionException(
+        'priority_projection_account_mismatch',
+      );
+    }
+    return projection;
   }
 
   @override

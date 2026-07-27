@@ -1,5 +1,6 @@
 import '../models/conversation_models.dart';
 import '../models/conversation_reference_resolution.dart';
+import '../models/conversation_epistemic_models.dart';
 import '../models/action_autonomy_policy.dart';
 import '../models/action_confirmation.dart';
 import '../models/action_ledger.dart';
@@ -38,10 +39,17 @@ import 'event_target_selector.dart';
 import '../repositories/identity/identity_read_repository.dart';
 import 'zelia_action_guard_service.dart';
 import 'zelia_response_builder.dart';
+import 'priority/priority_consultation_intent_detector.dart';
+import 'priority/priority_consultation_service.dart';
+import 'task_creation_draft_service.dart';
 
 typedef ConversationActionExecutor = Future<ConversationActionOutcome> Function(
   Map<String, dynamic> action,
 );
+
+final class ConversationTaskPersistenceException implements Exception {
+  const ConversationTaskPersistenceException();
+}
 
 typedef PendingEventExecutor = Future<String> Function(EventModel event);
 typedef ConversationAutonomyPolicyLoader = Future<ActionAutonomyPolicy>
@@ -68,6 +76,9 @@ class ConversationCoordinator {
   final ConversationAutonomyPolicyLoader? _loadAutonomyPolicy;
   final ActionAutonomyPolicyEngine _autonomyEngine;
   final RoutineConversationService? routineConversationService;
+  final PriorityConsultationIntentDetector priorityConsultationIntentDetector;
+  final PriorityConsultationService? priorityConsultationService;
+  final TaskCreationDraftService taskCreationDraftService;
   late final ActionConfirmationCoordinator _confirmationCoordinator;
 
   ConversationState _state = const ConversationState();
@@ -105,6 +116,10 @@ class ConversationCoordinator {
     ActionAutonomyPolicyEngine autonomyEngine =
         const ActionAutonomyPolicyEngine(),
     this.routineConversationService,
+    this.priorityConsultationIntentDetector =
+        const PriorityConsultationIntentDetector(),
+    PriorityConsultationService? priorityConsultationService,
+    this.taskCreationDraftService = const TaskCreationDraftService(),
     ActionConfirmationCoordinator? confirmationCoordinator,
   })  : _memoryLifecycleRepository = memoryLifecycleRepository,
         identityClarificationService = identityClarificationService ??
@@ -123,7 +138,16 @@ class ConversationCoordinator {
             List<ValidatedConversationReference>.of(validatedReferenceHistory),
         _loadAutonomyPolicy = loadAutonomyPolicy,
         _autonomyEngine = autonomyEngine,
-        _clock = clock ?? DateTime.now {
+        _clock = clock ?? DateTime.now,
+        priorityConsultationService = priorityConsultationService ??
+            (contextProvider is PriorityConversationContextProvider
+                ? PriorityConsultationService(
+                    loadProjection:
+                        (contextProvider as PriorityConversationContextProvider)
+                            .loadPriorityProjection,
+                    clock: clock,
+                  )
+                : null) {
     _confirmationCoordinator = confirmationCoordinator ??
         ActionConfirmationCoordinator(
           idGenerator: _nextConfirmationId,
@@ -154,6 +178,7 @@ class ConversationCoordinator {
 
   ActionConfirmation? get activeConfirmation =>
       _state.pendingAction?.canonicalConfirmation;
+  ActionAutonomyPolicy? get lastAutonomyPolicy => _lastAutonomyPolicy;
 
   String _nextConfirmationId() =>
       'confirmation-$_sessionGeneration-${++_confirmationSequence}';
@@ -2030,6 +2055,59 @@ class ConversationCoordinator {
       );
     }
     final classified = answerClassifier.classify(answer);
+    if (pending.state == ActionPendingState.pendingSync) {
+      if (classified == ConversationAnswer.negative) {
+        _clearPendingAction();
+        return const PendingConversationResolution(
+          'D’accord, je ne réessaie pas cette création.',
+          diagnosticCode: 'autonomy_pending_retry_rejected',
+        );
+      }
+      if (classified != ConversationAnswer.positive) {
+        return const PendingConversationResolution(
+          'Réponds simplement oui pour réessayer, ou non pour annuler.',
+          diagnosticCode: 'autonomy_pending_retry_ambiguous',
+        );
+      }
+      pending = pending.copyWith(
+        state: ActionPendingState.executing,
+        hasFreshConfirmation: true,
+      );
+      _state = _state.copyWith(
+        phase: ConversationPhase.executingAction,
+        pendingAction: PendingConversationAction.autonomyConfirmation(
+          pending,
+          canonical,
+        ),
+      );
+      try {
+        final outcome = await executeAction(_legacyAction(pending));
+        _confirmationCoordinator.complete(
+          canonical.confirmationId,
+          completedAt: _clock().toUtc(),
+        );
+        _clearPendingAction();
+        return PendingConversationResolution(
+          outcome.message.isEmpty ? 'C’est fait.' : outcome.message,
+          diagnosticCode: 'autonomy_pending_retry_completed',
+        );
+      } catch (_) {
+        _state = _state.copyWith(
+          phase: ConversationPhase.awaitingActionConfirmation,
+          pendingAction: PendingConversationAction.autonomyConfirmation(
+            pending.copyWith(
+              state: ActionPendingState.pendingSync,
+              hasFreshConfirmation: true,
+            ),
+            canonical,
+          ),
+        );
+        if (pending.actionType == ActionType.createTask) {
+          throw const ConversationTaskPersistenceException();
+        }
+        rethrow;
+      }
+    }
     if (classified == ConversationAnswer.negative) {
       await _confirmationCoordinator.respond(
         response: ActionConfirmationResponse(
@@ -2113,7 +2191,7 @@ class ConversationCoordinator {
         diagnosticCode: consumed.reasonCode,
       );
     }
-    final policy = await _loadAutonomyPolicy?.call();
+    final policy = _lastAutonomyPolicy;
     if (policy == null) {
       return const PendingConversationResolution(
         'Je ne peux pas vérifier le mode d’action pour le moment.',
@@ -2180,14 +2258,100 @@ class ConversationCoordinator {
         phase: ConversationPhase.awaitingActionConfirmation,
         pendingAction: PendingConversationAction.autonomyConfirmation(
           pending.copyWith(
-            state: ActionPendingState.blockedByPolicy,
-            hasFreshConfirmation: false,
+            state: ActionPendingState.pendingSync,
+            hasFreshConfirmation: true,
           ),
           consumed.confirmation,
         ),
       );
+      if (pending.actionType == ActionType.createTask) {
+        throw const ConversationTaskPersistenceException();
+      }
       rethrow;
     }
+  }
+
+  Future<PendingConversationResolution?> resolvePendingTaskClarification({
+    required String answer,
+    required int sessionGeneration,
+  }) async {
+    final wrapped = _state.pendingAction;
+    if (wrapped?.type != PendingConversationActionType.taskClarification) {
+      return null;
+    }
+    final draft = wrapped!.taskClarification!;
+    if (draft.sessionGeneration != sessionGeneration ||
+        draft.isExpiredAt(_clock().toUtc())) {
+      _clearPendingAction();
+      return const PendingConversationResolution(
+        'Cette demande a expiré. Reformule-la pour créer la tâche.',
+        diagnosticCode: 'task_clarification_expired',
+      );
+    }
+    final classified = answerClassifier.classify(answer);
+    if (classified == ConversationAnswer.negative) {
+      _clearPendingAction();
+      return const PendingConversationResolution(
+        'D’accord, je ne crée aucune tâche.',
+        diagnosticCode: 'task_clarification_rejected',
+      );
+    }
+    final title = answer.trim();
+    if (classified == ConversationAnswer.positive ||
+        title.length < 3 ||
+        title.length > 500 ||
+        title.endsWith('?')) {
+      return const PendingConversationResolution(
+        'Quelle tâche veux-tu créer ?',
+        diagnosticCode: 'task_clarification_still_required',
+      );
+    }
+    final policy = await _canonicalPolicy();
+    _lastAutonomyPolicy = policy;
+    final now = _clock().toUtc();
+    final pending = ActionPending(
+      pendingActionId: draft.draftId,
+      sessionGeneration: sessionGeneration,
+      actionType: ActionType.createTask,
+      origin: ActionOrigin.structuredContinuation,
+      riskLevel: const ActionAutonomyActionRegistry().riskFor(
+        ActionType.createTask,
+      ),
+      policyModeAtCreation: policy.mode,
+      policyVersionAtCreation: policy.schemaVersion,
+      wasGrounded: true,
+      wasComplete: true,
+      payload: PendingTaskPayload(
+        title: title,
+        dueDate: draft.dueDate,
+        priority: draft.priority,
+        isImportant: draft.isImportant,
+      ),
+      originalInstruction: draft.originalInstruction,
+      mutationId: draft.logicalRequestId,
+      createdAt: now,
+      expiresAt: now.add(const Duration(minutes: 15)),
+    )..validate();
+    final issued = _confirmationCoordinator.issueWithPolicy(
+      _confirmationProposalForPending(pending),
+      policy: policy,
+    );
+    _state = _state.copyWith(
+      phase: ConversationPhase.awaitingActionConfirmation,
+      pendingAction: PendingConversationAction.autonomyConfirmation(
+        pending,
+        issued.confirmation,
+      ),
+    );
+    final details = [
+      'Tâche : $title',
+      if (draft.dueDate.isNotEmpty) 'Échéance : ${draft.dueDate}',
+      if (draft.priority.isNotEmpty) 'Priorité : ${draft.priority}',
+    ].join('\n');
+    return PendingConversationResolution(
+      '$details\n\nVeux-tu confirmer la création de cette tâche ?',
+      diagnosticCode: 'task_clarification_completed',
+    );
   }
 
   Future<ConversationOutcome?> send({
@@ -2241,6 +2405,15 @@ class ConversationCoordinator {
             identityResolution.identityActionBindingResult,
       );
     }
+    if (priorityConsultationIntentDetector.matches(input.message)) {
+      final consultation = await priorityConsultationService?.respond();
+      if (consultation != null) {
+        return ConversationOutcome(
+          reply: consultation.reply,
+          responseKind: ConversationResponseKind.answer,
+        );
+      }
+    }
     if (_isSending) return null;
     _isSending = true;
     _state = _state.copyWith(
@@ -2290,6 +2463,41 @@ class ConversationCoordinator {
                 )
                 .isValid) {
           throw ChatBackendMalformedResponseException();
+        }
+      }
+      final missingTaskTitle = epistemic?.responseKind ==
+              ConversationResponseKind.clarificationRequired &&
+          epistemic!.clarification?.missingFieldCodes.contains(
+                ConversationMissingInformationCode.missingTaskTarget,
+              ) ==
+              true;
+      if (missingTaskTitle &&
+          response.actions.isEmpty &&
+          response.memories.isEmpty &&
+          _state.pendingAction == null) {
+        final draft = taskCreationDraftService.extract(
+          input.message,
+          referenceDate: _clock(),
+        );
+        if (draft != null && draft.title.isEmpty) {
+          final now = _clock().toUtc();
+          final draftId = _actionDraftIdGenerator.generate();
+          _state = _state.copyWith(
+            phase: ConversationPhase.awaitingActionConfirmation,
+            pendingAction: PendingConversationAction.taskClarification(
+              PendingTaskClarificationDraft(
+                draftId: draftId,
+                logicalRequestId: input.logicalRequestId ?? draftId,
+                sessionGeneration: input.sessionGeneration,
+                dueDate: draft.dueDate,
+                priority: draft.priority,
+                isImportant: draft.isImportant,
+                originalInstruction: input.message,
+                createdAt: now,
+                expiresAt: now.add(const Duration(minutes: 15)),
+              ),
+            ),
+          );
         }
       }
       var reply = response.reply;
@@ -2477,6 +2685,9 @@ class ConversationCoordinator {
     return switch (payload) {
       PendingTaskPayload() => {
           'type': 'task',
+          'actionId': pending.pendingActionId,
+          'logicalRequestId': pending.mutationId,
+          'mutationId': pending.mutationId,
           'title': payload.title,
           'dueDate': payload.dueDate,
           'notes': payload.notes,

@@ -36,6 +36,58 @@ function containsPhrase(text, phrase) {
   return (` ${text} `).includes(` ${normalizedPhrase} `);
 }
 
+const TASK_CREATION_PHRASES = [
+  "cree une tache",
+  "creer une tache",
+  "ajoute une tache",
+  "note moi une tache",
+  "mets dans mes taches",
+  "ajoute a ma liste de taches",
+];
+
+/**
+ * Extrait uniquement les données certaines d'une création de tâche explicite.
+ *
+ * @param {string} message message utilisateur
+ * @param {Date} referenceDate date de référence injectée
+ * @return {{isCreation: boolean, title: string, priority: string,
+ *   isImportant: boolean, dueDate: string}}
+ */
+function extractTaskCreation(message, referenceDate = new Date()) {
+  const text = normalizeText(message);
+  const phrase = TASK_CREATION_PHRASES.find(
+      (candidate) => containsPhrase(text, candidate),
+  );
+  if (!phrase) {
+    return {
+      isCreation: false,
+      title: "",
+      priority: "",
+      isImportant: false,
+      dueDate: "",
+    };
+  }
+  let remainder = ` ${text} `.replace(` ${phrase} `, " ").trim();
+  const highPriority = /\b(prioritaire|priorite haute|haute priorite|urgent)\b/
+      .test(remainder);
+  const tomorrow = /\bdemain\b/.test(remainder);
+  remainder = remainder
+      .replace(/\b(prioritaire|priorite haute|haute priorite|urgent)\b/g, " ")
+      .replace(/\b(pour|a faire|echeance)\b/g, " ")
+      .replace(/\bdemain\b/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  const due = new Date(referenceDate);
+  due.setUTCDate(due.getUTCDate() + 1);
+  return {
+    isCreation: true,
+    title: remainder,
+    priority: highPriority ? "high" : "",
+    isImportant: highPriority,
+    dueDate: tomorrow ? due.toISOString().slice(0, 10) : "",
+  };
+}
+
 /**
  * Détecte une intention probable à partir du message utilisateur.
  *
@@ -134,12 +186,27 @@ function detectIntent(message) {
   ];
 
   const reasons = [];
+  const nonCreationTaskContexts = [
+    "definition",
+    "definis",
+    "que veut dire",
+    "cette tache est",
+    "si je",
+    "supposons",
+    "imagine",
+    "citation",
+  ];
+  const hasExplicitTaskCreation = TASK_CREATION_PHRASES.some(
+      (phrase) => containsPhrase(text, phrase),
+  ) && !nonCreationTaskContexts.some(
+      (phrase) => containsPhrase(text, phrase),
+  );
 
   const hasShopping = shoppingKeywords.some(
       (keyword) => containsPhrase(text, keyword),
   );
 
-  const hasTask = taskKeywords.some(
+  const hasTask = hasExplicitTaskCreation || taskKeywords.some(
       (keyword) => containsPhrase(text, keyword),
   );
 
@@ -148,7 +215,11 @@ function detectIntent(message) {
   );
 
   if (hasShopping) reasons.push("shopping_keyword");
-  if (hasTask) reasons.push("task_keyword");
+  if (hasTask) {
+    reasons.push(
+        hasExplicitTaskCreation ? "task_creation_phrase" : "task_keyword",
+    );
+  }
   if (hasEvent) reasons.push("event_keyword");
 
   if (hasEvent) {
@@ -185,5 +256,6 @@ function detectIntent(message) {
 module.exports = {
   normalizeText,
   containsPhrase,
+  extractTaskCreation,
   detectIntent,
 };

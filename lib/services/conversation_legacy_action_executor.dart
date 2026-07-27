@@ -1,4 +1,5 @@
 import '../models/conversation_models.dart';
+import '../models/smart_planning_continuation.dart';
 import '../models/task_model.dart';
 import '../models/action_autonomy_policy.dart';
 import 'action_handler_service.dart';
@@ -25,6 +26,13 @@ final class ConversationLegacyActionExecutor {
     String answer,
     int sessionGeneration,
   ) async {
+    final taskClarification = await coordinator.resolvePendingTaskClarification(
+      answer: answer,
+      sessionGeneration: sessionGeneration,
+    );
+    if (taskClarification != null) {
+      return ConversationOutcome(reply: taskClarification.message);
+    }
     final autonomyResolution =
         await coordinator.resolvePendingAutonomyConfirmation(
       answer: answer,
@@ -38,10 +46,17 @@ final class ConversationLegacyActionExecutor {
     if (autonomyResolution != null) {
       return ConversationOutcome(reply: autonomyResolution.message);
     }
-    final planningResolution = await smartPlanning?.resolve(
-      answer,
-      sessionGeneration: sessionGeneration,
-    );
+    final activePlanning = smartPlanning?.active;
+    if (activePlanning?.step == SmartPlanningContinuationStep.planningConsent &&
+        !_isPlanningConsentAnswer(answer)) {
+      smartPlanning!.invalidate();
+    }
+    final planningResolution = smartPlanning?.active == null
+        ? null
+        : await smartPlanning?.resolve(
+            answer,
+            sessionGeneration: sessionGeneration,
+          );
     if (planningResolution != null) return planningResolution;
     final eventMutationId =
         coordinator.state.pendingAction?.canonicalConfirmation?.mutationId;
@@ -83,6 +98,9 @@ final class ConversationLegacyActionExecutor {
   ) async {
     final effectiveUserMessage =
         action['originalMessage']?.toString() ?? userMessage;
+    final policy =
+        coordinator.lastAutonomyPolicy ?? await loadAutonomyPolicy?.call();
+    if (policy != null) smartPlanning?.updateAutonomyPolicy(policy);
     final result = await ActionHandlerService.handleAction(
       action: action,
       currentUserMessage: effectiveUserMessage,
@@ -113,20 +131,39 @@ final class ConversationLegacyActionExecutor {
     final pendingTask = result.pendingSmartPlanningTask;
     final task = pendingTask?['task'];
     final planningTitle = task is TaskModel ? task.title : null;
+    SmartPlanningContinuationResult? planningProposal;
     if (task is TaskModel && smartPlanning != null) {
-      final policy = await loadAutonomyPolicy?.call();
-      if (policy != null) smartPlanning!.updateAutonomyPolicy(policy);
-      smartPlanning!.beginTaskPlanning(
+      planningProposal = smartPlanning!.beginTaskPlanning(
         task: task,
         originalMessage:
             pendingTask?['originalMessage']?.toString() ?? effectiveUserMessage,
         sessionGeneration: sessionGeneration,
       );
     }
+    final creationMessage =
+        result.message.trim().isEmpty ? 'C’est fait.' : result.message.trim();
     return ConversationActionOutcome(
-      message: result.message,
+      message: planningProposal == null
+          ? result.message
+          : '$creationMessage ${planningProposal.message}',
       planningTitle: planningTitle,
     );
+  }
+
+  static bool _isPlanningConsentAnswer(String answer) {
+    if (PlannerEngineService.isPositiveAnswer(answer) ||
+        PlannerEngineService.isNegativeAnswer(answer)) {
+      return true;
+    }
+    final normalized =
+        answer.trim().toLowerCase().replaceAll(RegExp(r'[.!?]+$'), '').trim();
+    return const {
+      'peut-être',
+      'peut etre',
+      'je ne sais pas',
+      'pas sûr',
+      'pas sur',
+    }.contains(normalized);
   }
 
   static bool _looksRecurring(String text) {

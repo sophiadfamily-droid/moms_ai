@@ -123,6 +123,7 @@ class ActionHandlerService {
 
     if (type == "task" || type == "todo" || type == "to-do") {
       final task = TaskModel(
+        id: action["actionId"]?.toString(),
         title: title,
         category: "To-do",
         isDone: false,

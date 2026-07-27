@@ -9,12 +9,75 @@ import 'package:moms_ai/models/conversation_epistemic_models.dart';
 import 'package:moms_ai/models/conversation_models.dart';
 import 'package:moms_ai/models/event_model.dart';
 import 'package:moms_ai/models/user_profile.dart';
+import 'package:moms_ai/services/callable_chat_backend_client.dart';
 import 'package:moms_ai/services/chat_backend_client.dart';
 import 'package:moms_ai/services/conversation_context_service.dart';
 import 'package:moms_ai/services/conversation_coordinator.dart';
 
 void main() {
   group('ConversationCoordinator', () {
+    test(
+        'decodes the deterministic Task callable JSON and creates clarification',
+        () async {
+      final backend = CallableChatBackendClient.withInvoker(
+        (_) async => _deterministicTaskClarificationJson(),
+      );
+      final coordinator = ConversationCoordinator(
+        backend: backend,
+        contextProvider: _FakeContextProvider(_completeTaskRequest()),
+        clock: () => DateTime.utc(2026, 7, 27, 10),
+      );
+      var executions = 0;
+
+      final outcome = await coordinator.send(
+        input: ConversationInput(
+          message: 'Crée une tâche prioritaire pour demain.',
+          profile: _profile(),
+          logicalRequestId: 'logical-task-request-1',
+        ),
+        executeAction: (_) async {
+          executions++;
+          return const ConversationActionOutcome();
+        },
+      );
+
+      expect(outcome?.reply, 'Quelle tâche veux-tu créer ?');
+      expect(executions, 0);
+      final pending = coordinator.state.pendingAction?.taskClarification;
+      expect(pending, isNotNull);
+      expect(pending?.dueDate, '2026-07-28');
+      expect(pending?.priority, 'Haute');
+      expect(pending?.isImportant, isTrue);
+      expect(pending?.logicalRequestId, 'logical-task-request-1');
+      expect(pending?.originalInstruction,
+          'Crée une tâche prioritaire pour demain.');
+    });
+
+    test('keeps rejecting a Task clarification with an invalid contract',
+        () async {
+      final invalid = _deterministicTaskClarificationJson();
+      final clarification = (invalid['epistemic']
+          as Map<String, dynamic>)['clarification'] as Map<String, dynamic>;
+      clarification.remove('maximumAttempts');
+      final coordinator = ConversationCoordinator(
+        backend: CallableChatBackendClient.withInvoker((_) async => invalid),
+        contextProvider: _FakeContextProvider(_completeTaskRequest()),
+        clock: () => DateTime.utc(2026, 7, 27, 10),
+      );
+
+      await expectLater(
+        coordinator.send(
+          input: ConversationInput(
+            message: 'Crée une tâche prioritaire pour demain.',
+            profile: _profile(),
+          ),
+          executeAction: (_) async => const ConversationActionOutcome(),
+        ),
+        throwsA(isA<ChatBackendMalformedResponseException>()),
+      );
+      expect(coordinator.state.pendingAction, isNull);
+    });
+
     test('sends a normal message with the session-scoped backend request',
         () async {
       final request = _request(message: 'Bonjour');
@@ -251,6 +314,205 @@ void main() {
       );
       expect(executions, 1);
       mode = ActionAutonomyMode.paused;
+    });
+
+    test('clarifies an incomplete task and preserves known fields', () async {
+      final policy = ActionAutonomyPolicy(
+        mode: ActionAutonomyMode.suggestions,
+        changedAt: DateTime.utc(2026, 7, 27),
+        changeSource: ActionAutonomyChangeSource.explicitUserSetting,
+        accountScopeId: 'scope-a',
+      );
+      final coordinator = ConversationCoordinator(
+        backend: _FakeBackend(
+          response: ChatBackendResponse(
+            reply: 'Quelle tâche veux-tu créer ?',
+            actions: const [],
+            memories: const [],
+            epistemic: _taskTitleClarification(sessionGeneration: 5),
+          ),
+        ),
+        contextProvider: _FakeContextProvider(_request()),
+        loadAutonomyPolicy: () async => policy,
+        clock: () => DateTime.utc(2026, 7, 27, 10),
+      );
+      var executions = 0;
+      final initial = await coordinator.send(
+        input: ConversationInput(
+          message: 'Crée une tâche prioritaire pour demain.',
+          profile: _profile(),
+          sessionGeneration: 5,
+          logicalRequestId: 'logical-task-5',
+        ),
+        executeAction: (_) async {
+          executions++;
+          return const ConversationActionOutcome();
+        },
+      );
+
+      expect(initial?.reply, 'Quelle tâche veux-tu créer ?');
+      expect(executions, 0);
+      expect(
+        coordinator.state.pendingAction?.type,
+        PendingConversationActionType.taskClarification,
+      );
+
+      final ambiguous = await coordinator.resolvePendingTaskClarification(
+        answer: 'oui',
+        sessionGeneration: 5,
+      );
+      expect(ambiguous?.message, 'Quelle tâche veux-tu créer ?');
+      expect(executions, 0);
+
+      final completed = await coordinator.resolvePendingTaskClarification(
+        answer: 'Envoyer le dossier à la mutuelle.',
+        sessionGeneration: 5,
+      );
+      expect(completed?.message, contains('Envoyer le dossier'));
+      expect(completed?.message, contains('2026-07-28'));
+      expect(completed?.message, contains('Haute'));
+      final payload = coordinator.state.pendingAction?.autonomyPending?.payload
+          as PendingTaskPayload;
+      expect(payload.title, 'Envoyer le dossier à la mutuelle.');
+      expect(payload.dueDate, '2026-07-28');
+      expect(payload.priority, 'Haute');
+      expect(payload.isImportant, isTrue);
+      expect(executions, 0);
+
+      final confirmed = await coordinator.resolvePendingAutonomyConfirmation(
+        answer: 'oui',
+        sessionGeneration: 5,
+        executeAction: (action) async {
+          executions++;
+          expect(action['dueDate'], '2026-07-28');
+          expect(action['priority'], 'Haute');
+          expect(action['isImportant'], isTrue);
+          expect(action['actionId'], isNotEmpty);
+          expect(action['logicalRequestId'], 'logical-task-5');
+          expect(action['mutationId'], 'logical-task-5');
+          return const ConversationActionOutcome(message: 'Tâche créée.');
+        },
+      );
+      expect(confirmed?.message, 'Tâche créée.');
+      expect(executions, 1);
+      expect(
+        await coordinator.resolvePendingAutonomyConfirmation(
+          answer: 'oui',
+          sessionGeneration: 5,
+          executeAction: (_) async {
+            executions++;
+            return const ConversationActionOutcome();
+          },
+        ),
+        isNull,
+      );
+      expect(executions, 1);
+    });
+
+    test('keeps a failed Task confirmation retryable and idempotent', () async {
+      final policy = ActionAutonomyPolicy(
+        mode: ActionAutonomyMode.suggestions,
+        changedAt: DateTime.utc(2026, 7, 27),
+        changeSource: ActionAutonomyChangeSource.explicitUserSetting,
+        accountScopeId: 'scope-a',
+      );
+      final coordinator = ConversationCoordinator(
+        backend: _FakeBackend(
+          response: ChatBackendResponse(
+            reply: 'Quelle tâche veux-tu créer ?',
+            actions: const [],
+            memories: const [],
+            epistemic: _taskTitleClarification(),
+          ),
+        ),
+        contextProvider: _FakeContextProvider(_request()),
+        loadAutonomyPolicy: () async => policy,
+        clock: () => DateTime.utc(2026, 7, 27, 10),
+      );
+      await coordinator.send(
+        input: ConversationInput(
+          message: 'Crée une tâche prioritaire pour demain.',
+          profile: _profile(),
+          logicalRequestId: 'logical-retry',
+        ),
+        executeAction: (_) async => const ConversationActionOutcome(),
+      );
+      await coordinator.resolvePendingTaskClarification(
+        answer: 'Envoyer le dossier à la mutuelle.',
+        sessionGeneration: 0,
+      );
+      Map<String, dynamic>? firstAction;
+      await expectLater(
+        coordinator.resolvePendingAutonomyConfirmation(
+          answer: 'oui',
+          sessionGeneration: 0,
+          executeAction: (action) async {
+            firstAction = Map<String, dynamic>.from(action);
+            throw const FormatException('synthetic_task_repository_failure');
+          },
+        ),
+        throwsA(
+          isA<ConversationTaskPersistenceException>(),
+        ),
+      );
+      expect(
+        coordinator.state.pendingAction?.autonomyPending?.state,
+        ActionPendingState.pendingSync,
+      );
+
+      var writes = 0;
+      final retried = await coordinator.resolvePendingAutonomyConfirmation(
+        answer: 'OUI.',
+        sessionGeneration: 0,
+        executeAction: (action) async {
+          writes++;
+          expect(action, firstAction);
+          return const ConversationActionOutcome(message: 'Tâche créée.');
+        },
+      );
+      expect(retried?.message, 'Tâche créée.');
+      expect(writes, 1);
+      expect(coordinator.state.pendingAction, isNull);
+      expect(
+        await coordinator.resolvePendingAutonomyConfirmation(
+          answer: 'oui',
+          sessionGeneration: 0,
+          executeAction: (_) async {
+            writes++;
+            return const ConversationActionOutcome();
+          },
+        ),
+        isNull,
+      );
+      expect(writes, 1);
+    });
+
+    test('refusing task clarification creates nothing', () async {
+      final coordinator = ConversationCoordinator(
+        backend: _FakeBackend(
+          response: ChatBackendResponse(
+            reply: 'Quelle tâche veux-tu créer ?',
+            actions: const [],
+            memories: const [],
+            epistemic: _taskTitleClarification(),
+          ),
+        ),
+        contextProvider: _FakeContextProvider(_request()),
+        clock: () => DateTime.utc(2026, 7, 27, 10),
+      );
+      await coordinator.send(
+        input: ConversationInput(
+          message: 'Crée une tâche prioritaire pour demain.',
+          profile: _profile(),
+        ),
+        executeAction: (_) async => const ConversationActionOutcome(),
+      );
+      final result = await coordinator.resolvePendingTaskClarification(
+        answer: 'non',
+        sessionGeneration: 0,
+      );
+      expect(result?.message, contains('aucune tâche'));
+      expect(coordinator.state.pendingAction, isNull);
     });
 
     test('Shopping pending is preserved and blocked when mode becomes paused',
@@ -589,6 +851,76 @@ ChatBackendRequest _request({String message = 'message'}) {
   );
 }
 
+ChatBackendRequest _completeTaskRequest() => ChatBackendRequest(
+      message: 'Crée une tâche prioritaire pour demain.',
+      context: ConversationContextEnvelope(
+        projectionVersion: 1,
+        purpose: ConversationTransportContract.purposeId,
+        generatedAt: DateTime.utc(2026, 7, 27, 10),
+        state: ConversationContextState.complete,
+        sections: const [],
+        budgetRequested: 245,
+        budgetUsed: 0,
+        omittedCount: 0,
+        truncatedSections: const [],
+        warningCodes: const [],
+      ),
+    );
+
+Map<String, dynamic> _deterministicTaskClarificationJson() => {
+      'reply': 'Quelle tâche veux-tu créer ?',
+      'actions': <dynamic>[],
+      'memories': <dynamic>[],
+      'epistemic': {
+        'schemaVersion': 1,
+        'responseKind': 'clarificationRequired',
+        'epistemicState': 'insufficientInformation',
+        'confidenceLevel': 'low',
+        'usedSourceTypes': ['currentUserMessage'],
+        'groundingReferences': [
+          {
+            'schemaVersion': 1,
+            'sourceType': 'currentUserMessage',
+            'section': null,
+            'factKey': null,
+            'freshness': 'current',
+            'confirmation': 'confirmed',
+            'projectionVersion': 0,
+          },
+        ],
+        'personalClaims': <dynamic>[],
+        'missingInformation': [
+          {
+            'schemaVersion': 1,
+            'code': 'missingTaskTarget',
+            'domain': 'task',
+            'field': 'target',
+            'isRequired': true,
+            'canClarify': true,
+          },
+        ],
+        'contradictions': <dynamic>[],
+        'clarification': {
+          'schemaVersion': 1,
+          'clarificationId': 'task-title-0',
+          'reasonCode': 'task_title_required',
+          'questionText': 'Quelle tâche veux-tu créer ?',
+          'expectedAnswerType': 'freeTextBounded',
+          'allowedChoices': <dynamic>[],
+          'missingFieldCodes': ['missingTaskTarget'],
+          'createdAt': '2026-07-27T10:00:00.000Z',
+          'expiresAt': null,
+          'attemptNumber': 1,
+          'maximumAttempts': 3,
+          'sessionGeneration': 0,
+        },
+        'uncertaintyCodes': ['missingRequiredInformation'],
+        'contextStateObserved': 'complete',
+        'warningCodes': <dynamic>[],
+        'responseId': 'task-clarification-0',
+      },
+    };
+
 UserProfile _profile() {
   return UserProfile(
     firstName: 'Sophia',
@@ -638,4 +970,54 @@ ConversationEpistemicContract _epistemic({
       contextStateObserved: ConversationContextState.unavailable,
       warningCodes: const [],
       responseId: 'response-test',
+    );
+
+ConversationEpistemicContract _taskTitleClarification({
+  int sessionGeneration = 0,
+}) =>
+    ConversationEpistemicContract(
+      responseKind: ConversationResponseKind.clarificationRequired,
+      epistemicState: ConversationEpistemicState.insufficientInformation,
+      confidenceLevel: ConversationConfidenceLevel.low,
+      usedSourceTypes: const [
+        ConversationGroundingSourceType.currentUserMessage,
+      ],
+      groundingReferences: const [
+        ConversationGroundingReference(
+          sourceType: ConversationGroundingSourceType.currentUserMessage,
+          freshness: 'current',
+          confirmation: 'confirmed',
+          projectionVersion: 0,
+        ),
+      ],
+      personalClaims: const [],
+      missingInformation: const [
+        ConversationMissingInformation(
+          code: ConversationMissingInformationCode.missingTaskTarget,
+          domain: 'task',
+          field: 'target',
+          isRequired: true,
+          canClarify: true,
+        ),
+      ],
+      contradictions: const [],
+      clarification: ConversationClarification(
+        clarificationId: 'task-title-0',
+        reasonCode: 'task_title_required',
+        questionText: 'Quelle tâche veux-tu créer ?',
+        expectedAnswerType: ConversationClarificationAnswerType.freeTextBounded,
+        allowedChoices: const [],
+        missingFieldCodes: const [
+          ConversationMissingInformationCode.missingTaskTarget,
+        ],
+        createdAt: DateTime.utc(2026, 7, 27),
+        attemptNumber: 1,
+        sessionGeneration: sessionGeneration,
+      ),
+      uncertaintyCodes: const [
+        ConversationUncertaintyCode.missingRequiredInformation,
+      ],
+      contextStateObserved: ConversationContextState.unavailable,
+      warningCodes: const [],
+      responseId: 'task-clarification-0',
     );

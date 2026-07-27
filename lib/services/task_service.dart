@@ -19,6 +19,18 @@ import 'revisioned_domain_local_repository.dart';
 import 'revisioned_offline_journal.dart';
 import 'revisioned_action_ledger_observer.dart';
 
+final class TaskStorageException implements Exception {
+  const TaskStorageException({
+    required this.step,
+    required this.code,
+    required this.cause,
+  });
+
+  final String step;
+  final String code;
+  final Object cause;
+}
+
 class TaskService {
   static const String tasksKey = "tasks";
 
@@ -151,10 +163,33 @@ class TaskService {
   static Future<void> addTask(
     TaskModel task, {
     EntityIdGenerator idGenerator = const UuidV7EntityIdGenerator(),
+    @visibleForTesting Future<List<TaskModel>> Function()? loadTasks,
+    @visibleForTesting Future<void> Function(List<TaskModel>)? persistTasks,
   }) async {
-    final tasks = await getTasks();
-    tasks.add(_withIdForCreation(task, idGenerator));
-    await saveTasks(tasks);
+    var step = 'load';
+    try {
+      final loaded = await (loadTasks ?? getTasks)();
+      step = 'prepare_create';
+      final tasks = List<TaskModel>.of(loaded)
+        ..add(_withIdForCreation(task, idGenerator));
+      step = 'persist';
+      await (persistTasks ?? saveTasks)(tasks);
+    } on Object catch (error, stackTrace) {
+      AppDiagnostics.record(
+        component: 'task_repository',
+        step: step,
+        code: AppErrorCode.storageFailure,
+        metadata: {'status': error.runtimeType.toString()},
+      );
+      Error.throwWithStackTrace(
+        TaskStorageException(
+          step: step,
+          code: 'task_${step}_failed',
+          cause: error,
+        ),
+        stackTrace,
+      );
+    }
   }
 
   static TaskModel _withIdForCreation(

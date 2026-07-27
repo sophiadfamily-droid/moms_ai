@@ -70,7 +70,7 @@ const CONTRADICTION_TYPES = new Set([
 const CLARIFICATION_KEYS = new Set([
   "schemaVersion", "clarificationId", "reasonCode", "questionText",
   "expectedAnswerType", "allowedChoices", "missingFieldCodes", "createdAt",
-  "expiresAt", "attemptNumber", "sessionGeneration",
+  "expiresAt", "attemptNumber", "maximumAttempts", "sessionGeneration",
 ]);
 const ANSWER_TYPES = new Set([
   "freeTextBounded", "yesNo", "date", "time", "duration", "choice",
@@ -252,6 +252,7 @@ function validateSupportingData(epistemic, request) {
        !Number.isInteger(clarification.attemptNumber) ||
        clarification.attemptNumber < 1 ||
        clarification.attemptNumber > 3 ||
+       clarification.maximumAttempts !== 3 ||
        !Number.isInteger(clarification.sessionGeneration))) {
     fail("response_clarification_invalid");
   }

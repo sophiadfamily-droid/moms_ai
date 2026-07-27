@@ -93,6 +93,26 @@ void main() {
       harness.dispose();
     });
 
+    test('maps a retained Task persistence failure to a controlled error',
+        () async {
+      final harness = _Harness(
+        resolvePending: (_, __) async {
+          throw const ConversationTaskPersistenceException();
+        },
+      );
+
+      await harness.controller.submitText('oui');
+
+      expect(
+        harness.controller.state.messages.last.text,
+        'La sauvegarde n’a pas pu être terminée. '
+        'Tes données locales sont conservées.',
+      );
+      expect(harness.controller.state.retryAvailable, isTrue);
+      expect(harness.backend.calls, 0);
+      harness.dispose();
+    });
+
     test('account change isolates messages and invalidates old response',
         () async {
       final completer = Completer<ChatBackendResponse>();

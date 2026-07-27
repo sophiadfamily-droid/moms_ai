@@ -37,6 +37,7 @@ class ConversationInput {
 }
 
 enum PendingConversationActionType {
+  taskClarification,
   eventConfirmation,
   identityClarification,
   identityCreation,
@@ -44,6 +45,32 @@ enum PendingConversationActionType {
   eventTargetClarification,
   eventMutationConfirmation,
   autonomyConfirmation,
+}
+
+final class PendingTaskClarificationDraft {
+  const PendingTaskClarificationDraft({
+    required this.draftId,
+    required this.logicalRequestId,
+    required this.sessionGeneration,
+    required this.dueDate,
+    required this.priority,
+    required this.isImportant,
+    required this.originalInstruction,
+    required this.createdAt,
+    required this.expiresAt,
+  });
+
+  final String draftId;
+  final String logicalRequestId;
+  final int sessionGeneration;
+  final String dueDate;
+  final String priority;
+  final bool isImportant;
+  final String originalInstruction;
+  final DateTime createdAt;
+  final DateTime expiresAt;
+
+  bool isExpiredAt(DateTime value) => !value.isBefore(expiresAt);
 }
 
 final class PendingEventTargetClarification {
@@ -541,6 +568,33 @@ class PendingConversationAction {
   final ActionPendingMetadata autonomyMetadata;
   final MemoryContradictionCandidate? memoryContradiction;
   final MemoryReplacementPendingAction? memoryReplacementAction;
+  final PendingTaskClarificationDraft? taskClarification;
+
+  const PendingConversationAction.taskClarification(
+    this.taskClarification,
+  )   : type = PendingConversationActionType.taskClarification,
+        _event = null,
+        eventParticipant = null,
+        participantIdentityEntityId = null,
+        proposalId = null,
+        expectedMemoryAction = null,
+        createdAt = null,
+        identityClarification = null,
+        identityCreation = null,
+        eventTargetClarification = null,
+        eventMutationConfirmation = null,
+        autonomyPending = null,
+        canonicalConfirmation = null,
+        memoryContradiction = null,
+        memoryReplacementAction = null,
+        autonomyMetadata = const ActionPendingMetadata(
+          actionType: ActionType.createTask,
+          origin: ActionOrigin.structuredContinuation,
+          riskLevel: ActionRiskLevel.mutation,
+          policyModeAtCreation: ActionAutonomyMode.suggestions,
+          policyVersionAtCreation: 1,
+          sessionGeneration: 0,
+        );
 
   const PendingConversationAction.eventConfirmation(
     EventModel this._event, {
@@ -564,6 +618,7 @@ class PendingConversationAction {
         eventTargetClarification = null,
         eventMutationConfirmation = null,
         autonomyPending = null,
+        taskClarification = null,
         memoryContradiction = null,
         memoryReplacementAction = null;
 
@@ -590,6 +645,7 @@ class PendingConversationAction {
         identityCreation = null,
         eventTargetClarification = null,
         eventMutationConfirmation = null,
+        taskClarification = null,
         autonomyPending = null;
 
   const PendingConversationAction.identityClarification(
@@ -613,6 +669,7 @@ class PendingConversationAction {
         identityCreation = null,
         eventTargetClarification = null,
         eventMutationConfirmation = null,
+        taskClarification = null,
         autonomyPending = null,
         memoryContradiction = null,
         memoryReplacementAction = null;
@@ -638,6 +695,7 @@ class PendingConversationAction {
         identityClarification = null,
         eventTargetClarification = null,
         eventMutationConfirmation = null,
+        taskClarification = null,
         autonomyPending = null,
         memoryContradiction = null,
         memoryReplacementAction = null;
@@ -663,6 +721,7 @@ class PendingConversationAction {
         identityClarification = null,
         identityCreation = null,
         eventMutationConfirmation = null,
+        taskClarification = null,
         autonomyPending = null,
         memoryContradiction = null,
         memoryReplacementAction = null;
@@ -688,6 +747,7 @@ class PendingConversationAction {
         identityClarification = null,
         identityCreation = null,
         eventTargetClarification = null,
+        taskClarification = null,
         autonomyPending = null,
         memoryContradiction = null,
         memoryReplacementAction = null;
@@ -714,6 +774,7 @@ class PendingConversationAction {
         identityCreation = null,
         eventTargetClarification = null,
         eventMutationConfirmation = null,
+        taskClarification = null,
         memoryContradiction = null,
         memoryReplacementAction = null;
 

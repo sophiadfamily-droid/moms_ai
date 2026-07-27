@@ -129,6 +129,50 @@ void main() {
       expect(stored.single.id, 'task-existing');
     });
 
+    test('copies an authenticated fixed-length snapshot before appending',
+        () async {
+      final existing = List<TaskModel>.unmodifiable([
+        buildTask(id: 'existing-task'),
+      ]);
+      List<TaskModel>? persisted;
+
+      await TaskService.addTask(
+        buildTask(id: 'conversation-action-id', title: 'Nouvelle tâche'),
+        loadTasks: () async => existing,
+        persistTasks: (tasks) async {
+          persisted = tasks;
+        },
+      );
+
+      expect(existing, hasLength(1));
+      expect(persisted, hasLength(2));
+      expect(persisted!.last.id, 'conversation-action-id');
+      expect(() => persisted!.add(buildTask()), returnsNormally);
+    });
+
+    test('preserves the technical persistence cause without task content',
+        () async {
+      final failure = StateError('synthetic_store_unavailable');
+
+      await expectLater(
+        TaskService.addTask(
+          buildTask(id: 'conversation-action-id'),
+          loadTasks: () async => const [],
+          persistTasks: (_) async => throw failure,
+        ),
+        throwsA(
+          isA<TaskStorageException>()
+              .having((error) => error.step, 'step', 'persist')
+              .having(
+                (error) => error.code,
+                'code',
+                'task_persist_failed',
+              )
+              .having((error) => error.cause, 'cause', same(failure)),
+        ),
+      );
+    });
+
     test('replaces empty and whitespace IDs exactly once each', () async {
       final generator = FakeEntityIdGenerator(['from-empty', 'from-blank']);
 

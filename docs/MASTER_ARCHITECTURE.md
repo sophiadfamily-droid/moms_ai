@@ -752,6 +752,18 @@ l’ordre ou d’inventer une suggestion. Le branchement produit à une réponse
 locale du chat reste une étape d’intégration ultérieure : cette phase n’ajoute
 ni nouveau payload backend, ni écran, ni interception du chat classique.
 
+**Current state (V1-R.5):** une consultation explicite des priorités est
+détectée par un vocabulaire fermé dans `ConversationCoordinator`, après les
+continuations conversationnelles actives et avant la construction d'une
+requête backend. La route locale recharge la projection Life Context canonique,
+utilise une `referenceDate` unique, puis appelle dans l'ordre
+`PriorityCandidateAdapter`, `PriorityEngine`, `PrioritySuggestionBuilder` et
+`PrioritySuggestionConversationContextBuilder`. La réponse, limitée à trois
+éléments et conservant l'ordre du ranking, est insérée par
+`ConversationSessionController` comme tout message assistant. Aucun modèle,
+payload d'action, mémoire, notification ou état persistant de suggestion
+n'intervient dans ce parcours.
+
 ### 7.8 Reasoning Engine
 
 **Current state:** Reasoning is distributed across profile reasoning, memory reasoning, planning services, prompt context, and model selection. There is no single verified general-purpose Reasoning Engine.

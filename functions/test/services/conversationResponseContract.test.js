@@ -315,11 +315,46 @@ test("validates clarification and binds it to the request generation", () => {
       createdAt: "2026-07-23T10:00:00.000Z",
       expiresAt: null,
       attemptNumber: 1,
+      maximumAttempts: 3,
       sessionGeneration: 0,
     },
   });
   validateConversationResponse(value, request());
   assert.equal(value.epistemic.clarification.sessionGeneration, 4);
+});
+
+test("rejects a clarification without the canonical attempt limit", () => {
+  const value = response({
+    responseKind: "clarificationRequired",
+    epistemicState: "insufficientInformation",
+    confidenceLevel: "low",
+    missingInformation: [{
+      schemaVersion: 1,
+      code: "missingTaskTarget",
+      domain: "task",
+      field: "target",
+      isRequired: true,
+      canClarify: true,
+    }],
+    clarification: {
+      schemaVersion: 1,
+      clarificationId: "task-title-0",
+      reasonCode: "task_title_required",
+      questionText: "Quelle tâche veux-tu créer ?",
+      expectedAnswerType: "freeTextBounded",
+      allowedChoices: [],
+      missingFieldCodes: ["missingTaskTarget"],
+      createdAt: "2026-07-27T10:00:00.000Z",
+      expiresAt: null,
+      attemptNumber: 1,
+      sessionGeneration: 0,
+    },
+  });
+
+  assert.throws(
+      () => validateConversationResponse(value, request()),
+      /response_clarification_invalid/,
+  );
 });
 
 test("rejects unknown nested fields and excessive claims", () => {

@@ -6,7 +6,10 @@ const taskDictionary = require("../brain/taskDictionary");
 const eventDictionary = require("../brain/eventDictionary");
 const memoryRules = require("../brain/memoryRules");
 const priorities = require("../brain/priorities");
-const {detectIntent} = require("../brain/engines/intentDetector");
+const {
+  detectIntent,
+  extractTaskCreation,
+} = require("../brain/engines/intentDetector");
 const {
   detectPlanningComplexity,
 } = require("../brain/engines/planningComplexityDetector");
@@ -129,6 +132,67 @@ async function handleChatRequest(
   const today = now().toISOString().slice(0, 10);
   const detectedIntent = detectIntent(message);
   const planningComplexity = detectPlanningComplexity(message);
+  const taskCreation = extractTaskCreation(message, now());
+
+  if (detectedIntent.primaryIntent === "task" &&
+      taskCreation.isCreation && taskCreation.title.length === 0) {
+    const clarificationResponse = validateConversationResponse({
+      visibleText: "Quelle tâche veux-tu créer ?",
+      actions: [],
+      memories: [],
+      epistemic: {
+        schemaVersion: 1,
+        responseKind: "clarificationRequired",
+        epistemicState: "insufficientInformation",
+        confidenceLevel: "low",
+        usedSourceTypes: ["currentUserMessage"],
+        groundingReferences: [{
+          schemaVersion: 1,
+          sourceType: "currentUserMessage",
+          section: null,
+          factKey: null,
+          freshness: "current",
+          confirmation: "confirmed",
+          projectionVersion: 0,
+        }],
+        personalClaims: [],
+        missingInformation: [{
+          schemaVersion: 1,
+          code: "missingTaskTarget",
+          domain: "task",
+          field: "target",
+          isRequired: true,
+          canClarify: true,
+        }],
+        contradictions: [],
+        clarification: {
+          schemaVersion: 1,
+          clarificationId:
+              `task-title-${source.sessionGeneration}`,
+          reasonCode: "task_title_required",
+          questionText: "Quelle tâche veux-tu créer ?",
+          expectedAnswerType: "freeTextBounded",
+          allowedChoices: [],
+          missingFieldCodes: ["missingTaskTarget"],
+          createdAt: now().toISOString(),
+          expiresAt: null,
+          attemptNumber: 1,
+          maximumAttempts: 3,
+          sessionGeneration: source.sessionGeneration,
+        },
+        uncertaintyCodes: ["missingRequiredInformation"],
+        contextStateObserved: source.conversationContext.state,
+        warningCodes: [],
+        responseId: `task-clarification-${source.sessionGeneration}`,
+      },
+    }, source);
+    return {
+      reply: clarificationResponse.visibleText,
+      actions: clarificationResponse.actions,
+      memories: clarificationResponse.memories,
+      epistemic: clarificationResponse.epistemic,
+    };
+  }
 
   const systemContent = `
 ${systemPrompt({

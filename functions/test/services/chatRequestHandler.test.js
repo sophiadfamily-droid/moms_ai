@@ -92,6 +92,32 @@ test("uses a 45 second total OpenAI deadline", () => {
   assert.equal(OPENAI_TIMEOUT_MS, 45000);
 });
 
+test("returns task clarification before model generation", async () => {
+  let generations = 0;
+  const result = await handleChatRequest(
+      request("Crée une tâche prioritaire pour demain."),
+      {uid: "test-uid"},
+      {
+        now: () => new Date("2026-07-27T10:00:00.000Z"),
+        generateResponse: async () => {
+          generations++;
+          return response("unexpected");
+        },
+      },
+  );
+
+  assert.equal(generations, 0);
+  assert.equal(result.reply, "Quelle tâche veux-tu créer ?");
+  assert.deepEqual(result.actions, []);
+  assert.deepEqual(result.memories, []);
+  assert.equal(result.epistemic.responseKind, "clarificationRequired");
+  assert.deepEqual(
+      result.epistemic.clarification.missingFieldCodes,
+      ["missingTaskTarget"],
+  );
+  assert.equal(result.epistemic.clarification.maximumAttempts, 3);
+});
+
 test("handles the canonical bounded payload without mutating it", async () => {
   const original = structuredClone(payload);
   const calls = [];
