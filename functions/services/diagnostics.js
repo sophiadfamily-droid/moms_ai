@@ -4,6 +4,7 @@ const {resolveSecurityEnvironment} = require("./securityEnvironment");
 const ERROR_CODES = Object.freeze({
   unauthenticated: "unauthenticated",
   appCheckRequired: "app-check-required",
+  appCheckNotEnforced: "app-check-not-enforced",
   permissionDenied: "permission-denied",
   invalidArgument: "invalid-argument",
   resourceExhausted: "resource-exhausted",
@@ -30,6 +31,8 @@ const ALLOWED_METADATA = new Set([
   "reasoningEffort",
   "requestId",
   "providerCode",
+  "authStatus",
+  "appCheckStatus",
 ]);
 
 const FORBIDDEN_NAMES = [

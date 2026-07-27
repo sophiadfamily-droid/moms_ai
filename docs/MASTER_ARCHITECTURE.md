@@ -938,14 +938,62 @@ The active remote AI boundary is the single Firebase callable
 `chatWithZeliaCallable`. It requires a Firebase Auth UID, including an anonymous
 UID, and derives identity only from verified callable context. The historical
 HTTP transport is no longer exported or present in the Flutter client.
-Production and staging enforce App Check. Debug uses the official debug
-providers. The explicit emulator environment connects Auth, Firestore and
-Functions to localhost and is the only server environment that omits App Check.
+The callable validates a closed request before quota consumption, rejects
+client-controlled identity fields, and validates a closed response capped at
+64 KiB before returning it. Flutter applies the same response-size bound and
+fails closed on unknown, absent or malformed contract fields. There is no
+automatic HTTP fallback.
 
 Before OpenAI execution, a transaction consumes a technical quota from one
 deny-by-default Firestore document per UID. It stores no conversation content.
 Its bounded settings are `ZELIA_AI_CHAT_QUOTA_LIMIT` and
 `ZELIA_AI_CHAT_QUOTA_WINDOW_SECONDS`; it is not a commercial entitlement model.
+Quota storage failure is fail-closed and the verified callable UID is the only
+quota identity.
+
+### 9.1.1 V1-S0.1 security environments and App Check
+
+The security environment is closed and never comes from the chat payload.
+Flutter accepts only `emulator`, `debug`, `staging` and `production`; an unknown
+release value fails closed to production and a release build cannot select
+debug or emulator. Functions accepts only `development`, `staging` and
+`production`, plus the Functions emulator signal; an unknown server value is
+reported as production.
+
+| Environment | Required controls |
+| --- | --- |
+| Local development / personal device | Firebase Auth, closed request/response validation and server quota remain mandatory. App Check enforcement may temporarily be disabled when the Personal Apple Team cannot provision App Attest. A missing token emits only the closed `app-check-not-enforced` diagnostic; it never weakens another control. |
+| External beta / TestFlight | A compatible Apple Developer team, registered App Attest application, valid signed-build token and enabled App Check enforcement are release gates. Debug providers are forbidden. |
+| Production | App Check enforcement is mandatory, debug providers and the legacy HTTP endpoint are forbidden, and `OPENAI_API_KEY` remains a Firebase Secret Manager secret available only to the callable. |
+
+The currently tracked Firebase parameter file is explicitly labelled
+`development` and keeps App Check enforcement disabled for the validated
+personal-device workflow. It is not a beta or production configuration.
+Before TestFlight, the release owner must change the server environment to
+`staging`, enable `ZELIA_ENFORCE_APP_CHECK`, configure the Apple Developer team
+and App Attest registration, then verify a signed build before external access.
+Production repeats those gates with the `production` environment.
+
+The former `chatWithZeliaHttp` export is absent from the repository and
+architecture tests prevent its reintroduction. Its remote deployment state is
+not inferable from local files. If a remote inventory confirms it still exists,
+it must be deleted separately after explicit approval:
+
+```sh
+firebase functions:delete chatWithZeliaHttp \
+  --region us-central1 \
+  --project zelia-ai-app
+```
+
+No remote deletion is part of V1-S0.1 implementation or validation.
+
+Provider diagnostics are allow-listed technical records only: correlation ID,
+component, step, closed code, environment, model/tier, bounded counts/status and
+duration. User messages, history, memories, profile data, task/event content,
+provider responses, Auth/App Check tokens and secrets are never diagnostic
+metadata. Repository architecture tests scan production Flutter and Functions
+sources for direct OpenAI transport, embedded provider keys, Bearer credentials
+and additional callable seams.
 
 ### 9.2 C.1 lifecycle and remaining boundaries
 

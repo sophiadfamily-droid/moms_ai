@@ -1,7 +1,7 @@
 const {HttpsError} = require("firebase-functions/v2/https");
 const {ChatQuotaExceededError} = require("./chatQuotaService");
 const {
-  requiresAppCheck,
+  resolveSecurityPolicy,
   zeliaEnforceAppCheck,
 } = require("./securityEnvironment");
 const {ERROR_CODES, writeDiagnostic} = require("./diagnostics");
@@ -66,13 +66,52 @@ function createCallableChatHandler({
       );
     }
 
+    let appCheckRequired;
+    try {
+      ({appCheckRequired} = resolveSecurityPolicy(
+          appCheckEnforcement,
+          env,
+      ));
+    } catch (error) {
+      writeDiagnostic({
+        logger,
+        level: "error",
+        event: "ZELIA_SECURITY_CONFIGURATION_INVALID",
+        component: "chat_transport",
+        step: "security_environment",
+        code: ERROR_CODES.appCheckRequired,
+        env,
+      });
+      throw new HttpsErrorClass(
+          "failed-precondition",
+          "La configuration de sécurité ZELIA est invalide.",
+      );
+    }
+
     const appId = request && request.app && request.app.appId;
-    if (requiresAppCheck(appCheckEnforcement) &&
-        (typeof appId !== "string" || appId.trim().length === 0)) {
+    const hasVerifiedAppCheck =
+      typeof appId === "string" && appId.trim().length > 0;
+    if (appCheckRequired &&
+        !hasVerifiedAppCheck) {
       throw new HttpsErrorClass(
           "failed-precondition",
           "La vérification de l'application est requise.",
       );
+    }
+    if (!appCheckRequired && !hasVerifiedAppCheck) {
+      writeDiagnostic({
+        logger,
+        level: "warn",
+        event: "ZELIA_APP_CHECK_OBSERVED",
+        component: "chat_transport",
+        step: "app_check",
+        code: ERROR_CODES.appCheckNotEnforced,
+        env,
+        metadata: {
+          authStatus: "verified",
+          appCheckStatus: "missing",
+        },
+      });
     }
 
     if (

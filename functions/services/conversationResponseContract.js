@@ -2,6 +2,7 @@
 /* eslint-disable require-jsdoc */
 
 const RESPONSE_VALIDATOR_VERSION = 1;
+const MAX_RESPONSE_BYTES = 64000;
 const RESPONSE_KEYS = new Set([
   "visibleText", "actions", "memories", "epistemic",
 ]);
@@ -107,6 +108,10 @@ function record(value) {
 function exactKeys(value, keys) {
   return Object.keys(record(value)).every((key) => keys.has(key)) &&
     Object.keys(value).length === keys.size;
+}
+
+function serializedBytes(value) {
+  return Buffer.byteLength(JSON.stringify(value), "utf8");
 }
 
 function contextHasReference(reference, context) {
@@ -330,7 +335,8 @@ function validateConversationResponse(response, request) {
   if (!exactKeys(response, RESPONSE_KEYS) ||
       typeof response.visibleText !== "string" ||
       response.visibleText.trim().length === 0 ||
-      response.visibleText.length > 4000) {
+      response.visibleText.length > 4000 ||
+      serializedBytes(response) > MAX_RESPONSE_BYTES) {
     fail("conversation_response_invalid");
   }
   validateSemantics(response, request);
@@ -339,6 +345,7 @@ function validateConversationResponse(response, request) {
 
 module.exports = {
   ConversationResponseValidationError,
+  MAX_RESPONSE_BYTES,
   RESPONSE_VALIDATOR_VERSION,
   validateConversationResponse,
 };

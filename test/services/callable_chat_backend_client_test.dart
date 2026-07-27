@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:moms_ai/models/chat_backend_request.dart';
+import 'package:moms_ai/models/chat_backend_response.dart';
 import 'package:moms_ai/models/conversation_context_envelope.dart';
 import 'package:moms_ai/services/callable_chat_backend_client.dart';
 import 'package:moms_ai/services/chat_backend_client.dart';
@@ -99,6 +100,22 @@ void main() {
   test('refuses missing response fields without an invented fallback',
       () async {
     final backend = CallableChatBackendClient.withInvoker((_) async => {});
+
+    await expectLater(
+      backend.send(request),
+      throwsA(isA<ChatBackendMalformedResponseException>()),
+    );
+  });
+
+  test('rejects an oversized callable response before decoding', () async {
+    final backend = CallableChatBackendClient.withInvoker((_) async {
+      return {
+        ..._response('Réponse'),
+        'actions': [
+          {'payload': 'x' * ChatBackendResponse.maximumResponseBytes},
+        ],
+      };
+    });
 
     await expectLater(
       backend.send(request),
@@ -285,6 +302,35 @@ void main() {
         .map((file) => file.readAsStringSync())
         .join('\n');
     expect(serviceSources, isNot(contains('chatWithZeliaHttp')));
+  });
+
+  test('Flutter contains no provider secret or direct OpenAI transport', () {
+    final productionSources = Directory('lib')
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where((file) => file.path.endsWith('.dart'))
+        .map((file) => file.readAsStringSync())
+        .join('\n');
+
+    expect(productionSources, isNot(contains('api.openai.com')));
+    expect(productionSources, isNot(contains('OPENAI_API_KEY')));
+    expect(
+      RegExp(
+        r'(?:^|[^A-Za-z0-9])sk-[A-Za-z0-9_-]{8,}',
+      ).hasMatch(productionSources),
+      isFalse,
+    );
+    expect(
+      RegExp(
+        r'Authorization\s*:\s*Bearer',
+        caseSensitive: false,
+      ).hasMatch(productionSources),
+      isFalse,
+    );
+    expect(
+      'httpsCallable'.allMatches(productionSources),
+      hasLength(1),
+    );
   });
 }
 

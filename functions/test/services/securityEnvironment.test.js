@@ -5,6 +5,7 @@ const {
   ZELIA_ENFORCE_APP_CHECK_NAME,
   requiresAppCheck,
   resolveSecurityEnvironment,
+  resolveSecurityPolicy,
   zeliaEnforceAppCheck,
 } = require("../../services/securityEnvironment");
 
@@ -32,3 +33,29 @@ test("false bypasses App Check without changing environment labels", () => {
   assert.equal(resolveSecurityEnvironment({ZELIA_ENVIRONMENT: "production"}),
       "production");
 });
+
+test("unknown environments fail closed and release tiers require App Check",
+    () => {
+      assert.equal(resolveSecurityEnvironment({ZELIA_ENVIRONMENT: "unknown"}),
+          "production");
+      assert.deepEqual(
+          resolveSecurityPolicy(booleanParam(false), {
+            ZELIA_ENVIRONMENT: "development",
+          }),
+          {environment: "development", appCheckRequired: false},
+      );
+      for (const environment of ["staging", "production"]) {
+        assert.throws(
+            () => resolveSecurityPolicy(booleanParam(false), {
+              ZELIA_ENVIRONMENT: environment,
+            }),
+            /APP_CHECK_ENFORCEMENT_REQUIRED/,
+        );
+        assert.deepEqual(
+            resolveSecurityPolicy(booleanParam(true), {
+              ZELIA_ENVIRONMENT: environment,
+            }),
+            {environment, appCheckRequired: true},
+        );
+      }
+    });

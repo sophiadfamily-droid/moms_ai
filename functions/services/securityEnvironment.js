@@ -50,10 +50,32 @@ function requiresAppCheck(enforcementParam = zeliaEnforceAppCheck) {
   return enforcementParam.value();
 }
 
+/**
+ * Refuse toute configuration bêta/production dont App Check n'est pas enforced.
+ *
+ * @param {Object} enforcementParam paramètre booléen injectable
+ * @param {Object} env variables d'environnement
+ * @return {{environment: string, appCheckRequired: boolean}} politique fermée
+ */
+function resolveSecurityPolicy(
+    enforcementParam = zeliaEnforceAppCheck,
+    env = process.env,
+) {
+  const environment = resolveSecurityEnvironment(env);
+  const appCheckRequired = requiresAppCheck(enforcementParam);
+  if ((environment === SECURITY_ENVIRONMENTS.staging ||
+       environment === SECURITY_ENVIRONMENTS.production) &&
+      !appCheckRequired) {
+    throw new Error("APP_CHECK_ENFORCEMENT_REQUIRED");
+  }
+  return {environment, appCheckRequired};
+}
+
 module.exports = {
   SECURITY_ENVIRONMENTS,
   ZELIA_ENFORCE_APP_CHECK_NAME,
   requiresAppCheck,
   resolveSecurityEnvironment,
+  resolveSecurityPolicy,
   zeliaEnforceAppCheck,
 };

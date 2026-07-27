@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const {
+  MAX_RESPONSE_BYTES,
   validateConversationResponse,
 } = require("../../services/conversationResponseContract");
 
@@ -113,6 +114,15 @@ test("accepts general knowledge without a personal claim", () => {
     }],
   });
   assert.equal(validateConversationResponse(value, request()), value);
+});
+
+test("rejects a response exceeding the closed transport size", () => {
+  const value = response();
+  value.memories = [{text: "x".repeat(MAX_RESPONSE_BYTES)}];
+  assert.throws(
+      () => validateConversationResponse(value, request()),
+      /conversation_response_invalid/,
+  );
 });
 
 test("accepts a personal claim grounded in the sent envelope", () => {

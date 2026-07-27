@@ -153,9 +153,15 @@ test("rejects absent App Check when enforcement is enabled", async () => {
 
 test("disabled App Check still requires auth and consumes quota", async () => {
   const quotaUids = [];
+  const warnings = [];
   let handlerCalls = 0;
   const handler = createHandler({
     appCheckEnforcement: appCheckDisabled,
+    env: {ZELIA_ENVIRONMENT: "development"},
+    logger: {
+      error() {},
+      warn: (...values) => warnings.push(values),
+    },
     consumeQuota: async ({uid}) => quotaUids.push(uid),
     handleChatRequest: async () => {
       handlerCalls++;
@@ -169,6 +175,20 @@ test("disabled App Check still requires auth and consumes quota", async () => {
   );
   assert.deepEqual(quotaUids, ["firebase-uid"]);
   assert.equal(handlerCalls, 1);
+  assert.equal(warnings.length, 1);
+  assert.equal(warnings[0][0], "ZELIA_APP_CHECK_OBSERVED");
+  assert.deepEqual({
+    ...warnings[0][1],
+    correlationId: "redacted-for-test",
+  }, {
+    component: "chat_transport",
+    step: "app_check",
+    code: "app-check-not-enforced",
+    environment: "development",
+    correlationId: "redacted-for-test",
+    authStatus: "verified",
+    appCheckStatus: "missing",
+  });
 
   await assert.rejects(
       () => handler({
@@ -180,6 +200,7 @@ test("disabled App Check still requires auth and consumes quota", async () => {
   );
   assert.deepEqual(quotaUids, ["firebase-uid"]);
   assert.equal(handlerCalls, 1);
+  assert.equal(JSON.stringify(warnings).includes("firebase-uid"), false);
 });
 
 test("rejects an invalid App Check context in production", async () => {
@@ -187,6 +208,19 @@ test("rejects an invalid App Check context in production", async () => {
       () => createHandler()({...secureRequest(), app: {}}),
       (error) => error.code === "failed-precondition",
   );
+});
+
+test("production cannot disable App Check enforcement", async () => {
+  let quotaCalls = 0;
+  const handler = createHandler({
+    appCheckEnforcement: appCheckDisabled,
+    consumeQuota: async () => quotaCalls++,
+  });
+  await assert.rejects(
+      () => handler(secureRequest()),
+      (error) => error.code === "failed-precondition",
+  );
+  assert.equal(quotaCalls, 0);
 });
 
 test("rejects client-controlled identity fields", async () => {
@@ -281,4 +315,21 @@ test("legacy HTTP transport is no longer exported", () => {
   );
   assert.doesNotMatch(source, /chatWithZeliaHttp|onRequest/);
   assert.match(source, /chatWithZeliaCallable/);
+});
+
+test("production Functions contain no embedded provider secret", () => {
+  const servicesDirectory = path.resolve(__dirname, "../../services");
+  const productionSources = [
+    path.resolve(__dirname, "../../index.js"),
+    ...fs.readdirSync(servicesDirectory)
+        .filter((name) => name.endsWith(".js"))
+        .map((name) => path.join(servicesDirectory, name)),
+  ].map((file) => fs.readFileSync(file, "utf8")).join("\n");
+
+  assert.doesNotMatch(
+      productionSources,
+      /(?:^|[^A-Za-z0-9])sk-[A-Za-z0-9_-]{8,}/,
+  );
+  assert.doesNotMatch(productionSources, /Authorization\s*:\s*Bearer/i);
+  assert.doesNotMatch(productionSources, /api\.openai\.com/i);
 });
