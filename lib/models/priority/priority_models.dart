@@ -4,18 +4,52 @@ import '../life_context/life_context_graph.dart';
 
 enum PriorityCandidateType {
   task,
+  eventCommitment,
   eventPreparation,
   routineOccurrence,
+  constraint,
   otherStructuredAction,
 }
 
-enum PrioritySourceDomain { task, event, routine }
+enum PrioritySourceDomain { task, event, routine, constraint }
 
-enum PriorityCandidateStatus { active, completed, historical, future }
+enum PriorityCandidateStatus {
+  active,
+  completed,
+  cancelled,
+  expired,
+  invalid,
+  historical,
+  future,
+}
 
 enum PriorityFlexibility { fixed, low, flexible, veryFlexible, unknown }
 
 enum PriorityFreshness { current, stale, unknown }
+
+enum PriorityConsequenceType {
+  healthSafety,
+  legalAdministrative,
+  financial,
+  otherPersonCommitment,
+  work,
+  essentialLogistics,
+  comfortPreference,
+  unknown,
+}
+
+enum PriorityConsequenceLevel { low, moderate, high, critical, unknown }
+
+enum PriorityCategory {
+  health,
+  administrative,
+  financial,
+  work,
+  logistics,
+  personal,
+  other,
+  unknown,
+}
 
 enum PriorityImpactType {
   blocks,
@@ -40,6 +74,7 @@ enum PriorityMissingData {
   importance,
   flexibility,
   directImpact,
+  consequence,
   freshness,
 }
 
@@ -53,6 +88,13 @@ enum PriorityCalculationStatus {
   staleSource,
   unsupportedType,
   accountMismatch,
+}
+
+enum PriorityRankingWarning {
+  partialScores,
+  staleSources,
+  excludedCandidates,
+  truncated,
 }
 
 final class PriorityException implements Exception {
@@ -140,10 +182,15 @@ final class PriorityCandidate {
     required this.provenance,
     this.deadline,
     this.temporalStart,
+    this.createdAt,
     this.effortMinutes,
     this.flexibility = PriorityFlexibility.unknown,
     this.explicitImportance,
     this.explicitUrgency,
+    this.consequenceType = PriorityConsequenceType.unknown,
+    this.consequenceLevel = PriorityConsequenceLevel.unknown,
+    this.category = PriorityCategory.unknown,
+    this.subjectEntityId,
     this.sourceRevision,
     this.syncStatus = 'unknown',
     List<PriorityDirectImpact> directImpacts = const [],
@@ -163,10 +210,15 @@ final class PriorityCandidate {
   final PriorityCandidateStatus status;
   final DateTime? deadline;
   final DateTime? temporalStart;
+  final DateTime? createdAt;
   final int? effortMinutes;
   final PriorityFlexibility flexibility;
   final double? explicitImportance;
   final double? explicitUrgency;
+  final PriorityConsequenceType consequenceType;
+  final PriorityConsequenceLevel consequenceLevel;
+  final PriorityCategory category;
+  final String? subjectEntityId;
   final List<PriorityDirectImpact> directImpacts;
   final LifeContextConfirmation confirmation;
   final PriorityFreshness freshness;
@@ -184,6 +236,9 @@ final class PriorityCandidate {
         syncStatus.trim().isEmpty ||
         effortMinutes != null && effortMinutes! <= 0 ||
         sourceRevision != null && sourceRevision! < 0 ||
+        subjectEntityId != null && subjectEntityId!.trim().isEmpty ||
+        (consequenceType == PriorityConsequenceType.unknown) !=
+            (consequenceLevel == PriorityConsequenceLevel.unknown) ||
         !_validUnitValue(explicitImportance) ||
         !_validUnitValue(explicitUrgency)) {
       throw const PriorityException('invalid_priority_candidate');
@@ -207,11 +262,17 @@ final class PriorityCandidate {
         if (deadline != null) 'deadline': deadline!.toUtc().toIso8601String(),
         if (temporalStart != null)
           'temporalStart': temporalStart!.toUtc().toIso8601String(),
+        if (createdAt != null)
+          'createdAt': createdAt!.toUtc().toIso8601String(),
         if (effortMinutes != null) 'effortMinutes': effortMinutes,
         'flexibility': flexibility.name,
         if (explicitImportance != null)
           'explicitImportance': explicitImportance,
         if (explicitUrgency != null) 'explicitUrgency': explicitUrgency,
+        'consequenceType': consequenceType.name,
+        'consequenceLevel': consequenceLevel.name,
+        'category': category.name,
+        if (subjectEntityId != null) 'subjectEntityId': subjectEntityId,
         'directImpacts':
             directImpacts.map((impact) => impact.toJson()).toList(),
         'confirmation': confirmation.name,
@@ -351,7 +412,12 @@ final class PriorityRanking {
     required this.evaluatedAt,
     required List<PriorityRankedCandidate> items,
     required this.omittedCount,
-  }) : items = UnmodifiableListView(items) {
+    List<PriorityRankingWarning> warnings = const [],
+  })  : items = UnmodifiableListView(items),
+        warnings = UnmodifiableListView(
+          List<PriorityRankingWarning>.of(warnings)
+            ..sort((left, right) => left.index.compareTo(right.index)),
+        ) {
     if (schemaVersion != currentSchemaVersion ||
         formulaVersion < 1 ||
         omittedCount < 0 ||
@@ -368,4 +434,5 @@ final class PriorityRanking {
   final DateTime evaluatedAt;
   final List<PriorityRankedCandidate> items;
   final int omittedCount;
+  final List<PriorityRankingWarning> warnings;
 }

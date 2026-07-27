@@ -39,6 +39,8 @@ void main() {
     expect(formula, contains('maximumDirectImpacts'));
     expect(engine, contains('impact.depth != 1'));
     expect(engine, contains('required DateTime evaluatedAt'));
+    expect(engine, isNot(contains('sourceDomain.index')));
+    expect(formula, contains('domainTieBreakOrderV2'));
     expect(combined, isNot(contains("import '../task_service.dart'")));
     expect(combined, isNot(contains("import '../event_service.dart'")));
     expect(combined, isNot(contains("import '../memory_service.dart'")));

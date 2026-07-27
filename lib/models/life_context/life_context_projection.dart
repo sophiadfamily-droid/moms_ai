@@ -55,6 +55,10 @@ abstract final class LifeContextProjectionFactKeys {
   static const importance = 'importance';
   static const urgency = 'urgency';
   static const flexibility = 'flexibility';
+  static const createdAt = 'createdAt';
+  static const subjectEntityId = 'subjectEntityId';
+  static const consequenceType = 'consequenceType';
+  static const consequenceLevel = 'consequenceLevel';
 
   static const all = {
     displayName,
@@ -84,6 +88,10 @@ abstract final class LifeContextProjectionFactKeys {
     importance,
     urgency,
     flexibility,
+    createdAt,
+    subjectEntityId,
+    consequenceType,
+    consequenceLevel,
   };
 }
 

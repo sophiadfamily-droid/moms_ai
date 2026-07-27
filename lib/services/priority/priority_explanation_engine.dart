@@ -339,6 +339,9 @@ final class PriorityExplanationEngine {
           ),
       };
     }
+    if (rawCode.startsWith('consequence_')) {
+      return PriorityExplanationReasonCode.directImpact;
+    }
     return switch (rawCode) {
       'deadline_overdue' => PriorityExplanationReasonCode.overdue,
       'deadline_under_2h' => PriorityExplanationReasonCode.dueVerySoon,
@@ -484,6 +487,8 @@ final class PriorityExplanationEngine {
         PriorityMissingData.flexibility => 'La flexibilité n’est pas précisée.',
         PriorityMissingData.directImpact =>
           'Aucun impact direct structuré n’est disponible.',
+        PriorityMissingData.consequence =>
+          'La conséquence structurée n’est pas précisée.',
         PriorityMissingData.freshness =>
           'La fraîcheur de la source n’est pas connue.',
       };

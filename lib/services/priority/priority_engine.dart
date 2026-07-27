@@ -42,6 +42,9 @@ final class PriorityEngine {
         _round((positive + penalty).clamp(0, 1).toDouble() * 100);
     final status = switch (candidate.status) {
       PriorityCandidateStatus.completed ||
+      PriorityCandidateStatus.cancelled ||
+      PriorityCandidateStatus.expired ||
+      PriorityCandidateStatus.invalid ||
       PriorityCandidateStatus.historical =>
         PriorityCalculationStatus.notScorable,
       _ when candidate.freshness == PriorityFreshness.stale =>
@@ -86,7 +89,13 @@ final class PriorityEngine {
     if (limit < 1 || limit > PriorityFormula.maximumRankingSize) {
       throw const PriorityException('invalid_priority_ranking_limit');
     }
-    final scored = candidates
+    final supplied = candidates.toList(growable: false);
+    final eligible = supplied
+        .where(
+          (candidate) => candidate.accountScopeId == expectedAccountScopeId,
+        )
+        .toList(growable: false);
+    final scored = eligible
         .map(
           (candidate) => (
             candidate: candidate,
@@ -105,6 +114,20 @@ final class PriorityEngine {
         .toList()
       ..sort(_compare);
     final retained = scored.take(limit).toList(growable: false);
+    final warnings = <PriorityRankingWarning>{
+      if (scored.any(
+        (entry) =>
+            entry.score.status == PriorityCalculationStatus.partiallyScored,
+      ))
+        PriorityRankingWarning.partialScores,
+      if (scored.any(
+        (entry) => entry.score.status == PriorityCalculationStatus.staleSource,
+      ))
+        PriorityRankingWarning.staleSources,
+      if (scored.length != supplied.length)
+        PriorityRankingWarning.excludedCandidates,
+      if (scored.length > retained.length) PriorityRankingWarning.truncated,
+    };
     return PriorityRanking(
       formulaVersion: PriorityFormula.version,
       evaluatedAt: evaluatedAt.toUtc(),
@@ -117,6 +140,7 @@ final class PriorityEngine {
           ),
       ],
       omittedCount: scored.length - retained.length,
+      warnings: warnings.toList(),
     );
   }
 
@@ -126,11 +150,19 @@ final class PriorityEngine {
   ) {
     var result = right.score.finalScore.compareTo(left.score.finalScore);
     if (result != 0) return result;
-    result =
-        _compareNullableDate(left.candidate.deadline, right.candidate.deadline);
+    result = _compareNullableDate(
+      _priorityDate(left.candidate),
+      _priorityDate(right.candidate),
+    );
     if (result != 0) return result;
     result = _rigidity(right.candidate.flexibility)
         .compareTo(_rigidity(left.candidate.flexibility));
+    if (result != 0) return result;
+    result = _consequenceStrength(right.candidate.consequenceLevel)
+        .compareTo(_consequenceStrength(left.candidate.consequenceLevel));
+    if (result != 0) return result;
+    result = _compareNullableDate(
+        left.candidate.createdAt, right.candidate.createdAt);
     if (result != 0) return result;
     result = _confirmation(right.candidate.confirmation)
         .compareTo(_confirmation(left.candidate.confirmation));
@@ -138,7 +170,14 @@ final class PriorityEngine {
     result = _freshness(right.candidate.freshness)
         .compareTo(_freshness(left.candidate.freshness));
     if (result != 0) return result;
-    return left.candidate.id.compareTo(right.candidate.id);
+    result = left.candidate.sourceId.compareTo(right.candidate.sourceId);
+    if (result != 0) return result;
+    result = left.candidate.id.compareTo(right.candidate.id);
+    if (result != 0) return result;
+    return PriorityFormula.domainTieBreakOrderV2[left.candidate.sourceDomain]!
+        .compareTo(
+      PriorityFormula.domainTieBreakOrderV2[right.candidate.sourceDomain]!,
+    );
   }
 
   PriorityScoreComponent _urgency(
@@ -313,7 +352,7 @@ final class PriorityEngine {
     }
     final retained =
         direct.values.take(PriorityFormula.maximumDirectImpacts).toList();
-    final strongest = retained.fold<double>(0, (value, impact) {
+    final directStrength = retained.fold<double>(0, (value, impact) {
       final weight = switch (impact.type) {
         PriorityImpactType.blocks => 1.0,
         PriorityImpactType.directDependent => .75,
@@ -322,22 +361,38 @@ final class PriorityEngine {
       };
       return weight > value ? weight : value;
     });
+    final consequenceStrength = switch (candidate.consequenceLevel) {
+      PriorityConsequenceLevel.critical => 1.0,
+      PriorityConsequenceLevel.high => .8,
+      PriorityConsequenceLevel.moderate => .55,
+      PriorityConsequenceLevel.low => .25,
+      PriorityConsequenceLevel.unknown => 0.0,
+    };
+    final strongest = directStrength > consequenceStrength
+        ? directStrength
+        : consequenceStrength;
     if (candidate.directImpacts.isEmpty) {
       missing.add(PriorityMissingData.directImpact);
     }
+    if (candidate.consequenceLevel == PriorityConsequenceLevel.unknown) {
+      missing.add(PriorityMissingData.consequence);
+    }
+    final reasons = <String>[
+      retained.isEmpty ? 'no_confirmed_direct_impact' : 'direct_impact_depth_1',
+      if (candidate.consequenceType != PriorityConsequenceType.unknown)
+        'consequence_${candidate.consequenceType.name}',
+    ];
     return _component(
       candidate,
       PriorityDimension.directImpact,
       retained.length.toDouble(),
       strongest,
-      [
-        retained.isEmpty
-            ? 'no_confirmed_direct_impact'
-            : 'direct_impact_depth_1',
+      reasons,
+      missingData: [
+        if (candidate.directImpacts.isEmpty) PriorityMissingData.directImpact,
+        if (candidate.consequenceLevel == PriorityConsequenceLevel.unknown)
+          PriorityMissingData.consequence,
       ],
-      missingData: candidate.directImpacts.isEmpty
-          ? const [PriorityMissingData.directImpact]
-          : const [],
     );
   }
 
@@ -396,6 +451,9 @@ final class PriorityEngine {
     Set<PriorityMissingData> missing,
   ) {
     if (candidate.status == PriorityCandidateStatus.completed ||
+        candidate.status == PriorityCandidateStatus.cancelled ||
+        candidate.status == PriorityCandidateStatus.expired ||
+        candidate.status == PriorityCandidateStatus.invalid ||
         candidate.status == PriorityCandidateStatus.historical) {
       return PriorityConfidence.notCalculable;
     }
@@ -443,6 +501,14 @@ final class PriorityEngine {
     return left.toUtc().compareTo(right.toUtc());
   }
 
+  DateTime? _priorityDate(PriorityCandidate candidate) {
+    final deadline = candidate.deadline?.toUtc();
+    final start = candidate.temporalStart?.toUtc();
+    if (deadline == null) return start;
+    if (start == null) return deadline;
+    return deadline.isBefore(start) ? deadline : start;
+  }
+
   int _rigidity(PriorityFlexibility value) => switch (value) {
         PriorityFlexibility.fixed => 4,
         PriorityFlexibility.low => 3,
@@ -464,6 +530,14 @@ final class PriorityEngine {
         PriorityFreshness.current => 2,
         PriorityFreshness.stale => 1,
         PriorityFreshness.unknown => 0,
+      };
+
+  int _consequenceStrength(PriorityConsequenceLevel value) => switch (value) {
+        PriorityConsequenceLevel.critical => 4,
+        PriorityConsequenceLevel.high => 3,
+        PriorityConsequenceLevel.moderate => 2,
+        PriorityConsequenceLevel.low => 1,
+        PriorityConsequenceLevel.unknown => 0,
       };
 
   double _round(double value) => (value * 100).roundToDouble() / 100;

@@ -552,7 +552,7 @@ technical consequences at depth exactly one. It does not read repositories,
 persist scores, call OpenAI, write a domain, recommend an action, or alter
 planning.
 
-Formula version 1 normalizes every positive dimension to `[0, 1]` and produces
+Formula version 2 normalizes every positive dimension to `[0, 1]` and produces
 a score bounded to `[0, 100]`. Its centralized weights are urgency 25%,
 explicit importance 25%, deadline pressure 25%, effort 5%, explicit
 flexibility 10%, and confirmed direct impact 10%. Data quality applies a
@@ -560,23 +560,37 @@ separate uncertainty penalty of at most 10%. Effort is neutral on its own and
 only changes deadline pressure when both duration and remaining time are
 structured; short work is therefore not automatically favored.
 
+Le composant d’impact accepte aussi une conséquence métier fermée et déjà
+structurée (`healthSafety`, `legalAdministrative`, `financial`,
+`otherPersonCommitment`, `work`, `essentialLogistics` ou
+`comfortPreference`) avec un niveau fermé. Aucun mot du titre ou des notes ne
+peut créer cette conséquence. Une conséquence inconnue reste une information
+manquante et neutre.
+
 Missing deadline, effort, importance, flexibility, impact, or freshness stays
 explicit. Neutral values permit partial scoring but never become fabricated
 facts. Deadline thresholds are versioned and evaluated in UTC. Scores preserve
 component provenance, confidence, missing-data codes, and technical reason
 codes; user-facing explanations remain R.3.
 
-Ranking is bounded and deterministic: final score descending, deadline
-ascending, rigidity, confirmation, freshness, then stable technical ID. It
-never uses a visible label, Firestore order, family situation, gender, marital
-status, children, work/personal category, medical data, or text keywords.
+Ranking is bounded and deterministic: final score descending, nearest
+deadline/start, rigidity, structured consequence, creation date, source
+confirmation, freshness, source ID, stable technical ID, then an explicit
+formula-V2 technical domain table. The domain table is independent from enum
+ordinals and expresses no business importance. Ranking never uses a visible
+label, Firestore order, family situation, gender, marital status, children,
+work/personal category, medical data, or text keywords.
 
-The adapter creates active Task candidates from LC.3. It creates an Event
-preparation or Routine occurrence only when an explicit structured
-`actionRequired` marker exists; a Routine additionally needs a dated
-occurrence. Fixed Events without an action, Human facts, and free Memory never
-become candidates. The present LC.3 schema does not yet emit those action
-markers, so production extraction currently yields Task candidates only.
+The adapter creates active Task candidates and fixed Event commitments from
+LC.3. A future or currently running Event requires a coherent structured end;
+an Event whose end is reached is excluded, and a running Event does not receive
+an overdue reason merely because its start has passed. It creates a Routine
+occurrence only when an explicit structured `actionRequired` marker and a dated
+occurrence exist. It can consume a confirmed projection explicitly typed
+`constraint` only when its status is exactly active and its half-open validity
+window contains the injected calculation date. Proposed, rejected, superseded,
+expired, unknown-status, free Memory and Human facts never become candidates.
+The adapter does not calculate Routine occurrences or reinterpret Memory text.
 
 **Legacy transition debt:** `AiPriorityService`,
 `PriorityEngineService`, `TimePriorityService`, and

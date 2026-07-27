@@ -16,12 +16,15 @@ final class PriorityGraphCandidateAdapter {
       PrioritySourceDomain.task => LifeContextDomain.task,
       PrioritySourceDomain.event => LifeContextDomain.event,
       PrioritySourceDomain.routine => LifeContextDomain.routine,
+      PrioritySourceDomain.constraint => null,
     };
     final type = switch (candidate.sourceDomain) {
       PrioritySourceDomain.task => LifeContextNodeType.task,
       PrioritySourceDomain.event => LifeContextNodeType.event,
       PrioritySourceDomain.routine => LifeContextNodeType.routine,
+      PrioritySourceDomain.constraint => null,
     };
+    if (domain == null || type == null) return null;
     final expectedId =
         LifeContextGraphNode.deterministicId(domain, type, candidate.sourceId);
     for (final node in graph.nodes) {

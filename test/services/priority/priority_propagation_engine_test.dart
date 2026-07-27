@@ -583,6 +583,7 @@ PriorityCandidate _candidate(
               PriorityCandidateType.eventPreparation,
             PrioritySourceDomain.routine =>
               PriorityCandidateType.routineOccurrence,
+            PrioritySourceDomain.constraint => PriorityCandidateType.constraint,
           },
       status: PriorityCandidateStatus.active,
       explicitImportance: importance,
@@ -674,12 +675,14 @@ LifeContextDomain _domain(PrioritySourceDomain domain) => switch (domain) {
       PrioritySourceDomain.task => LifeContextDomain.task,
       PrioritySourceDomain.event => LifeContextDomain.event,
       PrioritySourceDomain.routine => LifeContextDomain.routine,
+      PrioritySourceDomain.constraint => LifeContextDomain.memory,
     };
 
 LifeContextNodeType _nodeType(PrioritySourceDomain domain) => switch (domain) {
       PrioritySourceDomain.task => LifeContextNodeType.task,
       PrioritySourceDomain.event => LifeContextNodeType.event,
       PrioritySourceDomain.routine => LifeContextNodeType.routine,
+      PrioritySourceDomain.constraint => LifeContextNodeType.task,
     };
 
 PropagatedPriorityScore _score(
