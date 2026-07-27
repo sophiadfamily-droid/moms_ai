@@ -7,6 +7,139 @@ import 'package:moms_ai/services/routine_repository.dart';
 void main() {
   final now = DateTime.utc(2026, 7, 27, 10);
 
+  group('normalisation horaire interne', () {
+    test('canonicalise uniquement les expressions horaires prises en charge',
+        () {
+      const original =
+          'Tous les mardis de neuf heures à dix heures, je vais au sport.';
+
+      expect(
+        RoutineTimeExpressionNormalizer.normalizeForAnalysis(original),
+        'tous les mardis de 09:00 a 10:00, je vais au sport.',
+      );
+      expect(original, contains('neuf heures'));
+      expect(
+        RoutineTimeExpressionNormalizer.normalizeForAnalysis(
+          'à neuf heure, neuf heures trente, neuf heures et demie',
+        ),
+        'a 09:00, 09:30, 09:30',
+      );
+      expect(
+        RoutineTimeExpressionNormalizer.normalizeForAnalysis(
+          '9 heures, 9 h, 9h, 09:00, dix heures trente',
+        ),
+        '09:00, 09:00, 09:00, 09:00, 10:30',
+      );
+      expect(
+        RoutineTimeExpressionNormalizer.normalizeForAnalysis(
+          'J’ai vingt-trois pommes.',
+        ),
+        'j ai vingt trois pommes.',
+      );
+    });
+
+    test('recognises every French clock hour from zero to twenty-three', () {
+      const words = [
+        'zéro',
+        'un',
+        'deux',
+        'trois',
+        'quatre',
+        'cinq',
+        'six',
+        'sept',
+        'huit',
+        'neuf',
+        'dix',
+        'onze',
+        'douze',
+        'treize',
+        'quatorze',
+        'quinze',
+        'seize',
+        'dix-sept',
+        'dix-huit',
+        'dix-neuf',
+        'vingt',
+        'vingt et un',
+        'vingt-deux',
+        'vingt-trois',
+      ];
+
+      for (var hour = 0; hour < words.length; hour += 1) {
+        expect(
+          RoutineTimeExpressionNormalizer.normalizeForAnalysis(
+            'à ${words[hour]} heures',
+          ),
+          'a ${hour.toString().padLeft(2, '0')}:00',
+          reason: words[hour],
+        );
+      }
+    });
+  });
+
+  test('all supported dictated and typed ranges build the same routine',
+      () async {
+    const messages = [
+      'Tous les mardis de 9 h à 10 h, je vais au sport.',
+      'Tous les mardis de neuf heures à 10h je vais au sport.',
+      'Tous les mardis de neuf heures à dix heures je vais au sport.',
+      'Tous les mardis de 09:00 à 10:00, je vais au sport.',
+    ];
+
+    for (var index = 0; index < messages.length; index += 1) {
+      final repository = _Repository();
+      final service = RoutineConversationService(
+        repository: repository,
+        currentAccountScopeId: () => 'account-a',
+        clock: () => now,
+      );
+      final visibleMessage = messages[index];
+
+      final proposal = await service.process(
+        visibleMessage,
+        logicalRequestId: 'range-$index',
+      );
+
+      expect(proposal.type, RoutineConversationResultType.confirmation);
+      expect(visibleMessage, messages[index]);
+      expect(repository.routines, isEmpty);
+      final pending = repository.proposals.values.single;
+      expect(pending.title, 'sport');
+      expect(pending.days, [DateTime.tuesday]);
+      expect(pending.startTime, '09:00');
+      expect(pending.durationMinutes, 60);
+
+      final created = await service.process(
+        'oui',
+        logicalRequestId: 'confirmation-$index',
+      );
+      expect(created.type, RoutineConversationResultType.created);
+      expect(repository.routines, hasLength(1));
+    }
+  });
+
+  test('unknown clock expression clarifies without persistence', () async {
+    final repository = _Repository();
+    final service = RoutineConversationService(
+      repository: repository,
+      currentAccountScopeId: () => 'account-a',
+      clock: () => now,
+    );
+
+    final result = await service.process(
+      'Tous les mardis de neuf heures moins le quart à 10h, '
+      'je vais au sport.',
+      logicalRequestId: 'unknown-time',
+    );
+
+    expect(result.type, RoutineConversationResultType.clarification);
+    expect(result.message, 'À quelle heure commence cette routine ?');
+    expect(service.hasPending, isFalse);
+    expect(repository.proposals, isEmpty);
+    expect(repository.routines, isEmpty);
+  });
+
   test('complete weekly routine requires confirmation and persists once',
       () async {
     final repository = _Repository();

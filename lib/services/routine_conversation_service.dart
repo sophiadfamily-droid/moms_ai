@@ -133,6 +133,12 @@ final class RoutineConversationService {
           'Dis-moi simplement oui ou non pour confirmer cette routine.',
         );
       }
+      if (RoutineTimeExpressionNormalizer.hasUnrecognizedExpression(message)) {
+        return const RoutineConversationResult(
+          RoutineConversationResultType.clarification,
+          'À quelle heure commence cette routine ?',
+        );
+      }
       final draft = _RoutineDraft.fromProposal(pending).completeFrom(message);
       final updated = draft.toProposal(
         proposalId: pending.proposalId,
@@ -173,6 +179,12 @@ final class RoutineConversationService {
       return const RoutineConversationResult(
         RoutineConversationResultType.unavailable,
         'Je ne peux pas préparer cette routine pour le moment.',
+      );
+    }
+    if (RoutineTimeExpressionNormalizer.hasUnrecognizedExpression(message)) {
+      return const RoutineConversationResult(
+        RoutineConversationResultType.clarification,
+        'À quelle heure commence cette routine ?',
       );
     }
     final draft = _RoutineDraft.parse(
@@ -237,9 +249,12 @@ final class RoutineConversationService {
   bool _couldContinueRoutine(String input) {
     if (_answers.classify(input) != ConversationAnswer.ambiguous) return true;
     final normalized = _normalize(input);
+    final normalizedTime =
+        RoutineTimeExpressionNormalizer.normalizeForAnalysis(input);
     return _isExplicitRoutine(input) ||
         RegExp(r'\d{1,2}\s*h|\d+\s*(?:minutes?|heures?)')
             .hasMatch(normalized) ||
+        RegExp(r'\b\d{2}:\d{2}\b').hasMatch(normalizedTime) ||
         RegExp(r'\d{1,2}/\d{1,2}/\d{4}|\d{4}-\d{2}-\d{2}').hasMatch(normalized);
   }
 
@@ -272,6 +287,88 @@ final class RoutineConversationService {
       .replaceAll(RegExp('[ôö]'), 'o')
       .replaceAll(RegExp('[ùûü]'), 'u')
       .replaceAll('ç', 'c');
+}
+
+final class RoutineTimeExpressionNormalizer {
+  const RoutineTimeExpressionNormalizer._();
+
+  static const _hourWords = <String, int>{
+    'zero': 0,
+    'un': 1,
+    'une': 1,
+    'deux': 2,
+    'trois': 3,
+    'quatre': 4,
+    'cinq': 5,
+    'six': 6,
+    'sept': 7,
+    'huit': 8,
+    'neuf': 9,
+    'dix': 10,
+    'onze': 11,
+    'douze': 12,
+    'treize': 13,
+    'quatorze': 14,
+    'quinze': 15,
+    'seize': 16,
+    'dix sept': 17,
+    'dix huit': 18,
+    'dix neuf': 19,
+    'vingt': 20,
+    'vingt et un': 21,
+    'vingt et une': 21,
+    'vingt deux': 22,
+    'vingt trois': 23,
+  };
+
+  static final RegExp _expression = RegExp(
+    '\\b(${[
+      ..._hourWords.keys.toList()
+        ..sort((left, right) => right.length.compareTo(left.length)),
+      r'\d{1,2}',
+    ].join('|')})'
+    r'\s*(?:(?:heures?|h)(?:\s*(et\s+demie|demie|trente|\d{1,2}))?'
+    r'|:\s*(\d{1,2}))\b(?!\s+moins\b)',
+  );
+
+  static String normalizeForAnalysis(String input) {
+    var text = RoutineConversationService._normalize(input)
+        .replaceAll("'", ' ')
+        .replaceAll('-', ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    text = text.replaceAllMapped(_expression, (match) {
+      final hourToken = match.group(1)!;
+      final hour = int.tryParse(hourToken) ?? _hourWords[hourToken];
+      final minuteToken = match.group(2);
+      final minute = match.group(3) == null
+          ? switch (minuteToken) {
+              'et demie' || 'demie' || 'trente' => 30,
+              null => 0,
+              _ => int.tryParse(minuteToken),
+            }
+          : int.tryParse(match.group(3)!);
+      if (hour == null || minute == null || hour > 23 || minute > 59) {
+        return match.group(0)!;
+      }
+      return '${hour.toString().padLeft(2, '0')}:'
+          '${minute.toString().padLeft(2, '0')}';
+    });
+    return text
+        .replaceAllMapped(
+          RegExp(r'\s*([,;.!?])\s*'),
+          (match) => '${match.group(1)} ',
+        )
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  static bool hasUnrecognizedExpression(String input) {
+    final normalized = normalizeForAnalysis(input);
+    return RegExp(
+      r'\b(?:de|a|vers|entre)\b[^,;.!?]{0,40}\bheures?\b',
+    ).hasMatch(normalized);
+  }
 }
 
 final class _RoutineDraft {
@@ -424,7 +521,7 @@ final class _RoutineDraft {
     required String accountScopeId,
     required String logicalRequestId,
   }) {
-    final text = RoutineConversationService._normalize(input);
+    final text = RoutineTimeExpressionNormalizer.normalizeForAnalysis(input);
     final days = <int>[];
     const names = {
       'lundi': 1,
@@ -458,15 +555,11 @@ final class _RoutineDraft {
     if (recurrence == null) return null;
     final start = _time(input);
     int? duration = _duration(input);
-    final range = RegExp(
-      r'de\s*(\d{1,2})\s*h(?:\s*(\d{1,2}))?\s*a\s*(\d{1,2})\s*h(?:\s*(\d{1,2}))?',
-      caseSensitive: false,
-    ).firstMatch(text);
+    final range = RegExp(r'\bde\s*(\d{2}):(\d{2})\s*a\s*(\d{2}):(\d{2})\b')
+        .firstMatch(text);
     if (range != null) {
-      final from =
-          int.parse(range.group(1)!) * 60 + int.parse(range.group(2) ?? '0');
-      final to =
-          int.parse(range.group(3)!) * 60 + int.parse(range.group(4) ?? '0');
+      final from = int.parse(range.group(1)!) * 60 + int.parse(range.group(2)!);
+      final to = int.parse(range.group(3)!) * 60 + int.parse(range.group(4)!);
       if (to > from) duration = to - from;
     }
     final titleMatch = RegExp(
@@ -486,11 +579,11 @@ final class _RoutineDraft {
   }
 
   static String? _time(String input) {
-    final text = RoutineConversationService._normalize(input);
-    final match = RegExp(r'(\d{1,2})\s*h(?:\s*(\d{1,2}))?').firstMatch(text);
+    final text = RoutineTimeExpressionNormalizer.normalizeForAnalysis(input);
+    final match = RegExp(r'\b(\d{2}):(\d{2})\b').firstMatch(text);
     if (match == null) return null;
     final hour = int.parse(match.group(1)!);
-    final minute = int.parse(match.group(2) ?? '0');
+    final minute = int.parse(match.group(2)!);
     if (hour > 23 || minute > 59) return null;
     return '${hour.toString().padLeft(2, '0')}:'
         '${minute.toString().padLeft(2, '0')}';
@@ -506,15 +599,12 @@ final class _RoutineDraft {
   }
 
   static int? _rangeDuration(String input) {
-    final text = RoutineConversationService._normalize(input);
-    final range = RegExp(
-      r'de\s*(\d{1,2})\s*h(?:\s*(\d{1,2}))?\s*a\s*(\d{1,2})\s*h(?:\s*(\d{1,2}))?',
-    ).firstMatch(text);
+    final text = RoutineTimeExpressionNormalizer.normalizeForAnalysis(input);
+    final range = RegExp(r'\bde\s*(\d{2}):(\d{2})\s*a\s*(\d{2}):(\d{2})\b')
+        .firstMatch(text);
     if (range == null) return null;
-    final from =
-        int.parse(range.group(1)!) * 60 + int.parse(range.group(2) ?? '0');
-    final to =
-        int.parse(range.group(3)!) * 60 + int.parse(range.group(4) ?? '0');
+    final from = int.parse(range.group(1)!) * 60 + int.parse(range.group(2)!);
+    final to = int.parse(range.group(3)!) * 60 + int.parse(range.group(4)!);
     return to > from ? to - from : null;
   }
 
