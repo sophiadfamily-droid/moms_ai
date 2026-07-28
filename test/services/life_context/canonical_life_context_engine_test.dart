@@ -147,6 +147,7 @@ void main() {
       expect(section.relationships.single.status, 'historical');
       expect(section.relationships.single.validUntil, isNotNull);
       expect(section.persons.last.confirmation, 'needsConfirmation');
+      expect(section.persons.first.birthDate, '1990-02-01');
       expect(section.metadata.revision, 3);
     });
 
@@ -221,6 +222,33 @@ void main() {
           LifeContextAdapterRequest(accountScopeId: 'account-a', readAt: now));
       expect(section.metadata.availability, LifeContextAvailability.corrupted);
       expect(section.events, isEmpty);
+    });
+
+    test('Task source budget is deterministic and reports truncation',
+        () async {
+      final tasks = List<TaskModel>.generate(
+        LifeContextSourceBudgets.tasks + 1,
+        (index) => TaskModel(
+          id: 'task-${index.toString().padLeft(3, '0')}',
+          title: 'Tâche synthétique',
+          category: 'Perso',
+          isDone: false,
+          createdAt: now,
+        ),
+      );
+      final section = await TaskLifeContextAdapter(
+        load: (_) async => tasks.reversed.toList(),
+      ).load(
+        LifeContextAdapterRequest(accountScopeId: 'account-a', readAt: now),
+      );
+
+      expect(section.tasks, hasLength(LifeContextSourceBudgets.tasks));
+      expect(section.tasks.first.id, 'task-000');
+      expect(
+        section.metadata.truncationState,
+        LifeContextTruncationState.truncated,
+      );
+      expect(section.metadata.warningCodes, ['task_source_truncated']);
     });
 
     test('Event sync conflict is represented but never resolved', () async {
@@ -492,6 +520,7 @@ HumanModelLocalState _humanState({
           entityType: EntityType.person,
         ),
         evidence: confirmed,
+        customFields: const {'birthDate': '01/02/1990'},
       ),
     ],
     relationships: [

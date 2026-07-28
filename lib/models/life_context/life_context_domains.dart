@@ -14,6 +14,8 @@ enum LifeContextAvailability {
 
 enum LifeContextFreshness { current, stale, unknown }
 
+enum LifeContextTruncationState { complete, truncated }
+
 enum LifeContextSourceKind {
   humanModelLocal,
   identityLinks,
@@ -53,7 +55,11 @@ final class LifeContextSourceMetadata {
     this.revision,
     this.syncStatus,
     this.errorCode,
+    this.truncationState = LifeContextTruncationState.complete,
+    this.warningCodes = const [],
   });
+
+  static const int currentSchemaVersion = 1;
 
   final LifeContextDomain domain;
   final LifeContextSourceKind source;
@@ -65,16 +71,32 @@ final class LifeContextSourceMetadata {
   final int? revision;
   final String? syncStatus;
   final String? errorCode;
+  final LifeContextTruncationState truncationState;
+  final List<String> warningCodes;
+
+  int get schemaVersion => currentSchemaVersion;
+  int get entityCount => itemCount;
+  int? get sourceRevision => revision;
+  DateTime get generatedAt => readAt;
+  bool get accountScopeMatch =>
+      availability != LifeContextAvailability.accountMismatch;
 
   Map<String, Object?> toJson() => {
+        'schemaVersion': schemaVersion,
         'domain': domain.name,
         'source': source.name,
         'readAt': readAt.toUtc().toIso8601String(),
+        'generatedAt': generatedAt.toUtc().toIso8601String(),
         'availability': availability.name,
         'freshness': freshness.name,
+        'accountScopeMatch': accountScopeMatch,
         'isLocal': isLocal,
         'itemCount': itemCount,
+        'entityCount': entityCount,
+        'truncationState': truncationState.name,
+        'warningCodes': warningCodes,
         if (revision != null) 'revision': revision,
+        if (sourceRevision != null) 'sourceRevision': sourceRevision,
         if (syncStatus != null) 'syncStatus': syncStatus,
         if (errorCode != null) 'errorCode': errorCode,
       };
@@ -96,6 +118,7 @@ final class HumanContextPerson {
     required this.status,
     required this.confirmation,
     this.identityEntityId,
+    this.birthDate,
   });
 
   final String id;
@@ -103,6 +126,7 @@ final class HumanContextPerson {
   final String status;
   final String confirmation;
   final String? identityEntityId;
+  final String? birthDate;
 
   Map<String, Object?> toJson() => {
         'id': id,
@@ -110,6 +134,7 @@ final class HumanContextPerson {
         'status': status,
         'confirmation': confirmation,
         if (identityEntityId != null) 'identityEntityId': identityEntityId,
+        if (birthDate != null) 'birthDate': birthDate,
       };
 }
 

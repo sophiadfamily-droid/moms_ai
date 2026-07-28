@@ -59,11 +59,18 @@ const CONFIRMATIONS = new Set([
   "rejected", "historical",
 ]);
 const FACT_KEYS = new Set([
-  "displayName", "status", "kind", "start", "end", "dueDate",
+  "displayName", "birthDate", "nodeId", "relationRole",
+  "status", "kind", "start", "end", "dueDate",
   "durationMinutes", "travelGoMinutes", "travelBackMinutes", "marginMinutes",
   "recurringType", "syncStatus", "revision", "days", "startTime", "endTime",
   "travelMinutes", "title", "category", "sourceNodeId", "targetNodeId",
   "actionRequired", "importance", "urgency", "flexibility",
+]);
+const RELATION_ROLES = new Set([
+  "partner", "spouse", "formerPartner", "parent", "child", "sibling",
+  "halfSibling", "stepParent", "stepChild", "grandParent", "grandChild",
+  "guardian", "responsiblePerson", "caregiver", "caredForPerson",
+  "fosterFamily", "fosterChild", "closePerson", "custom",
 ]);
 const FORBIDDEN_KEYS = new Set([
   "uid", "accountScopeId", "token", "secret", "password", "cookie",
@@ -116,8 +123,25 @@ function validateFacts(facts) {
         value.length > MAX_FACT_TEXT) {
       fail("context_fact_invalid");
     }
+    if (key === "birthDate" && !validIsoDate(value)) {
+      fail("context_birth_date_invalid");
+    }
+    if (key === "nodeId" &&
+        !/^[a-z]+:[A-Za-z]+:[A-Za-z0-9._:-]{1,60}$/.test(value)) {
+      fail("context_node_id_invalid");
+    }
+    if (key === "relationRole" && !RELATION_ROLES.has(value)) {
+      fail("context_relation_role_invalid");
+    }
   }
   return {...facts};
+}
+
+function validIsoDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) &&
+    date.toISOString().slice(0, 10) === value;
 }
 
 function validateItem(item) {

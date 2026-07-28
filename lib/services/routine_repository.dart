@@ -1,7 +1,14 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
 import '../models/routine_model.dart';
 import 'auth_service.dart';
+
+final ValueNotifier<int> routinesVersion = ValueNotifier<int>(0);
+
+void notifyRoutinesChanged() {
+  routinesVersion.value++;
+}
 
 abstract interface class RoutineRepository {
   Future<RoutineProposal?> createOrVerifyProposal(RoutineProposal proposal);
@@ -184,7 +191,7 @@ final class FirestoreRoutineRepository implements RoutineRepository {
       proposal.proposalId,
     );
     try {
-      return await _firestore.runTransaction((transaction) async {
+      final result = await _firestore.runTransaction((transaction) async {
         final proposalSnapshot = await transaction.get(proposalReference);
         final routineSnapshot = await transaction.get(routineReference);
         if (!proposalSnapshot.exists) {
@@ -236,6 +243,8 @@ final class FirestoreRoutineRepository implements RoutineRepository {
           routine: routine,
         );
       });
+      if (result.isSuccess) notifyRoutinesChanged();
+      return result;
     } on FirebaseException {
       return const RoutineCommitResult(RoutineCommitCode.unavailable);
     }
@@ -245,7 +254,7 @@ final class FirestoreRoutineRepository implements RoutineRepository {
   Future<RoutineModel?> createOrVerify(RoutineModel routine) async {
     if (AuthService.currentUserId != routine.accountScopeId) return null;
     final ref = _ref(routine.accountScopeId).doc(routine.id);
-    return _firestore.runTransaction((transaction) async {
+    final result = await _firestore.runTransaction((transaction) async {
       final snapshot = await transaction.get(ref);
       if (snapshot.exists) {
         final current = _routineFrom(snapshot.data());
@@ -254,6 +263,8 @@ final class FirestoreRoutineRepository implements RoutineRepository {
       transaction.set(ref, _routineData(routine));
       return routine;
     });
+    if (result != null) notifyRoutinesChanged();
+    return result;
   }
 
   @override

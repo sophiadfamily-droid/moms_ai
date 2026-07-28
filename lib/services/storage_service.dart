@@ -108,6 +108,15 @@ class StorageService {
     return persistedProfile;
   }
 
+  static Future<void> saveCompatibilityProfile(UserProfile profile) async {
+    final scope = _currentAccountScope();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      scope == null ? userProfileKey : _scopedCompatibilityKey(scope),
+      jsonEncode(profile.toJson()),
+    );
+  }
+
   static Future<UserProfile?> getUserProfile() async {
     final prefs = await SharedPreferences.getInstance();
     final scope = _currentAccountScope();

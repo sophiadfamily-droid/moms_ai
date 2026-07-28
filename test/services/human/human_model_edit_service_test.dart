@@ -101,6 +101,46 @@ void main() {
       expect(result.status, HumanModelEditStatus.validationFailure);
       expect(fixture.cloud.updateCount, 0);
     });
+
+    test('profil explicite écrit HumanModel avec relations confirmées',
+        () async {
+      final fixture = await _Fixture.create();
+      final profile = _legacy().copyWith(
+        firstName: 'Personne Test',
+        birthDate: '01/02/1990',
+        partnerHumanPersonId: 'person-alex',
+        partnerName: 'Alex',
+        children: [
+          ChildProfile(
+            humanPersonId: 'person-sam',
+            firstName: 'Sam',
+            age: '',
+            birthDate: '05/06/2018',
+            gender: '',
+            school: '',
+            notes: '',
+          ),
+        ],
+      );
+
+      final result = await fixture.editor.commitLegacyProfile(
+        accountScopeId: 'account-a',
+        profile: profile,
+      );
+
+      expect(result.status, HumanModelEditStatus.success);
+      expect(
+          result.state?.model.personById('person-alex')?.displayName, 'Alex');
+      expect(result.state?.model.personById('person-sam')?.displayName, 'Sam');
+      expect(
+        result.state?.model.relationships.map((item) => item.type),
+        containsAll([
+          HumanRelationshipTypes.partner,
+          HumanRelationshipTypes.child,
+        ]),
+      );
+      expect(fixture.cloud.updateCount, 1);
+    });
   });
 
   group('personnes universelles', () {

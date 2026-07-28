@@ -34,6 +34,9 @@ enum LifeContextProjectionSectionType {
 
 abstract final class LifeContextProjectionFactKeys {
   static const displayName = 'displayName';
+  static const birthDate = 'birthDate';
+  static const nodeId = 'nodeId';
+  static const relationRole = 'relationRole';
   static const status = 'status';
   static const kind = 'kind';
   static const start = 'start';
@@ -67,6 +70,9 @@ abstract final class LifeContextProjectionFactKeys {
 
   static const all = {
     displayName,
+    birthDate,
+    nodeId,
+    relationRole,
     status,
     kind,
     start,
@@ -496,7 +502,14 @@ final class LifeContextProjectionSection {
     required this.omittedCount,
     required this.truncated,
     this.warningCode,
-  }) : items = UnmodifiableListView(items) {
+    this.sourceRevision,
+    this.generatedAt,
+    this.accountScopeMatch = true,
+    this.sourceEntityCount,
+    this.sourceTruncationState = LifeContextTruncationState.complete,
+    List<String> sourceWarningCodes = const [],
+  })  : sourceWarningCodes = UnmodifiableListView(sourceWarningCodes),
+        items = UnmodifiableListView(items) {
     if (budgetLimit < 1 ||
         budgetUsed < 0 ||
         budgetUsed > budgetLimit ||
@@ -516,8 +529,17 @@ final class LifeContextProjectionSection {
   final int omittedCount;
   final bool truncated;
   final String? warningCode;
+  final int? sourceRevision;
+  final DateTime? generatedAt;
+  final bool accountScopeMatch;
+  final int? sourceEntityCount;
+  final LifeContextTruncationState sourceTruncationState;
+  final List<String> sourceWarningCodes;
+
+  int get schemaVersion => LifeContextDomainSection.currentSchemaVersion;
 
   Map<String, Object?> toJson() => {
+        'schemaVersion': schemaVersion,
         'type': type.name,
         'availability': availability.name,
         'freshness': freshness.name,
@@ -526,6 +548,13 @@ final class LifeContextProjectionSection {
         'budgetUsed': budgetUsed,
         'omittedCount': omittedCount,
         'truncated': truncated,
+        'accountScopeMatch': accountScopeMatch,
+        'sourceTruncationState': sourceTruncationState.name,
+        'sourceWarningCodes': sourceWarningCodes,
+        if (sourceRevision != null) 'sourceRevision': sourceRevision,
+        if (generatedAt != null)
+          'generatedAt': generatedAt!.toUtc().toIso8601String(),
+        if (sourceEntityCount != null) 'sourceEntityCount': sourceEntityCount,
         if (warningCode != null) 'warningCode': warningCode,
       };
 }

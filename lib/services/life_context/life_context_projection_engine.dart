@@ -104,6 +104,10 @@ final class LifeContextProjectionEngine {
       }
       totalOmitted += omitted;
       if (omitted > 0) warnings.add('projection_truncated');
+      if (metadata?.truncationState == LifeContextTruncationState.truncated) {
+        warnings.add('source_truncated');
+        warnings.addAll(metadata!.warningCodes);
+      }
       final availability = metadata?.availability ??
           (graph == null
               ? LifeContextAvailability.unsupported
@@ -122,6 +126,13 @@ final class LifeContextProjectionEngine {
           omittedCount: omitted,
           truncated: omitted > 0,
           warningCode: warningCode,
+          sourceRevision: metadata?.sourceRevision,
+          generatedAt: metadata?.generatedAt,
+          accountScopeMatch: metadata?.accountScopeMatch ?? true,
+          sourceEntityCount: metadata?.entityCount,
+          sourceTruncationState:
+              metadata?.truncationState ?? LifeContextTruncationState.complete,
+          sourceWarningCodes: metadata?.warningCodes ?? const [],
         ),
       );
     }
@@ -226,11 +237,31 @@ final class LifeContextProjectionEngine {
     final section = snapshot.human!;
     final result = <LifeContextProjectionItem>[];
     if (contract.purpose == LifeContextConsumerPurpose.conversation) {
+      final relatedPersonIds = section.relationships
+          .where(
+            (relationship) =>
+                relationship.status == 'active' &&
+                relationship.sourceReferenceId == section.primaryPersonId,
+          )
+          .map((relationship) => relationship.targetReferenceId)
+          .whereType<String>()
+          .toSet();
       for (final person in section.persons) {
-        if (person.status != 'active' || person.id != section.primaryPersonId) {
+        if (person.status != 'active' ||
+            (person.id != section.primaryPersonId &&
+                !relatedPersonIds.contains(person.id))) {
           continue;
         }
         final facts = <LifeContextProjectionFact>[
+          _fact(
+            LifeContextProjectionFactKeys.nodeId,
+            LifeContextGraphNode.deterministicId(
+              LifeContextDomain.human,
+              LifeContextNodeType.person,
+              person.id,
+            ),
+            LifeContextSensitivityLevel.publicTechnical,
+          ),
           _fact(
             LifeContextProjectionFactKeys.status,
             person.status,
@@ -241,6 +272,13 @@ final class LifeContextProjectionEngine {
               LifeContextProjectionFactKeys.displayName,
               person.displayName!,
               LifeContextSensitivityLevel.ordinaryPersonal,
+              contract: contract,
+            ),
+          if (person.birthDate != null)
+            _fact(
+              LifeContextProjectionFactKeys.birthDate,
+              person.birthDate!,
+              LifeContextSensitivityLevel.privatePersonal,
               contract: contract,
             ),
         ];
@@ -604,6 +642,18 @@ final class LifeContextProjectionEngine {
           relation.targetNodeId,
           LifeContextSensitivityLevel.publicTechnical,
         ),
+        if (relation.type == LifeContextRelationType.humanRelation)
+          _fact(
+            LifeContextProjectionFactKeys.relationRole,
+            _closedConversationRelationRole(
+              snapshot.human!.relationships
+                  .singleWhere(
+                    (record) => record.id == relation.provenance.sourceRecordId,
+                  )
+                  .kind,
+            ),
+            sensitivity,
+          ),
       ];
       _addAllowed(
         result,
@@ -877,3 +927,26 @@ final class LifeContextProjectionEngine {
     };
   }
 }
+
+String _closedConversationRelationRole(String value) => const {
+      'partner',
+      'spouse',
+      'formerPartner',
+      'parent',
+      'child',
+      'sibling',
+      'halfSibling',
+      'stepParent',
+      'stepChild',
+      'grandParent',
+      'grandChild',
+      'guardian',
+      'responsiblePerson',
+      'caregiver',
+      'caredForPerson',
+      'fosterFamily',
+      'fosterChild',
+      'closePerson',
+    }.contains(value)
+        ? value
+        : 'custom';

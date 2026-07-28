@@ -41,6 +41,117 @@ final class LegacyHumanReconciliationResult {
 final class LegacyUserProfileReconciliationService {
   const LegacyUserProfileReconciliationService();
 
+  HumanModel applyExplicitProfileEdit({
+    required HumanModel current,
+    required UserProfile profile,
+    required EntityIdGenerator idGenerator,
+  }) {
+    current.validate();
+    final persons = [...current.persons];
+    final relationships = [...current.relationships];
+    final retainedRelatedIds = <String>{};
+
+    void upsertPerson(String id, String name, String birthDate) {
+      if (id.trim().isEmpty) return;
+      final index = persons.indexWhere((person) => person.id == id);
+      final existing = index < 0 ? null : persons[index];
+      final fields = <String, Object?>{
+        ...?existing?.customFields,
+        if (birthDate.trim().isNotEmpty) 'birthDate': birthDate.trim(),
+      };
+      if (birthDate.trim().isEmpty) {
+        fields.remove('birthDate');
+        fields.remove('legacyBirthDate');
+      }
+      final person = existing == null
+          ? HumanPerson(
+              id: id,
+              accountScopeId: current.accountScopeId,
+              displayName: _optional(name),
+              evidence: _explicitEvidence,
+              customFields: fields,
+            )
+          : existing.copyWith(
+              displayName: _optional(name),
+              clearDisplayName: name.trim().isEmpty,
+              status: HumanPersonStatus.active,
+              evidence: _explicitEvidence,
+              customFields: fields,
+            );
+      if (index < 0) {
+        persons.add(person);
+      } else {
+        persons[index] = person;
+      }
+    }
+
+    void ensureRelationship(String targetId, String type) {
+      retainedRelatedIds.add(targetId);
+      final index = relationships.indexWhere(
+        (relation) =>
+            relation.sourcePersonId == current.primaryPersonId &&
+            relation.targetPersonId == targetId &&
+            relation.status == HumanRecordStatus.active,
+      );
+      if (index >= 0) {
+        relationships[index] = relationships[index].copyWith(
+          evidence: _explicitEvidence,
+        );
+        return;
+      }
+      relationships.add(
+        HumanRelationship(
+          id: idGenerator.generate(),
+          accountScopeId: current.accountScopeId,
+          sourcePersonId: current.primaryPersonId,
+          targetPersonId: targetId,
+          type: type,
+          evidence: _explicitEvidence,
+        ),
+      );
+    }
+
+    upsertPerson(current.primaryPersonId, profile.firstName, profile.birthDate);
+    final partnerId = profile.partnerHumanPersonId.trim();
+    if (partnerId.isNotEmpty && profile.partnerName.trim().isNotEmpty) {
+      upsertPerson(partnerId, profile.partnerName, profile.partnerBirthDate);
+      ensureRelationship(partnerId, HumanRelationshipTypes.partner);
+    }
+    for (final child in profile.children) {
+      final childId = child.humanPersonId.trim();
+      if (childId.isEmpty) continue;
+      upsertPerson(childId, child.firstName, child.birthDate);
+      ensureRelationship(childId, HumanRelationshipTypes.child);
+    }
+
+    final previousRelatedIds = <String>{
+      if (_string(current.legacyProfile['partnerHumanPersonId']) case final id?)
+        id,
+      for (final child in _childMaps(current.legacyProfile['children']))
+        if (_string(child['humanPersonId']) case final id?) id,
+    };
+    for (var index = 0; index < relationships.length; index++) {
+      final relation = relationships[index];
+      if (relation.sourcePersonId == current.primaryPersonId &&
+          previousRelatedIds.contains(relation.targetPersonId) &&
+          !retainedRelatedIds.contains(relation.targetPersonId) &&
+          relation.status == HumanRecordStatus.active) {
+        relationships[index] = relation.copyWith(
+          status: HumanRecordStatus.historical,
+          evidence: _explicitEvidence,
+        );
+      }
+    }
+
+    final legacy = Map<String, Object?>.from(profile.toJson())
+      ..['humanPersonId'] = current.primaryPersonId;
+    return current.copyWith(
+      persons: persons,
+      relationships: relationships,
+      legacyProfile: legacy,
+    );
+  }
+
   LegacyHumanReconciliationResult reconcile({
     required HumanModel current,
     required UserProfile legacyProfile,
@@ -227,3 +338,8 @@ final class LegacyUserProfileReconciliationService {
 
   String? _optional(String value) => value.trim().isEmpty ? null : value.trim();
 }
+
+const _explicitEvidence = HumanEvidence(
+  source: HumanInformationSource.explicitUserInput,
+  confirmation: HumanConfirmationStatus.confirmed,
+);

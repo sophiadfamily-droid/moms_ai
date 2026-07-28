@@ -1,10 +1,16 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'auth_service.dart';
 import 'app_diagnostics.dart';
 import 'app_error_classifier.dart';
 
 class MemoryService {
   static final FirebaseFirestore firestore = FirebaseFirestore.instance;
+  static final ValueNotifier<int> memoriesVersion = ValueNotifier<int>(0);
+
+  static void notifyMemoriesChanged() {
+    memoriesVersion.value++;
+  }
 
   static String normalizeMemoryText(String text) {
     return text.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
@@ -99,6 +105,7 @@ class MemoryService {
         "updatedAt": now,
         "source": "chat",
       });
+      notifyMemoriesChanged();
     } catch (error) {
       final descriptor = AppErrorClassifier.classify(
         error,

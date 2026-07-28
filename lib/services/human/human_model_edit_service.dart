@@ -91,6 +91,21 @@ final class HumanModelEditService {
     return StorageService.saveUserProfile(projected);
   }
 
+  Future<HumanModelEditResult> commitLegacyProfile({
+    required String accountScopeId,
+    required UserProfile profile,
+  }) =>
+      commit(
+        accountScopeId: accountScopeId,
+        resolvePendingProposal: true,
+        transform: (current) => const LegacyUserProfileReconciliationService()
+            .applyExplicitProfileEdit(
+          current: current,
+          profile: profile,
+          idGenerator: _idGenerator,
+        ),
+      );
+
   Future<HumanModelEditResult> commit({
     required String accountScopeId,
     required HumanModel Function(HumanModel current) transform,
@@ -184,6 +199,10 @@ final class HumanModelEditService {
         mutationId: mutationId,
       );
       final mapped = await _mapWriteResult(result, accountScopeId, proposed);
+      if (mapped.status == HumanModelEditStatus.success ||
+          mapped.status == HumanModelEditStatus.pendingSync) {
+        HumanModelService.notifyModelChanged();
+      }
       if (ledgerEntry != null) {
         await ledger!.recordResult(
           ledgerEntry,

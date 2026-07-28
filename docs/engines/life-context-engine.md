@@ -1,0 +1,137 @@
+# Life Context Engine V1
+
+## Ownership
+
+Life Context is the reconstructible, read-only representation of the current
+account context. It does not own HumanModel, Identity, Event, Task, Routine or
+Memory records and never persists a snapshot or projection.
+
+The production chain is:
+
+```text
+authenticated account scope
+  → six canonical domain adapters
+  → LifeContextSnapshot (LC.1)
+  → LifeContextRelationEngine (LC.2)
+  → LifeContextProjectionEngine + consumer contract (LC.3)
+```
+
+`LifeContextProduction` is the single coordinator for this chain. It keeps one
+immutable generation for the active account, serializes refreshes and rejects
+late results after an account change.
+
+## Seven consumer sections
+
+| Section | Canonical source |
+| --- | --- |
+| Human | revisioned, account-scoped HumanModel |
+| Identity | confirmed Identity links already attached to HumanPerson |
+| Event | account-bound Event read facade |
+| Task | account-bound revisioned Task read facade |
+| Routine | confirmed Routine records plus the bounded legacy compatibility source |
+| Memory | policy-filtered, non-tombstoned Memory records |
+| Relation | LC.2 graph derived only from the same LC.1 snapshot |
+
+Each source metadata contract exposes schema version, availability, source
+revision when present, read/generation time, freshness, account-scope match,
+entity count, truncation state and closed warning codes.
+
+### Profile and Human ownership
+
+`users/{uid}/private/profile` contains only the revisioned Profile-owned
+settings. Names, birth dates, people and explicit relationships are written to
+`users/{uid}/private/humanModel`; relations are embedded in that canonical
+aggregate and are not duplicated in a second collection. The profile editor
+updates both owners through their existing services. On authenticated
+bootstrap, the display-compatible `UserProfile` is reconstructed from the
+cloud Profile and HumanModel without treating an empty Profile-owned payload
+as evidence that a person or relationship was removed.
+
+Identity documents remain separate and are created only through their explicit
+identity workflow. A name entered in Profile never creates an Identity link by
+inference. Conversation may project an active related person's name only when
+an explicit active HumanModel relationship connects that person to the primary
+person.
+
+## Availability and global state
+
+`empty` means a successful read with no records. It is not an error.
+`availableStale` retains known data but does not claim that it is current.
+`unavailable`, `corrupted`, `unsupported` and `accountMismatch` fail closed.
+Material source truncation remains explicit.
+
+The LC.1 state is `complete`, `partial` or `unavailable`. Empty healthy
+sections permit `complete`. Any stale or materially truncated section produces
+`partial`; all sources blocked produces `unavailable`. LC.3 preserves these
+signals and never turns a missing source into an empty list.
+
+## Freshness and invalidation
+
+Freshness uses an injected clock and centralized maximum ages:
+
+- Human and Identity: 15 minutes;
+- Event and Task: 2 minutes;
+- Routine and Memory: 5 minutes.
+
+A fresh generation is reused. Task and Event mutations invalidate their own
+section. Human invalidation also invalidates Identity and Routine because both
+derive part of their state from HumanModel. Confirmed Routine writes and
+Memory lifecycle writes invalidate their corresponding sections. The typed
+`invalidateSection` boundary remains available for future mutation owners.
+Account changes invalidate every section and increment the account generation.
+
+There is no polling, permanent timer or rebuild-triggered reload.
+
+## Source and projection budgets
+
+Source adapters are bounded before the immutable snapshot:
+
+- Event: 200 records;
+- Task: 200 records;
+- Routine: 200 records;
+- Memory: 500 consumable records.
+
+Selection is deterministic by stable technical fields. LC.3 then applies its
+separate global and per-section budgets. Exceeding either boundary records
+truncation and prevents a false complete projection. Long free text remains
+excluded whenever the consumer contract does not permit it.
+
+## Capability compatibility
+
+Global state remains visible, but a closed capability check avoids blocking an
+unrelated safe read:
+
+- Conversation requires Human;
+- Priority requires Task;
+- Planning requires Event and Routine;
+- Memory reasoning requires Memory.
+
+A required stale, unavailable, corrupt, unsupported or account-mismatched
+section blocks that capability. A degraded unrelated section may leave the
+capability usable with an explicitly partial global context. This does not
+authorize an action or fabricate a missing fact.
+
+## Consumers
+
+Conversation, Priority consultation, proactive Priority and deterministic
+proactive detection consume the same production generation. Each receives its
+own LC.3 projection contract. Planning and historical compatibility readers
+are not migrated until their complete protected-range, recurrence and memory
+compatibility invariants can be preserved.
+
+## Diagnostics
+
+Diagnostics use `component: life_context` and closed steps such as `refresh`
+and `reject_stale_result`. They may contain counts, availability, revision,
+generation, duration and warning codes. They never contain account IDs, names,
+relations in readable form, titles, memories, locations, planning details or
+payloads.
+
+## Current limitations
+
+- HumanModel remains the bounded single-document aggregate defined by HM.2.
+- Routine still contains a documented legacy-profile compatibility source.
+- Identity is limited to already persisted HumanPerson links.
+- Task has no structured cross-domain LC.2 relationship.
+- Planning and general Memory reasoning still require dedicated consumer
+  migrations; no unsafe fallback is introduced by LC.1.

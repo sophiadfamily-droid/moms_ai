@@ -10,6 +10,7 @@ import '../models/memory_contradiction.dart';
 import '../models/memory_semantic_identity.dart';
 import 'auth_service.dart';
 import 'life_context/life_context_memory_projection.dart';
+import 'memory_service.dart';
 
 final class MemoryLifecycleTechnicalReceipt {
   const MemoryLifecycleTechnicalReceipt({
@@ -226,6 +227,7 @@ final class FirestoreMemoryLifecycleRepository
         ),
       );
     });
+    MemoryService.notifyMemoriesChanged();
   }
 
   @override
@@ -263,7 +265,7 @@ final class FirestoreMemoryLifecycleRepository
     );
     final proposalRef = memories.doc(proposal.id);
     final actionRef = actions.doc(actionId);
-    return _firestore.runTransaction((transaction) async {
+    final result = await _firestore.runTransaction((transaction) async {
       final proposalSnapshot = await transaction.get(proposalRef);
       final actionSnapshot = await transaction.get(actionRef);
       final proposalData = proposalSnapshot.data();
@@ -359,6 +361,8 @@ final class FirestoreMemoryLifecycleRepository
         candidate: candidate,
       );
     });
+    MemoryService.notifyMemoriesChanged();
+    return result;
   }
 
   @override
@@ -444,7 +448,7 @@ final class FirestoreMemoryLifecycleRepository
     final proposedRef = memories.doc(action.proposedMemoryId);
     final at = referenceDate.toUtc();
     try {
-      return await _firestore.runTransaction((transaction) async {
+      final result = await _firestore.runTransaction((transaction) async {
         // Firestore requires every read to precede every write.
         final actionSnapshot = await transaction.get(actionRef);
         final existingSnapshot = await transaction.get(existingRef);
@@ -561,6 +565,10 @@ final class FirestoreMemoryLifecycleRepository
           MemoryReplacementExecutionCode.executed,
         );
       });
+      if (result.code == MemoryReplacementExecutionCode.executed) {
+        MemoryService.notifyMemoriesChanged();
+      }
+      return result;
     } on FirebaseException {
       return const MemoryReplacementExecutionResult(
         MemoryReplacementExecutionCode.unavailable,
@@ -731,6 +739,7 @@ final class FirestoreMemoryLifecycleRepository
         });
       });
     }
+    MemoryService.notifyMemoriesChanged();
   }
 }
 

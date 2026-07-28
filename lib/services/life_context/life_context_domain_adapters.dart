@@ -40,6 +40,13 @@ typedef RoutineContextLoader = Future<List<RoutineModel>> Function(
   String accountScopeId,
 );
 
+abstract final class LifeContextSourceBudgets {
+  static const int events = 200;
+  static const int tasks = 200;
+  static const int routines = 200;
+  static const int memories = 500;
+}
+
 final class HumanModelLifeContextAdapter implements LifeContextDomainAdapter {
   const HumanModelLifeContextAdapter({required HumanContextLoader load})
       : _load = load;
@@ -120,6 +127,7 @@ final class HumanModelLifeContextAdapter implements LifeContextDomainAdapter {
                 status: person.status.name,
                 confirmation: person.evidence.confirmation.name,
                 identityEntityId: person.identityLink?.entityId,
+                birthDate: _humanBirthDate(person),
               ),
             )
             .toList(),
@@ -268,6 +276,26 @@ final class HumanModelLifeContextAdapter implements LifeContextDomainAdapter {
       );
 }
 
+String? _humanBirthDate(HumanPerson person) {
+  final value = person.customFields['birthDate'] ??
+      person.customFields['legacyBirthDate'];
+  if (value is! String || value.trim().isEmpty) return null;
+  final source = value.trim();
+  final iso = RegExp(r'^(\d{4})-(\d{2})-(\d{2})').firstMatch(source);
+  final french = RegExp(r'^(\d{2})/(\d{2})/(\d{4})$').firstMatch(source);
+  final year = int.tryParse(iso?.group(1) ?? french?.group(3) ?? '');
+  final month = int.tryParse(iso?.group(2) ?? french?.group(2) ?? '');
+  final day = int.tryParse(iso?.group(3) ?? french?.group(1) ?? '');
+  if (year == null || month == null || day == null) return null;
+  final parsed = DateTime.utc(year, month, day);
+  if (parsed.year != year || parsed.month != month || parsed.day != day) {
+    return null;
+  }
+  String twoDigits(int input) => input.toString().padLeft(2, '0');
+  return '${parsed.year.toString().padLeft(4, '0')}-'
+      '${twoDigits(parsed.month)}-${twoDigits(parsed.day)}';
+}
+
 final class IdentityLifeContextAdapter implements LifeContextDomainAdapter {
   const IdentityLifeContextAdapter({required HumanContextLoader loadHuman})
       : _loadHuman = loadHuman;
@@ -376,7 +404,7 @@ final class EventLifeContextAdapter implements LifeContextDomainAdapter {
       final source = await _load(request.accountScopeId);
       final syncStatuses =
           await _loadSyncStatuses?.call(request.accountScopeId) ?? const {};
-      final items = source.map((event) {
+      final allItems = source.map((event) {
         final id = event.id;
         if (id == null || id.trim().isEmpty) {
           throw const FormatException('event_missing_stable_id');
@@ -407,6 +435,10 @@ final class EventLifeContextAdapter implements LifeContextDomainAdapter {
           final date = a.startDateTimeIso.compareTo(b.startDateTimeIso);
           return date != 0 ? date : a.id.compareTo(b.id);
         });
+      final truncated = allItems.length > LifeContextSourceBudgets.events;
+      final items = allItems
+          .take(LifeContextSourceBudgets.events)
+          .toList(growable: false);
       return EventDomainSection(
         metadata: _metadata(
           request,
@@ -423,6 +455,10 @@ final class EventLifeContextAdapter implements LifeContextDomainAdapter {
               : syncStatuses.isEmpty
                   ? 'unknown'
                   : 'known',
+          truncationState: truncated
+              ? LifeContextTruncationState.truncated
+              : LifeContextTruncationState.complete,
+          warningCodes: truncated ? const ['event_source_truncated'] : const [],
         ),
         events: items,
       );
@@ -476,7 +512,7 @@ final class TaskLifeContextAdapter implements LifeContextDomainAdapter {
       final syncMetadata = await _loadSyncMetadata?.call(
         request.accountScopeId,
       );
-      final items = source.map((task) {
+      final allItems = source.map((task) {
         final id = task.id;
         if (id == null || id.trim().isEmpty) {
           throw const FormatException('task_missing_stable_id');
@@ -491,6 +527,9 @@ final class TaskLifeContextAdapter implements LifeContextDomainAdapter {
         );
       }).toList()
         ..sort((a, b) => a.id.compareTo(b.id));
+      final truncated = allItems.length > LifeContextSourceBudgets.tasks;
+      final items =
+          allItems.take(LifeContextSourceBudgets.tasks).toList(growable: false);
       return TaskDomainSection(
         metadata: _metadata(
           request,
@@ -504,6 +543,10 @@ final class TaskLifeContextAdapter implements LifeContextDomainAdapter {
           items.length,
           revision: syncMetadata?.revision,
           syncStatus: syncMetadata?.syncStatus,
+          truncationState: truncated
+              ? LifeContextTruncationState.truncated
+              : LifeContextTruncationState.complete,
+          warningCodes: truncated ? const ['task_source_truncated'] : const [],
         ),
         tasks: items,
       );
@@ -667,7 +710,8 @@ final class RoutineLifeContextAdapter implements LifeContextDomainAdapter {
         }
       }
       routines.sort((a, b) => a.id.compareTo(b.id));
-      final legacyRoutineCount = routines.length - canonical.length;
+      final sourceCount = routines.length;
+      final legacyRoutineCount = sourceCount - canonical.length;
       final legacySourceFresh = legacyRoutineCount == 0 ||
           state?.syncStatus == HumanModelSyncStatus.synced;
       final availability = routines.isEmpty
@@ -680,6 +724,10 @@ final class RoutineLifeContextAdapter implements LifeContextDomainAdapter {
           : legacySourceFresh
               ? LifeContextFreshness.current
               : LifeContextFreshness.stale;
+      final truncated = sourceCount > LifeContextSourceBudgets.routines;
+      final boundedRoutines = routines
+          .take(LifeContextSourceBudgets.routines)
+          .toList(growable: false);
       return RoutineDomainSection(
         metadata: _metadata(
           request,
@@ -688,12 +736,17 @@ final class RoutineLifeContextAdapter implements LifeContextDomainAdapter {
           availability,
           freshness,
           true,
-          routines.length,
+          boundedRoutines.length,
           revision: state?.knownCloudRevision,
           syncStatus:
               canonical.isNotEmpty ? 'canonical' : 'legacyCompatibility',
+          truncationState: truncated
+              ? LifeContextTruncationState.truncated
+              : LifeContextTruncationState.complete,
+          warningCodes:
+              truncated ? const ['routine_source_truncated'] : const [],
         ),
-        routines: routines,
+        routines: boundedRoutines,
       );
     } on Object {
       return RoutineDomainSection(
@@ -749,7 +802,7 @@ final class MemoryLifeContextAdapter implements LifeContextDomainAdapter {
         raw.where((item) => item['tombstone'] != true),
       );
       final syncState = await _loadSyncState?.call(request.accountScopeId);
-      final memories = MemoryConsumptionPolicy.consumable(
+      final allMemories = MemoryConsumptionPolicy.consumable(
         context.memories,
         referenceDate: request.readAt,
       )
@@ -773,6 +826,10 @@ final class MemoryLifeContextAdapter implements LifeContextDomainAdapter {
           )
           .toList()
         ..sort((a, b) => a.id.compareTo(b.id));
+      final truncated = allMemories.length > LifeContextSourceBudgets.memories;
+      final memories = allMemories
+          .take(LifeContextSourceBudgets.memories)
+          .toList(growable: false);
       return MemoryDomainSection(
         metadata: _metadata(
           request,
@@ -788,6 +845,11 @@ final class MemoryLifeContextAdapter implements LifeContextDomainAdapter {
           syncStatus: policy.generalMode == MemoryGeneralMode.paused
               ? 'paused'
               : syncState?.syncStatus.name ?? 'available',
+          truncationState: truncated
+              ? LifeContextTruncationState.truncated
+              : LifeContextTruncationState.complete,
+          warningCodes:
+              truncated ? const ['memory_source_truncated'] : const [],
         ),
         policyGeneralMode: policy.generalMode.name,
         policyHealthMode: policy.healthMode.name,
@@ -852,6 +914,9 @@ LifeContextSourceMetadata _metadata(
   int? revision,
   String? syncStatus,
   String? errorCode,
+  LifeContextTruncationState truncationState =
+      LifeContextTruncationState.complete,
+  List<String> warningCodes = const [],
 }) =>
     LifeContextSourceMetadata(
       domain: domain,
@@ -864,6 +929,8 @@ LifeContextSourceMetadata _metadata(
       revision: revision,
       syncStatus: syncStatus,
       errorCode: errorCode,
+      truncationState: truncationState,
+      warningCodes: warningCodes,
     );
 
 String? _optional(String? value) {

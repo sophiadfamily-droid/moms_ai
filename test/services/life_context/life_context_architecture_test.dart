@@ -118,6 +118,9 @@ void main() {
       final source = file.readAsStringSync();
       if (file.path.endsWith('life_context_snapshot.dart') ||
           file.path.endsWith('life_context_engine.dart') ||
+          // LC.1 production is the single account-scoped coordinator allowed
+          // to invoke the canonical builder.
+          file.path.endsWith('life_context_production.dart') ||
           file.path.endsWith('conversation_context_service.dart') ||
           // N.2 is an explicit read-only canonical consumer. It adapts one
           // validated snapshot and never persists or sends it.
@@ -135,6 +138,35 @@ void main() {
     final request = File('${root.path}/lib/models/chat_backend_request.dart')
         .readAsStringSync();
     expect(request, isNot(contains('LifeContextSnapshot')));
+  });
+
+  test('production invalidation observes every mutable canonical source', () {
+    final factory = File('lib/services/life_context_production_factory.dart')
+        .readAsStringSync();
+    for (final source in [
+      'EventService.eventsVersion',
+      'TaskService.tasksVersion',
+      'HumanModelService.modelVersion',
+      'routinesVersion',
+      'MemoryService.memoriesVersion',
+    ]) {
+      expect(factory, contains(source), reason: source);
+    }
+    for (final domain in ['event', 'task', 'human', 'routine', 'memory']) {
+      expect(
+        factory,
+        contains('LifeContextDomain.$domain'),
+        reason: domain,
+      );
+    }
+
+    final memoryLifecycle =
+        File('lib/services/memory_lifecycle_repository.dart')
+            .readAsStringSync();
+    expect(
+      memoryLifecycle,
+      contains('MemoryService.notifyMemoriesChanged()'),
+    );
   });
 
   test('LC.2 is a pure snapshot-only, bounded, closed-rule projection', () {

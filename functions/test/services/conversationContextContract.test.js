@@ -168,6 +168,118 @@ test("refuses unknown sections, item keys and facts", () => {
   assert.throws(() => validateConversationRequest(unknownFact));
 });
 
+test("accepts bounded Human and explicit Relation projection", () => {
+  const value = payload();
+  value.message = "Quel est le prénom de mon enfant ?";
+  value.conversationContext.state = "complete";
+  value.conversationContext.sections = [
+    {
+      type: "human",
+      availability: "available",
+      freshness: "current",
+      items: [
+        {
+          type: "person",
+          confirmation: "confirmed",
+          freshness: "current",
+          facts: {
+            nodeId: "human:person:person-main",
+            displayName: "Personne Test",
+            birthDate: "1990-02-01",
+            status: "active",
+          },
+        },
+        {
+          type: "person",
+          confirmation: "confirmed",
+          freshness: "current",
+          facts: {
+            nodeId: "human:person:person-alex",
+            displayName: "Alex",
+            birthDate: "1989-04-03",
+            status: "active",
+          },
+        },
+        {
+          type: "person",
+          confirmation: "confirmed",
+          freshness: "current",
+          facts: {
+            nodeId: "human:person:person-sam",
+            displayName: "Sam",
+            birthDate: "2018-06-05",
+            status: "active",
+          },
+        },
+      ],
+      budgetLimit: 55,
+      budgetUsed: 8,
+      omittedCount: 0,
+      truncated: false,
+    },
+    {
+      type: "relation",
+      availability: "available",
+      freshness: "current",
+      items: [
+        {
+          type: "relation",
+          confirmation: "confirmed",
+          freshness: "current",
+          facts: {
+            kind: "humanRelation",
+            relationRole: "partner",
+            sourceNodeId: "human:person:person-main",
+            targetNodeId: "human:person:person-alex",
+          },
+        },
+        {
+          type: "relation",
+          confirmation: "confirmed",
+          freshness: "current",
+          facts: {
+            kind: "humanRelation",
+            relationRole: "child",
+            sourceNodeId: "human:person:person-main",
+            targetNodeId: "human:person:person-sam",
+          },
+        },
+      ],
+      budgetLimit: 50,
+      budgetUsed: 4,
+      omittedCount: 0,
+      truncated: false,
+    },
+  ];
+  value.conversationContext.budgetUsed = 12;
+
+  const result = validateConversationRequest(value);
+  assert.equal(result.conversationContext.sections[0].items[2]
+      .facts.displayName, "Sam");
+  assert.equal(result.conversationContext.sections[1].items[0]
+      .facts.relationRole, "partner");
+  assert.equal(result.conversationContext.sections[1].items[1]
+      .facts.relationRole, "child");
+});
+
+test("refuses invalid Human dates, node IDs and relation roles", () => {
+  for (const facts of [
+    {birthDate: "05/06/2018"},
+    {birthDate: "2026-02-30"},
+    {nodeId: "private user id"},
+    {relationRole: "unknownRelation"},
+  ]) {
+    const value = payload();
+    value.conversationContext.sections[0].items = [{
+      type: "person",
+      confirmation: "confirmed",
+      freshness: "current",
+      facts,
+    }];
+    assert.throws(() => validateConversationRequest(value));
+  }
+});
+
 test("refuses profile and every non-empty legacy context alias", () => {
   for (const [key, value] of [
     ["profile", {firstName: "x"}],

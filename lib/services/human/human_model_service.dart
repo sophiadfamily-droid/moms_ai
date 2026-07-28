@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/identity/entity_id_generator.dart';
@@ -35,6 +36,12 @@ final class HumanProfileProjection {
 }
 
 final class HumanModelService {
+  static final ValueNotifier<int> modelVersion = ValueNotifier<int>(0);
+
+  static void notifyModelChanged() {
+    modelVersion.value++;
+  }
+
   HumanModelService({
     HumanModelLocalRepository? localRepository,
     @Deprecated('Use localRepository') HumanModelLocalRepository? repository,

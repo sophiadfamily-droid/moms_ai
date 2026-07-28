@@ -62,6 +62,8 @@ final class LifeContextEngine {
     required String accountScopeId,
     DateTime? generatedAt,
     LifeContextCancellationToken? cancellationToken,
+    LifeContextSnapshot? previousSnapshot,
+    Set<LifeContextDomain>? domainsToRefresh,
   }) async {
     final scope = accountScopeId.trim();
     final authenticatedScope = _currentAccountScopeId?.call()?.trim();
@@ -75,6 +77,12 @@ final class LifeContextEngine {
     }
     if (cancellationToken?.isCancelled == true) {
       throw const LifeContextEngineException('cancelled');
+    }
+    if (previousSnapshot != null) {
+      previousSnapshot.validateCanonical();
+      if (previousSnapshot.accountScopeId != scope) {
+        throw const LifeContextEngineException('account_mismatch');
+      }
     }
     final byDomain = <LifeContextDomain, LifeContextDomainAdapter>{};
     for (final adapter in _adapters) {
@@ -92,8 +100,14 @@ final class LifeContextEngine {
       accountScopeId: scope,
       readAt: readAt,
     );
-    final sections = await Future.wait(
-      LifeContextDomain.values.map(
+    final refreshDomains = previousSnapshot == null
+        ? LifeContextDomain.values.toSet()
+        : (domainsToRefresh ?? LifeContextDomain.values.toSet());
+    final retained = previousSnapshot == null
+        ? <LifeContextDomain, LifeContextDomainSection>{}
+        : _sections(previousSnapshot);
+    final loaded = await Future.wait(
+      refreshDomains.map(
         (domain) => _loadBounded(
           byDomain[domain]!,
           request,
@@ -105,11 +119,12 @@ final class LifeContextEngine {
       throw const LifeContextEngineException('cancelled');
     }
 
-    final sectionByDomain = {
-      for (final section in sections) section.domain: section,
+    final sectionByDomain = <LifeContextDomain, LifeContextDomainSection>{
+      ...retained,
+      for (final section in loaded) section.domain: section,
     };
     _validateSharedHumanRevision(sectionByDomain);
-    final globalState = _globalState(sections);
+    final globalState = _globalState(sectionByDomain.values.toList());
     final snapshot = LifeContextSnapshot(
       generatedAt: readAt,
       identity: const IdentityContext(),
@@ -150,6 +165,18 @@ final class LifeContextEngine {
     return snapshot;
   }
 
+  Map<LifeContextDomain, LifeContextDomainSection> _sections(
+    LifeContextSnapshot snapshot,
+  ) =>
+      {
+        LifeContextDomain.human: snapshot.human!,
+        LifeContextDomain.identity: snapshot.identityDomain!,
+        LifeContextDomain.event: snapshot.eventDomain!,
+        LifeContextDomain.task: snapshot.taskDomain!,
+        LifeContextDomain.routine: snapshot.routineDomain!,
+        LifeContextDomain.memory: snapshot.memoryDomain!,
+      };
+
   void _validateSharedHumanRevision(
     Map<LifeContextDomain, LifeContextDomainSection> sections,
   ) {
@@ -183,19 +210,33 @@ final class LifeContextEngine {
   LifeContextGlobalState _globalState(
     List<LifeContextDomainSection> sections,
   ) {
-    final unavailable = sections.where(
+    final blocked = sections.where(
       (section) => {
         LifeContextAvailability.unavailable,
         LifeContextAvailability.corrupted,
+        LifeContextAvailability.unsupported,
         LifeContextAvailability.accountMismatch,
       }.contains(section.metadata.availability),
     );
-    if (unavailable.length == sections.length) {
+    if (blocked.length == sections.length) {
       return LifeContextGlobalState.unavailable;
     }
-    return unavailable.isEmpty
-        ? LifeContextGlobalState.complete
-        : LifeContextGlobalState.partial;
+    final degraded = sections.any(
+      (section) =>
+          {
+            LifeContextAvailability.availableStale,
+            LifeContextAvailability.unavailable,
+            LifeContextAvailability.corrupted,
+            LifeContextAvailability.unsupported,
+            LifeContextAvailability.accountMismatch,
+          }.contains(section.metadata.availability) ||
+          section.metadata.freshness == LifeContextFreshness.stale ||
+          section.metadata.truncationState ==
+              LifeContextTruncationState.truncated,
+    );
+    return degraded
+        ? LifeContextGlobalState.partial
+        : LifeContextGlobalState.complete;
   }
 
   LifeContextDomainSection _unavailable(

@@ -23,8 +23,9 @@ void main() {
   test('production provider uses the single canonical LC projection path', () {
     final source = File('lib/services/conversation_context_service.dart')
         .readAsStringSync();
-    expect(source, contains('LifeContextProductionFactory.create'));
-    expect(source, contains('LifeContextProjectionEngine'));
+    expect(source, contains('LifeContextProductionFactory.production'));
+    expect(source, contains('getCurrentProjection'));
+    expect(source, isNot(contains('LifeContextProductionFactory.create')));
     expect(source, contains('ConversationContextAssembler.assemble'));
     for (final forbidden in [
       'MemoryService.getMemories',

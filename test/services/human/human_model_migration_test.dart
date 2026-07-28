@@ -6,6 +6,8 @@ import 'package:moms_ai/models/user_profile.dart';
 import 'package:moms_ai/services/human/human_model_local_repository.dart';
 import 'package:moms_ai/services/human/human_model_service.dart';
 import 'package:moms_ai/services/human/legacy_user_profile_human_adapter.dart';
+import 'package:moms_ai/services/human/legacy_user_profile_reconciliation_service.dart';
+import 'package:moms_ai/services/human/human_model_user_profile_projection_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../fakes/fake_entity_id_generator.dart';
@@ -176,6 +178,82 @@ void main() {
           hasLength(model.persons.length));
       expect(
           model.persons.every((person) => person.identityLink == null), isTrue);
+    });
+
+    test(
+        'édition explicite persiste personnes, dates et relations puis restaure le profil',
+        () {
+      final initial = _profile(firstName: 'Initial').copyWith(
+        humanPersonId: 'person-main',
+      );
+      final current = const LegacyUserProfileHumanAdapter().migrate(
+        profile: initial,
+        legacyProfile: initial.toJson(),
+        accountScopeId: 'account-a',
+        idGenerator: FakeEntityIdGenerator(['unused']),
+      );
+      final edited = initial.copyWith(
+        firstName: 'Personne Test',
+        birthDate: '01/02/1990',
+        partnerHumanPersonId: 'person-alex',
+        partnerName: 'Alex',
+        partnerBirthDate: '03/04/1991',
+        children: [
+          _child('Sam', birthDate: '05/06/2018')
+              .copyWith(humanPersonId: 'person-sam'),
+        ],
+      );
+      final updated = const LegacyUserProfileReconciliationService()
+          .applyExplicitProfileEdit(
+        current: current,
+        profile: edited,
+        idGenerator: FakeEntityIdGenerator(['relation-alex', 'relation-sam']),
+      );
+
+      expect(updated.personById('person-main')?.displayName, 'Personne Test');
+      expect(updated.personById('person-alex')?.displayName, 'Alex');
+      expect(updated.personById('person-sam')?.displayName, 'Sam');
+      expect(
+        updated.personById('person-sam')?.customFields['birthDate'],
+        '05/06/2018',
+      );
+      expect(
+        updated.relationships.map((relation) => relation.type),
+        containsAll([
+          HumanRelationshipTypes.partner,
+          HumanRelationshipTypes.child,
+        ]),
+      );
+      expect(
+        updated.relationships.every(
+          (relation) =>
+              relation.evidence.source ==
+                  HumanInformationSource.explicitUserInput &&
+              relation.evidence.confirmation ==
+                  HumanConfirmationStatus.confirmed,
+        ),
+        isTrue,
+      );
+
+      final cloudProfileWithoutHumanFields = UserProfile(
+        firstName: '',
+        familyStatus: '',
+        workStatus: 'activité variable',
+        partnerName: '',
+        wantsNotifications: true,
+        children: const [],
+      );
+      final restored = const HumanModelUserProfileProjectionService().project(
+        model: updated,
+        legacy: cloudProfileWithoutHumanFields,
+      );
+      expect(restored.firstName, 'Personne Test');
+      expect(restored.birthDate, '01/02/1990');
+      expect(restored.partnerName, 'Alex');
+      expect(restored.partnerBirthDate, '03/04/1991');
+      expect(restored.children.single.firstName, 'Sam');
+      expect(restored.children.single.birthDate, '05/06/2018');
+      expect(restored.children.single.humanPersonId, 'person-sam');
     });
   });
 

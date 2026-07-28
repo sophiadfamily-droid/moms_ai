@@ -19,7 +19,6 @@ import 'auth_service.dart';
 import 'app_diagnostics.dart';
 import 'memory_pipeline_service.dart';
 import 'life_context/life_context_engine.dart';
-import 'life_context/life_context_projection_engine.dart';
 import 'life_context_production_factory.dart';
 import 'memory_lifecycle_engine.dart';
 import 'memory_lifecycle_repository.dart';
@@ -170,24 +169,27 @@ class DefaultConversationContextProvider
   static Future<LifeContextProjection> _loadCanonicalProjection(
     String scope,
   ) async {
-    final engine = await LifeContextProductionFactory.create();
-    final snapshot = await engine.buildCanonicalSnapshot(
-      accountScopeId: scope,
-    );
-    return LifeContextProjectionEngine().build(
-      snapshot: snapshot,
-      contract: LifeContextConsumerContract.forPurpose(
-        LifeContextConsumerPurpose.conversation,
-      ),
+    final production = await LifeContextProductionFactory.production();
+    production.handleAccountScopeChanged(scope);
+    return production.getCurrentProjection(
+      LifeContextConsumerPurpose.conversation,
     );
   }
 
   @override
   Future<LifeContextProjection> loadPriorityProjection() async {
     final scope = await _loadAccountScope();
-    final projection = await (_loadProjection ?? _loadCanonicalProjection)(
-      scope,
-    ).timeout(ConversationTransportContract.contextTimeout);
+    final projection = await (_loadProjection != null
+            ? _loadProjection(scope)
+            : () async {
+                final production =
+                    await LifeContextProductionFactory.production();
+                production.handleAccountScopeChanged(scope);
+                return production.getCurrentProjection(
+                  LifeContextConsumerPurpose.proactivePriority,
+                );
+              }())
+        .timeout(ConversationTransportContract.contextTimeout);
     if (projection.accountScopeId != scope) {
       throw const LifeContextProjectionException(
         'priority_projection_account_mismatch',

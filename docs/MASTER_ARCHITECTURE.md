@@ -380,6 +380,30 @@ not send the canonical multi-domain snapshot to OpenAI. LC.2 calculates
 cross-domain relationships and technical consequences, while LC.3 owns the
 bounded, filtered projections described below.
 
+**LC.1 production boundary.** `LifeContextProduction` is the single
+account-scoped coordinator over LC.1, LC.2 and LC.3. It retains one immutable,
+reconstructible snapshot and relation graph for the active account, serializes
+concurrent refreshes, rejects results from an obsolete account generation and
+exposes one projection generation to every migrated consumer. It is a cache
+and coordination boundary, never a persistence owner.
+
+Freshness thresholds and source budgets are centralized by domain. A fresh
+snapshot is reused across consumers; Task and Event changes invalidate only
+their sections, while a Human invalidation also invalidates the derived
+Identity and Routine sections. Account change invalidates everything
+immediately. Source truncation, stale, unavailable, unsupported, corrupt and
+account-mismatched states remain explicit and prevent a false `complete`
+snapshot.
+
+Conversation, Priority consultation, proactive Priority and N.2 detection now
+consume this shared production generation. Planning and historical profile or
+memory compatibility readers retain their established paths until their
+dedicated migration can preserve all existing constraints and recurrence
+semantics. Capability compatibility is evaluated separately from global
+health: an unavailable Memory section does not block a Task-only priority
+read, while Planning remains blocked without its required Event and Routine
+sections.
+
 **LC.2 relation layer.** `LifeContextRelationEngine.build` is the only
 canonical relation-graph builder. Its sole input is one validated LC.1
 `LifeContextSnapshot`; it has no repository, persistence, UI, model-provider,
@@ -464,11 +488,12 @@ Relations are bounded and never expand the complete LC.2 graph.
 Compatibility adapters translate the Conversation projection into the
 existing `ChatBackendRequest` shape and the Planning projection into typed
 temporal facts. They never serialize LC.1, LC.2, or `UserProfile` wholesale.
-The current production conversation and planning workflows retain their
-legacy paths until their dedicated migrations; LC.3 adds no second
-multi-domain reader and does not silently send an additional context to
-OpenAI. Priority, final conversation orchestration, and planning decisions
-remain separate later phases.
+The current production Conversation and Priority workflows use the shared
+LC.1 production snapshot and their distinct LC.3 contracts. Planning retains
+its legacy compatibility path until its dedicated migration. LC.3 adds no
+second multi-domain reader and does not silently send an additional context to
+OpenAI. Projection and ranking remain separate: Life Context never calculates
+a Priority score or a Planning decision.
 
 ### 7.3 Profile Engine
 

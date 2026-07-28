@@ -15,6 +15,9 @@ void main() {
     final production = File(
       'lib/services/priority/proactive_priority_production.dart',
     ).readAsStringSync();
+    final lifeContextProduction = File(
+      'lib/services/life_context/life_context_production.dart',
+    ).readAsStringSync();
 
     expect(service, contains('PriorityCandidateAdapter'));
     expect(service, contains('PriorityEngine'));
@@ -32,8 +35,10 @@ void main() {
       ),
     );
     expect(screen, isNot(contains('Timer.periodic')));
-    expect(production, contains('LifeContextRelationEngine'));
-    expect(production, contains('graph: graph'));
+    expect(production, contains('LifeContextProductionFactory.production'));
+    expect(production, contains('getCurrentProjection'));
+    expect(lifeContextProduction, contains('LifeContextRelationEngine'));
+    expect(lifeContextProduction, contains('graph: _graph'));
   });
 
   test('proactive identifiers never depend on presentation text', () {

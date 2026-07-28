@@ -28,11 +28,11 @@ final class ProductionProactiveDetectionInputProvider
     required List<ProactiveDetectionSignal> existingSignals,
     required DetectionEvaluationTrigger trigger,
   }) async {
-    final lifeContext = await LifeContextProductionFactory.create();
-    final snapshot = await lifeContext.buildCanonicalSnapshot(
-      accountScopeId: accountScopeId,
-    );
-    final graph = const LifeContextRelationEngine().build(snapshot);
+    final lifeContext = await LifeContextProductionFactory.production();
+    lifeContext.handleAccountScopeChanged(accountScopeId);
+    final snapshot = await lifeContext.refreshIfNeeded();
+    final graph = lifeContext.currentGraph ??
+        const LifeContextRelationEngine().build(snapshot);
     var conflictSourceAvailable = true;
     List<StructuredConflictObservation> conflicts;
     try {

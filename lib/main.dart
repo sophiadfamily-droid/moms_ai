@@ -28,6 +28,7 @@ import 'services/app_error_classifier.dart';
 import 'services/app_global_error_boundary.dart';
 import 'services/firebase_security_bootstrap.dart';
 import 'services/human/human_model_service.dart';
+import 'services/human/human_model_user_profile_projection_service.dart';
 import 'services/identity/identity_production_services.dart';
 import 'services/event_service.dart';
 import 'services/proactive_detection_lifecycle.dart';
@@ -280,7 +281,7 @@ class _ZeliaAppState extends State<ZeliaApp> with WidgetsBindingObserver {
   Future<void> loadProfile({int? expectedGeneration}) async {
     final generation = expectedGeneration ?? _accountGeneration;
     final expectedScope = _activeAccountScopeId;
-    final loadedProfile = await StorageService.getUserProfile();
+    var loadedProfile = await StorageService.getUserProfile();
     if (generation != _accountGeneration ||
         expectedScope != AuthService.currentUserId) {
       return;
@@ -290,10 +291,23 @@ class _ZeliaAppState extends State<ZeliaApp> with WidgetsBindingObserver {
     if (accountScopeId != null && accountScopeId.trim().isNotEmpty) {
       try {
         final humanModelService = await HumanModelService.createProduction();
-        await humanModelService.bootstrap(
+        var humanResult = await humanModelService.bootstrap(
           accountScopeId: accountScopeId,
-          legacyProfile: loadedProfile,
         );
+        if (humanResult.state == null && loadedProfile != null) {
+          humanResult = await humanModelService.bootstrap(
+            accountScopeId: accountScopeId,
+            legacyProfile: loadedProfile,
+          );
+        }
+        if (loadedProfile != null && humanResult.state != null) {
+          loadedProfile =
+              const HumanModelUserProfileProjectionService().project(
+            model: humanResult.state!.model,
+            legacy: loadedProfile,
+          );
+          await StorageService.saveCompatibilityProfile(loadedProfile);
+        }
       } on Object {
         AppDiagnostics.record(
           component: 'human_model_storage',

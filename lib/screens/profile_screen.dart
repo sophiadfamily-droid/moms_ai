@@ -9,6 +9,9 @@ import '../models/user_profile.dart';
 import '../services/school_schedule_metadata_service.dart';
 import '../services/storage_service.dart';
 import '../services/auth_service.dart';
+import '../services/app_diagnostics.dart';
+import '../services/app_error_classifier.dart';
+import '../services/human/human_model_edit_service.dart';
 import 'auth/auth_screen.dart';
 import 'human_profile_screen.dart';
 import 'memory_settings_screen.dart';
@@ -907,6 +910,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     final persistedProfile =
         await StorageService.saveUserProfile(updatedProfile);
+    final accountScopeId = AuthService.currentUserId;
+    HumanModelEditResult? humanResult;
+    if (accountScopeId != null && accountScopeId.trim().isNotEmpty) {
+      try {
+        final editor = await HumanModelEditService.createProduction();
+        humanResult = await editor.commitLegacyProfile(
+          accountScopeId: accountScopeId,
+          profile: persistedProfile,
+        );
+      } on Object catch (error) {
+        final descriptor = AppErrorClassifier.classify(
+          error,
+          boundary: AppErrorBoundaryKind.localStorage,
+        );
+        AppDiagnostics.record(
+          component: 'human_model_storage',
+          domain: 'human',
+          operation: 'save',
+          step: 'profile_edit',
+          code: descriptor.code,
+          severity: descriptor.severity,
+          retryStrategy: descriptor.retryStrategy,
+          sourceExceptionType: AppErrorClassifier.safeExceptionType(error),
+        );
+        humanResult = const HumanModelEditResult(
+          status: HumanModelEditStatus.storageFailure,
+        );
+      }
+    }
 
     if (!mounted) {
       return;
@@ -921,9 +953,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
 
     if (showSnack) {
+      final message = switch (humanResult?.status) {
+        null || HumanModelEditStatus.success => 'Profil sauvegardé',
+        HumanModelEditStatus.pendingSync ||
+        HumanModelEditStatus.networkUnavailable =>
+          'Profil sauvegardé sur cet appareil. La synchronisation reprendra dès que possible.',
+        HumanModelEditStatus.revisionConflict =>
+          'Le profil a changé ailleurs. Recharge-le avant de réessayer.',
+        _ => 'La sauvegarde du profil n’a pas pu être terminée.',
+      };
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Profil sauvegardé "),
+        SnackBar(
+          content: Text(message),
         ),
       );
     }

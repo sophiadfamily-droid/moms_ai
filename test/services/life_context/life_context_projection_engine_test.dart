@@ -197,7 +197,8 @@ void main() {
       expect(output, isNot(contains('account-a')));
     });
 
-    test('personnes secondaires ne sont pas toutes exportées par défaut', () {
+    test('seules les personnes actives explicitement reliées sont exportées',
+        () {
       final projection = _build(
         _snapshot(now),
         LifeContextConsumerPurpose.conversation,
@@ -206,12 +207,30 @@ void main() {
         projection,
         LifeContextProjectionSectionType.human,
       ).items.where((item) => item.type == 'person');
-      expect(people, hasLength(1));
+      expect(people, hasLength(2));
       expect(
-        people.single.facts.map((fact) => fact.value),
+        people.expand((person) => person.facts).map((fact) => fact.value),
         contains('Personne principale'),
       );
-      expect(projection.toJson().toString(), isNot(contains('Enfant secret')));
+      expect(
+        people.expand((person) => person.facts).map((fact) => fact.value),
+        contains('Enfant secret'),
+      );
+      final childFacts = {
+        for (final fact
+            in people
+                .singleWhere((item) => item.id == 'human:person:person-child')
+                .facts)
+          fact.key: fact.value,
+      };
+      expect(
+        childFacts[LifeContextProjectionFactKeys.nodeId],
+        'human:person:person-child',
+      );
+      expect(
+        childFacts[LifeContextProjectionFactKeys.birthDate],
+        '2018-06-05',
+      );
     });
   });
 
@@ -229,6 +248,19 @@ void main() {
       final relations =
           _section(projection, LifeContextProjectionSectionType.relation).items;
       expect(relations, isNotEmpty);
+      final confirmedRelation = relations.singleWhere(
+        (item) => item.facts.any(
+          (fact) =>
+              fact.key == LifeContextProjectionFactKeys.relationRole &&
+              fact.value == 'parent',
+        ),
+      );
+      expect(
+        {
+          for (final fact in confirmedRelation.facts) fact.key: fact.value,
+        }[LifeContextProjectionFactKeys.relationRole],
+        'parent',
+      );
       expect(
         relations.where(
           (item) =>
@@ -569,6 +601,7 @@ LifeContextSnapshot _snapshot(
           status: 'active',
           confirmation: 'confirmed',
           identityEntityId: 'identity-child',
+          birthDate: '2018-06-05',
         ),
       ],
       relationships: [
