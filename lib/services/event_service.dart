@@ -15,6 +15,8 @@ import '../models/event_sync_conflict.dart';
 import '../models/event_account_isolation_snapshot.dart';
 import 'cloud_event_service.dart';
 import 'auth_service.dart';
+import 'app_diagnostics.dart';
+import 'app_error_classifier.dart';
 import 'event_mutation_service.dart';
 import 'event_mutation_result.dart';
 import 'event_mutation_invariant_service.dart';
@@ -208,8 +210,22 @@ class EventService {
 
     try {
       await CloudEventService.saveEvents(reconciled);
-    } catch (_) {
-      // L'agenda reste disponible hors ligne ou sans compte connecté.
+    } catch (error) {
+      final descriptor = AppErrorClassifier.classify(
+        error,
+        boundary: AppErrorBoundaryKind.synchronization,
+      );
+      AppDiagnostics.record(
+        component: 'event_storage',
+        domain: 'event',
+        operation: 'save',
+        step: 'cloud_sync',
+        code: descriptor.code,
+        severity: AppErrorSeverity.warning,
+        retryStrategy: descriptor.retryStrategy,
+        correlationId: descriptor.correlationId,
+        sourceExceptionType: AppErrorClassifier.safeExceptionType(error),
+      );
     }
 
     notifyEventsChanged();
@@ -315,8 +331,22 @@ class EventService {
 
         return cloudEvents;
       }
-    } catch (_) {
-      // Si Firestore est indisponible, on utilise l'agenda local.
+    } catch (error) {
+      final descriptor = AppErrorClassifier.classify(
+        error,
+        boundary: AppErrorBoundaryKind.synchronization,
+      );
+      AppDiagnostics.record(
+        component: 'event_storage',
+        domain: 'event',
+        operation: 'load',
+        step: 'cloud_fallback',
+        code: descriptor.code,
+        severity: AppErrorSeverity.warning,
+        retryStrategy: descriptor.retryStrategy,
+        correlationId: descriptor.correlationId,
+        sourceExceptionType: AppErrorClassifier.safeExceptionType(error),
+      );
     }
 
     accountIsolationSnapshot.value = accountIsolationSnapshot.value.copyWith(

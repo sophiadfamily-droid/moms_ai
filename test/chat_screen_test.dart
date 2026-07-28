@@ -64,7 +64,7 @@ void main() {
     expect(find.textContaining('private provider detail'), findsNothing);
     expect(
       find.text(
-        'Zélia rencontre un problème temporaire. Tes données ne sont pas perdues.',
+        'Une erreur inattendue est survenue. Tu peux réessayer.',
       ),
       findsOneWidget,
     );

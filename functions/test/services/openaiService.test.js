@@ -266,6 +266,7 @@ test("logs bounded provider diagnostics without sensitive data", async () => {
     reasoningEffort: "medium",
     client,
     logger,
+    correlationId: "0123456789abcdef0123456789abcdef",
   });
 
   assert.deepEqual(logs.map((line) => line[0]), [
@@ -274,6 +275,14 @@ test("logs bounded provider diagnostics without sensitive data", async () => {
   ]);
   assert.equal(logs[1][1].requestId, "req_technical");
   assert.equal(logs[1][1].reasoningEffort, "medium");
+  assert.equal(
+      logs[0][1].correlationId,
+      "0123456789abcdef0123456789abcdef",
+  );
+  assert.equal(
+      logs[1][1].correlationId,
+      "0123456789abcdef0123456789abcdef",
+  );
   assert.equal(typeof logs[1][1].durationMs, "number");
   const serialized = JSON.stringify(logs);
   assert.equal(serialized.includes("private-key"), false);

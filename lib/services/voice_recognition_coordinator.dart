@@ -552,7 +552,7 @@ final class VoiceRecognitionCoordinator extends ChangeNotifier {
     AppDiagnostics.record(
       component: 'voice-coordinator',
       step: step,
-      code: AppErrorCode.unknown,
+      code: AppErrorCode.lifecycleEvent,
       severity: AppErrorSeverity.info,
       metadata: {
         'eventType': code,

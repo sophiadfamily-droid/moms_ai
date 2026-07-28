@@ -48,7 +48,14 @@ void main() {
     expect(capturedRegion, 'us-central1');
     expect(capturedFunctionName, 'chatWithZeliaCallable');
     expect(capturedTimeout, const Duration(seconds: 30));
-    expect(capturedPayload, request.toJson());
+    expect(
+      capturedPayload['correlationId'],
+      matches(RegExp(r'^[0-9a-f]{32}$')),
+    );
+    expect(
+      {...capturedPayload}..remove('correlationId'),
+      request.toJson(),
+    );
     expect(response.reply, 'Réponse');
   });
 
@@ -61,10 +68,11 @@ void main() {
 
     await backend.send(request);
 
-    expect(sentData, request.toJson());
+    expect(sentData['correlationId'], matches(RegExp(r'^[0-9a-f]{32}$')));
     expect(sentData.keys, {
       'schemaVersion',
       'message',
+      'correlationId',
       'sessionGeneration',
       'conversationContext',
       'conversationHistory',
@@ -77,6 +85,27 @@ void main() {
       'autonomyMode',
       'allowedStructuredResponseKinds',
     });
+  });
+
+  test('keeps the same safe correlation id for a logical request retry',
+      () async {
+    final correlations = <String>[];
+    var attempts = 0;
+    final backend = CallableChatBackendClient.withInvoker((data) async {
+      correlations.add(data['correlationId'] as String);
+      if (attempts++ == 0) throw TimeoutException('test timeout');
+      return _response('Réponse');
+    });
+
+    await expectLater(
+      backend.send(request),
+      throwsA(isA<ChatBackendTimeoutException>()),
+    );
+    await backend.send(request);
+
+    expect(correlations, hasLength(2));
+    expect(correlations.toSet(), hasLength(1));
+    expect(correlations.first, matches(RegExp(r'^[0-9a-f]{32}$')));
   });
 
   test('normalizes callable result maps', () async {

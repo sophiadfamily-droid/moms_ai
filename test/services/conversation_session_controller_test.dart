@@ -92,6 +92,12 @@ void main() {
         hasLength(1),
       );
       expect(harness.backend.calls, 2);
+      expect(harness.backend.correlationIds, hasLength(2));
+      expect(harness.backend.correlationIds.toSet(), hasLength(1));
+      expect(
+        harness.backend.correlationIds.first,
+        matches(RegExp(r'^[0-9a-f]{32}$')),
+      );
       expect(harness.controller.state.retryAvailable, isFalse);
       harness.dispose();
     });
@@ -108,8 +114,7 @@ void main() {
 
       expect(
         harness.controller.state.messages.last.text,
-        'La sauvegarde n’a pas pu être terminée. '
-        'Tes données locales sont conservées.',
+        'La sauvegarde locale a échoué. Réessaie avant de quitter.',
       );
       expect(harness.controller.state.retryAvailable, isTrue);
       expect(harness.backend.calls, 0);
@@ -352,10 +357,12 @@ final class _Backend implements ChatBackendClient {
   final Future<ChatBackendResponse>? pending;
   final Object? error;
   int calls = 0;
+  final List<String?> correlationIds = [];
 
   @override
   Future<ChatBackendResponse> send(ChatBackendRequest request) async {
     calls++;
+    correlationIds.add(request.correlationId);
     if (error != null) throw error!;
     return pending ?? Future.value(_response());
   }

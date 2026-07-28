@@ -1420,31 +1420,63 @@ Firebase project, database, region, provider, enforcement, secret, and deploymen
 
 ### Diagnostic and error policy
 
-**Current state:** Flutter and Functions use one minimal diagnostic boundary per
-runtime. Production, staging, debug and emulator are explicit environments, but
-none of them may log user content. Diagnostics are deny-by-default: they accept
-only a bounded technical component, step, stable code, severity/environment,
-random correlation ID and explicitly allowlisted scalar metrics. Arbitrary
-objects, exceptions and stack traces are never serialized.
+**Current state (V1-S0.4):** Flutter and Functions use one closed diagnostic
+boundary per runtime. Production, staging, debug and emulator are explicit
+environments, but none of them may log user content. Diagnostics are
+deny-by-default and versioned. A record contains a random diagnostic ID, the
+bounded correlation ID, component, domain, operation, step, stable code,
+severity, retry strategy, timestamp, environment, a closed technical status
+and explicitly allowlisted scalar metrics. Arbitrary objects, exception
+messages and stack traces are never serialized.
 
 Conversation text, prompts, model responses, memories, profiles, events, tasks,
 shopping data, documents, names, contact details, addresses, birth dates,
 health data, Firebase UIDs, Auth/App Check tokens, credentials, secrets, request
 bodies and Firestore documents are forbidden in logs in every environment.
 Debug and emulator may provide additional technical scalar metadata only; they
-do not relax the content policy. Test fixtures must remain synthetic.
+do not relax the content policy. Test fixtures remain synthetic. Exception
+types are reduced to an allowlist; `toString()` is never a diagnostic source.
 
-The shared error taxonomy keeps Firebase-compatible stable codes where useful
-and maps authentication, App Check, permissions, validation, quota, network,
-timeout, availability, conflict/stale revision, absence, cancellation, storage,
-synchronization and unknown failures to non-sensitive French messages and a
-retry policy. Correlation IDs are random and never derived from an account or
-business object. No analytics, crash-reporting provider or remote observability
-platform is introduced by this policy.
+The shared error taxonomy distinguishes authentication, authorization,
+validation, contract, quota, network, timeout, dependency/provider,
+configuration, conflict/stale revision, stale asynchronous result, account
+scope mismatch, local persistence, synchronization and internal failure.
+Severity is one of `info`, `warning`, `recoverableError` or `criticalError`.
+Retry is one of `notRetryable`, `retryImmediately`, `retryWithBackoff`,
+`retryAfterUserAction` or `retryAfterReauthentication`. A refusal or normal
+absence is not a technical failure. User messages are mapped centrally and do
+not claim local durability unless the caller has selected the explicit
+`sync-pending` result after a proven durable local write.
 
-Remaining limitation: diagnostics currently use local/runtime logging sinks.
-Retention, operational dashboards, crash reporting, support workflows and
-organization-wide historical log remediation require separate approved work.
+`main.dart` installs framework, platform and guarded-zone boundaries before
+Firebase initialization. A startup failure records only its closed
+classification and renders a minimal fallback instead of a blank screen.
+Failure of a sink, local store or future remote reporter is ignored without
+recursion and never replaces the original exception.
+
+Flutter keeps at most 100 sanitized diagnostics and 256 KiB in a versioned
+local buffer with rotation, one-minute duplicate suppression, backup recovery
+and corruption tolerance. The buffer contains no UID and is therefore safe
+across account changes; it cannot be used to reconstruct account activity.
+`ApplicationHealthSnapshot` exposes only closed startup/dependency/account
+states, bounded mutation counts and age buckets. `RevisionedMutationHealthService`
+maps durable journals to retry scheduled, conflict blocked, invalid payload,
+account mismatch, permanent failure and completed counts without exposing
+mutation or entity identifiers.
+
+The chat request carries one 32-character random correlation ID. The callable
+validates it as part of the closed request, propagates it through routing,
+provider diagnostics and transport failure, and returns no private context in
+it. A retry of the same logical request reuses the correlation ID; a
+`mutationId` remains a separate idempotency identity.
+
+No analytics or crash-reporting SDK is installed by S0.4. The
+`AppCriticalDiagnosticReporter` boundary is inert unless a future approved
+provider is injected. Before external beta, the team must choose and configure
+that provider, verify consent and retention, connect only sanitized records,
+test fatal/non-fatal delivery on signed builds, and document operational
+ownership and deletion. Runtime logs and the bounded local buffer do not
+provide a remote incident dashboard or long-term retention.
 
 ## 16. Testing and quality model
 

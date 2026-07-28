@@ -301,7 +301,7 @@ final class SpeechToTextPlatformGateway
     AppDiagnostics.record(
       component: 'voice-platform',
       step: step,
-      code: AppErrorCode.unknown,
+      code: AppErrorCode.lifecycleEvent,
       severity: AppErrorSeverity.info,
       metadata: {
         'status': code,

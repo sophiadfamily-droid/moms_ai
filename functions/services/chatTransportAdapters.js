@@ -153,6 +153,7 @@ function createCallableChatHandler({
       await consumeQuota({uid});
       return await handleChatRequest(validatedPayload, {
         uid,
+        correlationId: validatedPayload.correlationId,
       }, {
         ...handlerDependencies,
         apiKey: getApiKey(),
@@ -175,6 +176,7 @@ function createCallableChatHandler({
         component: "chat_transport",
         step: "request",
         code: ERROR_CODES.serviceUnavailable,
+        correlationId: validatedPayload.correlationId,
         env,
       });
       throw new HttpsErrorClass(

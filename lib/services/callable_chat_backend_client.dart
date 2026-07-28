@@ -28,6 +28,8 @@ class CallableChatBackendClient implements ChatBackendClient {
 
   final ChatCallableInvoker _invoke;
   final ChatAuthenticationBootstrap _ensureAuthenticatedUid;
+  final Expando<String> _requestCorrelationIds =
+      Expando<String>('chat_request_correlation');
 
   CallableChatBackendClient({
     FirebaseFunctions? functions,
@@ -71,25 +73,37 @@ class CallableChatBackendClient implements ChatBackendClient {
 
   @override
   Future<ChatBackendResponse> send(ChatBackendRequest request) async {
+    final correlationId = request.correlationId ??
+        _requestCorrelationIds[request] ??
+        AppDiagnostics.createCorrelationId();
+    _requestCorrelationIds[request] = correlationId;
     try {
       await _ensureAuthenticatedUid();
-      final data = await _invoke(request.toJson());
+      final data = await _invoke(
+        request.withCorrelationId(correlationId).toJson(),
+      );
 
       if (data is! Map) {
-        throw ChatBackendMalformedResponseException();
+        throw ChatBackendMalformedResponseException(
+          correlationId: correlationId,
+        );
       }
 
       final Map<String, dynamic> normalized;
       try {
         normalized = Map<String, dynamic>.from(data);
       } on TypeError {
-        throw ChatBackendMalformedResponseException();
+        throw ChatBackendMalformedResponseException(
+          correlationId: correlationId,
+        );
       }
 
       try {
         return ChatBackendResponse.fromJson(normalized);
       } on FormatException {
-        throw ChatBackendMalformedResponseException();
+        throw ChatBackendMalformedResponseException(
+          correlationId: correlationId,
+        );
       }
     } on ChatBackendException {
       rethrow;
@@ -97,50 +111,64 @@ class CallableChatBackendClient implements ChatBackendClient {
       throw ChatBackendCallableException(
         'invalid-request',
         AppErrorCode.invalidArgument,
+        correlationId: correlationId,
       );
     } on TimeoutException {
-      throw ChatBackendTimeoutException();
+      throw ChatBackendTimeoutException(correlationId: correlationId);
     } on FirebaseFunctionsException catch (error) {
       switch (error.code) {
         case 'deadline-exceeded':
-          throw ChatBackendTimeoutException();
+          throw ChatBackendTimeoutException(correlationId: correlationId);
         case 'unavailable':
-          throw ChatBackendConnectionException();
+          throw ChatBackendConnectionException(correlationId: correlationId);
         case 'resource-exhausted':
-          throw ChatBackendQuotaExceededException();
+          throw ChatBackendQuotaExceededException(
+            correlationId: correlationId,
+          );
         case 'unauthenticated':
-          throw ChatBackendAuthenticationException();
+          throw ChatBackendAuthenticationException(
+            correlationId: correlationId,
+          );
         case 'failed-precondition':
           throw ChatBackendCallableException(
             error.code,
             AppErrorCode.appCheckRequired,
+            correlationId: correlationId,
           );
         case 'permission-denied':
           throw ChatBackendCallableException(
             error.code,
             AppErrorCode.permissionDenied,
+            correlationId: correlationId,
           );
         case 'invalid-argument':
           throw ChatBackendCallableException(
             error.code,
             AppErrorCode.invalidArgument,
+            correlationId: correlationId,
           );
         case 'aborted':
           throw ChatBackendCallableException(
             error.code,
             AppErrorCode.conflict,
+            correlationId: correlationId,
           );
         case 'not-found':
           throw ChatBackendCallableException(
             error.code,
             AppErrorCode.notFound,
+            correlationId: correlationId,
           );
         case 'internal':
-          throw ChatBackendHttpException(500);
+          throw ChatBackendHttpException(
+            500,
+            correlationId: correlationId,
+          );
         default:
           throw ChatBackendCallableException(
             error.code,
             AppErrorCode.serviceUnavailable,
+            correlationId: correlationId,
           );
       }
     }

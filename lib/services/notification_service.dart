@@ -11,6 +11,8 @@ import 'package:uuid/uuid.dart';
 
 import '../models/local_notification_models.dart';
 import 'auth_service.dart';
+import 'app_diagnostics.dart';
+import 'app_error_classifier.dart';
 import 'local_notification_registry.dart';
 import 'local_notification_scheduler.dart';
 import 'notification_interaction_coordinator.dart';
@@ -423,13 +425,43 @@ class NotificationService {
   }
 
   static void _eventChanged() {
-    evaluateDetections(DetectionEvaluationTrigger.eventChanged)
-        .catchError((Object _) {});
+    unawaited(
+      _evaluateDetectionsSafely(
+        DetectionEvaluationTrigger.eventChanged,
+        'event_changed',
+      ),
+    );
   }
 
   static void _taskChanged() {
-    evaluateDetections(DetectionEvaluationTrigger.taskChanged)
-        .catchError((Object _) {});
+    unawaited(
+      _evaluateDetectionsSafely(
+        DetectionEvaluationTrigger.taskChanged,
+        'task_changed',
+      ),
+    );
+  }
+
+  static Future<void> _evaluateDetectionsSafely(
+    DetectionEvaluationTrigger trigger,
+    String step,
+  ) async {
+    try {
+      await evaluateDetections(trigger);
+    } catch (error) {
+      final descriptor = AppErrorClassifier.classify(error);
+      AppDiagnostics.record(
+        component: 'notification_detection',
+        domain: 'notification',
+        operation: 'evaluate',
+        step: step,
+        code: descriptor.code,
+        severity: descriptor.severity,
+        retryStrategy: descriptor.retryStrategy,
+        correlationId: descriptor.correlationId,
+        sourceExceptionType: AppErrorClassifier.safeExceptionType(error),
+      );
+    }
   }
 
   static Future<NotificationNavigationIntent?>

@@ -4,6 +4,7 @@ import '../models/human/human_model.dart';
 import '../models/human/human_model_persistence.dart';
 import '../models/user_profile.dart';
 import '../services/auth_service.dart';
+import '../services/app_diagnostics.dart';
 import '../services/human/human_model_edit_service.dart';
 
 class HumanProfileScreen extends StatefulWidget {
@@ -123,8 +124,7 @@ class _HumanProfileScreenState extends State<HumanProfileScreen> {
           'Une modification attend déjà une vérification. Termine-la avant d’en ajouter une autre.',
         HumanModelEditStatus.storageFailure =>
           'Zélia n’a pas pu conserver cette modification.',
-        _ =>
-          'Zélia rencontre un problème temporaire. Tes données ne sont pas perdues.',
+        _ => AppErrorCatalog.describe(AppErrorCode.internalFailure).userMessage,
       };
 
   @override

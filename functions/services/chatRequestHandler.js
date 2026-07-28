@@ -114,6 +114,7 @@ async function handleChatRequest(
   }
 
   const source = validateConversationRequest(payload);
+  const correlationId = source.correlationId;
   const message = source.message || "";
   const profile = source.profile || {};
   const profileContext = source.profileContext || {};
@@ -224,6 +225,7 @@ ${buildBrainContext()}
     component: "chat_orchestration",
     step: "model_routing",
     code: "model-routed",
+    correlationId,
     env: dependencies.env || process.env,
     metadata: {
       intent: detectedIntent.primaryIntent,
@@ -246,6 +248,7 @@ ${buildBrainContext()}
           reasoningEffort: modelDecision.reasoningEffort,
           logger,
           env: dependencies.env || process.env,
+          correlationId,
           signal,
         }),
         timeoutMs,
@@ -259,6 +262,7 @@ ${buildBrainContext()}
         component: "chat_orchestration",
         step: "openai_deadline",
         code: "timeout",
+        correlationId,
         env: dependencies.env || process.env,
         metadata: {
           model: modelDecision.model,

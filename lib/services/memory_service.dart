@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'auth_service.dart';
 import 'app_diagnostics.dart';
+import 'app_error_classifier.dart';
 
 class MemoryService {
   static final FirebaseFirestore firestore = FirebaseFirestore.instance;
@@ -45,11 +46,21 @@ class MemoryService {
           return true;
         }
       }
-    } catch (_) {
+    } catch (error) {
+      final descriptor = AppErrorClassifier.classify(
+        error,
+        boundary: AppErrorBoundaryKind.synchronization,
+      );
       AppDiagnostics.record(
         component: 'memory',
+        domain: 'memory',
+        operation: 'deduplicate',
         step: 'duplicate_check',
-        code: AppErrorCode.storageFailure,
+        code: descriptor.code,
+        severity: descriptor.severity,
+        retryStrategy: descriptor.retryStrategy,
+        correlationId: descriptor.correlationId,
+        sourceExceptionType: AppErrorClassifier.safeExceptionType(error),
       );
       return true;
     }
@@ -88,11 +99,21 @@ class MemoryService {
         "updatedAt": now,
         "source": "chat",
       });
-    } catch (_) {
+    } catch (error) {
+      final descriptor = AppErrorClassifier.classify(
+        error,
+        boundary: AppErrorBoundaryKind.synchronization,
+      );
       AppDiagnostics.record(
         component: 'memory',
+        domain: 'memory',
+        operation: 'save',
         step: 'save',
-        code: AppErrorCode.storageFailure,
+        code: descriptor.code,
+        severity: descriptor.severity,
+        retryStrategy: descriptor.retryStrategy,
+        correlationId: descriptor.correlationId,
+        sourceExceptionType: AppErrorClassifier.safeExceptionType(error),
       );
     }
   }
@@ -115,11 +136,21 @@ class MemoryService {
           "id": doc.id,
         };
       }).toList();
-    } catch (_) {
+    } catch (error) {
+      final descriptor = AppErrorClassifier.classify(
+        error,
+        boundary: AppErrorBoundaryKind.synchronization,
+      );
       AppDiagnostics.record(
         component: 'memory',
+        domain: 'memory',
+        operation: 'load',
         step: 'load',
-        code: AppErrorCode.storageFailure,
+        code: descriptor.code,
+        severity: descriptor.severity,
+        retryStrategy: descriptor.retryStrategy,
+        correlationId: descriptor.correlationId,
+        sourceExceptionType: AppErrorClassifier.safeExceptionType(error),
       );
       return [];
     }

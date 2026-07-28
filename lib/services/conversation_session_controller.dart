@@ -11,6 +11,7 @@ import '../models/task_model.dart';
 import '../models/priority/proactive_priority_models.dart';
 import '../models/user_profile.dart';
 import 'app_diagnostics.dart';
+import 'app_error_classifier.dart';
 import 'action_autonomy_policy_service.dart';
 import 'chat_backend_client.dart';
 import 'chat_backend_client_factory.dart';
@@ -298,6 +299,7 @@ final class ConversationSessionController extends ChangeNotifier {
   int _retryCount = 0;
   String? _lastSubmittedText;
   String? _lastLogicalRequestId;
+  String? _lastCorrelationId;
   String? get activeLogicalRequestId => _lastLogicalRequestId;
   ConversationClarificationLedger _clarificationLedger =
       const ConversationClarificationLedger();
@@ -361,6 +363,7 @@ final class ConversationSessionController extends ChangeNotifier {
     final text = rawText.trim();
     if (_disposed || text.isEmpty || _state.isBusy) return;
     _lastSubmittedText = text;
+    _lastCorrelationId = AppDiagnostics.createCorrelationId();
     _retryCount = 0;
     final submittedMessageId =
         _appendMessage(ConversationMessageRole.user, text);
@@ -409,6 +412,7 @@ final class ConversationSessionController extends ChangeNotifier {
               profile: _profile,
               sessionGeneration: generation,
               logicalRequestId: _lastLogicalRequestId,
+              correlationId: _lastCorrelationId,
             ),
             executeAction: (action) => _executeAction(action, text, generation),
           );
@@ -476,18 +480,30 @@ final class ConversationSessionController extends ChangeNotifier {
       }
     } catch (error) {
       if (!_isCurrent(requestId, generation)) return;
-      final descriptor = error is ChatBackendException
-          ? error.descriptor
-          : error is ConversationTaskPersistenceException
-              ? AppErrorCatalog.describe(AppErrorCode.storageFailure)
-              : AppErrorCatalog.describe(AppErrorCode.unknown);
+      final descriptor = error is ConversationTaskPersistenceException
+          ? AppErrorCatalog.describe(AppErrorCode.storageFailure)
+          : AppErrorClassifier.classify(
+              error,
+              boundary: error is ChatBackendMalformedResponseException
+                  ? AppErrorBoundaryKind.contract
+                  : AppErrorBoundaryKind.application,
+            );
       AppDiagnostics.record(
         component: 'conversation',
+        domain: 'conversation',
+        operation: 'submit',
         step: 'orchestrate',
         code: descriptor.code,
         severity: descriptor.severity,
+        retryStrategy: descriptor.retryStrategy,
         correlationId: descriptor.correlationId,
-        metadata: {'retryable': descriptor.retryable},
+        sourceExceptionType: error is ConversationTaskPersistenceException
+            ? 'ConversationTaskPersistenceException'
+            : AppErrorClassifier.safeExceptionType(error),
+        metadata: {
+          'retryable': descriptor.retryable,
+          'retryStrategy': descriptor.retryStrategy.name,
+        },
       );
       _appendMessage(
         ConversationMessageRole.assistant,
@@ -499,8 +515,8 @@ final class ConversationSessionController extends ChangeNotifier {
               ? ConversationSessionPhase.recoverableError
               : ConversationSessionPhase.blockingError,
           clearCurrentRequest: true,
-          retryAvailable:
-              descriptor.retryable && _retryCount < maximumBackendRetries,
+          retryAvailable: descriptor.canRetryDirectly &&
+              _retryCount < maximumBackendRetries,
           errorMessage: descriptor.userMessage,
         ),
       );
@@ -547,6 +563,7 @@ final class ConversationSessionController extends ChangeNotifier {
     );
     _lastSubmittedText = null;
     _lastLogicalRequestId = null;
+    _lastCorrelationId = null;
     _retryCount = 0;
     _clarificationLedger = ConversationClarificationLedger(
       sessionGeneration: generation,
@@ -573,7 +590,22 @@ final class ConversationSessionController extends ChangeNotifier {
         accountScopeId: scope,
         referenceDate: now,
       );
-    } catch (_) {
+    } catch (error) {
+      final descriptor = AppErrorClassifier.classify(
+        error,
+        boundary: AppErrorBoundaryKind.localStorage,
+      );
+      AppDiagnostics.record(
+        component: 'conversation_reference_history',
+        domain: 'conversation',
+        operation: 'load',
+        step: 'local_store',
+        code: descriptor.code,
+        severity: AppErrorSeverity.warning,
+        retryStrategy: descriptor.retryStrategy,
+        correlationId: descriptor.correlationId,
+        sourceExceptionType: AppErrorClassifier.safeExceptionType(error),
+      );
       references = const [];
     }
     _coordinator.restoreValidatedReferenceHistory(
@@ -593,8 +625,22 @@ final class ConversationSessionController extends ChangeNotifier {
         references: _coordinator.validatedReferenceHistory,
         referenceDate: _clock().toUtc(),
       );
-    } catch (_) {
-      // Reference persistence must never turn a safe response into an error.
+    } catch (error) {
+      final descriptor = AppErrorClassifier.classify(
+        error,
+        boundary: AppErrorBoundaryKind.localStorage,
+      );
+      AppDiagnostics.record(
+        component: 'conversation_reference_history',
+        domain: 'conversation',
+        operation: 'save',
+        step: 'local_store',
+        code: descriptor.code,
+        severity: AppErrorSeverity.warning,
+        retryStrategy: descriptor.retryStrategy,
+        correlationId: descriptor.correlationId,
+        sourceExceptionType: AppErrorClassifier.safeExceptionType(error),
+      );
     }
   }
 

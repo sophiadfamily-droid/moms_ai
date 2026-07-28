@@ -14,6 +14,7 @@ const {
 function request(contextOverrides = {}) {
   return {
     schemaVersion: 2,
+    correlationId: "0123456789abcdef0123456789abcdef",
     message: "Ma demande",
     sessionGeneration: 4,
     conversationContext: {

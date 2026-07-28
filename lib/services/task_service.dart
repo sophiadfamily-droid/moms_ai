@@ -13,6 +13,7 @@ import '../models/revisioned_sync_protocol.dart';
 import '../models/life_context/life_context_domains.dart';
 import 'auth_service.dart';
 import 'app_diagnostics.dart';
+import 'app_error_classifier.dart';
 import 'revisioned_cloud_repositories.dart';
 import 'revisioned_domain_sync_service.dart';
 import 'revisioned_domain_local_repository.dart';
@@ -62,11 +63,21 @@ class TaskService {
 
     try {
       if (scope != null) await _reconcileRevisioned(scope, tasks);
-    } catch (_) {
+    } catch (error) {
+      final descriptor = AppErrorClassifier.classify(
+        error,
+        boundary: AppErrorBoundaryKind.synchronization,
+      );
       AppDiagnostics.record(
         component: 'task_storage',
+        domain: 'task',
+        operation: 'save',
         step: 'cloud_sync',
-        code: AppErrorCode.syncFailure,
+        code: descriptor.code,
+        severity: descriptor.severity,
+        retryStrategy: descriptor.retryStrategy,
+        correlationId: descriptor.correlationId,
+        sourceExceptionType: AppErrorClassifier.safeExceptionType(error),
       );
     }
 
@@ -97,11 +108,21 @@ class TaskService {
       if (scope != null) {
         return active;
       }
-    } catch (_) {
+    } catch (error) {
+      final descriptor = AppErrorClassifier.classify(
+        error,
+        boundary: AppErrorBoundaryKind.synchronization,
+      );
       AppDiagnostics.record(
         component: 'task_storage',
+        domain: 'task',
+        operation: 'load',
         step: 'cloud_load',
-        code: AppErrorCode.syncFailure,
+        code: descriptor.code,
+        severity: descriptor.severity,
+        retryStrategy: descriptor.retryStrategy,
+        correlationId: descriptor.correlationId,
+        sourceExceptionType: AppErrorClassifier.safeExceptionType(error),
       );
     }
 

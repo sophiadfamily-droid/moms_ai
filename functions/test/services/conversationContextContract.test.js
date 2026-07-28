@@ -13,6 +13,7 @@ const {
 function payload(overrides = {}) {
   return {
     schemaVersion: 2,
+    correlationId: "0123456789abcdef0123456789abcdef",
     message: "Bonjour",
     sessionGeneration: 0,
     conversationContext: {
@@ -71,6 +72,25 @@ test("refuses future, absent and unknown request schemas", () => {
   delete absent.schemaVersion;
   assert.throws(() => validateConversationRequest(absent));
   assert.throws(() => validateConversationRequest(payload({unknown: true})));
+});
+
+test("requires a bounded opaque client correlation identifier", () => {
+  assert.equal(
+      validateConversationRequest(payload()).correlationId,
+      "0123456789abcdef0123456789abcdef",
+  );
+  for (const correlationId of [
+    "",
+    "short",
+    "g".repeat(32),
+    "a".repeat(33),
+    "firebase-uid:private-message",
+  ]) {
+    assert.throws(() => validateConversationRequest(payload({correlationId})));
+  }
+  const absent = payload();
+  delete absent.correlationId;
+  assert.throws(() => validateConversationRequest(absent));
 });
 
 test("validates the closed autonomy mode and blocks executable kinds in pause",

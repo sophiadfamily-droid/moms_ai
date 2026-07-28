@@ -24,24 +24,59 @@ import 'services/notification_service.dart';
 import 'services/notification_interaction_coordinator.dart';
 import 'services/auth_service.dart';
 import 'services/app_diagnostics.dart';
+import 'services/app_error_classifier.dart';
+import 'services/app_global_error_boundary.dart';
 import 'services/firebase_security_bootstrap.dart';
 import 'services/human/human_model_service.dart';
 import 'services/identity/identity_production_services.dart';
 import 'services/event_service.dart';
 import 'services/proactive_detection_lifecycle.dart';
 
-Future<void> main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  AppGlobalErrorBoundary.install();
+  runZonedGuarded(_startApplication, AppGlobalErrorBoundary.captureZoneError);
+}
 
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+Future<void> _startApplication() async {
+  try {
+    await AppDiagnostics.initializeLocal();
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
 
-  await FirebaseSecurityBootstrap.initializeProduction();
+    await FirebaseSecurityBootstrap.initializeProduction();
 
-  await NotificationService.init();
+    await NotificationService.init();
 
-  runApp(const ZeliaApp());
+    runApp(const ZeliaApp());
+  } catch (error, stackTrace) {
+    AppGlobalErrorBoundary.captureStartupError(error, stackTrace);
+    runApp(const ZeliaStartupFailureApp());
+  }
+}
+
+class ZeliaStartupFailureApp extends StatelessWidget {
+  const ZeliaStartupFailureApp({super.key});
+
+  @override
+  Widget build(BuildContext context) => MaterialApp(
+        debugShowCheckedModeBanner: false,
+        home: Scaffold(
+          body: SafeArea(
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  'Zélia n’a pas pu démarrer. Ferme puis rouvre l’application.',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
 }
 
 class ZeliaApp extends StatefulWidget {
@@ -122,10 +157,29 @@ class _ZeliaAppState extends State<ZeliaApp> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      NotificationService.evaluateDetections(
-        DetectionEvaluationTrigger.foreground,
-      ).catchError((Object _) {});
+      unawaited(_evaluateForegroundDetections());
       _openPendingNotificationDestination();
+    }
+  }
+
+  Future<void> _evaluateForegroundDetections() async {
+    try {
+      await NotificationService.evaluateDetections(
+        DetectionEvaluationTrigger.foreground,
+      );
+    } catch (error) {
+      final descriptor = AppErrorClassifier.classify(error);
+      AppDiagnostics.record(
+        component: 'notification_detection',
+        domain: 'notification',
+        operation: 'evaluate',
+        step: 'foreground',
+        code: descriptor.code,
+        severity: descriptor.severity,
+        retryStrategy: descriptor.retryStrategy,
+        correlationId: descriptor.correlationId,
+        sourceExceptionType: AppErrorClassifier.safeExceptionType(error),
+      );
     }
   }
 

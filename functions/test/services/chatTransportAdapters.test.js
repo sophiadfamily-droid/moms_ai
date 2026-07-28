@@ -39,6 +39,7 @@ function createHandler(overrides = {}) {
 function validPayload(message = "Bonjour") {
   return {
     schemaVersion: 2,
+    correlationId: "0123456789abcdef0123456789abcdef",
     message,
     sessionGeneration: 0,
     conversationContext: {
@@ -120,8 +121,14 @@ test("accepts permanent and anonymous Firebase users", async () => {
   });
 
   assert.deepEqual(contexts, [
-    {uid: "firebase-uid"},
-    {uid: "anonymous-uid"},
+    {
+      uid: "firebase-uid",
+      correlationId: "0123456789abcdef0123456789abcdef",
+    },
+    {
+      uid: "anonymous-uid",
+      correlationId: "0123456789abcdef0123456789abcdef",
+    },
   ]);
 });
 
@@ -248,7 +255,10 @@ test("binds quota and orchestration exclusively to verified UID", async () => {
 
   await handler(secureRequest());
   assert.deepEqual(quotaUids, ["firebase-uid"]);
-  assert.deepEqual(contexts, [{uid: "firebase-uid"}]);
+  assert.deepEqual(contexts, [{
+    uid: "firebase-uid",
+    correlationId: "0123456789abcdef0123456789abcdef",
+  }]);
 });
 
 test("maps quota exhaustion to a stable safe error", async () => {
@@ -283,6 +293,10 @@ test("logs only a stable code for OpenAI failures", async () => {
   );
   assert.equal(logs.length, 1);
   assert.equal(logs[0][0], "ZELIA_CHAT_FAILURE");
+  assert.equal(
+      logs[0][1].correlationId,
+      "0123456789abcdef0123456789abcdef",
+  );
   assert.deepEqual({
     ...logs[0][1],
     correlationId: "redacted-for-test",

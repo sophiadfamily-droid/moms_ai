@@ -16,6 +16,7 @@ const {generateZeliaResponse} = require("../../services/openaiService");
 function request(message = "Ajoute du lait aux courses") {
   return {
     schemaVersion: 2,
+    correlationId: "0123456789abcdef0123456789abcdef",
     message,
     sessionGeneration: 0,
     conversationContext: {
@@ -140,6 +141,10 @@ test("handles the canonical bounded payload without mutating it", async () => {
   assert.equal(calls[0].model, "test-fast");
   assert.equal(calls[0].tier, "fast");
   assert.equal(calls[0].reasoningEffort, "none");
+  assert.equal(
+      calls[0].correlationId,
+      "0123456789abcdef0123456789abcdef",
+  );
   assert.ok(calls[0].signal instanceof AbortSignal);
   assert.deepEqual(result, {
     reply: "C'est noté.",
@@ -245,6 +250,10 @@ test("logs a bounded timeout diagnostic without request content", async () => {
   assert.equal(timeoutLog[1].code, "timeout");
   assert.equal(timeoutLog[1].model, "gpt-5.6-terra");
   assert.equal(timeoutLog[1].reasoningEffort, "low");
+  assert.equal(
+      timeoutLog[1].correlationId,
+      "0123456789abcdef0123456789abcdef",
+  );
   assert.ok(timeoutLog[1].durationMs >= 0);
   assert.equal(JSON.stringify(logs).includes("PRIVATE USER MESSAGE"), false);
 });

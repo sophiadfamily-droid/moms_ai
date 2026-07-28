@@ -27,12 +27,14 @@ class ConversationInput {
   final UserProfile profile;
   final int sessionGeneration;
   final String? logicalRequestId;
+  final String? correlationId;
 
   const ConversationInput({
     required this.message,
     required this.profile,
     this.sessionGeneration = 0,
     this.logicalRequestId,
+    this.correlationId,
   });
 }
 

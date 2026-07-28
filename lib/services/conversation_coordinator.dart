@@ -2428,10 +2428,13 @@ class ConversationCoordinator {
       );
       final autonomyPolicy = await _loadAutonomyPolicy?.call();
       if (autonomyPolicy != null) _lastAutonomyPolicy = autonomyPolicy;
-      final request = (autonomyPolicy == null
+      final policyRequest = (autonomyPolicy == null
               ? builtRequest
               : builtRequest.withAutonomyPolicy(autonomyPolicy))
           .withSessionGeneration(input.sessionGeneration);
+      final request = input.correlationId == null
+          ? policyRequest
+          : policyRequest.withCorrelationId(input.correlationId!);
       final memoryContext = contextProvider is MemoryConversationContextProvider
           ? contextProvider as MemoryConversationContextProvider
           : null;

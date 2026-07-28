@@ -9,6 +9,7 @@ final class ChatBackendRequest {
   const ChatBackendRequest({
     this.schemaVersion = currentSchemaVersion,
     required this.message,
+    this.correlationId,
     this.sessionGeneration = 0,
     this.context,
     this.history = const [],
@@ -37,6 +38,7 @@ final class ChatBackendRequest {
 
   final int schemaVersion;
   final String message;
+  final String? correlationId;
   final int sessionGeneration;
   final ConversationContextEnvelope? context;
   final List<ConversationHistoryMessage> history;
@@ -55,6 +57,8 @@ final class ChatBackendRequest {
     final envelope = context;
     if (schemaVersion != currentSchemaVersion ||
         envelope == null ||
+        (correlationId != null &&
+            !RegExp(r'^[0-9a-f]{32}$').hasMatch(correlationId!)) ||
         sessionGeneration < 0 ||
         message.trim().isEmpty ||
         message.length >
@@ -69,6 +73,7 @@ final class ChatBackendRequest {
     final result = <String, dynamic>{
       'schemaVersion': schemaVersion,
       'message': message,
+      if (correlationId != null) 'correlationId': correlationId,
       'sessionGeneration': sessionGeneration,
       'conversationContext': envelope.toJson(),
       'conversationHistory':
@@ -129,6 +134,7 @@ final class ChatBackendRequest {
       ChatBackendRequest(
         schemaVersion: schemaVersion,
         message: message,
+        correlationId: correlationId,
         sessionGeneration: generation,
         context: context,
         history: history,
@@ -141,6 +147,7 @@ final class ChatBackendRequest {
     return ChatBackendRequest(
       schemaVersion: schemaVersion,
       message: message,
+      correlationId: correlationId,
       sessionGeneration: sessionGeneration,
       context: context,
       history: history,
@@ -148,4 +155,15 @@ final class ChatBackendRequest {
       autonomyMode: policy.mode,
     );
   }
+
+  ChatBackendRequest withCorrelationId(String value) => ChatBackendRequest(
+        schemaVersion: schemaVersion,
+        message: message,
+        correlationId: value,
+        sessionGeneration: sessionGeneration,
+        context: context,
+        history: history,
+        autonomyPolicyVersion: autonomyPolicyVersion,
+        autonomyMode: autonomyMode,
+      );
 }

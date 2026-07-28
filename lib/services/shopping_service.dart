@@ -12,6 +12,7 @@ import '../models/revisioned_domain_models.dart';
 import '../models/revisioned_sync_protocol.dart';
 import 'auth_service.dart';
 import 'app_diagnostics.dart';
+import 'app_error_classifier.dart';
 import 'revisioned_cloud_repositories.dart';
 import 'revisioned_domain_sync_service.dart';
 import 'revisioned_action_ledger_observer.dart';
@@ -58,11 +59,21 @@ class ShoppingService {
 
     try {
       if (scope != null) await _reconcileRevisioned(scope, items);
-    } catch (_) {
+    } catch (error) {
+      final descriptor = AppErrorClassifier.classify(
+        error,
+        boundary: AppErrorBoundaryKind.synchronization,
+      );
       AppDiagnostics.record(
         component: 'shopping_storage',
+        domain: 'shopping',
+        operation: 'save',
         step: 'cloud_sync',
-        code: AppErrorCode.syncFailure,
+        code: descriptor.code,
+        severity: descriptor.severity,
+        retryStrategy: descriptor.retryStrategy,
+        correlationId: descriptor.correlationId,
+        sourceExceptionType: AppErrorClassifier.safeExceptionType(error),
       );
     }
 
@@ -97,11 +108,21 @@ class ShoppingService {
       if (scope != null) {
         return cloudItems;
       }
-    } catch (_) {
+    } catch (error) {
+      final descriptor = AppErrorClassifier.classify(
+        error,
+        boundary: AppErrorBoundaryKind.synchronization,
+      );
       AppDiagnostics.record(
         component: 'shopping_storage',
+        domain: 'shopping',
+        operation: 'load',
         step: 'cloud_load',
-        code: AppErrorCode.syncFailure,
+        code: descriptor.code,
+        severity: descriptor.severity,
+        retryStrategy: descriptor.retryStrategy,
+        correlationId: descriptor.correlationId,
+        sourceExceptionType: AppErrorClassifier.safeExceptionType(error),
       );
     }
 

@@ -171,6 +171,7 @@ async function executeZeliaRequest({
   reasoningEffort,
   logger,
   env,
+  correlationId,
 }) {
   const startedAt = Date.now();
   const metadata = {
@@ -186,6 +187,7 @@ async function executeZeliaRequest({
     component: "openai",
     step: "responses_create",
     code: "provider-request",
+    correlationId,
     env,
     metadata,
   });
@@ -202,6 +204,7 @@ async function executeZeliaRequest({
       component: "openai",
       step: "responses_create",
       code: "provider-success",
+      correlationId,
       env,
       metadata: {
         ...metadata,
@@ -218,6 +221,7 @@ async function executeZeliaRequest({
       component: "openai",
       step: "responses_create",
       code: "provider-error",
+      correlationId,
       env,
       metadata: {
         ...metadata,
@@ -262,6 +266,7 @@ async function generateZeliaResponse({
   client = null,
   logger = console,
   env = process.env,
+  correlationId,
   signal,
 }) {
   const openai = client || new OpenAI({
@@ -284,6 +289,7 @@ async function generateZeliaResponse({
       reasoningEffort,
       logger,
       env,
+      correlationId,
     });
   } catch (error) {
     if (!shouldFallbackToDefaultModel(error, model)) {
@@ -297,6 +303,7 @@ async function generateZeliaResponse({
       component: "openai",
       step: "model_fallback",
       code: "provider-fallback",
+      correlationId,
       env,
       metadata: {
         model: DEFAULT_MODEL,
@@ -319,6 +326,7 @@ async function generateZeliaResponse({
       reasoningEffort,
       logger,
       env,
+      correlationId,
     });
   }
 }
