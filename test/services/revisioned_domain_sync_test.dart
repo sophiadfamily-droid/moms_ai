@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:moms_ai/models/revisioned_domain_models.dart';
 import 'package:moms_ai/models/revisioned_sync_protocol.dart';
@@ -313,6 +315,187 @@ void main() {
       expect(guardCalls, 1);
       expect(cloud.values, isEmpty);
     });
+
+    test('restart replays one durable offline mutation exactly once', () async {
+      final cloud = _TaskCloud()..unavailable = true;
+      final mutation = _taskMutation(
+        id: 'task-restart',
+        mutationId: 'mutation-restart',
+        expectedRevision: 0,
+        type: TaskMutationType.createTask,
+        instant: instant,
+      );
+      final firstService = TaskRevisionSyncService(
+        cloud: cloud,
+        currentAccountScope: () => scope,
+      );
+
+      final offline = await firstService.apply(scope, mutation);
+      expect(offline.status, RevisionedCloudWriteStatus.unavailable);
+      cloud.unavailable = false;
+
+      final restarted = TaskRevisionSyncService(
+        cloud: cloud,
+        currentAccountScope: () => scope,
+      );
+      final restored = await restarted.bootstrap(scope);
+      final secondBootstrap = await restarted.bootstrap(scope);
+      final journal = await const RevisionedOfflineJournal().load(
+        accountScopeId: scope,
+        domain: RevisionedSyncDomain.task,
+      );
+
+      expect(restored.single.entityId, 'task-restart');
+      expect(secondBootstrap, hasLength(1));
+      expect(cloud.values, hasLength(1));
+      expect(journal.mutations, isEmpty);
+      expect(journal.receipts, contains('mutation-restart'));
+    });
+
+    test('journal-only crash state restores local projection before retry',
+        () async {
+      final mutation = _taskMutation(
+        id: 'task-journal-only',
+        mutationId: 'mutation-journal-only',
+        expectedRevision: 0,
+        type: TaskMutationType.createTask,
+        instant: instant,
+      );
+      await const RevisionedOfflineJournal().enqueue(
+        accountScopeId: scope,
+        domain: RevisionedSyncDomain.task,
+        mutation: mutation,
+      );
+      final cloud = _TaskCloud()..unavailable = true;
+      final service = TaskRevisionSyncService(
+        cloud: cloud,
+        currentAccountScope: () => scope,
+      );
+
+      final restored = await service.bootstrap(scope);
+      final journal = await const RevisionedOfflineJournal().load(
+        accountScopeId: scope,
+        domain: RevisionedSyncDomain.task,
+      );
+
+      expect(restored.single.entityId, 'task-journal-only');
+      expect(restored.single.syncStatus, RevisionedSyncStatus.queued);
+      expect(journal.mutations.single.mutationId, 'mutation-journal-only');
+    });
+
+    test('timeout keeps mutation durable for a later idempotent retry',
+        () async {
+      final cloud = _DelayedTaskCloud();
+      final service = TaskRevisionSyncService(
+        cloud: cloud,
+        currentAccountScope: () => scope,
+        cloudTimeout: const Duration(milliseconds: 1),
+      );
+      final mutation = _taskMutation(
+        id: 'task-timeout',
+        mutationId: 'mutation-timeout',
+        expectedRevision: 0,
+        type: TaskMutationType.createTask,
+        instant: instant,
+      );
+
+      final timedOut = await service.apply(scope, mutation);
+      final journal = await const RevisionedOfflineJournal().load(
+        accountScopeId: scope,
+        domain: RevisionedSyncDomain.task,
+      );
+
+      expect(timedOut.status, RevisionedCloudWriteStatus.unavailable);
+      expect(journal.mutations.single.mutationId, 'mutation-timeout');
+      cloud.completeCreate();
+    });
+
+    test('late cloud response is ignored after account switch', () async {
+      var activeScope = scope;
+      final cloud = _DelayedTaskCloud();
+      final service = TaskRevisionSyncService(
+        cloud: cloud,
+        currentAccountScope: () => activeScope,
+      );
+      final mutation = _taskMutation(
+        id: 'task-late',
+        mutationId: 'mutation-late',
+        expectedRevision: 0,
+        type: TaskMutationType.createTask,
+        instant: instant,
+      );
+
+      final pending = service.apply(scope, mutation);
+      await cloud.createStarted.future;
+      activeScope = 'account-b';
+      cloud.completeCreate();
+      final result = await pending;
+      final journal = await const RevisionedOfflineJournal().load(
+        accountScopeId: scope,
+        domain: RevisionedSyncDomain.task,
+      );
+
+      expect(result.status, RevisionedCloudWriteStatus.accountMismatch);
+      expect(journal.mutations.single.mutationId, 'mutation-late');
+      expect(journal.receipts, isEmpty);
+    });
+
+    test('pending A never replays under B and resumes once A returns',
+        () async {
+      var activeScope = scope;
+      final cloud = _TaskCloud()..unavailable = true;
+      final service = TaskRevisionSyncService(
+        cloud: cloud,
+        currentAccountScope: () => activeScope,
+      );
+      final mutation = _taskMutation(
+        id: 'task-account',
+        mutationId: 'mutation-account',
+        expectedRevision: 0,
+        type: TaskMutationType.createTask,
+        instant: instant,
+      );
+      await service.apply(scope, mutation);
+      cloud.unavailable = false;
+
+      activeScope = 'account-b';
+      expect(await service.bootstrap('account-b'), isEmpty);
+      expect(cloud.values, isEmpty);
+
+      activeScope = scope;
+      final restored = await service.bootstrap(scope);
+      expect(restored.single.entityId, 'task-account');
+      expect(cloud.values, hasLength(1));
+    });
+
+    test('bootstrap refresh cannot consume retry attempts before backoff',
+        () async {
+      var clock = instant;
+      final cloud = _TaskCloud()..unavailable = true;
+      final service = TaskRevisionSyncService(
+        cloud: cloud,
+        currentAccountScope: () => scope,
+        now: () => clock,
+      );
+      final mutation = _taskMutation(
+        id: 'task-backoff',
+        mutationId: 'mutation-backoff',
+        expectedRevision: 0,
+        type: TaskMutationType.createTask,
+        instant: instant,
+      );
+
+      await service.apply(scope, mutation);
+      await service.bootstrap(scope);
+      await service.bootstrap(scope);
+      expect(cloud.createCalls, 2);
+
+      cloud.unavailable = false;
+      clock = instant.add(const Duration(seconds: 5));
+      await service.bootstrap(scope);
+      expect(cloud.createCalls, 3);
+      expect(cloud.values, hasLength(1));
+    });
   });
 }
 
@@ -381,6 +564,7 @@ UserProfile _profile({Map<String, dynamic> legacy = const {}}) => UserProfile(
 final class _TaskCloud implements RevisionedTaskCloudRepository {
   final values = <RevisionedTask>[];
   bool unavailable = false;
+  int createCalls = 0;
 
   @override
   Future<List<RevisionedTask>> load({int limit = 100}) async =>
@@ -391,6 +575,7 @@ final class _TaskCloud implements RevisionedTaskCloudRepository {
     TaskMutation mutation,
     String accountScopeId,
   ) async {
+    createCalls++;
     if (unavailable) throw StateError('offline');
     final existing =
         values.where((value) => value.entityId == mutation.targetId);
@@ -543,4 +728,52 @@ final class _ShoppingCloud implements RevisionedShoppingCloudRepository {
       value: updated,
     );
   }
+}
+
+final class _DelayedTaskCloud implements RevisionedTaskCloudRepository {
+  final createStarted = Completer<void>();
+  final _createResult = Completer<RevisionedCloudWriteResult<RevisionedTask>>();
+
+  void completeCreate() {
+    if (_createResult.isCompleted) return;
+    _createResult.complete(
+      RevisionedCloudWriteResult(
+        RevisionedCloudWriteStatus.success,
+        value: RevisionedTask(
+          accountScopeId: 'account-a',
+          entityId: 'task-late',
+          task: TaskModel(
+            id: 'task-late',
+            title: 'Tâche',
+            category: 'Perso',
+            isDone: false,
+            createdAt: DateTime.utc(2026, 7, 23, 10),
+          ),
+          revision: 1,
+          createdAt: DateTime.utc(2026, 7, 23, 10),
+          updatedAt: DateTime.utc(2026, 7, 23, 10),
+          lastMutationId: 'mutation-late',
+        ),
+      ),
+    );
+  }
+
+  @override
+  Future<List<RevisionedTask>> load({int limit = 100}) async => const [];
+
+  @override
+  Future<RevisionedCloudWriteResult<RevisionedTask>> create(
+    TaskMutation mutation,
+    String accountScopeId,
+  ) {
+    if (!createStarted.isCompleted) createStarted.complete();
+    return _createResult.future;
+  }
+
+  @override
+  Future<RevisionedCloudWriteResult<RevisionedTask>> update(
+    TaskMutation mutation,
+    String accountScopeId,
+  ) =>
+      throw UnimplementedError();
 }

@@ -18,6 +18,7 @@ class StorageService {
   static const String onboardingDoneKey = "onboarding_done";
   static final ProfileRevisionSyncService _sync = ProfileRevisionSyncService(
     cloud: const FirestoreRevisionedProfileRepository(),
+    currentAccountScope: () => AuthService.currentUserId,
   );
 
   static String _scopedCompatibilityKey(String scope) =>

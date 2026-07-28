@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -225,6 +226,26 @@ void main() {
     final operation = (await journal.load()).single;
     expect(operation.state, EventSyncOperationState.conflict);
     expect(operation.conflictType, EventSyncConflictType.retryExhausted);
+  });
+
+  test('cloud timeout retains the operation for bounded retry', () async {
+    final journal = EventSyncJournal();
+    await journal.append(
+      _operation('timeout', EventSyncOperationType.create),
+    );
+    final service = EventSyncService(
+      journal: journal,
+      operationTimeout: const Duration(milliseconds: 1),
+      execute: (_) => Completer<EventMutationResult>().future,
+    );
+
+    final result = await service.synchronize();
+    final operation = (await journal.load()).single;
+
+    expect(result.status, EventSyncStatus.failed);
+    expect(operation.state, EventSyncOperationState.failed);
+    expect(operation.attempts, 1);
+    expect(operation.conflictType, EventSyncConflictType.persistenceFailure);
   });
 
   test('version one journal entries remain readable', () {

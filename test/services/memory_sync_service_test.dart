@@ -44,6 +44,41 @@ void main() {
     expect(result.state.syncStatus, MemorySyncStatus.unavailable);
   });
 
+  test('bootstrap reprend une mutation durable après redémarrage', () async {
+    final local = await _local();
+    await local.save(
+      MemorySyncLocalState(
+        accountScopeId: 'account-a',
+        policy: _policy(now),
+        memories: [_memory(now, mutationId: 'memory-create')],
+        mutations: [
+          _mutation(
+            now,
+            id: 'memory-1',
+            mutationId: 'memory-create',
+          ),
+        ],
+        syncStatus: MemorySyncStatus.pending,
+      ),
+    );
+    final cloud = _Cloud(policy: _policy(now));
+    final restarted = MemorySyncService(
+      local: local,
+      cloud: cloud,
+      currentScope: () => 'account-a',
+      now: () => now,
+    );
+
+    final result = await restarted.bootstrap();
+    final second = await restarted.bootstrap();
+
+    expect(result.state.mutations, isEmpty);
+    expect(result.state.syncStatus, MemorySyncStatus.synced);
+    expect(second.state.mutations, isEmpty);
+    expect(cloud.memories, hasLength(1));
+    expect(cloud.memoryWrites, 1);
+  });
+
   test('politique est révisionnée et mutation idempotente', () async {
     final cloud = _Cloud();
     final service = await _service(cloud, now: now);

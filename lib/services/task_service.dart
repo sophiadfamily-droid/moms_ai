@@ -42,6 +42,7 @@ class TaskService {
   static final ValueNotifier<int> tasksVersion = ValueNotifier<int>(0);
   static final TaskRevisionSyncService _sync = TaskRevisionSyncService(
     cloud: const FirestoreRevisionedTaskRepository(),
+    currentAccountScope: () => AuthService.currentUserId,
   );
 
   static void notifyTasksChanged() {

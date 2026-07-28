@@ -7,15 +7,20 @@ typedef EventSyncOperationExecutor = Future<EventMutationResult> Function(
 );
 
 final class EventSyncService {
+  static const defaultOperationTimeout = Duration(seconds: 15);
+
   final EventSyncJournal _journal;
   final EventSyncOperationExecutor _execute;
+  final Duration _operationTimeout;
   Future<EventSyncResult>? _activeSync;
 
   EventSyncService({
     required EventSyncOperationExecutor execute,
     EventSyncJournal? journal,
+    Duration operationTimeout = defaultOperationTimeout,
   })  : _execute = execute,
-        _journal = journal ?? EventSyncJournal();
+        _journal = journal ?? EventSyncJournal(),
+        _operationTimeout = operationTimeout;
 
   Future<EventSyncResult> synchronize() {
     return _activeSync ??=
@@ -42,7 +47,7 @@ final class EventSyncService {
       await _journal.save(operations);
       EventMutationResult result;
       try {
-        result = await _execute(inFlight);
+        result = await _execute(inFlight).timeout(_operationTimeout);
       } catch (_) {
         result = const EventMutationResult.persistenceFailure();
       }

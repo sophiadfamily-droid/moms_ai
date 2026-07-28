@@ -30,6 +30,7 @@ class ShoppingService {
   static final ValueNotifier<int> shoppingVersion = ValueNotifier<int>(0);
   static final ShoppingRevisionSyncService _sync = ShoppingRevisionSyncService(
     cloud: const FirestoreRevisionedShoppingRepository(),
+    currentAccountScope: () => AuthService.currentUserId,
   );
 
   static void notifyUpdate() {

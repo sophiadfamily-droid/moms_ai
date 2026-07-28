@@ -7,6 +7,22 @@ typedef RevisionedActionRetryGuard = Future<bool> Function(
   RevisionedActionReference reference,
 );
 
+typedef RevisionedCurrentAccountScope = String? Function();
+
+abstract final class RevisionedSyncLimits {
+  static const cloudTimeout = Duration(seconds: 15);
+  static const maximumRetryDelay = Duration(minutes: 5);
+
+  static Duration retryDelay(int attempt) {
+    final seconds = 5 * (1 << (attempt - 1));
+    return Duration(
+      seconds: seconds > maximumRetryDelay.inSeconds
+          ? maximumRetryDelay.inSeconds
+          : seconds,
+    );
+  }
+}
+
 abstract interface class RevisionedTaskCloudRepository {
   Future<List<RevisionedTask>> load({int limit = 100});
   Future<RevisionedCloudWriteResult<RevisionedTask>> create(
@@ -66,23 +82,32 @@ final class TaskRevisionSyncService {
         const RevisionedDomainLocalRepository(),
     RevisionedOfflineJournal journal = const RevisionedOfflineJournal(),
     RevisionedActionRetryGuard? retryGuard,
+    RevisionedCurrentAccountScope? currentAccountScope,
+    Duration cloudTimeout = RevisionedSyncLimits.cloudTimeout,
     DateTime Function()? now,
   })  : _cloud = cloud,
         _local = local,
         _journal = journal,
         _retryGuard = retryGuard,
+        _currentAccountScope = currentAccountScope,
+        _cloudTimeout = cloudTimeout,
         _now = now;
 
   final RevisionedTaskCloudRepository _cloud;
   final RevisionedDomainLocalRepository _local;
   final RevisionedOfflineJournal _journal;
   final RevisionedActionRetryGuard? _retryGuard;
+  final RevisionedCurrentAccountScope? _currentAccountScope;
+  final Duration _cloudTimeout;
   final DateTime Function()? _now;
 
   Future<List<RevisionedTask>> bootstrap(String scope) async {
+    if (!_scopeIsCurrent(scope)) return const [];
+    await _recoverPending(scope);
     final local = await _local.loadTasks(scope);
     try {
-      final cloud = await _cloud.load();
+      final cloud = await _cloud.load().timeout(_cloudTimeout);
+      if (!_scopeIsCurrent(scope)) return local;
       final merged = _mergeTaskState(local, cloud);
       await _local.saveTasks(scope, merged);
       return merged;
@@ -133,15 +158,15 @@ final class TaskRevisionSyncService {
                     ? false
                     : existing.isTombstone,
           );
-    await _local.saveTasks(scope, [
-      ...local.where((item) => item.entityId != mutation.targetId),
-      proposed,
-    ]);
     await _journal.enqueue(
       accountScopeId: scope,
       domain: RevisionedSyncDomain.task,
       mutation: mutation,
     );
+    await _local.saveTasks(scope, [
+      ...local.where((item) => item.entityId != mutation.targetId),
+      proposed,
+    ]);
     return _send(scope, mutation);
   }
 
@@ -149,6 +174,11 @@ final class TaskRevisionSyncService {
     String scope,
     String mutationId,
   ) async {
+    if (!_scopeIsCurrent(scope)) {
+      return const RevisionedSyncResult(
+        status: RevisionedCloudWriteStatus.accountMismatch,
+      );
+    }
     final state = await _journal.load(
       accountScopeId: scope,
       domain: RevisionedSyncDomain.task,
@@ -161,7 +191,23 @@ final class TaskRevisionSyncService {
       );
     }
     final mutation = matches.single as TaskMutation;
+    final existingConflict = state.conflicts
+        .where((item) => item.mutationId == mutation.mutationId)
+        .firstOrNull;
+    if (existingConflict != null) {
+      return RevisionedSyncResult(
+        status: RevisionedCloudWriteStatus.revisionConflict,
+        conflict: existingConflict,
+      );
+    }
     if (mutation.attempt >= RevisionedJournalState.maxAttempts) {
+      return const RevisionedSyncResult(
+        status: RevisionedCloudWriteStatus.unavailable,
+      );
+    }
+    final timestamp = (_now ?? DateTime.now)().toUtc();
+    if (mutation.nextRetryAt != null &&
+        timestamp.isBefore(mutation.nextRetryAt!)) {
       return const RevisionedSyncResult(
         status: RevisionedCloudWriteStatus.unavailable,
       );
@@ -173,7 +219,12 @@ final class TaskRevisionSyncService {
         status: RevisionedCloudWriteStatus.unavailable,
       );
     }
-    final retried = _withAttempt(mutation, mutation.attempt + 1);
+    final nextAttempt = mutation.attempt + 1;
+    final retried = _withAttempt(
+      mutation,
+      nextAttempt,
+      timestamp.add(RevisionedSyncLimits.retryDelay(nextAttempt)),
+    );
     await _journal.replace(
       state.copyWith(
         mutations: state.mutations
@@ -188,10 +239,20 @@ final class TaskRevisionSyncService {
     String scope,
     TaskMutation mutation,
   ) async {
+    if (!_scopeIsCurrent(scope)) {
+      return const RevisionedSyncResult(
+        status: RevisionedCloudWriteStatus.accountMismatch,
+      );
+    }
     try {
       final result = mutation.type == TaskMutationType.createTask
-          ? await _cloud.create(mutation, scope)
-          : await _cloud.update(mutation, scope);
+          ? await _cloud.create(mutation, scope).timeout(_cloudTimeout)
+          : await _cloud.update(mutation, scope).timeout(_cloudTimeout);
+      if (!_scopeIsCurrent(scope)) {
+        return const RevisionedSyncResult(
+          status: RevisionedCloudWriteStatus.accountMismatch,
+        );
+      }
       if (result.status == RevisionedCloudWriteStatus.success ||
           result.status == RevisionedCloudWriteStatus.idempotent) {
         await _complete(scope, mutation.mutationId, result.value!);
@@ -208,6 +269,54 @@ final class TaskRevisionSyncService {
       );
     }
   }
+
+  Future<void> _recoverPending(String scope) async {
+    final state = await _journal.load(
+      accountScopeId: scope,
+      domain: RevisionedSyncDomain.task,
+    );
+    for (final pending in state.mutations.toList(growable: false)) {
+      if (!_scopeIsCurrent(scope)) return;
+      await _restoreLocalProjection(scope, pending as TaskMutation);
+      await retry(scope, pending.mutationId);
+    }
+  }
+
+  Future<void> _restoreLocalProjection(
+    String scope,
+    TaskMutation mutation,
+  ) async {
+    final local = await _local.loadTasks(scope);
+    final matches = local.where((item) => item.entityId == mutation.targetId);
+    if (matches.isNotEmpty &&
+        matches.single.lastMutationId == mutation.mutationId) {
+      return;
+    }
+    final existing = matches.isEmpty ? null : matches.single;
+    if (existing != null && existing.revision != mutation.expectedRevision) {
+      return;
+    }
+    final timestamp = mutation.createdAt.toUtc();
+    final restored = RevisionedTask(
+      accountScopeId: scope,
+      entityId: mutation.targetId,
+      task: mutation.task,
+      revision: mutation.expectedRevision + 1,
+      createdAt: existing?.createdAt ?? timestamp,
+      updatedAt: timestamp,
+      lastMutationId: mutation.mutationId,
+      syncStatus: RevisionedSyncStatus.queued,
+      isTombstone: mutation.type == TaskMutationType.deleteTask ||
+          mutation.type == TaskMutationType.archiveTask,
+    );
+    await _local.saveTasks(scope, [
+      ...local.where((item) => item.entityId != mutation.targetId),
+      restored,
+    ]);
+  }
+
+  bool _scopeIsCurrent(String scope) =>
+      _currentAccountScope == null || _currentAccountScope() == scope;
 
   Future<void> _complete(
     String scope,
@@ -228,9 +337,7 @@ final class TaskRevisionSyncService {
         mutations: journal.mutations
             .where((item) => item.mutationId != mutationId)
             .toList(),
-        receipts: [...journal.receipts, mutationId]
-            .take(RevisionedJournalState.maxReceipts)
-            .toList(),
+        receipts: _boundedReceipts(journal.receipts, mutationId),
       ),
     );
   }
@@ -310,23 +417,32 @@ final class ShoppingRevisionSyncService {
         const RevisionedDomainLocalRepository(),
     RevisionedOfflineJournal journal = const RevisionedOfflineJournal(),
     RevisionedActionRetryGuard? retryGuard,
+    RevisionedCurrentAccountScope? currentAccountScope,
+    Duration cloudTimeout = RevisionedSyncLimits.cloudTimeout,
     DateTime Function()? now,
   })  : _cloud = cloud,
         _local = local,
         _journal = journal,
         _retryGuard = retryGuard,
+        _currentAccountScope = currentAccountScope,
+        _cloudTimeout = cloudTimeout,
         _now = now;
 
   final RevisionedShoppingCloudRepository _cloud;
   final RevisionedDomainLocalRepository _local;
   final RevisionedOfflineJournal _journal;
   final RevisionedActionRetryGuard? _retryGuard;
+  final RevisionedCurrentAccountScope? _currentAccountScope;
+  final Duration _cloudTimeout;
   final DateTime Function()? _now;
 
   Future<List<RevisionedShoppingItem>> bootstrap(String scope) async {
+    if (!_scopeIsCurrent(scope)) return const [];
+    await _recoverPending(scope);
     final local = await _local.loadShopping(scope);
     try {
-      final cloud = await _cloud.load();
+      final cloud = await _cloud.load().timeout(_cloudTimeout);
+      if (!_scopeIsCurrent(scope)) return local;
       final merged = {for (final item in local) item.entityId: item};
       for (final remote in cloud) {
         final current = merged[remote.entityId];
@@ -385,15 +501,15 @@ final class ShoppingRevisionSyncService {
           mutation.type == ShoppingMutationType.clearList,
       clearGeneration: mutation.clearGeneration,
     );
-    await _local.saveShopping(scope, [
-      ...local.where((item) => item.entityId != mutation.targetId),
-      proposed,
-    ]);
     await _journal.enqueue(
       accountScopeId: scope,
       domain: RevisionedSyncDomain.shopping,
       mutation: mutation,
     );
+    await _local.saveShopping(scope, [
+      ...local.where((item) => item.entityId != mutation.targetId),
+      proposed,
+    ]);
     return _send(scope, mutation);
   }
 
@@ -401,6 +517,11 @@ final class ShoppingRevisionSyncService {
     String scope,
     String mutationId,
   ) async {
+    if (!_scopeIsCurrent(scope)) {
+      return const RevisionedSyncResult(
+        status: RevisionedCloudWriteStatus.accountMismatch,
+      );
+    }
     final journal = await _journal.load(
       accountScopeId: scope,
       domain: RevisionedSyncDomain.shopping,
@@ -413,7 +534,23 @@ final class ShoppingRevisionSyncService {
       );
     }
     final mutation = found.single as ShoppingMutation;
+    final existingConflict = journal.conflicts
+        .where((item) => item.mutationId == mutation.mutationId)
+        .firstOrNull;
+    if (existingConflict != null) {
+      return RevisionedSyncResult(
+        status: RevisionedCloudWriteStatus.revisionConflict,
+        conflict: existingConflict,
+      );
+    }
     final actionReference = mutation.actionReference;
+    final timestamp = (_now ?? DateTime.now)().toUtc();
+    if (mutation.nextRetryAt != null &&
+        timestamp.isBefore(mutation.nextRetryAt!)) {
+      return const RevisionedSyncResult(
+        status: RevisionedCloudWriteStatus.unavailable,
+      );
+    }
     if (mutation.attempt >= RevisionedJournalState.maxAttempts ||
         actionReference != null &&
             (_retryGuard == null || !await _retryGuard(actionReference))) {
@@ -421,7 +558,12 @@ final class ShoppingRevisionSyncService {
         status: RevisionedCloudWriteStatus.unavailable,
       );
     }
-    final retried = _withAttempt(mutation, mutation.attempt + 1);
+    final nextAttempt = mutation.attempt + 1;
+    final retried = _withAttempt(
+      mutation,
+      nextAttempt,
+      timestamp.add(RevisionedSyncLimits.retryDelay(nextAttempt)),
+    );
     await _journal.replace(
       journal.copyWith(
         mutations: journal.mutations
@@ -436,10 +578,20 @@ final class ShoppingRevisionSyncService {
     String scope,
     ShoppingMutation mutation,
   ) async {
+    if (!_scopeIsCurrent(scope)) {
+      return const RevisionedSyncResult(
+        status: RevisionedCloudWriteStatus.accountMismatch,
+      );
+    }
     try {
       final result = mutation.type == ShoppingMutationType.addItem
-          ? await _cloud.create(mutation, scope)
-          : await _cloud.update(mutation, scope);
+          ? await _cloud.create(mutation, scope).timeout(_cloudTimeout)
+          : await _cloud.update(mutation, scope).timeout(_cloudTimeout);
+      if (!_scopeIsCurrent(scope)) {
+        return const RevisionedSyncResult(
+          status: RevisionedCloudWriteStatus.accountMismatch,
+        );
+      }
       if (result.status == RevisionedCloudWriteStatus.success ||
           result.status == RevisionedCloudWriteStatus.idempotent) {
         final local = await _local.loadShopping(scope);
@@ -465,6 +617,55 @@ final class ShoppingRevisionSyncService {
       );
     }
   }
+
+  Future<void> _recoverPending(String scope) async {
+    final state = await _journal.load(
+      accountScopeId: scope,
+      domain: RevisionedSyncDomain.shopping,
+    );
+    for (final pending in state.mutations.toList(growable: false)) {
+      if (!_scopeIsCurrent(scope)) return;
+      await _restoreLocalProjection(scope, pending as ShoppingMutation);
+      await retry(scope, pending.mutationId);
+    }
+  }
+
+  Future<void> _restoreLocalProjection(
+    String scope,
+    ShoppingMutation mutation,
+  ) async {
+    final local = await _local.loadShopping(scope);
+    final matches = local.where((item) => item.entityId == mutation.targetId);
+    if (matches.isNotEmpty &&
+        matches.single.lastMutationId == mutation.mutationId) {
+      return;
+    }
+    final existing = matches.isEmpty ? null : matches.single;
+    if (existing != null && existing.revision != mutation.expectedRevision) {
+      return;
+    }
+    final timestamp = mutation.createdAt.toUtc();
+    final restored = RevisionedShoppingItem(
+      accountScopeId: scope,
+      entityId: mutation.targetId,
+      item: mutation.item,
+      revision: mutation.expectedRevision + 1,
+      createdAt: existing?.createdAt ?? timestamp,
+      updatedAt: timestamp,
+      lastMutationId: mutation.mutationId,
+      syncStatus: RevisionedSyncStatus.queued,
+      isTombstone: mutation.type == ShoppingMutationType.removeItem ||
+          mutation.type == ShoppingMutationType.clearList,
+      clearGeneration: mutation.clearGeneration,
+    );
+    await _local.saveShopping(scope, [
+      ...local.where((item) => item.entityId != mutation.targetId),
+      restored,
+    ]);
+  }
+
+  bool _scopeIsCurrent(String scope) =>
+      _currentAccountScope == null || _currentAccountScope() == scope;
 
   Future<RevisionedSyncResult<RevisionedShoppingItem>> _conflict(
     String scope,
@@ -517,9 +718,7 @@ final class ShoppingRevisionSyncService {
         mutations: journal.mutations
             .where((item) => item.mutationId != mutationId)
             .toList(),
-        receipts: [...journal.receipts, mutationId]
-            .take(RevisionedJournalState.maxReceipts)
-            .toList(),
+        receipts: _boundedReceipts(journal.receipts, mutationId),
       ),
     );
   }
@@ -528,6 +727,7 @@ final class ShoppingRevisionSyncService {
 RevisionedDomainMutation _withAttempt(
   RevisionedDomainMutation mutation,
   int attempt,
+  DateTime nextRetryAt,
 ) =>
     switch (mutation) {
       TaskMutation() => TaskMutation(
@@ -536,7 +736,7 @@ RevisionedDomainMutation _withAttempt(
           expectedRevision: mutation.expectedRevision,
           createdAt: mutation.createdAt,
           attempt: attempt,
-          nextRetryAt: mutation.nextRetryAt,
+          nextRetryAt: nextRetryAt,
           state: RevisionedMutationState.sending,
           actionReference: mutation.actionReference,
           type: mutation.type,
@@ -548,7 +748,7 @@ RevisionedDomainMutation _withAttempt(
           expectedRevision: mutation.expectedRevision,
           createdAt: mutation.createdAt,
           attempt: attempt,
-          nextRetryAt: mutation.nextRetryAt,
+          nextRetryAt: nextRetryAt,
           state: RevisionedMutationState.sending,
           actionReference: mutation.actionReference,
           type: mutation.type,
@@ -561,7 +761,7 @@ RevisionedDomainMutation _withAttempt(
           expectedRevision: mutation.expectedRevision,
           createdAt: mutation.createdAt,
           attempt: attempt,
-          nextRetryAt: mutation.nextRetryAt,
+          nextRetryAt: nextRetryAt,
           state: RevisionedMutationState.sending,
           actionReference: mutation.actionReference,
           type: mutation.type,
@@ -570,6 +770,14 @@ RevisionedDomainMutation _withAttempt(
         ),
     };
 
+List<String> _boundedReceipts(List<String> receipts, String mutationId) =>
+    [...receipts.where((value) => value != mutationId), mutationId]
+        .reversed
+        .take(RevisionedJournalState.maxReceipts)
+        .toList()
+        .reversed
+        .toList();
+
 final class ProfileRevisionSyncService {
   const ProfileRevisionSyncService({
     required RevisionedProfileCloudRepository cloud,
@@ -577,23 +785,32 @@ final class ProfileRevisionSyncService {
         const RevisionedDomainLocalRepository(),
     RevisionedOfflineJournal journal = const RevisionedOfflineJournal(),
     RevisionedActionRetryGuard? retryGuard,
+    RevisionedCurrentAccountScope? currentAccountScope,
+    Duration cloudTimeout = RevisionedSyncLimits.cloudTimeout,
     DateTime Function()? now,
   })  : _cloud = cloud,
         _local = local,
         _journal = journal,
         _retryGuard = retryGuard,
+        _currentAccountScope = currentAccountScope,
+        _cloudTimeout = cloudTimeout,
         _now = now;
 
   final RevisionedProfileCloudRepository _cloud;
   final RevisionedDomainLocalRepository _local;
   final RevisionedOfflineJournal _journal;
   final RevisionedActionRetryGuard? _retryGuard;
+  final RevisionedCurrentAccountScope? _currentAccountScope;
+  final Duration _cloudTimeout;
   final DateTime Function()? _now;
 
   Future<RevisionedProfileState?> bootstrap(String scope) async {
+    if (!_scopeIsCurrent(scope)) return null;
+    await _recoverPending(scope);
     final local = await _local.loadProfile(scope);
     try {
-      final remote = await _cloud.load();
+      final remote = await _cloud.load().timeout(_cloudTimeout);
+      if (!_scopeIsCurrent(scope)) return local;
       if (remote == null) return local;
       if (local == null ||
           remote.revision >= local.revision &&
@@ -637,12 +854,12 @@ final class ProfileRevisionSyncService {
         ...mutation.profile.legacyExtensions,
       },
     );
-    await _local.saveProfile(scope, proposed);
     await _journal.enqueue(
       accountScopeId: scope,
       domain: RevisionedSyncDomain.profile,
       mutation: mutation,
     );
+    await _local.saveProfile(scope, proposed);
     return _send(scope, mutation);
   }
 
@@ -650,6 +867,11 @@ final class ProfileRevisionSyncService {
     String scope,
     String mutationId,
   ) async {
+    if (!_scopeIsCurrent(scope)) {
+      return const RevisionedSyncResult(
+        status: RevisionedCloudWriteStatus.accountMismatch,
+      );
+    }
     final journal = await _journal.load(
       accountScopeId: scope,
       domain: RevisionedSyncDomain.profile,
@@ -662,7 +884,23 @@ final class ProfileRevisionSyncService {
       );
     }
     final mutation = found.single as ProfileMutation;
+    final existingConflict = journal.conflicts
+        .where((item) => item.mutationId == mutation.mutationId)
+        .firstOrNull;
+    if (existingConflict != null) {
+      return RevisionedSyncResult(
+        status: RevisionedCloudWriteStatus.revisionConflict,
+        conflict: existingConflict,
+      );
+    }
     final actionReference = mutation.actionReference;
+    final timestamp = (_now ?? DateTime.now)().toUtc();
+    if (mutation.nextRetryAt != null &&
+        timestamp.isBefore(mutation.nextRetryAt!)) {
+      return const RevisionedSyncResult(
+        status: RevisionedCloudWriteStatus.unavailable,
+      );
+    }
     if (mutation.attempt >= RevisionedJournalState.maxAttempts ||
         actionReference != null &&
             (_retryGuard == null || !await _retryGuard(actionReference))) {
@@ -670,7 +908,12 @@ final class ProfileRevisionSyncService {
         status: RevisionedCloudWriteStatus.unavailable,
       );
     }
-    final retried = _withAttempt(mutation, mutation.attempt + 1);
+    final nextAttempt = mutation.attempt + 1;
+    final retried = _withAttempt(
+      mutation,
+      nextAttempt,
+      timestamp.add(RevisionedSyncLimits.retryDelay(nextAttempt)),
+    );
     await _journal.replace(
       journal.copyWith(
         mutations: journal.mutations
@@ -685,10 +928,20 @@ final class ProfileRevisionSyncService {
     String scope,
     ProfileMutation mutation,
   ) async {
+    if (!_scopeIsCurrent(scope)) {
+      return const RevisionedSyncResult(
+        status: RevisionedCloudWriteStatus.accountMismatch,
+      );
+    }
     try {
       final result = mutation.expectedRevision == 0
-          ? await _cloud.create(mutation, scope)
-          : await _cloud.update(mutation, scope);
+          ? await _cloud.create(mutation, scope).timeout(_cloudTimeout)
+          : await _cloud.update(mutation, scope).timeout(_cloudTimeout);
+      if (!_scopeIsCurrent(scope)) {
+        return const RevisionedSyncResult(
+          status: RevisionedCloudWriteStatus.accountMismatch,
+        );
+      }
       if (result.status == RevisionedCloudWriteStatus.success ||
           result.status == RevisionedCloudWriteStatus.idempotent) {
         await _local.saveProfile(scope, result.value!);
@@ -701,9 +954,7 @@ final class ProfileRevisionSyncService {
             mutations: journal.mutations
                 .where((item) => item.mutationId != mutation.mutationId)
                 .toList(),
-            receipts: [...journal.receipts, mutation.mutationId]
-                .take(RevisionedJournalState.maxReceipts)
-                .toList(),
+            receipts: _boundedReceipts(journal.receipts, mutation.mutationId),
           ),
         );
         return RevisionedSyncResult(status: result.status, value: result.value);
@@ -719,6 +970,49 @@ final class ProfileRevisionSyncService {
       );
     }
   }
+
+  Future<void> _recoverPending(String scope) async {
+    final state = await _journal.load(
+      accountScopeId: scope,
+      domain: RevisionedSyncDomain.profile,
+    );
+    for (final pending in state.mutations.toList(growable: false)) {
+      if (!_scopeIsCurrent(scope)) return;
+      await _restoreLocalProjection(scope, pending as ProfileMutation);
+      await retry(scope, pending.mutationId);
+    }
+  }
+
+  Future<void> _restoreLocalProjection(
+    String scope,
+    ProfileMutation mutation,
+  ) async {
+    final current = await _local.loadProfile(scope);
+    if (current?.lastMutationId == mutation.mutationId) return;
+    if (current != null && current.revision != mutation.expectedRevision) {
+      return;
+    }
+    final timestamp = mutation.createdAt.toUtc();
+    await _local.saveProfile(
+      scope,
+      RevisionedProfileState(
+        accountScopeId: scope,
+        profile: mutation.profile,
+        revision: mutation.expectedRevision + 1,
+        createdAt: current?.createdAt ?? timestamp,
+        updatedAt: timestamp,
+        lastMutationId: mutation.mutationId,
+        syncStatus: RevisionedSyncStatus.queued,
+        legacyExtensions: {
+          ...?current?.legacyExtensions,
+          ...mutation.profile.legacyExtensions,
+        },
+      ),
+    );
+  }
+
+  bool _scopeIsCurrent(String scope) =>
+      _currentAccountScope == null || _currentAccountScope() == scope;
 
   Future<RevisionedSyncResult<RevisionedProfileState>> _conflict(
     String scope,

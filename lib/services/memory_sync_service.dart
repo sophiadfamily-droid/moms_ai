@@ -51,6 +51,7 @@ final class MemorySyncService {
     required String? Function() currentScope,
     this.now = DateTime.now,
     this.retryPolicy = const MemoryRetryPolicy(),
+    this.cloudTimeout = const Duration(seconds: 15),
     this.expirationObserver,
   })  : _local = local,
         _cloud = cloud,
@@ -64,6 +65,7 @@ final class MemorySyncService {
   final String? Function() _currentScope;
   final DateTime Function() now;
   final MemoryRetryPolicy retryPolicy;
+  final Duration cloudTimeout;
   final MemoryExpirationObserver? expirationObserver;
 
   Future<MemoryBootstrapResult> bootstrap() async {
@@ -107,12 +109,15 @@ final class MemorySyncService {
         mutations: local?.mutations ?? const [],
         conflicts: local?.conflicts ?? const [],
         receipts: local?.receipts ?? const [],
-        syncStatus: MemorySyncStatus.synced,
+        syncStatus: (local?.mutations ?? const <MemorySyncMutation>[]).isEmpty
+            ? MemorySyncStatus.synced
+            : MemorySyncStatus.pending,
         lastBootstrapAt: now().toUtc(),
       );
       await _local.save(state);
+      final recovered = state.mutations.isEmpty ? state : await synchronize();
       return MemoryBootstrapResult(
-        state,
+        recovered,
         restoredFromCloud: local == null && mergedMemories.isNotEmpty,
       );
     } on Object {
@@ -167,7 +172,6 @@ final class MemorySyncService {
       memories: memories,
       syncStatus: MemorySyncStatus.pending,
     );
-    await _local.save(state);
     return _local.enqueue(
       state,
       MemorySyncMutation(
@@ -215,7 +219,6 @@ final class MemorySyncService {
       policy: revisioned,
       syncStatus: MemorySyncStatus.pending,
     );
-    await _local.save(withPolicy);
     return _local.enqueue(
       withPolicy,
       MemorySyncMutation(
@@ -330,7 +333,22 @@ final class MemorySyncService {
       );
       queue[index] = mutation;
       await _local.save(state.copyWith(mutations: queue));
-      final result = await _send(state, mutation);
+      MemoryCloudWriteResult result;
+      try {
+        result = await _send(state, mutation).timeout(cloudTimeout);
+      } on Object {
+        result =
+            const MemoryCloudWriteResult(MemoryCloudWriteStatus.unavailable);
+      }
+      if (_currentScope() != scope) {
+        queue[index] = mutation.copyWith(
+          state: MemoryMutationState.retryScheduled,
+          nextRetryAt: now().toUtc().add(
+                retryPolicy.delayFor(mutation.attempt),
+              ),
+        );
+        break;
+      }
       switch (result.status) {
         case MemoryCloudWriteStatus.success:
         case MemoryCloudWriteStatus.idempotentSuccess:

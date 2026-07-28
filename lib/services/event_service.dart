@@ -56,6 +56,7 @@ final class EventProtectedConflictReference {
 
 class EventService {
   static const String eventsKey = "zelia_events";
+  static const Duration cloudMutationTimeout = Duration(seconds: 15);
   static const String guestScopeKey = "guest";
   static const String guestEventsKey = "$eventsKey:$guestScopeKey";
   static final EventSyncJournal _syncJournal = EventSyncJournal();
@@ -601,7 +602,7 @@ class EventService {
         existing: current,
         proposed: next,
         expectedEventRevision: expectedEventRevision,
-      );
+      ).timeout(cloudMutationTimeout);
       if (cloudResult != null &&
           cloudResult.status != EventMutationStatus.success &&
           cloudResult.status != EventMutationStatus.persistenceFailure) {
@@ -688,7 +689,7 @@ class EventService {
       final cloudResult = await cloudDelete(
         existing: events[index],
         expectedEventRevision: expectedEventRevision,
-      );
+      ).timeout(cloudMutationTimeout);
       if (cloudResult != null &&
           cloudResult.status != EventMutationStatus.success &&
           cloudResult.status != EventMutationStatus.persistenceFailure) {
@@ -851,7 +852,8 @@ class EventService {
   }) async {
     EventMutationResult? result;
     try {
-      result = await CloudEventService.createEvent(event);
+      result = await CloudEventService.createEvent(event)
+          .timeout(cloudMutationTimeout);
     } catch (_) {
       result = const EventMutationResult.persistenceFailure();
     }

@@ -1711,6 +1711,30 @@ charge au plus 100 documents cloud par domaine, adopte les révisions valides et
 préserve les mutations locales non synchronisées. Un échec réseau laisse un
 état `queued`/`unavailable`; il n’est jamais annoncé comme succès cloud.
 
+V1-S0.3 durcit ce contrat sans ajouter un second moteur de synchronisation.
+Pour Task, Shopping et Profile, l’intention est désormais journalisée avant la
+projection locale, puis le bootstrap rejoue séquentiellement les mutations
+restantes avec leur `mutationId` original. Un crash entre ces deux écritures
+laisse donc une intention récupérable ; la projection locale est reconstruite
+depuis le payload fermé du journal avant le retry. Les appels cloud sont bornés
+à quinze secondes et les cinq tentatives suivent un backoff exponentiel borné
+à cinq minutes. Une réponse arrivée après changement de compte n’acquitte
+ni la projection locale ni le journal de l’ancien compte ; le retry idempotent
+reprend uniquement lorsque ce compte redevient actif. Une mutation en conflit
+reste bloquée par son conflit explicite et n’est pas rejouée en boucle. Les
+reçus conservent les 200 identités les plus récentes.
+
+Event conserve son journal spécialisé, ses tombstones, ses cinq tentatives et
+ses conflits : S0.3 borne les mutations directes et chaque exécution du worker
+cloud à quinze secondes, un timeout journalisé restant une opération durable
+en échec réessayable. Memory conserve
+sa file, son backoff exponentiel et sa politique propre ; l’état métier et la
+mutation sont maintenant écrits ensemble, le bootstrap reprend les mutations
+persistées, et les appels cloud sont également bornés. Routine/proposition
+reste une transaction idempotente par identifiants stables. HumanModel conserve
+son unique pending canonique révisionné. Ces domaines ne sont pas artificiellement
+convertis au protocole Y.1.
+
 Les façades `TaskService`, `ShoppingService` et `StorageService` restent
 compatibles avec les écrans historiques, mais leurs écritures authentifiées
 passent par `TaskRevisionSyncService`, `ShoppingRevisionSyncService` ou
