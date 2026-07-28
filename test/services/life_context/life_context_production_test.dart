@@ -145,6 +145,37 @@ void main() {
         production.compatibility(LifeContextCapability.memoryReasoning);
     expect(memory.state, LifeContextCapabilityState.blocked);
     expect(memory.reasonCodes, ['memory_stale']);
+    expect(memory.blockingDomains, {LifeContextDomain.memory});
+    expect(memory.availableDomains, isEmpty);
+    expect(memory.sourceGeneration, production.projectionGeneration);
+  });
+
+  test('capability exposes scenario-specific required domains', () async {
+    var scope = scopeA;
+    final fixture = _Fixture(scope: () => scope, now: now);
+    final production = fixture.production(clock: () => now);
+    await production.refreshIfNeeded();
+
+    final planning = production.compatibility(
+      LifeContextCapability.planning,
+      additionalRequiredDomains: const {
+        LifeContextDomain.task,
+        LifeContextDomain.human,
+        LifeContextDomain.identity,
+      },
+    );
+
+    expect(
+      planning.requiredDomains,
+      containsAll({
+        LifeContextDomain.event,
+        LifeContextDomain.routine,
+        LifeContextDomain.task,
+        LifeContextDomain.human,
+        LifeContextDomain.identity,
+      }),
+    );
+    expect(planning.blockingDomains, isEmpty);
   });
 
   test('human invalidation also refreshes identity and routine', () async {

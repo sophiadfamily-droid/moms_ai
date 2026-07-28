@@ -188,16 +188,20 @@ final class LifeContextProduction {
   }
 
   LifeContextCapabilityCompatibility compatibility(
-    LifeContextCapability capability,
-  ) {
-    final required = switch (capability) {
-      LifeContextCapability.conversation => {LifeContextDomain.human},
-      LifeContextCapability.priority => {LifeContextDomain.task},
-      LifeContextCapability.planning => {
-          LifeContextDomain.event,
-          LifeContextDomain.routine,
-        },
-      LifeContextCapability.memoryReasoning => {LifeContextDomain.memory},
+    LifeContextCapability capability, {
+    Set<LifeContextDomain> additionalRequiredDomains = const {},
+  }) {
+    final required = <LifeContextDomain>{
+      ...switch (capability) {
+        LifeContextCapability.conversation => {LifeContextDomain.human},
+        LifeContextCapability.priority => {LifeContextDomain.task},
+        LifeContextCapability.planning => {
+            LifeContextDomain.event,
+            LifeContextDomain.routine,
+          },
+        LifeContextCapability.memoryReasoning => {LifeContextDomain.memory},
+      },
+      ...additionalRequiredDomains,
     };
     final snapshot = _snapshot;
     if (snapshot == null) {
@@ -206,9 +210,14 @@ final class LifeContextProduction {
         state: LifeContextCapabilityState.blocked,
         requiredDomains: required,
         reasonCodes: const ['projection_unavailable'],
+        blockingDomains: required,
+        sourceGeneration: _projectionGeneration,
       );
     }
     final reasons = <String>[];
+    final warnings = <String>[];
+    final available = <LifeContextDomain>{};
+    final blocking = <LifeContextDomain>{};
     for (final domain in required) {
       final metadata = _metadata(snapshot)[domain]!;
       if ({
@@ -218,10 +227,25 @@ final class LifeContextProduction {
         LifeContextAvailability.accountMismatch,
       }.contains(metadata.availability)) {
         reasons.add('${domain.name}_${metadata.availability.name}');
+        blocking.add(domain);
       } else if (metadata.availability ==
               LifeContextAvailability.availableStale ||
           metadata.freshness == LifeContextFreshness.stale) {
         reasons.add('${domain.name}_stale');
+        blocking.add(domain);
+      } else if (metadata.truncationState ==
+          LifeContextTruncationState.truncated) {
+        reasons.add('${domain.name}_truncated');
+        blocking.add(domain);
+      } else {
+        available.add(domain);
+      }
+    }
+    for (final entry in _metadata(snapshot).entries) {
+      if (!required.contains(entry.key) &&
+          (entry.value.availability == LifeContextAvailability.availableStale ||
+              entry.value.freshness == LifeContextFreshness.stale)) {
+        warnings.add('${entry.key.name}_stale');
       }
     }
     return LifeContextCapabilityCompatibility(
@@ -232,7 +256,11 @@ final class LifeContextProduction {
               : LifeContextCapabilityState.partial)
           : LifeContextCapabilityState.blocked,
       requiredDomains: required,
+      availableDomains: available,
+      blockingDomains: blocking,
+      warningCodes: warnings,
       reasonCodes: reasons,
+      sourceGeneration: _projectionGeneration,
     );
   }
 

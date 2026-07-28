@@ -4,6 +4,7 @@ import 'life_context/life_context_memory_serializer.dart';
 import 'memory_reasoning_service.dart';
 import 'memory_service.dart';
 import 'profile_reasoning_service.dart';
+import 'life_context/life_context_production.dart';
 
 typedef LegacyMemoryLoader = Future<List<Map<String, dynamic>>> Function();
 
@@ -37,5 +38,29 @@ final class MemoryPlanningCompatibilityService {
         referenceDate: snapshot.generatedAt,
       ),
     ];
+  }
+
+  static Future<List<Map<String, dynamic>>> buildFromLifeContext({
+    required LifeContextProduction production,
+    DateTime? referenceDate,
+  }) async {
+    final snapshot = await production.refreshIfNeeded();
+    final MemoryReasoningContext context;
+    try {
+      context = await MemoryReasoningService.loadFromProduction(
+        production: production,
+        referenceDate: referenceDate ?? snapshot.generatedAt,
+      );
+    } on MemoryReasoningContextException {
+      // Memory is optional for Planning. A blocked Memory capability cannot
+      // become an empty fact source for Memory reasoning, but it must not
+      // prevent Event + Routine availability from being evaluated.
+      return const [];
+    }
+    return MemoryReasoningService.buildReasoningFromLifeContext(
+      context,
+      referenceDate: referenceDate ?? snapshot.generatedAt,
+      recurringRoutinesOnly: true,
+    );
   }
 }

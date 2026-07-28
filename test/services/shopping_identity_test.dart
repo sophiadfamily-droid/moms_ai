@@ -209,6 +209,50 @@ void main() {
       expect(stored.single.id, isNotNull);
       expect(stored.single.id, isNotEmpty);
     });
+
+    test('confirmed grouped action is idempotent across a double retry',
+        () async {
+      Future<void> execute() async {
+        await ActionHandlerService.handleAction(
+          action: const {
+            'type': 'shopping',
+            'actionId': 'shopping-confirmation',
+            'title': 'Lait',
+            'items': ['Lait', 'Bananes'],
+          },
+          currentUserMessage: 'Il manque du lait et des bananes',
+          normalizeTime: (value) => value,
+          parseDurationMinutes: (value) => 0,
+          weekdayFromText: () => 0,
+          messageLooksRecurringWeekly: () => false,
+          nextDateForWeekday: (weekday) => '',
+          eventNeedsTravel: (action) => false,
+          buildStartDateTimeIso: ({required date, required time}) => '',
+          buildEndDateTimeIso: ({
+            required date,
+            required time,
+            required durationMinutes,
+          }) =>
+              '',
+          endTimeFromDuration: ({
+            required date,
+            required time,
+            required durationMinutes,
+          }) =>
+              '',
+        );
+      }
+
+      await execute();
+      await execute();
+
+      final stored = await _storedItems();
+      expect(stored.map((item) => item.title), ['Lait', 'Bananes']);
+      expect(stored.map((item) => item.id), [
+        'shopping-confirmation:0',
+        'shopping-confirmation:1',
+      ]);
+    });
   });
 
   group('CloudShoppingService identity compatibility', () {

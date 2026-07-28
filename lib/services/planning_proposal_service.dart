@@ -1,4 +1,5 @@
 import '../models/task_model.dart';
+import '../models/event_model.dart';
 import 'smart_planning_service.dart';
 
 class PlanningProposalService {
@@ -7,12 +8,14 @@ class PlanningProposalService {
     required String originalMessage,
     required int actionMinutes,
     List<Map<String, dynamic>> memoryReasoning = const [],
+    List<EventModel>? contextEvents,
   }) async {
     return SmartPlanningService.buildProposal(
       task: task,
       originalMessage: originalMessage,
       actionMinutesOverride: actionMinutes,
       memoryReasoning: memoryReasoning,
+      contextEvents: contextEvents,
     );
   }
 
@@ -24,6 +27,7 @@ class PlanningProposalService {
     required int travelBackMinutes,
     required List<TaskModel> groupedTasks,
     List<Map<String, dynamic>> memoryReasoning = const [],
+    List<EventModel>? contextEvents,
   }) async {
     if (groupedTasks.length > 1) {
       return SmartPlanningService.buildGroupedProposal(
@@ -34,6 +38,7 @@ class PlanningProposalService {
         travelBackMinutes: travelBackMinutes,
         actionMinutesOverride: actionMinutes > 0 ? actionMinutes : null,
         memoryReasoning: memoryReasoning,
+        contextEvents: contextEvents,
       );
     }
 
@@ -44,6 +49,7 @@ class PlanningProposalService {
       travelBackMinutes: travelBackMinutes,
       actionMinutesOverride: actionMinutes > 0 ? actionMinutes : null,
       memoryReasoning: memoryReasoning,
+      contextEvents: contextEvents,
     );
   }
 }

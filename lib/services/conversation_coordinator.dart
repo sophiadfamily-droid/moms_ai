@@ -42,6 +42,8 @@ import 'zelia_response_builder.dart';
 import 'priority/priority_consultation_intent_detector.dart';
 import 'priority/priority_consultation_service.dart';
 import 'task_creation_draft_service.dart';
+import 'shopping_conversation_intent_detector.dart';
+import 'shopping_service.dart';
 
 typedef ConversationActionExecutor = Future<ConversationActionOutcome> Function(
   Map<String, dynamic> action,
@@ -49,6 +51,12 @@ typedef ConversationActionExecutor = Future<ConversationActionOutcome> Function(
 
 final class ConversationTaskPersistenceException implements Exception {
   const ConversationTaskPersistenceException();
+}
+
+final class ConversationShoppingPersistenceException implements Exception {
+  const ConversationShoppingPersistenceException(this.code);
+
+  final String code;
 }
 
 typedef PendingEventExecutor = Future<String> Function(EventModel event);
@@ -79,6 +87,7 @@ class ConversationCoordinator {
   final PriorityConsultationIntentDetector priorityConsultationIntentDetector;
   final PriorityConsultationService? priorityConsultationService;
   final TaskCreationDraftService taskCreationDraftService;
+  final ShoppingConversationIntentDetector shoppingIntentDetector;
   late final ActionConfirmationCoordinator _confirmationCoordinator;
 
   ConversationState _state = const ConversationState();
@@ -120,6 +129,7 @@ class ConversationCoordinator {
         const PriorityConsultationIntentDetector(),
     PriorityConsultationService? priorityConsultationService,
     this.taskCreationDraftService = const TaskCreationDraftService(),
+    this.shoppingIntentDetector = const ShoppingConversationIntentDetector(),
     ActionConfirmationCoordinator? confirmationCoordinator,
   })  : _memoryLifecycleRepository = memoryLifecycleRepository,
         identityClarificationService = identityClarificationService ??
@@ -2088,10 +2098,14 @@ class ConversationCoordinator {
         );
         _clearPendingAction();
         return PendingConversationResolution(
-          outcome.message.isEmpty ? 'C’est fait.' : outcome.message,
+          outcome.message.isEmpty
+              ? pending.actionType == ActionType.addShoppingItem
+                  ? 'C’est ajouté à ta liste de courses.'
+                  : 'C’est fait.'
+              : outcome.message,
           diagnosticCode: 'autonomy_pending_retry_completed',
         );
-      } catch (_) {
+      } catch (error) {
         _state = _state.copyWith(
           phase: ConversationPhase.awaitingActionConfirmation,
           pendingAction: PendingConversationAction.autonomyConfirmation(
@@ -2104,6 +2118,13 @@ class ConversationCoordinator {
         );
         if (pending.actionType == ActionType.createTask) {
           throw const ConversationTaskPersistenceException();
+        }
+        if (pending.actionType == ActionType.addShoppingItem) {
+          throw ConversationShoppingPersistenceException(
+            error is ShoppingPersistenceException
+                ? error.code
+                : 'shopping_local_persist_failed',
+          );
         }
         rethrow;
       }
@@ -2127,8 +2148,10 @@ class ConversationCoordinator {
         revisionValidator: (_) => true,
       );
       _clearPendingAction();
-      return const PendingConversationResolution(
-        'D’accord, je ne modifie rien.',
+      return PendingConversationResolution(
+        pending.actionType == ActionType.addShoppingItem
+            ? 'D’accord, je n’ajoute rien à la liste de courses.'
+            : 'D’accord, je ne modifie rien.',
         diagnosticCode: 'autonomy_pending_rejected',
       );
     }
@@ -2250,10 +2273,14 @@ class ConversationCoordinator {
       );
       _clearPendingAction();
       return PendingConversationResolution(
-        outcome.message.isEmpty ? 'C’est fait.' : outcome.message,
+        outcome.message.isEmpty
+            ? pending.actionType == ActionType.addShoppingItem
+                ? 'C’est ajouté à ta liste de courses.'
+                : 'C’est fait.'
+            : outcome.message,
         diagnosticCode: 'autonomy_pending_completed',
       );
-    } catch (_) {
+    } catch (error) {
       _state = _state.copyWith(
         phase: ConversationPhase.awaitingActionConfirmation,
         pendingAction: PendingConversationAction.autonomyConfirmation(
@@ -2267,8 +2294,63 @@ class ConversationCoordinator {
       if (pending.actionType == ActionType.createTask) {
         throw const ConversationTaskPersistenceException();
       }
+      if (pending.actionType == ActionType.addShoppingItem) {
+        throw ConversationShoppingPersistenceException(
+          error is ShoppingPersistenceException
+              ? error.code
+              : 'shopping_local_persist_failed',
+        );
+      }
       rethrow;
     }
+  }
+
+  Future<PendingConversationResolution?> resolvePendingShoppingClarification({
+    required String answer,
+    required int sessionGeneration,
+  }) async {
+    final wrapped = _state.pendingAction;
+    if (wrapped?.type != PendingConversationActionType.shoppingClarification) {
+      return null;
+    }
+    final pending = wrapped!.shoppingClarification!;
+    final now = _clock().toUtc();
+    if (pending.sessionGeneration != sessionGeneration ||
+        pending.isExpiredAt(now)) {
+      _clearPendingAction();
+      return const PendingConversationResolution(
+        'Cette clarification a expiré. Reformule ta demande.',
+        diagnosticCode: 'shopping_clarification_expired',
+      );
+    }
+    final resolution = _shoppingAmbiguityResolution(answer);
+    if (resolution == _ShoppingAmbiguityResolution.refuse) {
+      _clearPendingAction();
+      return const PendingConversationResolution(
+        'D’accord, je n’ajoute rien à la liste de courses.',
+        diagnosticCode: 'shopping_clarification_refused',
+      );
+    }
+    if (resolution != _ShoppingAmbiguityResolution.buyMore) {
+      return PendingConversationResolution(
+        _shoppingClarificationQuestion(pending.article),
+        diagnosticCode: 'shopping_clarification_still_ambiguous',
+      );
+    }
+    _clearPendingAction();
+    final proposal = await _beginShoppingProposal(
+      sessionGeneration: pending.sessionGeneration,
+      logicalRequestId: pending.logicalRequestId,
+      originalInstruction: pending.article,
+      intent: ShoppingConversationIntent(
+        items: [ShoppingConversationItem(title: pending.article)],
+        isStockOut: false,
+      ),
+    );
+    return PendingConversationResolution(
+      proposal.reply,
+      diagnosticCode: 'shopping_clarification_resolved_add',
+    );
   }
 
   Future<PendingConversationResolution?> resolvePendingTaskClarification({
@@ -2404,6 +2486,27 @@ class ConversationCoordinator {
         identityActionBindingResult:
             identityResolution.identityActionBindingResult,
       );
+    }
+    if (_state.pendingAction == null) {
+      final shoppingClassification =
+          shoppingIntentDetector.classify(input.message);
+      if (shoppingClassification.kind ==
+          ShoppingConversationIntentKind.ambiguousMoreOrNoMore) {
+        return _beginShoppingClarification(
+          input: input,
+          article: shoppingClassification.items.single.title,
+        );
+      }
+      if (shoppingClassification.isActionable) {
+        return _beginShoppingIntent(
+          input: input,
+          intent: ShoppingConversationIntent(
+            items: shoppingClassification.items,
+            isStockOut: shoppingClassification.kind ==
+                ShoppingConversationIntentKind.stockoutDetected,
+          ),
+        );
+      }
     }
     if (priorityConsultationIntentDetector.matches(input.message)) {
       final consultation = await priorityConsultationService?.respond();
@@ -2701,7 +2804,14 @@ class ConversationCoordinator {
         },
       PendingShoppingPayload() => {
           'type': 'shopping',
+          'actionId': pending.pendingActionId,
+          'logicalRequestId': pending.mutationId,
+          'mutationId': pending.mutationId,
           'title': payload.title,
+          'items': [
+            payload.title,
+            ...payload.additionalTitles,
+          ],
           'category': payload.category,
           'notes': payload.notes,
           'section': payload.section,
@@ -2751,6 +2861,7 @@ class ConversationCoordinator {
         ],
       PendingShoppingPayload(
         :final title,
+        :final additionalTitles,
         :final category,
         :final notes,
         :final section,
@@ -2777,6 +2888,11 @@ class ConversationCoordinator {
             ActionConfirmationField(
               key: ActionConfirmationFieldKey.operation,
               value: notes,
+            ),
+          if (additionalTitles.isNotEmpty)
+            ActionConfirmationField(
+              key: ActionConfirmationFieldKey.operation,
+              value: additionalTitles.join('|'),
             ),
         ],
     };
@@ -2832,6 +2948,149 @@ class ConversationCoordinator {
       provenance: 'conversation_action_pending',
       validity: const Duration(minutes: 15),
     );
+  }
+
+  Future<ConversationOutcome> _beginShoppingIntent({
+    required ConversationInput input,
+    required ShoppingConversationIntent intent,
+  }) =>
+      _beginShoppingProposal(
+        sessionGeneration: input.sessionGeneration,
+        logicalRequestId: input.logicalRequestId,
+        originalInstruction: input.message,
+        intent: intent,
+      );
+
+  Future<ConversationOutcome> _beginShoppingProposal({
+    required int sessionGeneration,
+    required String? logicalRequestId,
+    required String originalInstruction,
+    required ShoppingConversationIntent intent,
+  }) async {
+    final policy = await _canonicalPolicy();
+    _lastAutonomyPolicy = policy;
+    final actionType = ActionType.addShoppingItem;
+    final decision = _autonomyEngine.evaluate(
+      policy: policy,
+      request: ActionAuthorizationRequest(
+        actionType: actionType,
+        origin: ActionOrigin.explicitUserRequest,
+        riskLevel: const ActionAutonomyActionRegistry().riskFor(actionType),
+        sessionGeneration: sessionGeneration,
+        policyVersionObserved: policy.schemaVersion,
+        isGrounded: true,
+        isComplete: true,
+      ),
+      evaluatedAt: _clock(),
+    );
+    if (!decision.mayExecute && !decision.mayCreateProposal) {
+      return ConversationOutcome(reply: _autonomyMessage(decision));
+    }
+    final now = _clock().toUtc();
+    final pendingId = _actionDraftIdGenerator.generate();
+    final stableLogicalRequestId = logicalRequestId ?? pendingId;
+    final titles = intent.items.map((item) => item.title).toList();
+    final pending = ActionPending(
+      pendingActionId: pendingId,
+      sessionGeneration: sessionGeneration,
+      actionType: actionType,
+      origin: ActionOrigin.explicitUserRequest,
+      riskLevel: const ActionAutonomyActionRegistry().riskFor(actionType),
+      policyModeAtCreation: policy.mode,
+      policyVersionAtCreation: policy.schemaVersion,
+      wasGrounded: true,
+      wasComplete: true,
+      payload: PendingShoppingPayload(
+        title: titles.first,
+        additionalTitles: titles.skip(1).toList(growable: false),
+      ),
+      originalInstruction: originalInstruction,
+      mutationId: stableLogicalRequestId,
+      createdAt: now,
+      expiresAt: now.add(const Duration(minutes: 15)),
+    )..validate();
+    final issued = _confirmationCoordinator.issueWithPolicy(
+      _confirmationProposalForPending(pending),
+      policy: policy,
+    );
+    _state = _state.copyWith(
+      phase: ConversationPhase.awaitingActionConfirmation,
+      pendingAction: PendingConversationAction.autonomyConfirmation(
+        pending,
+        issued.confirmation,
+      ),
+    );
+    final label = _shoppingTitlesLabel(titles);
+    return ConversationOutcome(
+      reply: intent.isStockOut
+          ? titles.length == 1
+              ? 'Tu n’as plus de $label. Veux-tu que je l’ajoute à ta liste de courses ?'
+              : 'Tu n’as plus de $label. Veux-tu que je les ajoute à ta liste de courses ?'
+          : titles.length == 1
+              ? 'Veux-tu que j’ajoute “$label” à ta liste de courses ?'
+              : 'Veux-tu que j’ajoute “$label” à ta liste de courses ?',
+    );
+  }
+
+  ConversationOutcome _beginShoppingClarification({
+    required ConversationInput input,
+    required String article,
+  }) {
+    final now = _clock().toUtc();
+    final clarificationId = _actionDraftIdGenerator.generate();
+    _state = _state.copyWith(
+      phase: ConversationPhase.awaitingActionConfirmation,
+      pendingAction: PendingConversationAction.shoppingClarification(
+        PendingShoppingClarification(
+          clarificationId: clarificationId,
+          logicalRequestId: input.logicalRequestId ?? clarificationId,
+          sessionGeneration: input.sessionGeneration,
+          article: article,
+          type: ShoppingClarificationType.moreOrNoMore,
+          createdAt: now,
+          expiresAt: now.add(const Duration(minutes: 15)),
+        ),
+      ),
+    );
+    return ConversationOutcome(
+      reply: _shoppingClarificationQuestion(article),
+      responseKind: ConversationResponseKind.clarificationRequired,
+    );
+  }
+
+  static String _shoppingClarificationQuestion(String article) =>
+      'Tu veux dire que tu souhaites acheter davantage de $article, '
+      'ou que tu n’en veux plus ?';
+
+  static _ShoppingAmbiguityResolution _shoppingAmbiguityResolution(
+    String answer,
+  ) {
+    final normalized = answer
+        .toLowerCase()
+        .replaceAll('é', 'e')
+        .replaceAll('è', 'e')
+        .replaceAll('ê', 'e')
+        .replaceAll('’', "'")
+        .replaceAll(RegExp(r"['`]"), ' ')
+        .replaceAll(RegExp(r'[^a-z0-9\s]'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (normalized.contains(RegExp(
+      r'\b(?:davantage|acheter plus|acheter davantage|en racheter|ajoute les aux courses|j en veux plus)\b',
+    ))) {
+      return _ShoppingAmbiguityResolution.buyMore;
+    }
+    if (normalized.contains(RegExp(
+      r'\b(?:je n en veux plus|je ne veux plus|non je n en veux plus|retire cette idee)\b',
+    ))) {
+      return _ShoppingAmbiguityResolution.refuse;
+    }
+    return _ShoppingAmbiguityResolution.stillAmbiguous;
+  }
+
+  static String _shoppingTitlesLabel(List<String> titles) {
+    if (titles.length == 1) return titles.single;
+    return '${titles.take(titles.length - 1).join(', ')} et ${titles.last}';
   }
 
   static String _autonomyMessage(ActionAuthorizationDecision decision) {
@@ -3039,3 +3298,5 @@ class ConversationCoordinator {
     ].join('|');
   }
 }
+
+enum _ShoppingAmbiguityResolution { buyMore, refuse, stillAmbiguous }

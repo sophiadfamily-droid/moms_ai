@@ -266,12 +266,21 @@ health and memories already represented by a structured domain are excluded.
 Text is normalized and bounded. Confirmation and minimal provenance remain
 visible to the typed consumer.
 
-Planning excludes the Memory domain. For backward compatibility only,
-historical memories explicitly typed as Routine and accepted by the central
-consumption policy may pass through `MemoryPlanningCompatibilityService`.
+General Memory reasoning now consumes `MemoryReasoningContext`, derived only
+from the canonical LC.1 Memory section and carrying its source generation,
+revision, freshness and closed warning codes. It does not reread
+`MemoryService` or construct a second Life Context. Confirmed active records
+are eligible; proposed, rejected, superseded, expired, ambiguous and
+explicit-health records remain excluded.
+
+Planning excludes free Memory. Historical memories explicitly typed as
+Routine and accepted by the central consumption policy may pass through the
+narrow `MemoryPlanningCompatibilityService.buildFromLifeContext` bridge.
 Quarantined routines, including ambiguous `source: "chat"` records, never
 produce blocked periods. Free preferences, facts, habits, or constraints are
-never interpreted as Planning rules.
+never interpreted as Planning rules. The former profile-and-repository reader
+remains an explicit legacy compatibility entry point, not the production Smart
+Planning source.
 
 `MemoryProjectionBackendSerializer` is the only Memory-to-backend boundary. It
 accepts either the filtered Conversation projection or, during the controlled

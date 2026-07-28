@@ -8,11 +8,14 @@ import 'package:moms_ai/models/conversation_context_envelope.dart';
 import 'package:moms_ai/models/conversation_epistemic_models.dart';
 import 'package:moms_ai/models/conversation_models.dart';
 import 'package:moms_ai/models/event_model.dart';
+import 'package:moms_ai/models/shopping_item_model.dart';
 import 'package:moms_ai/models/user_profile.dart';
+import 'package:moms_ai/services/action_handler_service.dart';
 import 'package:moms_ai/services/callable_chat_backend_client.dart';
 import 'package:moms_ai/services/chat_backend_client.dart';
 import 'package:moms_ai/services/conversation_context_service.dart';
 import 'package:moms_ai/services/conversation_coordinator.dart';
+import 'package:moms_ai/services/shopping_service.dart';
 
 void main() {
   group('ConversationCoordinator', () {
@@ -797,8 +800,433 @@ void main() {
         {'text': 'Préférence stable'},
       ]);
     });
+
+    test('routes a stock-out locally to one typed Shopping confirmation',
+        () async {
+      final backend = _FakeBackend(
+        response: const ChatBackendResponse(
+          reply: 'Cette réponse ne doit pas être utilisée.',
+          actions: [],
+          memories: [],
+        ),
+      );
+      final coordinator = ConversationCoordinator(
+        backend: backend,
+        contextProvider: _FakeContextProvider(_request()),
+      );
+      var executions = 0;
+
+      final proposal = await coordinator.send(
+        input: ConversationInput(
+          message: 'J’ai plus de bananes',
+          profile: _profile(),
+          logicalRequestId: 'shopping-request-1',
+        ),
+        executeAction: (_) async {
+          executions++;
+          return const ConversationActionOutcome();
+        },
+      );
+
+      expect(proposal?.reply, contains('plus de bananes'));
+      expect(proposal?.reply, contains('liste de courses'));
+      expect(backend.requests, isEmpty);
+      expect(executions, 0);
+      final pending = coordinator.state.pendingAction?.autonomyPending;
+      expect(pending?.actionType, ActionType.addShoppingItem);
+      expect(pending?.mutationId, 'shopping-request-1');
+      expect(
+        (pending?.payload as PendingShoppingPayload).title,
+        'bananes',
+      );
+
+      Map<String, dynamic>? executed;
+      final confirmation = await coordinator.resolvePendingAutonomyConfirmation(
+        answer: 'oui',
+        sessionGeneration: 0,
+        executeAction: (action) async {
+          executions++;
+          executed = action;
+          return const ConversationActionOutcome();
+        },
+      );
+      expect(confirmation?.message, 'C’est ajouté à ta liste de courses.');
+      expect(executions, 1);
+      expect(executed?['type'], 'shopping');
+      expect(executed?['items'], ['bananes']);
+      expect(executed?['mutationId'], 'shopping-request-1');
+      expect(coordinator.state.pendingAction, isNull);
+    });
+
+    test('groups several Shopping items and rejection creates nothing',
+        () async {
+      final coordinator = ConversationCoordinator(
+        backend: _FakeBackend(),
+        contextProvider: _FakeContextProvider(_request()),
+      );
+      final proposal = await coordinator.send(
+        input: ConversationInput(
+          message: 'Il manque du lait et des œufs',
+          profile: _profile(),
+        ),
+        executeAction: (_) async => const ConversationActionOutcome(),
+      );
+      expect(proposal?.reply, contains('lait et œufs'));
+      final payload = coordinator.state.pendingAction?.autonomyPending?.payload
+          as PendingShoppingPayload;
+      expect(payload.title, 'lait');
+      expect(payload.additionalTitles, ['œufs']);
+
+      var executions = 0;
+      final rejection = await coordinator.resolvePendingAutonomyConfirmation(
+        answer: 'non',
+        sessionGeneration: 0,
+        executeAction: (_) async {
+          executions++;
+          return const ConversationActionOutcome();
+        },
+      );
+      expect(rejection?.message, contains('n’ajoute rien'));
+      expect(executions, 0);
+      expect(coordinator.state.pendingAction, isNull);
+    });
+
+    test('keeps Shopping pending after a storage failure', () async {
+      final coordinator = ConversationCoordinator(
+        backend: _FakeBackend(),
+        contextProvider: _FakeContextProvider(_request()),
+      );
+      await coordinator.send(
+        input: ConversationInput(
+          message: 'Ajoute du lait aux courses',
+          profile: _profile(),
+        ),
+        executeAction: (_) async => const ConversationActionOutcome(),
+      );
+
+      await expectLater(
+        coordinator.resolvePendingAutonomyConfirmation(
+          answer: 'oui',
+          sessionGeneration: 0,
+          executeAction: (_) => throw StateError('synthetic storage failure'),
+        ),
+        throwsA(
+          isA<ConversationShoppingPersistenceException>().having(
+            (error) => error.code,
+            'code',
+            'shopping_local_persist_failed',
+          ),
+        ),
+      );
+      expect(
+        coordinator.state.pendingAction?.autonomyPending?.state,
+        ActionPendingState.pendingSync,
+      );
+    });
+
+    test('simple stock-out confirmation persists one Shopping item', () async {
+      final stored = <ShoppingItemModel>[];
+      final mutationIds = <String>[];
+      final coordinator = ConversationCoordinator(
+        backend: _FakeBackend(),
+        contextProvider: _FakeContextProvider(_request()),
+      );
+      await coordinator.send(
+        input: ConversationInput(
+          message: 'J’ai plus de banane',
+          profile: _profile(),
+          logicalRequestId: 'logical-shopping-simple',
+        ),
+        executeAction: (_) async => const ConversationActionOutcome(),
+      );
+
+      final result = await coordinator.resolvePendingAutonomyConfirmation(
+        answer: 'oui',
+        sessionGeneration: 0,
+        executeAction: _shoppingExecutor(
+          stored: stored,
+          mutationIds: mutationIds,
+        ),
+      );
+
+      expect(result?.message, 'C’est ajouté à ta liste de courses.');
+      expect(stored.map((item) => item.title), ['banane']);
+      expect(stored.single.id, isNotEmpty);
+      expect(mutationIds, ['logical-shopping-simple']);
+    });
+
+    test('grouped confirmation persists two distinct Shopping items once',
+        () async {
+      final stored = <ShoppingItemModel>[];
+      final mutationIds = <String>[];
+      final coordinator = ConversationCoordinator(
+        backend: _FakeBackend(),
+        contextProvider: _FakeContextProvider(_request()),
+      );
+      await coordinator.send(
+        input: ConversationInput(
+          message: 'Il manque du lait et des œufs',
+          profile: _profile(),
+          logicalRequestId: 'logical-shopping-group',
+        ),
+        executeAction: (_) async => const ConversationActionOutcome(),
+      );
+
+      final result = await coordinator.resolvePendingAutonomyConfirmation(
+        answer: 'oui',
+        sessionGeneration: 0,
+        executeAction: _shoppingExecutor(
+          stored: stored,
+          mutationIds: mutationIds,
+        ),
+      );
+
+      expect(result?.message, 'C’est ajouté à ta liste de courses.');
+      expect(stored.map((item) => item.title), ['lait', 'œufs']);
+      expect(stored.map((item) => item.id).toSet(), hasLength(2));
+      expect(mutationIds, [
+        'logical-shopping-group:0',
+        'logical-shopping-group:1',
+      ]);
+    });
+
+    test('durable local Shopping with unavailable cloud reports pending sync',
+        () async {
+      final coordinator = ConversationCoordinator(
+        backend: _FakeBackend(),
+        contextProvider: _FakeContextProvider(_request()),
+      );
+      await coordinator.send(
+        input: ConversationInput(
+          message: 'Ajoute du lait aux courses',
+          profile: _profile(),
+        ),
+        executeAction: (_) async => const ConversationActionOutcome(),
+      );
+      final result = await coordinator.resolvePendingAutonomyConfirmation(
+        answer: 'oui',
+        sessionGeneration: 0,
+        executeAction: _shoppingExecutor(
+          stored: [],
+          mutationIds: [],
+          persistenceStatus: ShoppingPersistenceStatus.synchronizationPending,
+        ),
+      );
+      expect(result?.message, contains('sur cet appareil'));
+      expect(result?.message, contains('synchronisation'));
+      expect(coordinator.state.pendingAction, isNull);
+    });
+
+    test('ambiguous Shopping stays local and a simple yes clarifies again',
+        () async {
+      final backend = _FakeBackend();
+      final coordinator = ConversationCoordinator(
+        backend: backend,
+        contextProvider: _FakeContextProvider(_request()),
+      );
+
+      final first = await coordinator.send(
+        input: ConversationInput(
+          message: 'Je veux plus de bananes',
+          profile: _profile(),
+          logicalRequestId: 'ambiguous-shopping-1',
+        ),
+        executeAction: (_) async => const ConversationActionOutcome(),
+      );
+
+      expect(backend.requests, isEmpty);
+      expect(first?.reply, contains('acheter davantage de bananes'));
+      expect(first?.reply, contains('n’en veux plus'));
+      expect(
+        coordinator.state.pendingAction?.type,
+        PendingConversationActionType.shoppingClarification,
+      );
+      expect(
+        coordinator.state.pendingAction?.shoppingClarification?.article,
+        'bananes',
+      );
+
+      final stillAmbiguous =
+          await coordinator.resolvePendingShoppingClarification(
+        answer: 'oui',
+        sessionGeneration: 0,
+      );
+      expect(stillAmbiguous?.message, first?.reply);
+      expect(backend.requests, isEmpty);
+      expect(
+        coordinator.state.pendingAction?.type,
+        PendingConversationActionType.shoppingClarification,
+      );
+    });
+
+    test('Shopping ambiguity resolves to a specific proposal then one add',
+        () async {
+      final stored = <ShoppingItemModel>[];
+      final mutationIds = <String>[];
+      final backend = _FakeBackend();
+      final coordinator = ConversationCoordinator(
+        backend: backend,
+        contextProvider: _FakeContextProvider(_request()),
+      );
+      await coordinator.send(
+        input: ConversationInput(
+          message: 'Je veux plus de bananes',
+          profile: _profile(),
+          logicalRequestId: 'ambiguous-shopping-buy',
+        ),
+        executeAction: (_) async => const ConversationActionOutcome(),
+      );
+
+      final proposal = await coordinator.resolvePendingShoppingClarification(
+        answer: 'je veux en acheter davantage',
+        sessionGeneration: 0,
+      );
+      expect(
+        proposal?.message,
+        'Veux-tu que j’ajoute “bananes” à ta liste de courses ?',
+      );
+      expect(backend.requests, isEmpty);
+      expect(
+        coordinator.state.pendingAction?.type,
+        PendingConversationActionType.autonomyConfirmation,
+      );
+      expect(stored, isEmpty);
+
+      final completed = await coordinator.resolvePendingAutonomyConfirmation(
+        answer: 'oui',
+        sessionGeneration: 0,
+        executeAction: _shoppingExecutor(
+          stored: stored,
+          mutationIds: mutationIds,
+        ),
+      );
+      expect(completed?.message, 'C’est ajouté à ta liste de courses.');
+      expect(stored.map((item) => item.title), ['bananes']);
+      expect(mutationIds, ['ambiguous-shopping-buy']);
+    });
+
+    test('Shopping ambiguity refusal closes without creating an action',
+        () async {
+      final backend = _FakeBackend();
+      final coordinator = ConversationCoordinator(
+        backend: backend,
+        contextProvider: _FakeContextProvider(_request()),
+      );
+      await coordinator.send(
+        input: ConversationInput(
+          message: 'Je veux plus de lait',
+          profile: _profile(),
+        ),
+        executeAction: (_) async => const ConversationActionOutcome(),
+      );
+
+      final refusal = await coordinator.resolvePendingShoppingClarification(
+        answer: 'je n’en veux plus',
+        sessionGeneration: 0,
+      );
+      expect(refusal?.message, contains('je n’ajoute rien'));
+      expect(coordinator.state.pendingAction, isNull);
+      expect(backend.requests, isEmpty);
+    });
+
+    test('Shopping ambiguity recognizes bounded purchase and refusal answers',
+        () async {
+      for (final answer in const [
+        'davantage',
+        'en acheter plus',
+        'ajoute-les aux courses',
+        'oui, j’en veux plus',
+        'je veux en racheter',
+      ]) {
+        final coordinator = ConversationCoordinator(
+          backend: _FakeBackend(),
+          contextProvider: _FakeContextProvider(_request()),
+        );
+        await coordinator.send(
+          input: ConversationInput(
+            message: 'Je veux plus de bananes',
+            profile: _profile(),
+          ),
+          executeAction: (_) async => const ConversationActionOutcome(),
+        );
+        await coordinator.resolvePendingShoppingClarification(
+          answer: answer,
+          sessionGeneration: 0,
+        );
+        expect(
+          coordinator.state.pendingAction?.type,
+          PendingConversationActionType.autonomyConfirmation,
+          reason: answer,
+        );
+      }
+
+      for (final answer in const [
+        'je n’en veux plus',
+        'je ne veux plus de bananes',
+        'non, je n’en veux plus',
+        'retire cette idée',
+      ]) {
+        final coordinator = ConversationCoordinator(
+          backend: _FakeBackend(),
+          contextProvider: _FakeContextProvider(_request()),
+        );
+        await coordinator.send(
+          input: ConversationInput(
+            message: 'Je veux plus de bananes',
+            profile: _profile(),
+          ),
+          executeAction: (_) async => const ConversationActionOutcome(),
+        );
+        await coordinator.resolvePendingShoppingClarification(
+          answer: answer,
+          sessionGeneration: 0,
+        );
+        expect(coordinator.state.pendingAction, isNull, reason: answer);
+      }
+    });
   });
 }
+
+ConversationActionExecutor _shoppingExecutor({
+  required List<ShoppingItemModel> stored,
+  required List<String> mutationIds,
+  ShoppingPersistenceStatus persistenceStatus =
+      ShoppingPersistenceStatus.durable,
+}) =>
+    (action) async {
+      final result = await ActionHandlerService.handleAction(
+        action: action,
+        currentUserMessage: 'confirmation Shopping synthétique',
+        normalizeTime: (value) => value,
+        parseDurationMinutes: (_) => 0,
+        weekdayFromText: () => 0,
+        messageLooksRecurringWeekly: () => false,
+        nextDateForWeekday: (_) => '',
+        eventNeedsTravel: (_) => false,
+        buildStartDateTimeIso: ({required date, required time}) => '',
+        buildEndDateTimeIso: ({
+          required date,
+          required time,
+          required durationMinutes,
+        }) =>
+            '',
+        endTimeFromDuration: ({
+          required date,
+          required time,
+          required durationMinutes,
+        }) =>
+            '',
+        shoppingItemWriter: (item, {mutationId}) async {
+          stored.add(item);
+          mutationIds.add(mutationId ?? '');
+          return ShoppingPersistenceResult(
+            status: persistenceStatus,
+            entityId: item.id!,
+          );
+        },
+      );
+      return ConversationActionOutcome(message: result.message);
+    };
 
 class _FakeBackend implements ChatBackendClient {
   final ChatBackendResponse? response;

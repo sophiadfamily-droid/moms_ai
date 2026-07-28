@@ -41,7 +41,7 @@ void main() {
           ['event-a', 'event-b']);
       expect(snapshot.taskDomain!.tasks.map((item) => item.id),
           ['task-a', 'task-b']);
-      expect(snapshot.routineDomain!.routines, hasLength(2));
+      expect(snapshot.routineDomain!.routines, hasLength(4));
       for (final metadata in [
         snapshot.human!.metadata,
         snapshot.identityDomain!.metadata,
@@ -299,7 +299,22 @@ void main() {
         loadHuman: (_) async => _humanState(),
       ).load(
           LifeContextAdapterRequest(accountScopeId: 'account-a', readAt: now));
-      expect(section.routines, hasLength(2));
+      expect(section.routines, hasLength(4));
+      expect(
+        section.routines
+            .singleWhere((item) => item.id == 'schoolSchedule:0:0')
+            .days,
+        isNot(contains('Samedi')),
+      );
+      expect(
+        section.routines.map((item) => item.source),
+        containsAll({
+          'legacyProfile.workTimeRanges',
+          'legacyProfile.childActivities',
+          'legacyProfile.personalActivities',
+          'legacyProfile.schoolTimeRanges',
+        }),
+      );
       expect(
           section.metadata.source, LifeContextSourceKind.legacyProfileRoutine);
       expect(section.metadata.availability, LifeContextAvailability.available);
@@ -606,6 +621,15 @@ HumanModelLocalState _humanState({
       partnerName: '',
       wantsNotifications: false,
       allergies: 'secret medical value',
+      workDays: const ['Lundi', 'Mardi'],
+      workTimeRanges: [
+        TimeRangeModel(
+          label: 'Travail',
+          startTime: '09:00',
+          endTime: '17:00',
+          travelMinutes: '20',
+        ),
+      ],
       children: [
         ChildProfile(
           humanPersonId: 'person-b',
@@ -621,6 +645,16 @@ HumanModelLocalState _humanState({
               startTime: '08:30',
               endTime: '16:30',
               travelMinutes: '10',
+            ),
+          ],
+          activities: [
+            ActivityModel(
+              title: 'Activité enfant',
+              days: const ['Mercredi'],
+              travelMinutes: '15',
+              timeRanges: [
+                TimeRangeModel(startTime: '17:00', endTime: '18:00'),
+              ],
             ),
           ],
         ),

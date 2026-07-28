@@ -144,6 +144,7 @@ final class PendingTaskPayload extends ActionPendingPayload {
 final class PendingShoppingPayload extends ActionPendingPayload {
   const PendingShoppingPayload({
     required this.title,
+    this.additionalTitles = const [],
     this.category = '',
     this.notes = '',
     this.section = '',
@@ -151,6 +152,7 @@ final class PendingShoppingPayload extends ActionPendingPayload {
   }) : assert(title.length <= 500);
 
   final String title;
+  final List<String> additionalTitles;
   final String category;
   final String notes;
   final String section;
@@ -224,12 +226,17 @@ final class ActionPending {
             priority.length <= 80,
       PendingShoppingPayload(
         :final title,
+        :final additionalTitles,
         :final category,
         :final notes,
         :final section,
       ) =>
         title.trim().isNotEmpty &&
             title.length <= 500 &&
+            additionalTitles.length <= 11 &&
+            additionalTitles.every(
+              (item) => item.trim().isNotEmpty && item.length <= 500,
+            ) &&
             category.length <= 120 &&
             notes.length <= 2000 &&
             section.length <= 120,

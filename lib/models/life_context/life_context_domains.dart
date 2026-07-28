@@ -453,7 +453,9 @@ final class MemoryContextItem {
   const MemoryContextItem({
     required this.id,
     required this.text,
+    this.semanticType = 'unknown',
     required this.category,
+    this.importance = 0,
     required this.status,
     required this.confirmation,
     required this.provenance,
@@ -465,11 +467,15 @@ final class MemoryContextItem {
     this.validUntil,
     this.structuredDomain,
     this.structuredReferenceId,
+    this.semanticIdentityKey,
+    this.revision,
   });
 
   final String id;
   final String text;
+  final String semanticType;
   final String category;
+  final int importance;
   final String status;
   final String confirmation;
   final String provenance;
@@ -481,11 +487,15 @@ final class MemoryContextItem {
   final DateTime? validUntil;
   final String? structuredDomain;
   final String? structuredReferenceId;
+  final String? semanticIdentityKey;
+  final int? revision;
 
   Map<String, Object?> toJson() => {
         'id': id,
         'text': text,
+        'semanticType': semanticType,
         'category': category,
+        'importance': importance,
         'status': status,
         'confirmation': confirmation,
         'provenance': provenance,
@@ -502,6 +512,9 @@ final class MemoryContextItem {
         if (structuredDomain != null) 'structuredDomain': structuredDomain,
         if (structuredReferenceId != null)
           'structuredReferenceId': structuredReferenceId,
+        if (semanticIdentityKey != null)
+          'semanticIdentityKey': semanticIdentityKey,
+        if (revision != null) 'revision': revision,
       };
 }
 

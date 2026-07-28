@@ -395,14 +395,29 @@ immediately. Source truncation, stale, unavailable, unsupported, corrupt and
 account-mismatched states remain explicit and prevent a false `complete`
 snapshot.
 
-Conversation, Priority consultation, proactive Priority and N.2 detection now
-consume this shared production generation. Planning and historical profile or
-memory compatibility readers retain their established paths until their
-dedicated migration can preserve all existing constraints and recurrence
-semantics. Capability compatibility is evaluated separately from global
-health: an unavailable Memory section does not block a Task-only priority
-read, while Planning remains blocked without its required Event and Routine
-sections.
+Conversation, Priority consultation, proactive Priority, N.2 detection, the
+production Smart Planning continuation gateway and general Memory reasoning
+consume this shared production generation. Capability compatibility is
+evaluated separately from global health: an unavailable Memory section does
+not block a Task-only priority or a Planning request that does not depend on a
+memory, while Planning remains blocked without sufficiently current Event and
+Routine sections.
+
+**LC.2 consumer migration.** Smart Planning obtains one bounded Planning
+projection and freezes its generation with the proposal. The adapter preserves
+protected Event periods, separate outbound and return travel, margins,
+recurrence and revision, plus confirmed Routine periods. The Task continuation
+also requires the Task section. A later generation does not silently rewrite a
+presented proposal: the selected slot is revalidated against current Event and
+Routine constraints before final confirmation.
+
+Memory reasoning obtains a typed context only from the canonical Memory
+section. Confirmed, active, non-expired memories are eligible; proposed,
+rejected, superseded, ambiguous and explicit-health records remain excluded.
+Only an explicitly typed recurring Routine memory may enter the narrow Planning
+compatibility bridge. Historical readers remain callable only for unmigrated
+compatibility tests and callers; they are not used by the production Smart
+Planning gateway.
 
 **LC.2 relation layer.** `LifeContextRelationEngine.build` is the only
 canonical relation-graph builder. Its sole input is one validated LC.1
@@ -488,12 +503,11 @@ Relations are bounded and never expand the complete LC.2 graph.
 Compatibility adapters translate the Conversation projection into the
 existing `ChatBackendRequest` shape and the Planning projection into typed
 temporal facts. They never serialize LC.1, LC.2, or `UserProfile` wholesale.
-The current production Conversation and Priority workflows use the shared
-LC.1 production snapshot and their distinct LC.3 contracts. Planning retains
-its legacy compatibility path until its dedicated migration. LC.3 adds no
-second multi-domain reader and does not silently send an additional context to
-OpenAI. Projection and ranking remain separate: Life Context never calculates
-a Priority score or a Planning decision.
+The current production Conversation, Priority, Smart Planning and Memory
+Reasoning workflows use the shared LC.1 production snapshot and their distinct
+LC.3 contracts. LC.3 adds no second multi-domain reader and does not silently
+send an additional context to OpenAI. Projection and ranking remain separate:
+Life Context never calculates a Priority score or a Planning decision.
 
 ### 7.3 Profile Engine
 

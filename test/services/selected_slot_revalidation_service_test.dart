@@ -108,6 +108,46 @@ void main() {
       expect(receivedTotalMinutes, 100);
     });
 
+    test('revalidates a selected slot against a changed canonical routine',
+        () async {
+      var alternativeSearches = 0;
+      final result = await SelectedSlotRevalidationService.revalidate(
+        candidate: buildEvent(),
+        protectedStart: DateTime(2026, 7, 20, 10),
+        totalMinutes: 100,
+        reasoning: const [
+          {
+            'type': 'blocked_period',
+            'recurrenceType': 'weekly',
+            'days': ['Lundi'],
+            'startTime': '10:30',
+            'endTime': '11:30',
+            'travelBeforeMinutes': 0,
+            'travelAfterMinutes': 0,
+          },
+        ],
+        conflictChecker: ({required candidate}) async => null,
+        alternativeFinder: ({
+          required startDate,
+          required totalMinutes,
+          required reasoning,
+          searchDays = 21,
+          maxOptions = 3,
+        }) async {
+          alternativeSearches++;
+          return const PlanningProposalEngineResult(
+            hasOptions: false,
+            options: [],
+            explanation: 'Aucune alternative.',
+          );
+        },
+      );
+
+      expect(result.isAvailable, isFalse);
+      expect(result.conflictEvent, isNull);
+      expect(alternativeSearches, 1);
+    });
+
     test('never accepts a conflicting slot when no alternative exists',
         () async {
       final result = await SelectedSlotRevalidationService.revalidate(

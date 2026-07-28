@@ -856,8 +856,9 @@ class SmartPlanningService {
     int travelBackMinutes = 0,
     int? actionMinutesOverride,
     List<Map<String, dynamic>> memoryReasoning = const [],
+    List<EventModel>? contextEvents,
   }) async {
-    final events = await EventService.getEvents();
+    final events = contextEvents ?? await EventService.getEvents();
     final safeTasks = groupedTasks.isEmpty ? [mainTask] : groupedTasks;
 
     final type = detectTaskType(originalMessage, mainTask);
@@ -944,8 +945,9 @@ class SmartPlanningService {
     int travelBackMinutes = 0,
     int? actionMinutesOverride,
     List<Map<String, dynamic>> memoryReasoning = const [],
+    List<EventModel>? contextEvents,
   }) async {
-    final events = await EventService.getEvents();
+    final events = contextEvents ?? await EventService.getEvents();
 
     final type = detectTaskType(originalMessage, task);
     final outside = isOutsideTask(

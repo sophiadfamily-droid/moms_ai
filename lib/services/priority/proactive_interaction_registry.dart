@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 enum ProactiveInteractionSource {
   conversationRequest,
   taskClarification,
+  shoppingClarification,
   taskConfirmation,
   smartPlanningConsent,
   smartPlanningDuration,

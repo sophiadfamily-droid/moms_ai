@@ -111,13 +111,31 @@ section blocks that capability. A degraded unrelated section may leave the
 capability usable with an explicitly partial global context. This does not
 authorize an action or fabricate a missing fact.
 
+Consumers may add scenario-specific requirements without changing the closed
+base contract. Task-originated Smart Planning additionally requires Task;
+Human, Identity and Relation are required only when a stable person reference
+is actually part of the request. Compatibility reports required, available
+and blocking domains, warning codes and the exact source generation as a
+single typed result.
+
 ## Consumers
 
-Conversation, Priority consultation, proactive Priority and deterministic
-proactive detection consume the same production generation. Each receives its
-own LC.3 projection contract. Planning and historical compatibility readers
-are not migrated until their complete protected-range, recurrence and memory
-compatibility invariants can be preserved.
+Conversation, Priority consultation, proactive Priority, deterministic
+proactive detection, the production Smart Planning gateway and Memory
+Reasoning consume the same production generation. Each receives its own
+bounded adapter contract.
+
+`LifeContextPlanningProjectionAdapter` preserves protected Event periods,
+separate travel directions, margins, recurrence, revisions and confirmed
+Routine periods. A proposal freezes its source generation and final
+confirmation revalidates the selected slot against the current Event and
+Routine constraints.
+
+`MemoryReasoningContext` is built only from the canonical Memory section.
+Confirmed active records are deterministically ordered; proposed, rejected,
+superseded, expired, ambiguous and explicit-health records are excluded.
+Planning sees only the narrower recurring-Routine compatibility result, never
+free Memory text interpreted as a constraint.
 
 ## Diagnostics
 
@@ -133,5 +151,7 @@ payloads.
 - Routine still contains a documented legacy-profile compatibility source.
 - Identity is limited to already persisted HumanPerson links.
 - Task has no structured cross-domain LC.2 relationship.
-- Planning and general Memory reasoning still require dedicated consumer
-  migrations; no unsafe fallback is introduced by LC.1.
+- Person-specific Planning cannot require Relation until the initiating domain
+  carries a stable person reference; no name-based matching is introduced.
+- Legacy Planning and Memory adapter entry points remain only for callers not
+  yet migrated and explicit compatibility tests.

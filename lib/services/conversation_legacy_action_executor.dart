@@ -26,6 +26,14 @@ final class ConversationLegacyActionExecutor {
     String answer,
     int sessionGeneration,
   ) async {
+    final shoppingClarification =
+        await coordinator.resolvePendingShoppingClarification(
+      answer: answer,
+      sessionGeneration: sessionGeneration,
+    );
+    if (shoppingClarification != null) {
+      return ConversationOutcome(reply: shoppingClarification.message);
+    }
     final taskClarification = await coordinator.resolvePendingTaskClarification(
       answer: answer,
       sessionGeneration: sessionGeneration,

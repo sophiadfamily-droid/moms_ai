@@ -482,12 +482,24 @@ final class ConversationSessionController extends ChangeNotifier {
       if (!_isCurrent(requestId, generation)) return;
       final descriptor = error is ConversationTaskPersistenceException
           ? AppErrorCatalog.describe(AppErrorCode.storageFailure)
-          : AppErrorClassifier.classify(
-              error,
-              boundary: error is ChatBackendMalformedResponseException
-                  ? AppErrorBoundaryKind.contract
-                  : AppErrorBoundaryKind.application,
-            );
+          : error is ConversationShoppingPersistenceException
+              ? AppErrorCatalog.describe(
+                  switch (error.code) {
+                    'shopping_account_scope_mismatch' =>
+                      AppErrorCode.accountScopeMismatch,
+                    'shopping_revision_conflict' => AppErrorCode.conflict,
+                    'shopping_payload_corrupted' ||
+                    'shopping_mutation_not_found' =>
+                      AppErrorCode.invalidArgument,
+                    _ => AppErrorCode.storageFailure,
+                  },
+                )
+              : AppErrorClassifier.classify(
+                  error,
+                  boundary: error is ChatBackendMalformedResponseException
+                      ? AppErrorBoundaryKind.contract
+                      : AppErrorBoundaryKind.application,
+                );
       AppDiagnostics.record(
         component: 'conversation',
         domain: 'conversation',
@@ -499,7 +511,9 @@ final class ConversationSessionController extends ChangeNotifier {
         correlationId: descriptor.correlationId,
         sourceExceptionType: error is ConversationTaskPersistenceException
             ? 'ConversationTaskPersistenceException'
-            : AppErrorClassifier.safeExceptionType(error),
+            : error is ConversationShoppingPersistenceException
+                ? 'ConversationShoppingPersistenceException'
+                : AppErrorClassifier.safeExceptionType(error),
         metadata: {
           'retryable': descriptor.retryable,
           'retryStrategy': descriptor.retryStrategy.name,
@@ -728,6 +742,8 @@ final class ConversationSessionController extends ChangeNotifier {
       switch (pending.type) {
         PendingConversationActionType.taskClarification =>
           ProactiveInteractionSource.taskClarification,
+        PendingConversationActionType.shoppingClarification =>
+          ProactiveInteractionSource.shoppingClarification,
         PendingConversationActionType.eventConfirmation ||
         PendingConversationActionType.eventTargetClarification ||
         PendingConversationActionType.eventMutationConfirmation =>
@@ -766,6 +782,7 @@ final class ConversationSessionController extends ChangeNotifier {
   ) =>
       switch (type) {
         PendingConversationActionType.identityClarification ||
+        PendingConversationActionType.shoppingClarification ||
         PendingConversationActionType.eventTargetClarification =>
           ConversationSessionPhase.awaitingClarification,
         _ => ConversationSessionPhase.awaitingConfirmation,

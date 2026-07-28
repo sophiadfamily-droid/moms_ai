@@ -17,13 +17,24 @@ final class LifeContextCapabilityCompatibility {
     required this.state,
     required Set<LifeContextDomain> requiredDomains,
     required List<String> reasonCodes,
+    Set<LifeContextDomain> availableDomains = const {},
+    Set<LifeContextDomain> blockingDomains = const {},
+    List<String> warningCodes = const [],
+    this.sourceGeneration = 0,
   })  : requiredDomains = UnmodifiableSetView(requiredDomains),
+        availableDomains = UnmodifiableSetView(availableDomains),
+        blockingDomains = UnmodifiableSetView(blockingDomains),
+        warningCodes = UnmodifiableListView(warningCodes),
         reasonCodes = UnmodifiableListView(reasonCodes);
 
   final LifeContextCapability capability;
   final LifeContextCapabilityState state;
   final Set<LifeContextDomain> requiredDomains;
+  final Set<LifeContextDomain> availableDomains;
+  final Set<LifeContextDomain> blockingDomains;
+  final List<String> warningCodes;
   final List<String> reasonCodes;
+  final int sourceGeneration;
 
   bool get isUsable => state != LifeContextCapabilityState.blocked;
 }

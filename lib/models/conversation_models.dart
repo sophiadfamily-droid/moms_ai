@@ -40,6 +40,7 @@ class ConversationInput {
 
 enum PendingConversationActionType {
   taskClarification,
+  shoppingClarification,
   eventConfirmation,
   identityClarification,
   identityCreation,
@@ -47,6 +48,30 @@ enum PendingConversationActionType {
   eventTargetClarification,
   eventMutationConfirmation,
   autonomyConfirmation,
+}
+
+enum ShoppingClarificationType { moreOrNoMore }
+
+final class PendingShoppingClarification {
+  const PendingShoppingClarification({
+    required this.clarificationId,
+    required this.logicalRequestId,
+    required this.sessionGeneration,
+    required this.article,
+    required this.type,
+    required this.createdAt,
+    required this.expiresAt,
+  });
+
+  final String clarificationId;
+  final String logicalRequestId;
+  final int sessionGeneration;
+  final String article;
+  final ShoppingClarificationType type;
+  final DateTime createdAt;
+  final DateTime expiresAt;
+
+  bool isExpiredAt(DateTime value) => !value.isBefore(expiresAt);
 }
 
 final class PendingTaskClarificationDraft {
@@ -571,6 +596,7 @@ class PendingConversationAction {
   final MemoryContradictionCandidate? memoryContradiction;
   final MemoryReplacementPendingAction? memoryReplacementAction;
   final PendingTaskClarificationDraft? taskClarification;
+  final PendingShoppingClarification? shoppingClarification;
 
   const PendingConversationAction.taskClarification(
     this.taskClarification,
@@ -585,6 +611,7 @@ class PendingConversationAction {
         identityCreation = null,
         eventTargetClarification = null,
         eventMutationConfirmation = null,
+        shoppingClarification = null,
         autonomyPending = null,
         canonicalConfirmation = null,
         memoryContradiction = null,
@@ -619,6 +646,7 @@ class PendingConversationAction {
         identityCreation = null,
         eventTargetClarification = null,
         eventMutationConfirmation = null,
+        shoppingClarification = null,
         autonomyPending = null,
         taskClarification = null,
         memoryContradiction = null,
@@ -647,6 +675,7 @@ class PendingConversationAction {
         identityCreation = null,
         eventTargetClarification = null,
         eventMutationConfirmation = null,
+        shoppingClarification = null,
         taskClarification = null,
         autonomyPending = null;
 
@@ -671,6 +700,7 @@ class PendingConversationAction {
         identityCreation = null,
         eventTargetClarification = null,
         eventMutationConfirmation = null,
+        shoppingClarification = null,
         taskClarification = null,
         autonomyPending = null,
         memoryContradiction = null,
@@ -697,6 +727,7 @@ class PendingConversationAction {
         identityClarification = null,
         eventTargetClarification = null,
         eventMutationConfirmation = null,
+        shoppingClarification = null,
         taskClarification = null,
         autonomyPending = null,
         memoryContradiction = null,
@@ -723,6 +754,7 @@ class PendingConversationAction {
         identityClarification = null,
         identityCreation = null,
         eventMutationConfirmation = null,
+        shoppingClarification = null,
         taskClarification = null,
         autonomyPending = null,
         memoryContradiction = null,
@@ -749,6 +781,7 @@ class PendingConversationAction {
         identityClarification = null,
         identityCreation = null,
         eventTargetClarification = null,
+        shoppingClarification = null,
         taskClarification = null,
         autonomyPending = null,
         memoryContradiction = null,
@@ -776,9 +809,37 @@ class PendingConversationAction {
         identityCreation = null,
         eventTargetClarification = null,
         eventMutationConfirmation = null,
+        shoppingClarification = null,
         taskClarification = null,
         memoryContradiction = null,
         memoryReplacementAction = null;
+
+  const PendingConversationAction.shoppingClarification(
+    PendingShoppingClarification this.shoppingClarification,
+  )   : type = PendingConversationActionType.shoppingClarification,
+        _event = null,
+        eventParticipant = null,
+        participantIdentityEntityId = null,
+        proposalId = null,
+        expectedMemoryAction = null,
+        createdAt = null,
+        identityClarification = null,
+        identityCreation = null,
+        eventTargetClarification = null,
+        eventMutationConfirmation = null,
+        autonomyPending = null,
+        canonicalConfirmation = null,
+        taskClarification = null,
+        memoryContradiction = null,
+        memoryReplacementAction = null,
+        autonomyMetadata = const ActionPendingMetadata(
+          actionType: ActionType.addShoppingItem,
+          origin: ActionOrigin.structuredContinuation,
+          riskLevel: ActionRiskLevel.mutation,
+          policyModeAtCreation: ActionAutonomyMode.suggestions,
+          policyVersionAtCreation: 1,
+          sessionGeneration: 0,
+        );
 
   EventModel get event => _event!;
 }

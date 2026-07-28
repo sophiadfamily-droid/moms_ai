@@ -1,6 +1,7 @@
 import '../models/event_model.dart';
 import 'event_service.dart';
 import 'planning_proposal_engine.dart';
+import 'smart_planning_service.dart';
 
 typedef SelectedSlotConflictChecker = Future<EventModel?> Function({
   required EventModel candidate,
@@ -45,7 +46,13 @@ class SelectedSlotRevalidationService {
 
     final conflictEvent = await safeConflictChecker(candidate: candidate);
 
-    if (conflictEvent == null) {
+    final reasoningConflict = SmartPlanningService.overlapsBlockedReasoning(
+      start: protectedStart,
+      end: protectedStart.add(Duration(minutes: totalMinutes)),
+      reasoning: reasoning,
+    );
+
+    if (conflictEvent == null && !reasoningConflict) {
       return const SelectedSlotRevalidationResult(
         isAvailable: true,
         conflictEvent: null,

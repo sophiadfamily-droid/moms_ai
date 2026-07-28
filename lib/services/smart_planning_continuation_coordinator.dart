@@ -6,11 +6,18 @@ import '../models/event_model.dart';
 import '../models/smart_planning_continuation.dart';
 import '../models/task_model.dart';
 import '../models/user_profile.dart';
+import '../models/life_context/life_context_domains.dart';
 import 'chat_planning_helper_service.dart';
+import 'app_diagnostics.dart';
 import 'action_autonomy_policy_engine.dart';
 import 'action_confirmation_coordinator.dart';
 import 'event_service.dart';
 import 'memory_planning_compatibility_service.dart';
+import 'life_context/life_context_projection_compatibility.dart';
+import 'life_context/life_context_production.dart';
+import 'life_context_production_factory.dart';
+import '../models/life_context/life_context_health_snapshot.dart';
+import '../models/life_context/life_context_projection.dart';
 import 'natural_duration_service.dart';
 import 'notification_service.dart';
 import 'planner_engine_service.dart';
@@ -56,15 +63,72 @@ typedef SmartPlanningAutonomyPolicyLoader = Future<ActionAutonomyPolicy>
 
 final class ProductionSmartPlanningContinuationGateway
     implements SmartPlanningContinuationGateway {
-  ProductionSmartPlanningContinuationGateway(UserProfile profile)
-      : _profile = profile;
+  ProductionSmartPlanningContinuationGateway(
+    UserProfile _, {
+    Future<LifeContextProduction> Function()? loadLifeContext,
+  }) : _loadLifeContext =
+            loadLifeContext ?? LifeContextProductionFactory.production;
 
-  UserProfile _profile;
+  final Future<LifeContextProduction> Function() _loadLifeContext;
+  int? _proposalGeneration;
 
-  void updateProfile(UserProfile profile) => _profile = profile;
+  void updateProfile(UserProfile _) {}
 
-  Future<List<Map<String, dynamic>>> _reasoning() =>
-      MemoryPlanningCompatibilityService.build(profile: _profile);
+  Future<_CanonicalPlanningInput> _planningInput() async {
+    final production = await _loadLifeContext();
+    final projection = await production.getCurrentProjection(
+      LifeContextConsumerPurpose.planning,
+    );
+    final compatibility = production.compatibility(
+      LifeContextCapability.planning,
+      additionalRequiredDomains: const {LifeContextDomain.task},
+    );
+    final truncatedRequired = projection.sections.any(
+      (section) =>
+          const {
+            LifeContextProjectionSectionType.event,
+            LifeContextProjectionSectionType.routine,
+          }.contains(section.type) &&
+          (section.truncated ||
+              section.sourceTruncationState ==
+                  LifeContextTruncationState.truncated),
+    );
+    if (!compatibility.isUsable || truncatedRequired) {
+      AppDiagnostics.record(
+        component: 'life_context_consumer',
+        domain: 'smart_planning',
+        operation: 'resolve_capability',
+        step: 'resolve_capability',
+        code: AppErrorCode.dependencyUnavailable,
+        technicalStatus: truncatedRequired
+            ? 'truncated-required-section'
+            : 'capability-blocked',
+        metadata: {
+          'sessionGeneration': compatibility.sourceGeneration,
+          'count': compatibility.blockingDomains.length,
+        },
+      );
+      throw StateError(
+        truncatedRequired
+            ? 'planning_context_truncated'
+            : 'planning_context_incompatible',
+      );
+    }
+    final context =
+        LifeContextPlanningProjectionAdapter.toPlanningContext(projection);
+    final memoryReasoning =
+        await MemoryPlanningCompatibilityService.buildFromLifeContext(
+      production: production,
+    );
+    return _CanonicalPlanningInput(
+      generation: production.projectionGeneration,
+      events: context.events.map((event) => event.toEventModel()).toList(),
+      reasoning: [
+        ...context.routines.map((routine) => routine.toBlockedPeriod()),
+        ...memoryReasoning,
+      ],
+    );
+  }
 
   @override
   Future<List<TaskModel>> relatedTasks(
@@ -82,13 +146,28 @@ final class ProductionSmartPlanningContinuationGateway
     required int totalMinutes,
     required int searchDays,
   }) async =>
-      PlanningProposalEngine.findBestOptions(
+      _findOptions(
         startDate: startDate,
         totalMinutes: totalMinutes,
-        reasoning: await _reasoning(),
         searchDays: searchDays,
-        maxOptions: 3,
       );
+
+  Future<PlanningProposalEngineResult> _findOptions({
+    required DateTime startDate,
+    required int totalMinutes,
+    required int searchDays,
+  }) async {
+    final input = await _planningInput();
+    _proposalGeneration = input.generation;
+    return PlanningProposalEngine.findBestOptionsFromEvents(
+      startDate: startDate,
+      totalMinutes: totalMinutes,
+      events: input.events,
+      reasoning: input.reasoning,
+      searchDays: searchDays,
+      maxOptions: 3,
+    );
+  }
 
   @override
   Future<SmartPlanningProposal> buildProposal({
@@ -99,15 +178,36 @@ final class ProductionSmartPlanningContinuationGateway
     required int travelBackMinutes,
     required List<TaskModel> groupedTasks,
   }) async =>
-      PlanningProposalService.buildFromTravelPlanning(
+      _buildProposal(
         task: task,
         originalMessage: originalMessage,
         actionMinutes: actionMinutes,
         travelGoMinutes: travelGoMinutes,
         travelBackMinutes: travelBackMinutes,
         groupedTasks: groupedTasks,
-        memoryReasoning: await _reasoning(),
       );
+
+  Future<SmartPlanningProposal> _buildProposal({
+    required TaskModel task,
+    required String originalMessage,
+    required int actionMinutes,
+    required int travelGoMinutes,
+    required int travelBackMinutes,
+    required List<TaskModel> groupedTasks,
+  }) async {
+    final input = await _planningInput();
+    _proposalGeneration = input.generation;
+    return PlanningProposalService.buildFromTravelPlanning(
+      task: task,
+      originalMessage: originalMessage,
+      actionMinutes: actionMinutes,
+      travelGoMinutes: travelGoMinutes,
+      travelBackMinutes: travelBackMinutes,
+      groupedTasks: groupedTasks,
+      memoryReasoning: input.reasoning,
+      contextEvents: input.events,
+    );
+  }
 
   @override
   Future<SelectedSlotRevalidationResult> revalidate({
@@ -115,16 +215,63 @@ final class ProductionSmartPlanningContinuationGateway
     required DateTime protectedStart,
     required int totalMinutes,
   }) async =>
-      SelectedSlotRevalidationService.revalidate(
+      _revalidate(
         candidate: event,
         protectedStart: protectedStart,
         totalMinutes: totalMinutes,
-        reasoning: await _reasoning(),
       );
 
+  Future<SelectedSlotRevalidationResult> _revalidate({
+    required EventModel candidate,
+    required DateTime protectedStart,
+    required int totalMinutes,
+  }) async {
+    final input = await _planningInput();
+    if (_proposalGeneration != null &&
+        _proposalGeneration != input.generation) {
+      AppDiagnostics.record(
+        component: 'life_context_consumer',
+        domain: 'smart_planning',
+        operation: 'validate_generation',
+        step: 'validate_generation',
+        code: AppErrorCode.staleResult,
+        metadata: {
+          'sessionGeneration': input.generation,
+          'sourceChanged': true,
+        },
+      );
+    }
+    _proposalGeneration = input.generation;
+    return SelectedSlotRevalidationService.revalidate(
+      candidate: candidate,
+      protectedStart: protectedStart,
+      totalMinutes: totalMinutes,
+      reasoning: input.reasoning,
+      conflictChecker: ({required candidate}) async =>
+          _firstConflict(input.events, candidate),
+      alternativeFinder: ({
+        required startDate,
+        required totalMinutes,
+        required reasoning,
+        searchDays = 21,
+        maxOptions = 3,
+      }) async =>
+          PlanningProposalEngine.findBestOptionsFromEvents(
+        startDate: startDate,
+        totalMinutes: totalMinutes,
+        events: input.events,
+        reasoning: reasoning,
+        searchDays: searchDays,
+        maxOptions: maxOptions,
+      ),
+    );
+  }
+
   @override
-  Future<EventModel?> conflict(EventModel event) =>
-      EventService.getOverlapConflict(candidate: event);
+  Future<EventModel?> conflict(EventModel event) async {
+    final input = await _planningInput();
+    return _firstConflict(input.events, event);
+  }
 
   @override
   Future<void> addEvent(EventModel event, {String? mutationId}) async {
@@ -134,6 +281,28 @@ final class ProductionSmartPlanningContinuationGateway
       body: event.title,
     );
   }
+
+  static EventModel? _firstConflict(
+    List<EventModel> events,
+    EventModel candidate,
+  ) {
+    for (final event in events) {
+      if (EventService.eventsProtectedOverlap(event, candidate)) return event;
+    }
+    return null;
+  }
+}
+
+final class _CanonicalPlanningInput {
+  const _CanonicalPlanningInput({
+    required this.generation,
+    required this.events,
+    required this.reasoning,
+  });
+
+  final int generation;
+  final List<EventModel> events;
+  final List<Map<String, dynamic>> reasoning;
 }
 
 final class SmartPlanningContinuationCoordinator {

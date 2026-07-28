@@ -10,6 +10,11 @@ import 'shopping_service.dart';
 import 'task_service.dart';
 import 'natural_language_understanding_service.dart';
 
+typedef ShoppingItemWriter = Future<ShoppingPersistenceResult> Function(
+  ShoppingItemModel item, {
+  String? mutationId,
+});
+
 class ActionHandlerResult {
   final String message;
   final Map<String, dynamic>? pendingDateEvent;
@@ -58,6 +63,7 @@ class ActionHandlerService {
       required String time,
       required int durationMinutes,
     }) endTimeFromDuration,
+    ShoppingItemWriter shoppingItemWriter = ShoppingService.addItem,
   }) async {
     if (action is! Map) return const ActionHandlerResult();
 
@@ -102,23 +108,50 @@ class ActionHandlerService {
     if (title.trim().isEmpty) return const ActionHandlerResult();
 
     if (type == "shopping") {
-      final item = ShoppingItemModel(
-        title: title,
-        isBought: false,
-        createdAt: DateTime.now(),
-        category: action["category"]?.toString() ?? "Autre",
-        notes: action["notes"]?.toString() ?? "",
-        isUrgent: action["isUrgent"] == true,
-        section: action["section"]?.toString() ?? "Aujourd’hui",
-      );
-
-      await ShoppingService.addItem(item);
+      final rawItems = action['items'];
+      final titles = rawItems is List
+          ? rawItems
+              .map((item) => item.toString().trim())
+              .where((item) => item.isNotEmpty)
+              .take(12)
+              .toList(growable: false)
+          : [title.trim()];
+      final actionId = action['actionId']?.toString().trim() ?? '';
+      final mutationId = action['mutationId']?.toString().trim() ?? actionId;
+      var synchronizationPending = false;
+      for (var index = 0; index < titles.length; index++) {
+        final item = ShoppingItemModel(
+          id: actionId.isEmpty
+              ? null
+              : titles.length == 1
+                  ? actionId
+                  : '$actionId:$index',
+          title: titles[index],
+          isBought: false,
+          createdAt: DateTime.now(),
+          category: action["category"]?.toString() ?? "Autre",
+          notes: action["notes"]?.toString() ?? "",
+          isUrgent: action["isUrgent"] == true,
+          section: action["section"]?.toString() ?? "Aujourd’hui",
+        );
+        final result = await shoppingItemWriter(
+          item,
+          mutationId: titles.length == 1 ? mutationId : '$mutationId:$index',
+        );
+        synchronizationPending =
+            synchronizationPending || result.isSynchronizationPending;
+      }
       await NotificationService.showNotification(
         title: "Liste de courses 🛒",
-        body: title,
+        body: titles.join(', '),
       );
 
-      return const ActionHandlerResult();
+      return ActionHandlerResult(
+        message: synchronizationPending
+            ? 'C’est ajouté à ta liste de courses sur cet appareil. '
+                'La synchronisation se fera dès que possible.'
+            : '',
+      );
     }
 
     if (type == "task" || type == "todo" || type == "to-do") {

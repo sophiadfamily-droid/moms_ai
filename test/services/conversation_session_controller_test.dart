@@ -121,6 +121,27 @@ void main() {
       harness.dispose();
     });
 
+    test('maps a retained Shopping persistence failure to storage failure',
+        () async {
+      final harness = _Harness(
+        resolvePending: (_, __) async {
+          throw const ConversationShoppingPersistenceException(
+            'shopping_local_persist_failed',
+          );
+        },
+      );
+
+      await harness.controller.submitText('oui');
+
+      expect(
+        harness.controller.state.messages.last.text,
+        'La sauvegarde locale a échoué. Réessaie avant de quitter.',
+      );
+      expect(harness.controller.state.retryAvailable, isTrue);
+      expect(harness.backend.calls, 0);
+      harness.dispose();
+    });
+
     test('account change isolates messages and invalidates old response',
         () async {
       final completer = Completer<ChatBackendResponse>();

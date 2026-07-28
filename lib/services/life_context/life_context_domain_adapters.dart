@@ -9,6 +9,7 @@ import '../../models/memory_sync.dart';
 import '../../models/routine_model.dart';
 import '../memory_sync_local_repository.dart';
 import '../memory_consumption_policy.dart';
+import '../school_schedule_metadata_service.dart';
 import 'life_context_adapter.dart';
 import 'life_context_memory_projection.dart';
 
@@ -687,6 +688,53 @@ final class RoutineLifeContextAdapter implements LifeContextDomainAdapter {
           }
         }
       }
+      for (var rangeIndex = 0;
+          rangeIndex < (profile?.workTimeRanges.length ?? 0);
+          rangeIndex++) {
+        final range = profile!.workTimeRanges[rangeIndex];
+        if (range.startTime.trim().isEmpty || range.endTime.trim().isEmpty) {
+          continue;
+        }
+        routines.add(
+          RoutineContextItem(
+            id: 'workSchedule:$rangeIndex',
+            source: 'legacyProfile.workTimeRanges',
+            label: _optional(range.label),
+            days: List<String>.of(profile.workDays)..sort(),
+            startTime: range.startTime.trim(),
+            endTime: range.endTime.trim(),
+            travelMinutes: int.tryParse(range.travelMinutes),
+          ),
+        );
+      }
+      final legacyWorkRanges = [
+        (
+          id: 'workSchedule:legacyMorning',
+          label: 'Travail matin',
+          start: profile?.morningStart ?? '',
+          end: profile?.morningEnd ?? '',
+        ),
+        (
+          id: 'workSchedule:legacyAfternoon',
+          label: 'Travail après-midi',
+          start: profile?.afternoonStart ?? '',
+          end: profile?.afternoonEnd ?? '',
+        ),
+      ];
+      for (final range in legacyWorkRanges) {
+        if (range.start.trim().isEmpty || range.end.trim().isEmpty) continue;
+        routines.add(
+          RoutineContextItem(
+            id: range.id,
+            source: 'legacyProfile.workSchedule',
+            label: range.label,
+            days: List<String>.of(profile?.workDays ?? const [])..sort(),
+            startTime: range.start.trim(),
+            endTime: range.end.trim(),
+            travelMinutes: int.tryParse(profile?.transportInfo ?? ''),
+          ),
+        );
+      }
       for (var childIndex = 0;
           childIndex < (profile?.children.length ?? 0);
           childIndex++) {
@@ -700,13 +748,43 @@ final class RoutineLifeContextAdapter implements LifeContextDomainAdapter {
               id: 'schoolSchedule:$childIndex:$rangeIndex',
               source: 'legacyProfile.schoolTimeRanges',
               label: _optional(range.label),
-              days: const [],
+              days: SchoolScheduleMetadataService.daysFromRange(range),
               startTime: _optional(range.startTime),
               endTime: _optional(range.endTime),
               travelMinutes: int.tryParse(range.travelMinutes),
               humanPersonId: _optional(child.humanPersonId),
             ),
           );
+        }
+        for (var activityIndex = 0;
+            activityIndex < child.activities.length;
+            activityIndex++) {
+          final activity = child.activities[activityIndex];
+          for (var rangeIndex = 0;
+              rangeIndex < activity.timeRanges.length;
+              rangeIndex++) {
+            final range = activity.timeRanges[rangeIndex];
+            if (range.startTime.trim().isEmpty ||
+                range.endTime.trim().isEmpty) {
+              continue;
+            }
+            routines.add(
+              RoutineContextItem(
+                id: 'childActivity:$childIndex:$activityIndex:$rangeIndex',
+                source: 'legacyProfile.childActivities',
+                label: _optional(activity.title),
+                days: List<String>.of(activity.days)..sort(),
+                startTime: range.startTime.trim(),
+                endTime: range.endTime.trim(),
+                travelMinutes: int.tryParse(
+                  activity.travelMinutes.trim().isNotEmpty
+                      ? activity.travelMinutes
+                      : range.travelMinutes,
+                ),
+                humanPersonId: _optional(child.humanPersonId),
+              ),
+            );
+          }
         }
       }
       routines.sort((a, b) => a.id.compareTo(b.id));
@@ -810,7 +888,9 @@ final class MemoryLifeContextAdapter implements LifeContextDomainAdapter {
             (memory) => MemoryContextItem(
               id: memory.id,
               text: memory.text,
+              semanticType: memory.semanticType.name,
               category: memory.category,
+              importance: memory.importance,
               status: memory.lifecycleState.name,
               confirmation: memory.confirmationStatus.name,
               provenance: memory.sourceType.name,
@@ -822,6 +902,9 @@ final class MemoryLifeContextAdapter implements LifeContextDomainAdapter {
               validUntil: memory.validUntil,
               structuredDomain: memory.structuredDomain,
               structuredReferenceId: memory.structuredReferenceId,
+              semanticIdentityKey:
+                  memory.semanticIdentityRead.identity?.canonicalKey,
+              revision: memory.memoryRevision,
             ),
           )
           .toList()

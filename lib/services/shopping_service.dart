@@ -17,6 +17,27 @@ import 'revisioned_cloud_repositories.dart';
 import 'revisioned_domain_sync_service.dart';
 import 'revisioned_action_ledger_observer.dart';
 
+enum ShoppingPersistenceStatus { durable, synchronizationPending }
+
+final class ShoppingPersistenceResult {
+  const ShoppingPersistenceResult({
+    required this.status,
+    required this.entityId,
+  });
+
+  final ShoppingPersistenceStatus status;
+  final String entityId;
+
+  bool get isSynchronizationPending =>
+      status == ShoppingPersistenceStatus.synchronizationPending;
+}
+
+final class ShoppingPersistenceException implements Exception {
+  const ShoppingPersistenceException(this.code);
+
+  final String code;
+}
+
 class ShoppingService {
   static const String shoppingKey = "shopping_items";
 
@@ -103,7 +124,7 @@ class ShoppingService {
       final cloudItems = cloudValues
           .where((value) => !value.isTombstone)
           .map((value) => value.item)
-          .toList(growable: false);
+          .toList();
 
       if (scope != null) {
         return cloudItems;
@@ -129,15 +150,152 @@ class ShoppingService {
     return localItems;
   }
 
-  static Future<void> addItem(
+  static Future<ShoppingPersistenceResult> addItem(
     ShoppingItemModel item, {
     EntityIdGenerator idGenerator = const UuidV7EntityIdGenerator(),
+    String? mutationId,
   }) async {
-    final items = await getItems();
+    final identified = _withIdForCreation(item, idGenerator);
+    final entityId = identified.id!;
+    final scope = _currentAccountScope();
+    if (scope != null) {
+      final requestedMutationId = mutationId?.trim() ?? '';
+      final stableMutationId = requestedMutationId.isEmpty
+          ? 'shopping:create:$entityId'
+          : requestedMutationId;
+      try {
+        final current = await _sync.bootstrap(scope);
+        if (_currentAccountScope() != scope) {
+          throw const ShoppingPersistenceException(
+            'shopping_account_scope_mismatch',
+          );
+        }
+        final matches = current.where((value) => value.entityId == entityId);
+        if (matches.isNotEmpty) {
+          final existing = matches.single;
+          return ShoppingPersistenceResult(
+            status: existing.syncStatus == RevisionedSyncStatus.synced
+                ? ShoppingPersistenceStatus.durable
+                : ShoppingPersistenceStatus.synchronizationPending,
+            entityId: entityId,
+          );
+        }
+        final mutation = ShoppingMutation(
+          mutationId: stableMutationId,
+          targetId: entityId,
+          expectedRevision: 0,
+          createdAt: identified.createdAt.toUtc(),
+          attempt: 0,
+          nextRetryAt: null,
+          state: RevisionedMutationState.queued,
+          type: ShoppingMutationType.addItem,
+          item: identified,
+          clearGeneration: 0,
+        );
+        final result = await RevisionedActionLedgerObserver.shopping(
+          scope,
+          mutation,
+          () => _sync.apply(scope, mutation),
+        );
+        return switch (result.status) {
+          RevisionedCloudWriteStatus.success ||
+          RevisionedCloudWriteStatus.idempotent =>
+            ShoppingPersistenceResult(
+              status: ShoppingPersistenceStatus.durable,
+              entityId: entityId,
+            ),
+          RevisionedCloudWriteStatus.unavailable =>
+            _synchronizationPending(entityId),
+          RevisionedCloudWriteStatus.accountMismatch =>
+            throw const ShoppingPersistenceException(
+              'shopping_account_scope_mismatch',
+            ),
+          RevisionedCloudWriteStatus.revisionConflict ||
+          RevisionedCloudWriteStatus.mutationConflict =>
+            throw const ShoppingPersistenceException(
+              'shopping_revision_conflict',
+            ),
+          RevisionedCloudWriteStatus.corrupted =>
+            throw const ShoppingPersistenceException(
+              'shopping_payload_corrupted',
+            ),
+          RevisionedCloudWriteStatus.notFound =>
+            throw const ShoppingPersistenceException(
+              'shopping_mutation_not_found',
+            ),
+        };
+      } on ShoppingPersistenceException catch (error) {
+        _recordCreateFailure(error);
+        rethrow;
+      } on Object catch (error) {
+        _recordCreateFailure(error);
+        rethrow;
+      }
+    }
 
-    items.add(_withIdForCreation(item, idGenerator));
+    final items = await getItems();
+    final existingIndex = items.indexWhere(
+      (current) =>
+          EntityIdentity.isValid(identified.id) && current.id == identified.id,
+    );
+    if (existingIndex >= 0) {
+      items[existingIndex] = identified;
+    } else {
+      items.add(identified);
+    }
 
     await saveItems(items);
+    return ShoppingPersistenceResult(
+      status: ShoppingPersistenceStatus.durable,
+      entityId: entityId,
+    );
+  }
+
+  static void _recordCreateFailure(Object error) {
+    final descriptor = error is ShoppingPersistenceException
+        ? AppErrorCatalog.describe(
+            switch (error.code) {
+              'shopping_account_scope_mismatch' =>
+                AppErrorCode.accountScopeMismatch,
+              'shopping_revision_conflict' => AppErrorCode.conflict,
+              'shopping_payload_corrupted' ||
+              'shopping_mutation_not_found' =>
+                AppErrorCode.invalidArgument,
+              _ => AppErrorCode.storageFailure,
+            },
+          )
+        : AppErrorClassifier.classify(
+            error,
+            boundary: AppErrorBoundaryKind.localStorage,
+          );
+    AppDiagnostics.record(
+      component: 'shopping_repository',
+      domain: 'shopping',
+      operation: 'create',
+      step: 'local_persist',
+      code: descriptor.code,
+      severity: descriptor.severity,
+      retryStrategy: descriptor.retryStrategy,
+      sourceExceptionType: AppErrorClassifier.safeExceptionType(error),
+    );
+  }
+
+  static ShoppingPersistenceResult _synchronizationPending(String entityId) {
+    final descriptor = AppErrorCatalog.describe(AppErrorCode.syncPending);
+    AppDiagnostics.record(
+      component: 'shopping_repository',
+      domain: 'shopping',
+      operation: 'create',
+      step: 'cloud_sync',
+      code: descriptor.code,
+      severity: descriptor.severity,
+      retryStrategy: descriptor.retryStrategy,
+      sourceExceptionType: 'RevisionedCloudWriteStatus',
+    );
+    return ShoppingPersistenceResult(
+      status: ShoppingPersistenceStatus.synchronizationPending,
+      entityId: entityId,
+    );
   }
 
   static ShoppingItemModel _withIdForCreation(

@@ -1,6 +1,7 @@
 import 'dart:collection';
 
 import '../../models/chat_backend_request.dart';
+import '../../models/event_model.dart';
 import '../../models/life_context/life_context_projection.dart';
 import '../conversation_context_assembler.dart';
 
@@ -45,6 +46,41 @@ final class PlanningProjectionEvent {
   final String? recurringType;
   final String syncStatus;
   final int revision;
+
+  EventModel toEventModel() {
+    final parsedStart = DateTime.tryParse(start);
+    final parsedEnd = DateTime.tryParse(end);
+    if (parsedStart == null ||
+        parsedEnd == null ||
+        !parsedEnd.isAfter(parsedStart)) {
+      throw const LifeContextProjectionException('invalid_planning_event');
+    }
+    String date(DateTime value) => '${value.year.toString().padLeft(4, '0')}-'
+        '${value.month.toString().padLeft(2, '0')}-'
+        '${value.day.toString().padLeft(2, '0')}';
+    String time(DateTime value) => '${value.hour.toString().padLeft(2, '0')}:'
+        '${value.minute.toString().padLeft(2, '0')}';
+    return EventModel(
+      id: id,
+      title: 'Contrainte calendrier',
+      date: date(parsedStart),
+      time: time(parsedStart),
+      notes: '',
+      category: 'Planning',
+      createdAt: parsedStart,
+      startDateTimeIso: start,
+      endTime: time(parsedEnd),
+      endDateTimeIso: end,
+      durationMinutes: parsedEnd.difference(parsedStart).inMinutes,
+      travelGoMinutes: travelGoMinutes,
+      travelBackMinutes: travelBackMinutes,
+      usesSeparateTravelTimes: true,
+      marginMinutes: marginMinutes,
+      isRecurring: recurringType?.isNotEmpty ?? false,
+      recurringType: recurringType ?? '',
+      eventRevision: revision,
+    );
+  }
 }
 
 final class PlanningProjectionRoutine {
@@ -78,8 +114,13 @@ final class PlanningProjectionRoutine {
         'type': 'blocked_period',
         'recurrenceType': recurrenceType ?? 'weekly',
         'days': days,
-        if (startTime != null) 'start': startTime,
-        if (endTime != null) 'end': endTime,
+        if (startTime != null) 'startTime': startTime,
+        if (endTime != null) 'endTime': endTime,
+        'travelBeforeMinutes':
+            travelGoMinutes > 0 ? travelGoMinutes : travelMinutes ?? 0,
+        'travelAfterMinutes': travelBackMinutes > 0
+            ? travelBackMinutes + marginMinutes
+            : (travelMinutes ?? 0) + marginMinutes,
         'travelGoMinutes': travelGoMinutes,
         'travelBackMinutes': travelBackMinutes,
         'marginMinutes': marginMinutes,
