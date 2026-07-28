@@ -14,6 +14,33 @@ import '../fakes/fake_entity_id_generator.dart';
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
+  test('guest ignores legacy global event and journal keys', () async {
+    final legacyEvent = _event(id: 'legacy-account-event');
+    final legacyOperation = _operation(
+      'legacy-account-operation',
+      EventSyncOperationType.create,
+      accountScopeId: 'account-a',
+    );
+    SharedPreferences.setMockInitialValues({
+      EventService.eventsKey: [jsonEncode(legacyEvent.toJson())],
+      EventSyncJournal.storageKey: [jsonEncode(legacyOperation.toJson())],
+    });
+    EventService.handleAccountScopeChanged(null);
+
+    expect(await EventService.getEvents(), isEmpty);
+    expect(await EventSyncJournal().load(), isEmpty);
+  });
+
+  test('event cache keys separate guest, account A and account B', () {
+    final guest = EventService.localEventsKeyForAccountScope(null);
+    final accountA = EventService.localEventsKeyForAccountScope('account-a');
+    final accountB = EventService.localEventsKeyForAccountScope('account-b');
+
+    expect({guest, accountA, accountB}, hasLength(3));
+    expect(guest, EventService.guestEventsKey);
+    expect(guest, isNot(EventService.eventsKey));
+  });
+
   test('journal round trips create, update and delete deterministically',
       () async {
     final journal = EventSyncJournal();
@@ -30,11 +57,80 @@ void main() {
         EventSyncOperationType.values);
   });
 
+  test('journal isolates two accounts and rejects a cross-scope mutation',
+      () async {
+    var currentScope = 'account-a';
+    final journal = EventSyncJournal(
+      currentAccountScopeId: () => currentScope,
+    );
+    await journal.append(
+      _operation(
+        'operation-a',
+        EventSyncOperationType.create,
+        accountScopeId: 'account-a',
+      ),
+    );
+
+    currentScope = 'account-b';
+    expect(await journal.load(), isEmpty);
+    await journal.append(
+      _operation(
+        'operation-b',
+        EventSyncOperationType.create,
+        accountScopeId: 'account-b',
+      ),
+    );
+    expect((await journal.load()).single.operationId, 'operation-b');
+    await expectLater(
+      journal.append(
+        _operation(
+          'operation-a-retry',
+          EventSyncOperationType.create,
+          accountScopeId: 'account-a',
+        ),
+      ),
+      throwsFormatException,
+    );
+
+    currentScope = 'account-a';
+    expect((await journal.load()).single.operationId, 'operation-a');
+  });
+
+  test('account A, guest and account B use disjoint event journal keys',
+      () async {
+    String? currentScope = 'account-a';
+    final journal = EventSyncJournal(
+      currentAccountScopeId: () => currentScope,
+    );
+    await journal.append(
+      _operation(
+        'operation-a',
+        EventSyncOperationType.create,
+        accountScopeId: 'account-a',
+      ),
+    );
+
+    currentScope = null;
+    await journal.append(
+      _operation(
+        'operation-guest',
+        EventSyncOperationType.create,
+        accountScopeId: null,
+      ),
+    );
+    expect((await journal.load()).single.operationId, 'operation-guest');
+
+    currentScope = 'account-b';
+    expect(await journal.load(), isEmpty);
+    currentScope = 'account-a';
+    expect((await journal.load()).single.operationId, 'operation-a');
+  });
+
   test('unknown versions, types and duplicate operation IDs are rejected',
       () async {
     final valid = _operation('duplicate', EventSyncOperationType.create);
     SharedPreferences.setMockInitialValues({
-      EventSyncJournal.storageKey: [
+      EventSyncJournal.guestStorageKey: [
         jsonEncode(valid.toJson()),
         jsonEncode(valid.toJson()),
       ],
@@ -234,7 +330,7 @@ void main() {
     final existing = _event(id: 'event-update');
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(
-      EventService.eventsKey,
+      EventService.guestEventsKey,
       [jsonEncode(existing.toJson())],
     );
     final result = await EventService.mutateEvent(
@@ -260,7 +356,7 @@ void main() {
     final existing = _event(id: 'event-delete');
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(
-      EventService.eventsKey,
+      EventService.guestEventsKey,
       [jsonEncode(existing.toJson())],
     );
     final result = await EventService.deleteEvent(

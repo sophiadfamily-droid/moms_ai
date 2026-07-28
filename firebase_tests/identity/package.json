@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node identity.rules.test.js"
+    "test": "node identity.rules.test.js",
+    "test:s02": "node s02.rules.test.js"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^4.0.1",

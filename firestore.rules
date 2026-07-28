@@ -11,6 +11,96 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
+    function hasValidConversationShape() {
+      let data = request.resource.data;
+      return data.keys().hasOnly(['updatedAt', 'lastMessage'])
+        && data.keys().hasAll(['updatedAt', 'lastMessage'])
+        && data.updatedAt is timestamp
+        && data.lastMessage is string
+        && data.lastMessage.size() > 0
+        && data.lastMessage.size() <= 4000;
+    }
+
+    function hasValidConversationMessageShape() {
+      let data = request.resource.data;
+      return data.keys().hasOnly(['role', 'text', 'createdAt'])
+        && data.keys().hasAll(['role', 'text', 'createdAt'])
+        && data.role in ['user', 'assistant']
+        && data.text is string
+        && data.text.size() > 0
+        && data.text.size() <= 4000
+        && data.createdAt is timestamp;
+    }
+
+    function hasValidMemoryReplacementActionShape(actionId) {
+      let data = request.resource.data;
+      return data.keys().hasOnly([
+          'schemaVersion', 'actionId', 'actionType',
+          'accountScopeFingerprint', 'existingMemoryId', 'proposedMemoryId',
+          'canonicalKey', 'expectedExistingRevision',
+          'expectedProposedRevision', 'contradictionId', 'reasonCode', 'state',
+          'logicalRequestFingerprint', 'createdAt', 'updatedAt', 'executedAt',
+          'executionCode', 'finalExistingRevision', 'finalProposedRevision',
+          'contradictionCandidate'
+        ])
+        && data.keys().hasAll([
+          'schemaVersion', 'actionId', 'actionType',
+          'accountScopeFingerprint', 'existingMemoryId', 'proposedMemoryId',
+          'canonicalKey', 'expectedExistingRevision',
+          'expectedProposedRevision', 'contradictionId', 'reasonCode', 'state',
+          'logicalRequestFingerprint', 'createdAt', 'updatedAt'
+        ])
+        && data.schemaVersion == 1
+        && data.actionId == actionId
+        && data.actionId is string
+        && data.actionId.size() == 64
+        && data.actionType == 'memoryReplacementConfirmation'
+        && data.accountScopeFingerprint is string
+        && data.accountScopeFingerprint.size() == 64
+        && data.existingMemoryId is string
+        && data.existingMemoryId.size() > 0
+        && data.existingMemoryId.size() <= 200
+        && data.proposedMemoryId is string
+        && data.proposedMemoryId.size() > 0
+        && data.proposedMemoryId.size() <= 200
+        && data.proposedMemoryId != data.existingMemoryId
+        && data.canonicalKey is string
+        && data.canonicalKey.size() > 3
+        && data.canonicalKey.size() <= 500
+        && data.expectedExistingRevision is int
+        && data.expectedExistingRevision > 0
+        && data.expectedProposedRevision is int
+        && data.expectedProposedRevision > 0
+        && data.contradictionId is string
+        && data.contradictionId.size() == 64
+        && data.reasonCode is string
+        && data.reasonCode.size() > 0
+        && data.reasonCode.size() <= 100
+        && data.state in [
+          'pending', 'declined', 'cancelled', 'acceptedPendingExecution',
+          'executed', 'conflict'
+        ]
+        && data.logicalRequestFingerprint is string
+        && data.logicalRequestFingerprint.size() == 64
+        && data.createdAt is string
+        && data.createdAt.size() <= 40
+        && data.updatedAt is string
+        && data.updatedAt.size() <= 40
+        && (!data.keys().hasAny(['executedAt'])
+          || (data.executedAt is string && data.executedAt.size() <= 40))
+        && (!data.keys().hasAny(['executionCode'])
+          || (data.executionCode is string && data.executionCode.size() <= 100))
+        && (!data.keys().hasAny(['finalExistingRevision'])
+          || (data.finalExistingRevision is int
+            && data.finalExistingRevision > 0))
+        && (!data.keys().hasAny(['finalProposedRevision'])
+          || (data.finalProposedRevision is int
+            && data.finalProposedRevision > 0))
+        && (!data.keys().hasAny(['contradictionCandidate'])
+          || (data.contradictionCandidate is map
+            && data.contradictionCandidate.size() <= 16));
+    }
+
     function hasValidIdentityShape(entityId) {
       let data = request.resource.data;
       return data.keys().hasOnly([
@@ -743,7 +833,48 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow read, write: if isOwner(userId);
+      allow read: if isOwner(userId);
+      allow write: if false;
+
+      match /conversations/{conversationId} {
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId)
+          && hasValidConversationShape();
+        allow delete: if isOwner(userId);
+
+        match /messages/{messageId} {
+          allow read: if isOwner(userId);
+          allow create: if isOwner(userId)
+            && hasValidConversationMessageShape();
+          allow update, delete: if false;
+        }
+      }
+
+      match /memoryReplacementActions/{actionId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId)
+          && hasValidMemoryReplacementActionShape(actionId);
+        allow update: if isOwner(userId)
+          && hasValidMemoryReplacementActionShape(actionId)
+          && request.resource.data.actionId == resource.data.actionId
+          && request.resource.data.accountScopeFingerprint
+            == resource.data.accountScopeFingerprint
+          && request.resource.data.existingMemoryId
+            == resource.data.existingMemoryId
+          && request.resource.data.proposedMemoryId
+            == resource.data.proposedMemoryId
+          && request.resource.data.canonicalKey == resource.data.canonicalKey
+          && request.resource.data.expectedExistingRevision
+            == resource.data.expectedExistingRevision
+          && request.resource.data.expectedProposedRevision
+            == resource.data.expectedProposedRevision
+          && request.resource.data.contradictionId
+            == resource.data.contradictionId
+          && request.resource.data.logicalRequestFingerprint
+            == resource.data.logicalRequestFingerprint
+          && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if false;
+      }
 
       match /identities/{entityId} {
         allow read: if isOwner(userId);
@@ -922,17 +1053,8 @@ service cloud.firestore {
         allow delete: if false;
       }
 
-      match /{collection}/{document=**} {
-        allow read, write: if isOwner(userId)
-          && collection != 'identities'
-          && collection != 'events'
-          && collection != 'tasks'
-          && collection != 'shopping_items'
-          && collection != 'actionLedger'
-          && collection != 'private'
-          && collection != 'memories'
-          && collection != 'routines'
-          && collection != 'routineProposals';
+      match /{document=**} {
+        allow read, write: if false;
       }
     }
 

@@ -24,6 +24,7 @@ class MainNavigation extends StatefulWidget {
   final List<Widget>? testScreens;
   final IdentityProductionServices? identityServices;
   final ProactiveInteractionRegistry? proactiveInteractionRegistry;
+  final String? accountScopeId;
 
   const MainNavigation({
     super.key,
@@ -33,6 +34,7 @@ class MainNavigation extends StatefulWidget {
     this.testScreens,
     this.identityServices,
     this.proactiveInteractionRegistry,
+    this.accountScopeId,
   });
 
   @override
@@ -117,7 +119,10 @@ class _MainNavigationState extends State<MainNavigation> {
             sessionController: _conversationSessionController!,
             proactiveInteractionRegistry: _proactiveInteractionRegistry,
           ),
-          const CalendarScreen(),
+          CalendarScreen(
+            key: ValueKey('calendar:${widget.accountScopeId ?? 'guest'}'),
+            accountScopeToken: widget.accountScopeId ?? 'guest',
+          ),
           TasksScreen(
             onOpenZeliaSuggestion: openChatWithSuggestion,
             onNavigate: changeTab,

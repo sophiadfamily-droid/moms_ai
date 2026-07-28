@@ -1387,6 +1387,28 @@ Storage is deny-all. The OpenAI secret is held by the Functions environment.
 The callable AI boundary requires Firebase Auth, production App Check, strict
 request validation and a transactional server quota. It has no HTTP fallback.
 
+The client Firestore boundary is also deny-by-default inside
+`users/{uid}`. Every supported subcollection has an explicit matcher; an
+unknown descendant, a root user write, and every server-only root collection
+are denied. The UID in the path is the ownership authority. Where a persisted
+contract also contains `accountScopeId`, it must equal that path UID and remain
+immutable. Revisioned entity IDs remain equal to their document IDs.
+Conversations and memory-replacement actions use closed schemas rather than a
+generic authenticated-user fallback.
+
+Local compatibility state is separated between guest storage and
+UID-qualified storage. Profile compatibility snapshots, Event caches and
+sync journals, dashboard photo references, revisioned repositories,
+conversation references, proactive receipts and policies use the active
+account scope. Event guest state uses an explicit `guest` scope; historical
+global Event and sync-journal keys are never imported into either a guest or an
+authenticated account because their ownership cannot be proven. A Firebase
+Auth UID transition clears visible profile and Agenda state, invalidates
+in-flight Event loads, and rebuilds `MainNavigation`, which disposes
+conversation continuations and listeners from the previous account before
+loading the next scope. A queued Event mutation is rejected when its recorded
+account differs from the active journal scope.
+
 ### Planned architecture
 
 The AI boundary uses Firebase Authentication, anonymous authentication for
@@ -1520,7 +1542,9 @@ Architectural debt is recorded here to prevent accidental normalization. It does
 - App Check providers and enforcement must be configured in every remote
   Firebase environment before release; checked-in code fails closed but does
   not alter remote Firebase configuration.
-- Local persistence is not identity-scoped, and account transitions lack a complete reconciliation policy.
+- Legacy guest-only caches remain intentionally separate from authenticated
+  UID caches; any future guest-to-account merge still requires an explicit
+  product reconciliation policy.
 - Cloud list synchronization has ambiguous empty-cloud and full-replacement behavior.
 - Recurring calendar series require a complete conflict policy across all occurrences.
 - The chat screen owns too many workflow responsibilities, and no typed Conversation Engine yet owns active interaction, interruption, cancellation, and action lifecycle state.

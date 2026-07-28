@@ -112,7 +112,7 @@ void main() {
       () async {
     final existing = _event(link: originalLink);
     SharedPreferences.setMockInitialValues({
-      EventService.eventsKey: [jsonEncode(existing.toJson())],
+      EventService.guestEventsKey: [jsonEncode(existing.toJson())],
     });
     await EventService.saveEvents([
       _event(link: null).copyWith(title: 'Legacy edit', eventRevision: 2),
@@ -135,7 +135,7 @@ void main() {
     final linked = _event(link: originalLink);
     final other = _event(id: 'event-2', link: originalLink);
     SharedPreferences.setMockInitialValues({
-      EventService.eventsKey: [
+      EventService.guestEventsKey: [
         jsonEncode(linked.toJson()),
         jsonEncode(other.toJson()),
       ],
@@ -149,7 +149,7 @@ void main() {
   test('local mutation enforces revision and makes retry idempotent', () async {
     final existing = _event(link: originalLink);
     SharedPreferences.setMockInitialValues({
-      EventService.eventsKey: [jsonEncode(existing.toJson())],
+      EventService.guestEventsKey: [jsonEncode(existing.toJson())],
     });
 
     final first = await EventService.mutateEvent(
@@ -189,7 +189,7 @@ void main() {
     final restored = EventModel.fromJson(legacy);
     expect(restored.eventRevision, 0);
     SharedPreferences.setMockInitialValues({
-      EventService.eventsKey: [jsonEncode(legacy)],
+      EventService.guestEventsKey: [jsonEncode(legacy)],
     });
     final result = await EventService.mutateEvent(
       existing: restored,
@@ -210,7 +210,7 @@ void main() {
       () async {
     final existing = _event(link: originalLink);
     SharedPreferences.setMockInitialValues({
-      EventService.eventsKey: [jsonEncode(existing.toJson())],
+      EventService.guestEventsKey: [jsonEncode(existing.toJson())],
     });
     final conflict = await EventService.deleteEvent(
       existing: existing,
@@ -267,7 +267,7 @@ EventModel _event({
 
 Future<List<EventModel>> _storedEvents() async {
   final prefs = await SharedPreferences.getInstance();
-  return (prefs.getStringList(EventService.eventsKey) ?? const [])
+  return (prefs.getStringList(EventService.guestEventsKey) ?? const [])
       .map(
         (value) => EventModel.fromJson(
           Map<String, dynamic>.from(jsonDecode(value) as Map),

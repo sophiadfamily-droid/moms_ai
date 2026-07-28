@@ -372,7 +372,7 @@ void main() {
 
 Future<List<EventModel>> _storedEvents() async {
   final prefs = await SharedPreferences.getInstance();
-  final stored = prefs.getStringList(EventService.eventsKey) ?? const [];
+  final stored = prefs.getStringList(EventService.guestEventsKey) ?? const [];
   return stored
       .map(
         (event) => EventModel.fromJson(

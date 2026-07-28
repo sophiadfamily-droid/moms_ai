@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -41,6 +43,103 @@ Widget buildCalendar({
 }
 
 void main() {
+  testWidgets(
+    'account scope change clears immediately and discards the old load',
+    (WidgetTester tester) async {
+      final accountALoad = Completer<List<EventModel>>();
+      final today = isoDate(DateTime.now());
+      final accountEvent = EventModel(
+        id: 'account-a-event',
+        title: 'Événement compte A',
+        date: today,
+        time: '10:00',
+        notes: '',
+        createdAt: DateTime.utc(2026, 7, 28),
+        startDateTimeIso: '${today}T10:00:00',
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CalendarScreen(
+            accountScopeToken: 'account-a',
+            eventsVersionForTest: ValueNotifier<int>(0),
+            loadEventsForTest: () => accountALoad.future,
+            loadSyncConflictsForTest: () async => const [],
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CalendarScreen(
+            accountScopeToken: 'guest',
+            eventsVersionForTest: ValueNotifier<int>(0),
+            loadEventsForTest: () async => const [],
+            loadSyncConflictsForTest: () async => const [],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Événement compte A'), findsNothing);
+
+      accountALoad.complete([accountEvent]);
+      await tester.pumpAndSettle();
+      expect(find.text('Événement compte A'), findsNothing);
+    },
+  );
+
+  testWidgets('account A, B and A again never mix visible events',
+      (WidgetTester tester) async {
+    final today = isoDate(DateTime.now());
+    EventModel event(String id, String title) => EventModel(
+          id: id,
+          title: title,
+          date: today,
+          time: '10:00',
+          notes: '',
+          createdAt: DateTime.utc(2026, 7, 28),
+          startDateTimeIso: '${today}T10:00:00',
+        );
+
+    Future<void> showScope(String scope, EventModel scopedEvent) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CalendarScreen(
+            accountScopeToken: scope,
+            eventsVersionForTest: ValueNotifier<int>(0),
+            loadEventsForTest: () async => [scopedEvent],
+            loadSyncConflictsForTest: () async => const [],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    await showScope('account-a', event('event-a', 'Agenda A'));
+    expect(find.text('Agenda A'), findsOneWidget);
+
+    await showScope('account-b', event('event-b', 'Agenda B'));
+    expect(find.text('Agenda A'), findsNothing);
+    expect(find.text('Agenda B'), findsOneWidget);
+
+    await showScope('account-a', event('event-a', 'Agenda A'));
+    expect(find.text('Agenda B'), findsNothing);
+    expect(find.text('Agenda A'), findsOneWidget);
+
+    await showScope('guest', event('event-guest', 'Agenda invité'));
+    expect(find.text('Agenda A'), findsNothing);
+    expect(find.text('Agenda invité'), findsOneWidget);
+
+    await showScope('account-a', event('event-a', 'Agenda A'));
+    expect(find.text('Agenda invité'), findsNothing);
+    expect(find.text('Agenda A'), findsOneWidget);
+
+    await showScope('guest', event('event-guest', 'Agenda invité'));
+    expect(find.text('Agenda A'), findsNothing);
+    expect(find.text('Agenda invité'), findsOneWidget);
+  });
+
   testWidgets('conflict dialog reports a new planning conflict safely',
       (WidgetTester tester) async {
     final conflict = EventSyncConflict.fromOperation(

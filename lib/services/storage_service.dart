@@ -106,7 +106,7 @@ class StorageService {
 
       if (cloudProfile != null) {
         await prefs.setString(
-          userProfileKey,
+          _scopedCompatibilityKey(scope!),
           jsonEncode(cloudProfile.toJson()),
         );
 

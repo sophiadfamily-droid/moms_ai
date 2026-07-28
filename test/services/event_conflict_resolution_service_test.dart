@@ -97,7 +97,7 @@ void main() {
 
     expect(result.status, EventConflictResolutionStatus.planningConflict);
     expect(fixture.cloudWrites, 0);
-    final journalEntry = (await EventSyncJournal().load()).single;
+    final journalEntry = (await _accountJournal().load()).single;
     expect(journalEntry.state, EventSyncOperationState.conflict);
     expect(journalEntry.resolutionState, EventConflictResolutionState.failed);
   });
@@ -195,7 +195,7 @@ void main() {
     expect(fixture.created.single.id, 'new-event');
     expect(fixture.created.single.eventRevision, 1);
     expect(fixture.created.single.participantIdentity, isNull);
-    final receipt = (await EventSyncJournal().load()).single;
+    final receipt = (await _accountJournal().load()).single;
     expect(receipt.resolutionEventId, 'new-event');
     expect(receipt.state, EventSyncOperationState.resolved);
   });
@@ -276,7 +276,7 @@ final class _Fixture {
       EventMutationResult? mutationResult,
       EventModel? localEvent,
       EventModel? cloudEvent}) async {
-    final journal = EventSyncJournal();
+    final journal = _accountJournal();
     await journal.append(_operation(
       type,
       includeBase: includeBase,
@@ -315,3 +315,7 @@ final class _Fixture {
     return fixture;
   }
 }
+
+EventSyncJournal _accountJournal() => EventSyncJournal(
+      currentAccountScopeId: () => 'account',
+    );

@@ -3,17 +3,49 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/event_sync_models.dart';
+import 'auth_service.dart';
 
 final class EventSyncJournal {
   static const String storageKey = 'zelia_event_sync_journal_v1';
   static const String receiptStorageKey =
       'zelia_event_sync_journal_receipts_v1';
+  static const String guestScopeKey = 'guest';
+  static const String guestStorageKey = '$storageKey:$guestScopeKey';
+  static const String guestReceiptStorageKey =
+      '$receiptStorageKey:$guestScopeKey';
   static const int maxOperations = 500;
   static const int maxResolutionReceipts = 100;
 
+  EventSyncJournal({String? Function()? currentAccountScopeId})
+      : _currentAccountScopeId =
+            currentAccountScopeId ?? _authenticatedAccountScope;
+
+  final String? Function() _currentAccountScopeId;
+
+  static String? _authenticatedAccountScope() {
+    try {
+      final scope = AuthService.currentUserId;
+      return scope == null || scope.trim().isEmpty ? null : scope.trim();
+    } on Object {
+      return null;
+    }
+  }
+
+  String _scopedKey(String base) {
+    final scope = _currentAccountScopeId();
+    return '$base:${scope ?? guestScopeKey}';
+  }
+
+  void _validateOperationScope(PendingEventSyncOperation operation) {
+    final scope = _currentAccountScopeId();
+    if (operation.accountScopeId != scope) {
+      throw const FormatException('event_sync_account_scope_mismatch');
+    }
+  }
+
   Future<List<PendingEventSyncOperation>> load() async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getStringList(storageKey) ?? const [];
+    final raw = prefs.getStringList(_scopedKey(storageKey)) ?? const [];
     final operations = <PendingEventSyncOperation>[];
     final ids = <String>{};
     for (final item in raw) {
@@ -24,6 +56,7 @@ final class EventSyncJournal {
       final operation = PendingEventSyncOperation.fromJson(
         Map<String, dynamic>.from(decoded),
       );
+      _validateOperationScope(operation);
       if (!ids.add(operation.operationId)) {
         throw const FormatException('duplicate_event_sync_operation');
       }
@@ -37,6 +70,9 @@ final class EventSyncJournal {
   }
 
   Future<void> save(List<PendingEventSyncOperation> operations) async {
+    for (final operation in operations) {
+      _validateOperationScope(operation);
+    }
     final active = operations.where(
       (operation) =>
           operation.state != EventSyncOperationState.applied &&
@@ -60,21 +96,21 @@ final class EventSyncJournal {
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(
-      receiptStorageKey,
+      _scopedKey(receiptStorageKey),
       retainedReceipts
           .take(maxResolutionReceipts)
           .map((operation) => jsonEncode(operation.toJson()))
           .toList(),
     );
     await prefs.setStringList(
-      storageKey,
+      _scopedKey(storageKey),
       retained.map((operation) => jsonEncode(operation.toJson())).toList(),
     );
   }
 
   Future<List<PendingEventSyncOperation>> loadReceipts() async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getStringList(receiptStorageKey) ?? const [];
+    final raw = prefs.getStringList(_scopedKey(receiptStorageKey)) ?? const [];
     if (raw.length > maxResolutionReceipts) {
       throw const FormatException('event_sync_receipt_limit');
     }
@@ -86,6 +122,7 @@ final class EventSyncJournal {
       final operation = PendingEventSyncOperation.fromJson(
         Map<String, dynamic>.from(decoded),
       );
+      _validateOperationScope(operation);
       if (operation.state != EventSyncOperationState.applied &&
           operation.state != EventSyncOperationState.cancelled &&
           operation.state != EventSyncOperationState.resolved &&

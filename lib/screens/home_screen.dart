@@ -10,6 +10,7 @@ import '../models/shopping_item_model.dart';
 import '../models/task_model.dart';
 import '../models/user_profile.dart';
 import '../services/ai_priority_service.dart';
+import '../services/auth_service.dart';
 import '../services/event_service.dart';
 import '../services/shopping_service.dart';
 import '../services/task_service.dart';
@@ -41,6 +42,13 @@ class _HomeScreenState extends State<HomeScreen>
   final PageController familyPhotoController = PageController();
 
   static const String familyPhotosKey = "zelia_dashboard_family_photos";
+
+  String get scopedFamilyPhotosKey {
+    final scope = AuthService.currentUserId;
+    return scope == null || scope.trim().isEmpty
+        ? familyPhotosKey
+        : '$familyPhotosKey:${scope.trim()}';
+  }
 
   bool loading = true;
 
@@ -83,7 +91,7 @@ class _HomeScreenState extends State<HomeScreen>
     final loadedTasks = await TaskService.getTasks();
     final loadedShopping = await ShoppingService.getItems();
     final prefs = await SharedPreferences.getInstance();
-    final loadedPhotos = prefs.getStringList(familyPhotosKey) ?? [];
+    final loadedPhotos = prefs.getStringList(scopedFamilyPhotosKey) ?? [];
 
     loadedEvents.sort((a, b) {
       final aValue = a.startDateTimeIso.isEmpty
@@ -132,7 +140,7 @@ class _HomeScreenState extends State<HomeScreen>
     final prefs = await SharedPreferences.getInstance();
 
     await prefs.setStringList(
-      familyPhotosKey,
+      scopedFamilyPhotosKey,
       updated,
     );
 
@@ -148,7 +156,7 @@ class _HomeScreenState extends State<HomeScreen>
   Future<void> clearFamilyPhotos() async {
     final prefs = await SharedPreferences.getInstance();
 
-    await prefs.remove(familyPhotosKey);
+    await prefs.remove(scopedFamilyPhotosKey);
 
     if (!mounted) {
       return;

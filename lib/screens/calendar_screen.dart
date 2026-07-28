@@ -17,6 +17,7 @@ class CalendarScreen extends StatefulWidget {
     this.loadSyncConflictsForTest,
     this.resolveSyncConflictForTest,
     this.eventsVersionForTest,
+    this.accountScopeToken = 'guest',
   });
 
   final Future<List<EventModel>> Function()? loadEventsForTest;
@@ -32,6 +33,7 @@ class CalendarScreen extends StatefulWidget {
     required int expectedEventRevision,
   })? deleteEventForTest;
   final ValueNotifier<int>? eventsVersionForTest;
+  final String accountScopeToken;
   final Future<List<EventSyncConflict>> Function()? loadSyncConflictsForTest;
   final Future<EventConflictResolutionResult> Function({
     required String conflictId,
@@ -56,6 +58,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   String selectedView = 'Mois';
   bool loading = true;
+  int _loadGeneration = 0;
+  int _screenInstanceGeneration = 0;
 
   final Color bg = const Color(0xFFF8EFEA);
   final Color accent = const Color(0xFFE95D5D);
@@ -104,18 +108,37 @@ class _CalendarScreenState extends State<CalendarScreen> {
   @override
   void initState() {
     super.initState();
+    _screenInstanceGeneration++;
+    EventService.updateScreenInstanceGeneration(_screenInstanceGeneration);
     eventsVersion.addListener(loadEvents);
     loadEvents();
   }
 
   @override
+  void didUpdateWidget(covariant CalendarScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.accountScopeToken == widget.accountScopeToken) return;
+    _screenInstanceGeneration++;
+    _loadGeneration++;
+    EventService.updateScreenInstanceGeneration(_screenInstanceGeneration);
+    setState(() {
+      events = [];
+      syncConflicts = [];
+      loading = true;
+    });
+    loadEvents();
+  }
+
+  @override
   void dispose() {
+    _loadGeneration++;
     eventsVersion.removeListener(loadEvents);
     super.dispose();
   }
 
   Future<void> loadEvents() async {
-    final loaded = await getEvents();
+    final generation = ++_loadGeneration;
+    final loaded = List<EventModel>.from(await getEvents());
     List<EventSyncConflict> conflicts;
     try {
       conflicts = await (widget.loadSyncConflictsForTest?.call() ??
@@ -135,7 +158,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       return aValue.compareTo(bValue);
     });
 
-    if (!mounted) return;
+    if (!mounted || generation != _loadGeneration) return;
 
     setState(() {
       events = loaded;

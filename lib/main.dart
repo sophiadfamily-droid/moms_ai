@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import 'firebase_options.dart';
 import 'theme/app_theme.dart';
@@ -24,6 +27,7 @@ import 'services/app_diagnostics.dart';
 import 'services/firebase_security_bootstrap.dart';
 import 'services/human/human_model_service.dart';
 import 'services/identity/identity_production_services.dart';
+import 'services/event_service.dart';
 import 'services/proactive_detection_lifecycle.dart';
 
 Future<void> main() async {
@@ -62,6 +66,9 @@ class _ZeliaAppState extends State<ZeliaApp> with WidgetsBindingObserver {
   String partnerName = "";
 
   List<ChildProfile> children = [];
+  StreamSubscription<User?>? _authSubscription;
+  String? _activeAccountScopeId;
+  int _accountGeneration = 0;
 
   IdentityProductionServices? buildIdentityServices() {
     final accountId = AuthService.currentUserId;
@@ -76,13 +83,40 @@ class _ZeliaAppState extends State<ZeliaApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _activeAccountScopeId = AuthService.currentUserId;
+    EventService.handleAccountScopeChanged(_activeAccountScopeId);
+    _authSubscription = AuthService.authStateChanges.listen((user) {
+      final nextScope = user?.uid;
+      if (nextScope == _activeAccountScopeId) return;
+      EventService.handleAccountScopeChanged(nextScope);
+      _activeAccountScopeId = nextScope;
+      _reloadForAccountChange();
+    });
     loadProfile();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _authSubscription?.cancel();
     super.dispose();
+  }
+
+  Future<void> _reloadForAccountChange() async {
+    final generation = ++_accountGeneration;
+    if (mounted) {
+      setState(() {
+        loading = true;
+        onboardingDone = false;
+        savedProfile = null;
+        firstName = "";
+        familyStatus = "";
+        workStatus = "";
+        partnerName = "";
+        children = [];
+      });
+    }
+    await loadProfile(expectedGeneration: generation);
   }
 
   @override
@@ -189,8 +223,14 @@ class _ZeliaAppState extends State<ZeliaApp> with WidgetsBindingObserver {
     );
   }
 
-  Future<void> loadProfile() async {
+  Future<void> loadProfile({int? expectedGeneration}) async {
+    final generation = expectedGeneration ?? _accountGeneration;
+    final expectedScope = _activeAccountScopeId;
     final loadedProfile = await StorageService.getUserProfile();
+    if (generation != _accountGeneration ||
+        expectedScope != AuthService.currentUserId) {
+      return;
+    }
 
     final accountScopeId = AuthService.currentUserId;
     if (accountScopeId != null && accountScopeId.trim().isNotEmpty) {
@@ -230,7 +270,11 @@ class _ZeliaAppState extends State<ZeliaApp> with WidgetsBindingObserver {
       onboardingDone = true;
     }
 
-    if (!mounted) return;
+    if (!mounted ||
+        generation != _accountGeneration ||
+        expectedScope != AuthService.currentUserId) {
+      return;
+    }
 
     setState(() {
       loading = false;
@@ -343,6 +387,8 @@ class _ZeliaAppState extends State<ZeliaApp> with WidgetsBindingObserver {
 
     if (onboardingDone) {
       currentScreen = MainNavigation(
+        key: ValueKey('main-navigation:${_activeAccountScopeId ?? 'guest'}'),
+        accountScopeId: _activeAccountScopeId,
         profile: currentProfile(),
         onProfileUpdated: updateSavedProfile,
         identityServices: buildIdentityServices(),
@@ -416,6 +462,10 @@ class _ZeliaAppState extends State<ZeliaApp> with WidgetsBindingObserver {
 
         default:
           currentScreen = MainNavigation(
+            key: ValueKey(
+              'main-navigation:${_activeAccountScopeId ?? 'guest'}',
+            ),
+            accountScopeId: _activeAccountScopeId,
             profile: currentProfile(),
             onProfileUpdated: updateSavedProfile,
             identityServices: buildIdentityServices(),

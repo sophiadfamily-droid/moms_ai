@@ -12,6 +12,7 @@ import '../models/action_autonomy_policy.dart';
 import '../models/action_ledger.dart';
 import '../models/event_sync_models.dart';
 import '../models/event_sync_conflict.dart';
+import '../models/event_account_isolation_snapshot.dart';
 import 'cloud_event_service.dart';
 import 'auth_service.dart';
 import 'event_mutation_service.dart';
@@ -55,6 +56,8 @@ final class EventProtectedConflictReference {
 
 class EventService {
   static const String eventsKey = "zelia_events";
+  static const String guestScopeKey = "guest";
+  static const String guestEventsKey = "$eventsKey:$guestScopeKey";
   static final EventSyncJournal _syncJournal = EventSyncJournal();
   static final EventSyncService _syncService = EventSyncService(
     journal: _syncJournal,
@@ -85,16 +88,99 @@ class EventService {
   );
 
   static final ValueNotifier<int> eventsVersion = ValueNotifier<int>(0);
+  static int _loadGeneration = 0;
+  static int _activeAccountGeneration = 0;
+  static String _activeScopeKey = guestScopeKey;
+
+  static final ValueNotifier<EventAccountIsolationSnapshot>
+      accountIsolationSnapshot = ValueNotifier(
+    const EventAccountIsolationSnapshot(
+      authScopeType: EventAuthScopeType.guest,
+      eventServiceScopeType: EventAuthScopeType.guest,
+      localCacheScopeType: EventAuthScopeType.guest,
+      activeListenerScopeMatch: true,
+      eventCount: 0,
+      loadGeneration: 0,
+      activeAccountGeneration: 0,
+      staleResultDiscarded: false,
+      sourceType: EventLoadSourceType.local,
+      screenInstanceGeneration: 0,
+    ),
+  );
 
   static void notifyEventsChanged() {
     eventsVersion.value++;
+  }
+
+  static String localEventsKeyForAccountScope(String? scope) {
+    final normalized = scope?.trim();
+    return '$eventsKey:${normalized == null || normalized.isEmpty ? guestScopeKey : normalized}';
+  }
+
+  static String _scopeKey(String? scope) {
+    final normalized = scope?.trim();
+    return normalized == null || normalized.isEmpty
+        ? guestScopeKey
+        : normalized;
+  }
+
+  static EventAuthScopeType _scopeType(String scopeKey) =>
+      scopeKey == guestScopeKey
+          ? EventAuthScopeType.guest
+          : EventAuthScopeType.authenticated;
+
+  static void handleAccountScopeChanged(String? accountScopeId) {
+    final nextScopeKey = _scopeKey(accountScopeId);
+    if (nextScopeKey == _activeScopeKey) return;
+    _activeScopeKey = nextScopeKey;
+    _activeAccountGeneration++;
+    _loadGeneration++;
+    final scopeType = _scopeType(nextScopeKey);
+    accountIsolationSnapshot.value = EventAccountIsolationSnapshot(
+      authScopeType: scopeType,
+      eventServiceScopeType: scopeType,
+      localCacheScopeType: scopeType,
+      activeListenerScopeMatch: true,
+      eventCount: 0,
+      loadGeneration: _loadGeneration,
+      activeAccountGeneration: _activeAccountGeneration,
+      staleResultDiscarded: false,
+      sourceType: EventLoadSourceType.memory,
+      screenInstanceGeneration:
+          accountIsolationSnapshot.value.screenInstanceGeneration,
+    );
+    notifyEventsChanged();
+  }
+
+  static bool _isCurrentLoad({
+    required String scopeKey,
+    required int accountGeneration,
+  }) {
+    return _scopeKey(_currentAccountScope()) == scopeKey &&
+        _activeScopeKey == scopeKey &&
+        _activeAccountGeneration == accountGeneration;
+  }
+
+  static void updateScreenInstanceGeneration(int generation) {
+    accountIsolationSnapshot.value = accountIsolationSnapshot.value.copyWith(
+      screenInstanceGeneration: generation,
+    );
+  }
+
+  static String? _currentAccountScope() {
+    try {
+      return AuthService.currentUserId;
+    } on Object {
+      return null;
+    }
   }
 
   static Future<void> saveEvents(
     List<EventModel> events,
   ) async {
     final prefs = await SharedPreferences.getInstance();
-    final stored = prefs.getStringList(eventsKey) ?? const [];
+    final key = localEventsKeyForAccountScope(_currentAccountScope());
+    final stored = prefs.getStringList(key) ?? const [];
     final existing = stored
         .map(
           (event) => EventModel.fromJson(
@@ -115,7 +201,7 @@ class EventService {
         .toList();
 
     await prefs.setStringList(
-      eventsKey,
+      key,
       encoded,
     );
 
@@ -130,8 +216,19 @@ class EventService {
 
   static Future<List<EventModel>> getEvents() async {
     final prefs = await SharedPreferences.getInstance();
+    final scopeKey = _scopeKey(_currentAccountScope());
+    if (_activeScopeKey != scopeKey) {
+      handleAccountScopeChanged(
+        scopeKey == guestScopeKey ? null : scopeKey,
+      );
+    }
+    final accountGeneration = _activeAccountGeneration;
+    final loadGeneration = ++_loadGeneration;
+    final key = localEventsKeyForAccountScope(
+      scopeKey == guestScopeKey ? null : scopeKey,
+    );
 
-    final data = prefs.getStringList(eventsKey);
+    final data = prefs.getStringList(key);
 
     final localEvents = data == null
         ? <EventModel>[]
@@ -142,14 +239,49 @@ class EventService {
               ),
             )
             .toList();
+    accountIsolationSnapshot.value = accountIsolationSnapshot.value.copyWith(
+      authScopeType: _scopeType(scopeKey),
+      eventServiceScopeType: _scopeType(scopeKey),
+      localCacheScopeType: _scopeType(scopeKey),
+      activeListenerScopeMatch: true,
+      eventCount: localEvents.length,
+      loadGeneration: loadGeneration,
+      activeAccountGeneration: accountGeneration,
+      staleResultDiscarded: false,
+      sourceType: EventLoadSourceType.local,
+    );
 
     try {
       final sync = await synchronizePendingEvents();
+      if (!_isCurrentLoad(
+        scopeKey: scopeKey,
+        accountGeneration: accountGeneration,
+      )) {
+        accountIsolationSnapshot.value =
+            accountIsolationSnapshot.value.copyWith(
+          staleResultDiscarded: true,
+          eventCount: 0,
+          loadGeneration: loadGeneration,
+        );
+        return [];
+      }
       if (sync.status == EventSyncStatus.conflicts ||
           sync.status == EventSyncStatus.failed) {
         return localEvents;
       }
       final cloudEvents = await CloudEventService.getEvents();
+      if (!_isCurrentLoad(
+        scopeKey: scopeKey,
+        accountGeneration: accountGeneration,
+      )) {
+        accountIsolationSnapshot.value =
+            accountIsolationSnapshot.value.copyWith(
+          staleResultDiscarded: true,
+          eventCount: 0,
+          loadGeneration: loadGeneration,
+        );
+        return [];
+      }
 
       if (cloudEvents.isNotEmpty) {
         final encoded = cloudEvents
@@ -159,8 +291,25 @@ class EventService {
             .toList();
 
         await prefs.setStringList(
-          eventsKey,
+          key,
           encoded,
+        );
+        if (!_isCurrentLoad(
+          scopeKey: scopeKey,
+          accountGeneration: accountGeneration,
+        )) {
+          accountIsolationSnapshot.value =
+              accountIsolationSnapshot.value.copyWith(
+            staleResultDiscarded: true,
+            eventCount: 0,
+            loadGeneration: loadGeneration,
+          );
+          return [];
+        }
+        accountIsolationSnapshot.value =
+            accountIsolationSnapshot.value.copyWith(
+          eventCount: cloudEvents.length,
+          sourceType: EventLoadSourceType.cloud,
         );
 
         return cloudEvents;
@@ -169,6 +318,10 @@ class EventService {
       // Si Firestore est indisponible, on utilise l'agenda local.
     }
 
+    accountIsolationSnapshot.value = accountIsolationSnapshot.value.copyWith(
+      eventCount: localEvents.length,
+      sourceType: EventLoadSourceType.local,
+    );
     return localEvents;
   }
 
@@ -591,7 +744,7 @@ class EventService {
   static Future<void> _writeLocalEvents(List<EventModel> events) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(
-      eventsKey,
+      localEventsKeyForAccountScope(_currentAccountScope()),
       events.map((event) => jsonEncode(event.toJson())).toList(),
     );
   }
@@ -644,7 +797,10 @@ class EventService {
     EventModel? event,
   ) async {
     final prefs = await SharedPreferences.getInstance();
-    final stored = prefs.getStringList(eventsKey) ?? const [];
+    final stored = prefs.getStringList(
+          localEventsKeyForAccountScope(_currentAccountScope()),
+        ) ??
+        const [];
     final events =
         stored.map((item) => EventModel.fromJson(jsonDecode(item))).toList();
     final index = events.indexWhere((item) => item.id == eventId);
@@ -664,7 +820,10 @@ class EventService {
     required EventModel proposed,
   }) async {
     final prefs = await SharedPreferences.getInstance();
-    final stored = prefs.getStringList(eventsKey) ?? const [];
+    final stored = prefs.getStringList(
+          localEventsKeyForAccountScope(_currentAccountScope()),
+        ) ??
+        const [];
     final events = stored
         .map((item) => EventModel.fromJson(jsonDecode(item)))
         .toList(growable: false);

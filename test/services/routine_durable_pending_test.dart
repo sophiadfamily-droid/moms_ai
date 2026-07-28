@@ -238,8 +238,14 @@ void main() {
         '          ]',
       ),
     );
-    expect(rules, contains("collection != 'routines'"));
-    expect(rules, contains("collection != 'routineProposals'"));
+    expect(rules, isNot(contains("collection != 'routines'")));
+    expect(
+      rules,
+      contains(
+        'match /{document=**} {\n'
+        '        allow read, write: if false;',
+      ),
+    );
     expect(rules, contains('allow delete: if false;'));
     expect(rules, isNot(contains('allow read: if isSignedIn();')));
   });
