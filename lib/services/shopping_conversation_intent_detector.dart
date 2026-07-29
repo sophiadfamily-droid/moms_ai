@@ -1,3 +1,5 @@
+import 'natural_language_normalizer.dart';
+
 final class ShoppingConversationItem {
   const ShoppingConversationItem({required this.title});
 
@@ -137,44 +139,12 @@ final class ShoppingConversationIntentDetector {
   }
 
   static String _normalize(String input) {
-    var value = input.toLowerCase().trim();
-    const replacements = {
-      'à': 'a',
-      'â': 'a',
-      'ä': 'a',
-      'é': 'e',
-      'è': 'e',
-      'ê': 'e',
-      'ë': 'e',
-      'î': 'i',
-      'ï': 'i',
-      'ô': 'o',
-      'ö': 'o',
-      'ù': 'u',
-      'û': 'u',
-      'ü': 'u',
-      'ç': 'c',
-      'œ': 'oe',
-      '’': "'",
-    };
-    replacements.forEach((source, target) {
-      value = value.replaceAll(source, target);
-    });
+    var value =
+        const NaturalLanguageNormalizer().normalize(input).normalizedText;
     value = value
-        .replaceAll(RegExp(r"['`´]"), ' ')
-        .replaceAll(RegExp(r'[^a-z0-9\s-]'), ' ')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-    value = value
-        .replaceFirst(RegExp(r'^jai\b'), 'j ai')
-        .replaceFirst(RegExp(r'^ya\b'), 'y a')
         .replaceFirst(RegExp(r'^on na\b'), 'on n a')
-        .replaceFirst(RegExp(r'^jveu\b'), 'je veux')
-        .replaceFirst(RegExp(r'^je veu\b'), 'je veux')
         .replaceAll(RegExp(r'\bplu\b'), 'plus')
         .replaceAll(RegExp(r'\bpu\b'), 'plus')
-        .replaceAll(RegExp(r'\bdoeufs\b'), 'd oeufs')
-        .replaceAll(RegExp(r'\bdoeuf\b'), 'd oeuf')
         .replaceAll(RegExp(r'\bcourse\b'), 'courses')
         .replaceFirst(RegExp(r'^met\b'), 'mets');
     return value;

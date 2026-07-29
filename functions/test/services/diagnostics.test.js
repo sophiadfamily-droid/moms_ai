@@ -44,6 +44,22 @@ test("unknown objects are never serialized by default", () => {
   assert.deepEqual(sanitizeDiagnosticMetadata(["private"]), {});
 });
 
+test("NLU diagnostics accept closed non-personal codes only", () => {
+  assert.deepEqual(sanitizeDiagnosticMetadata({
+    normalizationCodes: ["accents_folded", "bad value", "safe_typo_corrected"],
+    intentCode: "task",
+    understandingLevel: "normalizedMatch",
+    entityTypes: ["date", "person name"],
+    ambiguityType: "negation_scope",
+  }), {
+    normalizationCodes: ["accents_folded", "safe_typo_corrected"],
+    intentCode: "task",
+    understandingLevel: "normalizedMatch",
+    entityTypes: ["date"],
+    ambiguityType: "negation_scope",
+  });
+});
+
 test("writes only stable technical diagnostics in every environment", () => {
   for (const env of [
     {FUNCTIONS_EMULATOR: "true"},

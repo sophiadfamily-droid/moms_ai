@@ -119,6 +119,79 @@ test("returns task clarification before model generation", async () => {
   assert.equal(result.epistemic.clarification.maximumAttempts, 3);
 });
 
+test("critical NLU ambiguity clarifies without calling the model", async () => {
+  for (const message of [
+    "Je veux plus de bananes",
+    "Ne crée pas de tâche",
+    "Annule pas le rendez-vous",
+    "Achète du lait et décale le rendez-vous",
+  ]) {
+    let generations = 0;
+    const result = await handleChatRequest(
+        request(message),
+        {uid: "test-uid"},
+        {
+          now: () => new Date("2026-07-27T10:00:00.000Z"),
+          generateResponse: async () => {
+            generations++;
+            return response("unexpected", [{type: "shopping", title: "Lait"}]);
+          },
+        },
+    );
+
+    assert.equal(generations, 0, message);
+    assert.deepEqual(result.actions, [], message);
+    assert.deepEqual(result.memories, [], message);
+    assert.equal(
+        result.epistemic.responseKind,
+        "clarificationRequired",
+        message,
+    );
+    assert.equal(result.epistemic.clarification.maximumAttempts, 3, message);
+    assert.equal(
+        result.epistemic.clarification.expiresAt,
+        "2026-07-27T10:10:00.000Z",
+        message,
+    );
+  }
+});
+
+test("returns a structured non-executable Event draft", async () => {
+  let generations = 0;
+  const result = await handleChatRequest(
+      request("medecin demain 15h"),
+      {uid: "test-uid"},
+      {
+        now: () => new Date("2026-07-29T12:00:00.000Z"),
+        generateResponse: async () => {
+          generations++;
+          return response("unexpected");
+        },
+      },
+  );
+
+  assert.equal(generations, 0);
+  assert.deepEqual(result.actions, []);
+  assert.equal(result.epistemic.responseKind, "clarificationRequired");
+  assert.deepEqual(result.epistemic.clarification.draft, {
+    schemaVersion: 1,
+    draftType: "eventCreation",
+    logicalRequestId: "0123456789abcdef0123456789abcdef",
+    draftId: "event-draft-0123456789abcdef0123456789abcdef",
+    title: "Consultation médecin",
+    date: "2026-07-30",
+    startTime: "15:00",
+    durationMinutes: null,
+    travelGoMinutes: null,
+    travelBackMinutes: null,
+    marginMinutes: null,
+    expectedField: "duration",
+    createdAt: "2026-07-29T12:00:00.000Z",
+    expiresAt: "2026-07-29T12:15:00.000Z",
+    sessionGeneration: 0,
+  });
+});
+
 test("handles the canonical bounded payload without mutating it", async () => {
   const original = structuredClone(payload);
   const calls = [];
@@ -165,7 +238,9 @@ test(
     "keeps only a participant literally present in the user message",
     async () => {
       const explicit = await handleChatRequest(
-          request("Ajoute un rendez-vous avec Person A"),
+          request(
+              "Ajoute un rendez-vous avec Person A demain à 10h pendant 30 min",
+          ),
           {uid: "test-uid"}, {
             now: () => new Date("2026-07-20T10:00:00.000Z"),
             logger: {info() {}},
@@ -185,7 +260,7 @@ test(
       assert.equal(explicit.actions[0].participant.label, "Person A");
 
       const invented = await handleChatRequest(
-          request("Ajoute un rendez-vous"),
+          request("Ajoute un rendez-vous demain à 10h pendant 30 min"),
           {uid: "test-uid"},
           {
             now: () => new Date("2026-07-20T10:00:00.000Z"),

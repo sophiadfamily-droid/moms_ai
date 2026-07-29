@@ -1,4 +1,5 @@
 import '../models/conversation_models.dart';
+import '../models/conversation_epistemic_models.dart';
 import '../models/smart_planning_continuation.dart';
 import '../models/task_model.dart';
 import '../models/action_autonomy_policy.dart';
@@ -8,24 +9,76 @@ import 'conversation_coordinator.dart';
 import 'event_confirmation_service.dart';
 import 'event_service.dart';
 import 'notification_service.dart';
+import 'natural_date_service.dart';
+import 'natural_duration_service.dart';
+import 'natural_time_service.dart';
 import 'planner_engine_service.dart';
 import 'smart_planning_continuation_coordinator.dart';
+import 'smart_planning_service.dart';
 
 final class ConversationLegacyActionExecutor {
-  const ConversationLegacyActionExecutor({
+  ConversationLegacyActionExecutor({
     required this.coordinator,
     this.smartPlanning,
     this.loadAutonomyPolicy,
-  });
+    DateTime Function()? clock,
+  }) : _clock = clock ?? DateTime.now;
 
   final ConversationCoordinator coordinator;
   final SmartPlanningContinuationCoordinator? smartPlanning;
   final Future<ActionAutonomyPolicy> Function()? loadAutonomyPolicy;
+  final DateTime Function() _clock;
+  _PendingEventDraft? _pendingEventDraft;
+
+  bool get hasPendingEventDraft => _pendingEventDraft != null;
+  String? get pendingEventDraftId => _pendingEventDraft?.draftId;
+  String? get pendingEventLogicalRequestId =>
+      _pendingEventDraft?.logicalRequestId;
+  String? get pendingEventExpectedFieldCode =>
+      _pendingEventDraft?.expectedField.name;
+
+  bool registerClarificationDraft(
+    ConversationClarificationDraft draft,
+    int sessionGeneration,
+  ) {
+    if (draft.draftType != ConversationClarificationDraftType.eventCreation ||
+        draft.sessionGeneration != sessionGeneration ||
+        !_clock().toUtc().isBefore(draft.expiresAt)) {
+      return false;
+    }
+    _pendingEventDraft = _PendingEventDraft(
+      draftId: draft.draftId,
+      logicalRequestId: draft.logicalRequestId,
+      sessionGeneration: sessionGeneration,
+      expectedField: _PendingEventField.values.byName(draft.expectedField.name),
+      action: {
+        'type': 'event',
+        'title': draft.title,
+        'date': draft.date ?? '',
+        'time': draft.startTime ?? '',
+        'durationMinutes': draft.durationMinutes ?? 0,
+        'travelGoMinutes': draft.travelGoMinutes ?? 0,
+        'travelBackMinutes': draft.travelBackMinutes ?? 0,
+        'marginMinutes': draft.marginMinutes ?? 0,
+      },
+      expiresAt: draft.expiresAt,
+    );
+    return true;
+  }
+
+  void invalidate() {
+    _pendingEventDraft = null;
+  }
 
   Future<ConversationOutcome?> resolvePending(
     String answer,
     int sessionGeneration,
   ) async {
+    final eventDraft = await _resolvePendingEventDraft(
+      answer,
+      sessionGeneration,
+    );
+    if (eventDraft != null) return eventDraft;
     final shoppingClarification =
         await coordinator.resolvePendingShoppingClarification(
       answer: answer,
@@ -99,6 +152,197 @@ final class ConversationLegacyActionExecutor {
         : ConversationOutcome(reply: memoryResolution.message);
   }
 
+  Future<ConversationOutcome?> _resolvePendingEventDraft(
+    String answer,
+    int sessionGeneration,
+  ) async {
+    final pending = _pendingEventDraft;
+    if (pending == null) return null;
+    if (pending.sessionGeneration != sessionGeneration ||
+        !_clock().isBefore(pending.expiresAt)) {
+      _pendingEventDraft = null;
+      return const ConversationOutcome(
+        reply: 'Cette demande de rendez-vous a expiré. Tu peux la reformuler.',
+      );
+    }
+    if (PlannerEngineService.isNegativeAnswer(answer)) {
+      _pendingEventDraft = null;
+      return const ConversationOutcome(
+        reply: 'D’accord, je ferme cette préparation de rendez-vous.',
+      );
+    }
+
+    final action = Map<String, dynamic>.from(pending.action);
+    switch (pending.expectedField) {
+      case _PendingEventField.date:
+        final date = NaturalDateService.resolveDateFromText(
+          answer,
+          now: _clock(),
+        );
+        if (date.isEmpty) return null;
+        action['date'] = date;
+        break;
+      case _PendingEventField.time:
+        final time = NaturalTimeService.parseTime(answer);
+        if (time.isEmpty) return null;
+        action['time'] = time;
+        break;
+      case _PendingEventField.duration:
+        final minutes = _durationMinutes(answer);
+        if (minutes <= 0) {
+          final revised = _applyDateOrTimeRevision(action, answer);
+          if (revised == null) {
+            if (PlannerEngineService.isPositiveAnswer(answer)) {
+              return const ConversationOutcome(
+                reply: 'Indique-moi la durée, par exemple 1h ou 45 minutes.',
+              );
+            }
+            return null;
+          }
+          _pendingEventDraft = pending.copyWith(action: revised);
+          return const ConversationOutcome(
+            reply: 'C’est mis à jour. Combien de temps dure le rendez-vous ?',
+          );
+        }
+        action['durationMinutes'] = minutes;
+        break;
+      case _PendingEventField.travelGo:
+        final minutes = _travelMinutes(answer);
+        if (minutes == null) return null;
+        action['travelGoMinutes'] = minutes;
+        _pendingEventDraft = pending.copyWith(
+          expectedField: _PendingEventField.travelBack,
+          action: action,
+        );
+        return const ConversationOutcome(
+          reply: 'Combien de temps faut-il prévoir pour le trajet retour ?',
+        );
+      case _PendingEventField.travelBack:
+        final minutes = _travelMinutes(answer);
+        if (minutes == null) return null;
+        action['travelBackMinutes'] = minutes;
+        _pendingEventDraft = pending.copyWith(
+          expectedField: _PendingEventField.margin,
+          action: action,
+        );
+        return const ConversationOutcome(
+          reply: 'Quelle marge veux-tu prévoir ? Tu peux répondre aucune.',
+        );
+      case _PendingEventField.margin:
+        final minutes = _marginMinutes(answer);
+        if (minutes == null) return null;
+        action['marginMinutes'] = minutes;
+        action['usesSeparateTravelTimes'] = true;
+        break;
+      case _PendingEventField.conflictAlternativeTime:
+        final revisedDate = NaturalDateService.resolveDateFromText(
+          answer,
+          now: _clock(),
+        );
+        final revisedTime = NaturalTimeService.parseTime(answer);
+        if (revisedDate.isNotEmpty) action['date'] = revisedDate;
+        if (revisedTime.isEmpty) {
+          if (revisedDate.isNotEmpty) {
+            _pendingEventDraft = pending.copyWith(action: action);
+            return const ConversationOutcome(
+              reply: 'À quelle heure précise veux-tu déplacer ce rendez-vous ?',
+            );
+          }
+          if (_hasAmbiguousConflictAlternative(answer)) {
+            return const ConversationOutcome(
+              reply: 'À quelle heure précise veux-tu déplacer ce rendez-vous ?',
+            );
+          }
+          return null;
+        }
+        action['time'] = revisedTime;
+        break;
+      case _PendingEventField.conflictAlternativeDate:
+        final revised = _applyDateOrTimeRevision(action, answer);
+        final revisedDate = revised?['date']?.toString() ?? '';
+        if (revised == null || revisedDate.isEmpty) return null;
+        action['date'] = revisedDate;
+        if ((revised['time']?.toString() ?? '').isEmpty) {
+          _pendingEventDraft = pending.copyWith(
+            expectedField: _PendingEventField.conflictAlternativeTime,
+            action: action,
+          );
+          return const ConversationOutcome(
+            reply: 'À quelle heure précise veux-tu déplacer ce rendez-vous ?',
+          );
+        }
+        action['time'] = revised['time'];
+        break;
+      case _PendingEventField.confirmation:
+        return null;
+    }
+
+    final outcome = await execute(action, answer, sessionGeneration);
+    return ConversationOutcome(reply: outcome.message);
+  }
+
+  Map<String, dynamic>? _applyDateOrTimeRevision(
+    Map<String, dynamic> action,
+    String answer,
+  ) {
+    final date = NaturalDateService.resolveDateFromText(
+      answer,
+      now: _clock(),
+    );
+    final time = NaturalTimeService.parseTime(answer);
+    if (date.isEmpty && time.isEmpty) return null;
+    if (date.isNotEmpty) action['date'] = date;
+    if (time.isNotEmpty) action['time'] = time;
+    return action;
+  }
+
+  static int _durationMinutes(String answer) {
+    final legacy = ChatPlanningHelperService.parseDurationMinutes(answer);
+    if (legacy > 0) return legacy;
+    final natural = NaturalDurationService.parseMinutes(answer);
+    if (natural > 0) return natural;
+    return SmartPlanningService.parseTravelMinutes(answer);
+  }
+
+  static int? _travelMinutes(String answer) {
+    if (PlannerEngineService.isNoTravelAnswer(answer) ||
+        _normalized(answer) == 'aucun' ||
+        _normalized(answer) == 'aucune') {
+      return 0;
+    }
+    final minutes = _durationMinutes(answer);
+    return minutes > 0 ? minutes : null;
+  }
+
+  static int? _marginMinutes(String answer) {
+    final value = _normalized(answer);
+    if (value == 'aucun' ||
+        value == 'aucune' ||
+        value == 'pas de marge' ||
+        value == 'sans marge') {
+      return 0;
+    }
+    final minutes = _durationMinutes(answer);
+    return minutes > 0 ? minutes : null;
+  }
+
+  static String _normalized(String value) => value
+      .trim()
+      .toLowerCase()
+      .replaceAll('’', "'")
+      .replaceAll(RegExp(r'[.!?]+$'), '');
+
+  static bool _hasAmbiguousConflictAlternative(String answer) {
+    final value = _normalized(answer);
+    return const {
+      'plus tard',
+      'apres',
+      'après',
+      'dans la soiree',
+      'dans la soirée',
+    }.contains(value);
+  }
+
   Future<ConversationActionOutcome> execute(
     Map<String, dynamic> action,
     String userMessage,
@@ -124,6 +368,7 @@ final class ConversationLegacyActionExecutor {
     );
     final event = result.pendingConfirmationEvent;
     if (event != null) {
+      _pendingEventDraft = null;
       final participant = result.eventParticipant;
       if (participant == null) {
         coordinator.setPendingEventConfirmation(event);
@@ -135,6 +380,40 @@ final class ConversationLegacyActionExecutor {
         );
         return ConversationActionOutcome(message: resolution.message);
       }
+    }
+    final pendingEvent = result.pendingDateEvent ??
+        result.pendingTimeEvent ??
+        result.pendingDurationEvent ??
+        result.pendingTravelEvent ??
+        result.pendingConflictResolutionEvent;
+    if (pendingEvent != null) {
+      final current = _pendingEventDraft;
+      final preservesCurrentDraft =
+          current != null && current.sessionGeneration == sessionGeneration;
+      _pendingEventDraft = _PendingEventDraft(
+        draftId: preservesCurrentDraft
+            ? current.draftId
+            : 'local-event-$sessionGeneration-${_clock().microsecondsSinceEpoch}',
+        logicalRequestId: preservesCurrentDraft
+            ? current.logicalRequestId
+            : 'local-event-$sessionGeneration',
+        sessionGeneration: sessionGeneration,
+        expectedField: result.pendingConflictResolutionEvent != null
+            ? _PendingEventField.conflictAlternativeTime
+            : result.pendingDateEvent != null
+                ? _PendingEventField.date
+                : result.pendingTimeEvent != null
+                    ? _PendingEventField.time
+                    : result.pendingDurationEvent != null
+                        ? _PendingEventField.duration
+                        : _PendingEventField.travelGo,
+        action: pendingEvent,
+        expiresAt: preservesCurrentDraft
+            ? current.expiresAt
+            : _clock().toUtc().add(const Duration(minutes: 15)),
+      );
+    } else if (action['type'] == 'event' && event == null) {
+      _pendingEventDraft = null;
     }
     final pendingTask = result.pendingSmartPlanningTask;
     final task = pendingTask?['task'];
@@ -225,4 +504,47 @@ final class ConversationLegacyActionExecutor {
       'appel',
     ].any(value.contains);
   }
+}
+
+enum _PendingEventField {
+  date,
+  time,
+  duration,
+  travelGo,
+  travelBack,
+  margin,
+  conflictAlternativeTime,
+  conflictAlternativeDate,
+  confirmation,
+}
+
+final class _PendingEventDraft {
+  _PendingEventDraft({
+    required this.draftId,
+    required this.logicalRequestId,
+    required this.sessionGeneration,
+    required this.expectedField,
+    required Map<String, dynamic> action,
+    required this.expiresAt,
+  }) : action = Map.unmodifiable(action);
+
+  final int sessionGeneration;
+  final String draftId;
+  final String logicalRequestId;
+  final _PendingEventField expectedField;
+  final Map<String, dynamic> action;
+  final DateTime expiresAt;
+
+  _PendingEventDraft copyWith({
+    _PendingEventField? expectedField,
+    Map<String, dynamic>? action,
+  }) =>
+      _PendingEventDraft(
+        draftId: draftId,
+        logicalRequestId: logicalRequestId,
+        sessionGeneration: sessionGeneration,
+        expectedField: expectedField ?? this.expectedField,
+        action: action ?? this.action,
+        expiresAt: expiresAt,
+      );
 }

@@ -56,6 +56,11 @@ Adapte contextStateObserved exactement à l'enveloppe reçue. Les références
 Life Context utilisent le nom de section, la clé de fait et projectionVersion
 réellement présents. N'invente aucune référence.
 
+Pour une clarification sans brouillon, clarification.draft vaut null. Pour une
+création Event incomplète, actions reste vide et clarification.draft décrit
+uniquement le brouillon eventCreation fermé. Ce brouillon n'est jamais une
+action et ne contient aucun identifiant de compte, mutation ou persistance.
+
 Pour une action event uniquement, participant peut remplacer null par :
 {"label":"libellé explicite","entityType":"person",
 "evidence":"explicit_user_input"}.

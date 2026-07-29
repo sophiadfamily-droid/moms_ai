@@ -104,6 +104,20 @@ enum ConversationClarificationDecision {
   retryContext,
 }
 
+enum ConversationClarificationDraftType { eventCreation }
+
+enum ConversationEventDraftExpectedField {
+  date,
+  time,
+  duration,
+  travelGo,
+  travelBack,
+  margin,
+  conflictAlternativeTime,
+  conflictAlternativeDate,
+  confirmation,
+}
+
 enum ConversationUncertaintyCode {
   partialContext,
   staleSource,
@@ -265,6 +279,153 @@ final class ConversationContradiction {
       };
 }
 
+final class ConversationClarificationDraft {
+  static const int currentSchemaVersion = 1;
+  static const int maximumSerializedCharacters = 2048;
+
+  ConversationClarificationDraft({
+    this.schemaVersion = currentSchemaVersion,
+    required this.draftType,
+    required this.logicalRequestId,
+    required this.draftId,
+    required String title,
+    required this.date,
+    required this.startTime,
+    required this.durationMinutes,
+    required this.travelGoMinutes,
+    required this.travelBackMinutes,
+    required this.marginMinutes,
+    required this.expectedField,
+    required this.createdAt,
+    required this.expiresAt,
+    required this.sessionGeneration,
+  }) : title = title.trim() {
+    final validDate = date == null ||
+        RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(date!) &&
+            DateTime.tryParse('${date!}T00:00:00.000Z')
+                    ?.toIso8601String()
+                    .startsWith(date!) ==
+                true;
+    final validTime = startTime == null ||
+        RegExp(r'^(?:[01]\d|2[0-3]):[0-5]\d$').hasMatch(startTime!);
+    bool validMinutes(int? value, int maximum) =>
+        value == null || value >= 0 && value <= maximum;
+    if (schemaVersion != currentSchemaVersion ||
+        logicalRequestId.isEmpty ||
+        logicalRequestId.length > 80 ||
+        draftId.isEmpty ||
+        draftId.length > 80 ||
+        this.title.isEmpty ||
+        this.title.length > 120 ||
+        !validDate ||
+        !validTime ||
+        !validMinutes(durationMinutes, 1440) ||
+        !validMinutes(travelGoMinutes, 480) ||
+        !validMinutes(travelBackMinutes, 480) ||
+        !validMinutes(marginMinutes, 240) ||
+        sessionGeneration < 0 ||
+        !expiresAt.isAfter(createdAt) ||
+        expiresAt.difference(createdAt) > const Duration(minutes: 15)) {
+      throw const FormatException('invalid_conversation_clarification_draft');
+    }
+  }
+
+  factory ConversationClarificationDraft.fromJson(Map<String, dynamic> json) {
+    const keys = {
+      'schemaVersion',
+      'draftType',
+      'logicalRequestId',
+      'draftId',
+      'title',
+      'date',
+      'startTime',
+      'durationMinutes',
+      'travelGoMinutes',
+      'travelBackMinutes',
+      'marginMinutes',
+      'expectedField',
+      'createdAt',
+      'expiresAt',
+      'sessionGeneration',
+    };
+    if (json.length != keys.length || !keys.containsAll(json.keys)) {
+      throw const FormatException('unknown_conversation_clarification_draft');
+    }
+    T parsed<T extends Enum>(List<T> values, Object? raw, String code) =>
+        values.firstWhere(
+          (value) => value.name == raw,
+          orElse: () => throw FormatException(code),
+        );
+    int? nullableInt(String key) {
+      final value = json[key];
+      if (value != null && value is! int) {
+        throw const FormatException('invalid_clarification_draft_number');
+      }
+      return value as int?;
+    }
+
+    return ConversationClarificationDraft(
+      schemaVersion: json['schemaVersion'] as int? ?? 0,
+      draftType: parsed(
+        ConversationClarificationDraftType.values,
+        json['draftType'],
+        'unknown_clarification_draft_type',
+      ),
+      logicalRequestId: json['logicalRequestId'] as String? ?? '',
+      draftId: json['draftId'] as String? ?? '',
+      title: json['title'] as String? ?? '',
+      date: json['date'] as String?,
+      startTime: json['startTime'] as String?,
+      durationMinutes: nullableInt('durationMinutes'),
+      travelGoMinutes: nullableInt('travelGoMinutes'),
+      travelBackMinutes: nullableInt('travelBackMinutes'),
+      marginMinutes: nullableInt('marginMinutes'),
+      expectedField: parsed(
+        ConversationEventDraftExpectedField.values,
+        json['expectedField'],
+        'unknown_clarification_draft_expected_field',
+      ),
+      createdAt: DateTime.parse(json['createdAt'] as String).toUtc(),
+      expiresAt: DateTime.parse(json['expiresAt'] as String).toUtc(),
+      sessionGeneration: json['sessionGeneration'] as int? ?? -1,
+    );
+  }
+
+  final int schemaVersion;
+  final ConversationClarificationDraftType draftType;
+  final String logicalRequestId;
+  final String draftId;
+  final String title;
+  final String? date;
+  final String? startTime;
+  final int? durationMinutes;
+  final int? travelGoMinutes;
+  final int? travelBackMinutes;
+  final int? marginMinutes;
+  final ConversationEventDraftExpectedField expectedField;
+  final DateTime createdAt;
+  final DateTime expiresAt;
+  final int sessionGeneration;
+
+  Map<String, Object?> toJson() => {
+        'schemaVersion': schemaVersion,
+        'draftType': draftType.name,
+        'logicalRequestId': logicalRequestId,
+        'draftId': draftId,
+        'title': title,
+        'date': date,
+        'startTime': startTime,
+        'durationMinutes': durationMinutes,
+        'travelGoMinutes': travelGoMinutes,
+        'travelBackMinutes': travelBackMinutes,
+        'marginMinutes': marginMinutes,
+        'expectedField': expectedField.name,
+        'createdAt': createdAt.toUtc().toIso8601String(),
+        'expiresAt': expiresAt.toUtc().toIso8601String(),
+        'sessionGeneration': sessionGeneration,
+      };
+}
+
 final class ConversationClarification {
   static const int currentSchemaVersion = 1;
   static const int maximumQuestionCharacters = 240;
@@ -283,6 +444,7 @@ final class ConversationClarification {
     this.expiresAt,
     required this.attemptNumber,
     required this.sessionGeneration,
+    this.draft,
   })  : questionText = questionText.trim(),
         allowedChoices = UnmodifiableListView(allowedChoices),
         missingFieldCodes = UnmodifiableListView(missingFieldCodes) {
@@ -296,6 +458,7 @@ final class ConversationClarification {
         attemptNumber < 1 ||
         attemptNumber > maximumAttempts ||
         sessionGeneration < 0 ||
+        (draft != null && draft!.sessionGeneration != sessionGeneration) ||
         (expiresAt != null && !expiresAt!.isAfter(createdAt))) {
       throw const FormatException('invalid_conversation_clarification');
     }
@@ -312,6 +475,7 @@ final class ConversationClarification {
   final DateTime? expiresAt;
   final int attemptNumber;
   final int sessionGeneration;
+  final ConversationClarificationDraft? draft;
 
   Map<String, Object?> toJson() => {
         'schemaVersion': schemaVersion,
@@ -327,6 +491,7 @@ final class ConversationClarification {
         'attemptNumber': attemptNumber,
         'maximumAttempts': maximumAttempts,
         'sessionGeneration': sessionGeneration,
+        'draft': draft?.toJson(),
       };
 }
 
@@ -476,6 +641,7 @@ final class ConversationEpistemicContract {
                   'attemptNumber',
                   'maximumAttempts',
                   'sessionGeneration',
+                  'draft',
                 },
                 'unknown_clarification_field');
             if (item['maximumAttempts'] !=
@@ -512,6 +678,11 @@ final class ConversationEpistemicContract {
                   : DateTime.parse(item['expiresAt'] as String).toUtc(),
               attemptNumber: item['attemptNumber'] as int? ?? 0,
               sessionGeneration: item['sessionGeneration'] as int? ?? -1,
+              draft: item['draft'] == null
+                  ? null
+                  : ConversationClarificationDraft.fromJson(
+                      record(item['draft']),
+                    ),
             );
           })();
     return ConversationEpistemicContract(

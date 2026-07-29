@@ -10,6 +10,29 @@ Statements labeled **Current state** describe behavior verified in the repositor
 
 This document must evolve deliberately. It should change when ZELIA's mission, system boundaries, architectural ownership, safety model, or long-term direction changes—not whenever a service is renamed or refactored.
 
+### Natural French understanding boundary
+
+**Current state:** V1-NLU.1 introduces a bounded `NaturalLanguageNormalizer`
+contract on Flutter and its contract-compatible Node projection. It preserves
+the original message, exposes closed normalization codes and ambiguities, and
+uses the closed understanding levels `exactMatch`, `normalizedMatch`,
+`probableMatch`, `ambiguous`, and `noMatch`. Negation, unresolved references,
+multiple actions, and the ambiguous meanings of `plus` cannot authorize a
+local action. Node returns a bounded clarification with no action before model
+generation for these critical cases.
+
+Flutter local Shopping, Priority and confirmation routing reuse the common
+boundary. Date, time and duration parsing expose structured entities and
+Planning refuses to apply their values when understanding is ambiguous.
+Routine retains its specialized punctuation-aware time normalization because
+its recurrence grammar has a distinct verified contract. All consequential
+operations still require the existing typed proposal, explicit confirmation,
+context revalidation, account scope and idempotent persistence path. The
+versioned synthetic French corpus contains 200 non-personal formulations; its
+normalization target is 100%, with absolute zero-action invariants for critical
+negation and ambiguity. Detailed contracts and V1 limits are documented in
+`CONVERSATION_NLU.md` and `INTENTS.md`.
+
 ### Conversational event mutation foundation
 
 **Current state:** Phases 4I-A and 4I-B define a closed `event_mutation` backend
@@ -1145,6 +1168,15 @@ trois tours au maximum et aucun code de champ identique redemandé. Lorsque la
 limite est atteinte, il rend une formulation française sûre et n’exécute
 aucune action. Annulation, changement de compte et dispose invalident aussi ce
 registre.
+
+Une clarification Event peut transporter un
+`ConversationClarificationDraft.eventCreation` fermé. Ce payload est un état
+conversationnel non exécutable : `actions` reste vide, aucune autonomie ni
+persistance n’est déclenchée, et aucun identifiant de compte ou de mutation
+n’est exposé. Le contrôleur Flutter l’enregistre uniquement pour la génération
+active et l’exécuteur de continuation recueille durée, trajets et marge avant
+de construire un Event complet. Le draft expire après quinze minutes et est
+invalidé au changement de compte, au refus, au succès ou à l’expiration.
 
 Functions valide la structure fermée, les bornes, les sources, claims,
 informations manquantes, contradictions et clarifications après le modèle mais

@@ -15,6 +15,9 @@ class NaturalTimeService {
       return "";
     }
 
+    final spokenTime = _parseSpokenClock(lower);
+    if (spokenTime.isNotEmpty) return spokenTime;
+
     if (_containsAny(lower, [
       "fin de matinee",
       "en fin de matinee",
@@ -58,21 +61,6 @@ class NaturalTimeService {
       "en fin d'apres-midi",
     ])) {
       return "17:00";
-    }
-
-    if (_containsAny(lower, [
-      "apres l'ecole",
-      "apres ecole",
-      "sortie d'ecole",
-    ])) {
-      return "16:30";
-    }
-
-    if (_containsAny(lower, [
-      "apres le travail",
-      "apres boulot",
-    ])) {
-      return "18:00";
     }
 
     if (_containsAny(lower, [
@@ -133,6 +121,55 @@ class NaturalTimeService {
     }
 
     return "";
+  }
+
+  static String _parseSpokenClock(String text) {
+    const hours = <String, int>{
+      'zero': 0,
+      'une': 1,
+      'un': 1,
+      'deux': 2,
+      'trois': 3,
+      'quatre': 4,
+      'cinq': 5,
+      'six': 6,
+      'sept': 7,
+      'huit': 8,
+      'neuf': 9,
+      'dix': 10,
+      'onze': 11,
+      'douze': 12,
+      'treize': 13,
+      'quatorze': 14,
+      'quinze': 15,
+      'seize': 16,
+      'dix sept': 17,
+      'dix huit': 18,
+      'dix neuf': 19,
+      'vingt': 20,
+      'vingt et un': 21,
+      'vingt deux': 22,
+      'vingt trois': 23,
+    };
+    final alternatives = hours.keys.toList()
+      ..sort((left, right) => right.length.compareTo(left.length));
+    final match = RegExp(
+      '\\b(${alternatives.join('|')})\\s+heures?'
+      r'(?:\s+(et demie|trente|\d{1,2}))?\b',
+    ).firstMatch(text);
+    if (match == null) return '';
+    final hour = hours[match.group(1)];
+    final minuteToken = match.group(2);
+    final minute = switch (minuteToken) {
+      'et demie' || 'trente' => 30,
+      null => 0,
+      _ => int.tryParse(minuteToken),
+    };
+    if (hour == null || minute == null || minute > 59) return '';
+    return _formatTime(
+      hourText: hour.toString(),
+      minuteText: minute.toString(),
+    );
   }
 
   static String _formatTime({

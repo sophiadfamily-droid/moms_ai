@@ -38,6 +38,10 @@ typedef ConversationPendingResolver = Future<ConversationOutcome?> Function(
   String answer,
   int sessionGeneration,
 );
+typedef ConversationClarificationDraftRegistrar = bool Function(
+  ConversationClarificationDraft draft,
+  int sessionGeneration,
+);
 typedef ConversationSessionInvalidator = void Function(
   UserProfile profile,
   int sessionGeneration,
@@ -90,6 +94,7 @@ final class ConversationSessionController extends ChangeNotifier {
     required ConversationCoordinator coordinator,
     ConversationSessionActionExecutor? executeAction,
     ConversationPendingResolver? resolvePending,
+    ConversationClarificationDraftRegistrar? registerClarificationDraft,
     ConversationSessionInvalidator? invalidateSession,
     ConversationApplicationPendingPhase? applicationPendingPhase,
     ConversationApplicationInteractionSources? applicationInteractionSources,
@@ -110,6 +115,7 @@ final class ConversationSessionController extends ChangeNotifier {
         _executeAction = executeAction ??
             ConversationLegacyActionExecutor(coordinator: coordinator).execute,
         _resolvePending = resolvePending,
+        _registerClarificationDraft = registerClarificationDraft,
         _invalidateSession = invalidateSession,
         _applicationPendingPhase = applicationPendingPhase,
         _applicationInteractionSources = applicationInteractionSources,
@@ -197,20 +203,27 @@ final class ConversationSessionController extends ChangeNotifier {
       coordinator: coordinator,
       smartPlanning: smartPlanning,
       loadAutonomyPolicy: loadAutonomyPolicy,
+      clock: clock,
     );
     final controller = ConversationSessionController(
       profile: profile,
       coordinator: coordinator,
       executeAction: executeAction ?? legacyExecutor.execute,
       resolvePending: legacyExecutor.resolvePending,
+      registerClarificationDraft: legacyExecutor.registerClarificationDraft,
       invalidateSession: (nextProfile, _) {
         coordinator.invalidateSession();
         smartPlanning.invalidate();
+        legacyExecutor.invalidate();
         smartPlanningGateway.updateProfile(nextProfile);
       },
       applicationPendingPhase: () {
         final active = smartPlanning.active;
-        if (active == null) return null;
+        if (active == null) {
+          return legacyExecutor.hasPendingEventDraft
+              ? ConversationSessionPhase.awaitingClarification
+              : null;
+        }
         return switch (active.step) {
           SmartPlanningContinuationStep.planningConsent ||
           SmartPlanningContinuationStep.confirmation ||
@@ -275,6 +288,7 @@ final class ConversationSessionController extends ChangeNotifier {
       _coordinator.activeConfirmation;
   final ConversationSessionActionExecutor _executeAction;
   final ConversationPendingResolver? _resolvePending;
+  final ConversationClarificationDraftRegistrar? _registerClarificationDraft;
   final ConversationSessionInvalidator? _invalidateSession;
   final ConversationApplicationPendingPhase? _applicationPendingPhase;
   final ConversationApplicationInteractionSources?
@@ -417,6 +431,10 @@ final class ConversationSessionController extends ChangeNotifier {
             executeAction: (action) => _executeAction(action, text, generation),
           );
       if (!_isCurrent(requestId, generation) || outcome == null) return;
+      final clarificationDraft = outcome.epistemicClarification?.draft;
+      if (pendingOutcome == null && clarificationDraft != null) {
+        _registerClarificationDraft?.call(clarificationDraft, generation);
+      }
       await _saveReferenceHistory();
       if (!_isCurrent(requestId, generation)) return;
       _setState(

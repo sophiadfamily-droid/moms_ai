@@ -1,4 +1,7 @@
 /* eslint-disable max-len */
+const {
+  normalizeNaturalLanguage,
+} = require("./naturalLanguageNormalizer");
 
 /**
  * Normalise le texte avant détection.
@@ -7,11 +10,7 @@
  * @return {string}
  */
 function normalizeText(value) {
-  return String(value || "")
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[’']/g, " ")
-      .toLowerCase()
+  return normalizeNaturalLanguage(value).normalizedText
       .replace(/[^a-z0-9]+/g, " ")
       .replace(/\s+/g, " ")
       .trim();
@@ -101,13 +100,19 @@ function extractTaskCreation(message, referenceDate = new Date()) {
  * }}
  */
 function detectIntent(message) {
-  const text = normalizeText(message);
+  const normalization = normalizeNaturalLanguage(message);
+  const text = normalization.normalizedText;
 
   if (!text) {
     return {
       primaryIntent: "unknown",
       confidence: 0,
       reasons: [],
+      understandingLevel: "noMatch",
+      candidateIntents: [],
+      ambiguityType: null,
+      actionAllowed: false,
+      normalization,
     };
   }
 
@@ -222,11 +227,48 @@ function detectIntent(message) {
   }
   if (hasEvent) reasons.push("event_keyword");
 
+  const candidates = [
+    ifIntent(hasShopping, "shopping"),
+    ifIntent(hasTask, "task"),
+    ifIntent(hasEvent, "event"),
+  ].filter(Boolean);
+  const criticalNegation =
+      /\b(?:ne|n)\s+\w*(?:\s+\w+){0,4}\s+(?:pas|plus|jamais)\b/.test(text) ||
+      /\b(?:annule|supprime|cree|ajoute|deplace|veux)\s+pas\b/.test(text) ||
+      /^(?:pas|non)\b/.test(text);
+  const ambiguities = normalization.preservedAmbiguities;
+  const ambiguousPlus = ambiguities.includes("positive_or_quantity_plus") ||
+      ambiguities.includes("stockout_or_additional_plus");
+  const unresolvedReference = ambiguities.includes("unresolved_reference");
+  const multipleActions = ambiguities.includes("multiple_actions") ||
+      candidates.length > 1;
+  if (criticalNegation || ambiguousPlus ||
+      unresolvedReference || multipleActions) {
+    return {
+      primaryIntent: candidates.length === 1 ? candidates[0] : "unknown",
+      confidence: 0,
+      reasons: [...reasons, criticalNegation ?
+        "critical_negation" : "multiple_or_ambiguous_meanings"],
+      understandingLevel: "ambiguous",
+      candidateIntents: candidates,
+      ambiguityType: criticalNegation ? "negation_scope" :
+        ambiguousPlus ? "plus_meaning" :
+          unresolvedReference ? "unresolved_reference" : "multiple_intents",
+      actionAllowed: false,
+      normalization,
+    };
+  }
+
   if (hasEvent) {
     return {
       primaryIntent: "event",
       confidence: 0.85,
       reasons,
+      understandingLevel: matchLevel(normalization),
+      candidateIntents: ["event"],
+      ambiguityType: null,
+      actionAllowed: false,
+      normalization,
     };
   }
 
@@ -235,6 +277,11 @@ function detectIntent(message) {
       primaryIntent: "shopping",
       confidence: 0.8,
       reasons,
+      understandingLevel: matchLevel(normalization),
+      candidateIntents: ["shopping"],
+      ambiguityType: null,
+      actionAllowed: false,
+      normalization,
     };
   }
 
@@ -243,6 +290,11 @@ function detectIntent(message) {
       primaryIntent: "task",
       confidence: 0.75,
       reasons,
+      understandingLevel: matchLevel(normalization),
+      candidateIntents: ["task"],
+      ambiguityType: null,
+      actionAllowed: false,
+      normalization,
     };
   }
 
@@ -250,7 +302,30 @@ function detectIntent(message) {
     primaryIntent: "general",
     confidence: 0.4,
     reasons,
+    understandingLevel: "noMatch",
+    candidateIntents: ["general"],
+    ambiguityType: null,
+    actionAllowed: false,
+    normalization,
   };
+}
+
+/**
+ * @param {boolean} condition whether the intent matched
+ * @param {string} intent intent code
+ * @return {string|null}
+ */
+function ifIntent(condition, intent) {
+  return condition ? intent : null;
+}
+
+/**
+ * @param {{normalizationCodes: string[]}} normalization normalization result
+ * @return {string}
+ */
+function matchLevel(normalization) {
+  return normalization.normalizationCodes.length === 0 ?
+    "exactMatch" : "normalizedMatch";
 }
 
 module.exports = {
@@ -258,4 +333,5 @@ module.exports = {
   containsPhrase,
   extractTaskCreation,
   detectIntent,
+  normalizeNaturalLanguage,
 };

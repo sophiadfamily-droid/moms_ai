@@ -156,6 +156,13 @@ class NaturalDurationService {
     if (RegExp(r'^\d+\s*(min|minute|minutes)\s*$').hasMatch(cleaned)) {
       return true;
     }
+    if (RegExp(
+      r'^(une?|deux|trois|quatre|cinq|six|sept|huit|neuf|dix|onze|douze|'
+      r'treize|quatorze|quinze|vingt|trente|quarante|cinquante|soixante)'
+      r'\s*(min|minute|minutes)\s*$',
+    ).hasMatch(cleaned)) {
+      return true;
+    }
 
     return _containsAny(cleaned, [
       "une heure",

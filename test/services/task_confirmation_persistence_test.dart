@@ -398,6 +398,7 @@ Map<String, dynamic> _taskClarificationJson() => {
           'attemptNumber': 1,
           'maximumAttempts': 3,
           'sessionGeneration': 0,
+          'draft': null,
         },
         'uncertaintyCodes': ['missingRequiredInformation'],
         'contextStateObserved': 'complete',

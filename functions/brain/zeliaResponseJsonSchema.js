@@ -366,6 +366,64 @@ const contradictionSchema = Object.freeze({
   ],
 });
 
+const clarificationDraftSchema = Object.freeze({
+  anyOf: [
+    {type: "null"},
+    {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        schemaVersion: {type: "integer", enum: [1]},
+        draftType: {type: "string", enum: ["eventCreation"]},
+        logicalRequestId: {type: "string", minLength: 1, maxLength: 80},
+        draftId: {type: "string", minLength: 1, maxLength: 80},
+        title: {type: "string", minLength: 1, maxLength: 120},
+        date: {anyOf: [{type: "string"}, {type: "null"}]},
+        startTime: {anyOf: [{type: "string"}, {type: "null"}]},
+        durationMinutes: {
+          anyOf: [
+            {type: "integer", minimum: 0, maximum: 1440},
+            {type: "null"},
+          ],
+        },
+        travelGoMinutes: {
+          anyOf: [
+            {type: "integer", minimum: 0, maximum: 480},
+            {type: "null"},
+          ],
+        },
+        travelBackMinutes: {
+          anyOf: [
+            {type: "integer", minimum: 0, maximum: 480},
+            {type: "null"},
+          ],
+        },
+        marginMinutes: {
+          anyOf: [
+            {type: "integer", minimum: 0, maximum: 240},
+            {type: "null"},
+          ],
+        },
+        expectedField: {
+          type: "string",
+          enum: [
+            "date", "time", "duration", "travelGo", "travelBack", "margin",
+          ],
+        },
+        createdAt: {type: "string"},
+        expiresAt: {type: "string"},
+        sessionGeneration: {type: "integer", minimum: 0},
+      },
+      required: [
+        "schemaVersion", "draftType", "logicalRequestId", "draftId", "title",
+        "date", "startTime", "durationMinutes", "travelGoMinutes",
+        "travelBackMinutes", "marginMinutes", "expectedField", "createdAt",
+        "expiresAt", "sessionGeneration",
+      ],
+    },
+  ],
+});
+
 const clarificationSchema = Object.freeze({
   anyOf: [
     {type: "null"},
@@ -400,12 +458,13 @@ const clarificationSchema = Object.freeze({
         attemptNumber: {type: "integer", minimum: 1, maximum: 3},
         maximumAttempts: {type: "integer", enum: [3]},
         sessionGeneration: {type: "integer", minimum: 0},
+        draft: clarificationDraftSchema,
       },
       required: [
         "schemaVersion", "clarificationId", "reasonCode", "questionText",
         "expectedAnswerType", "allowedChoices", "missingFieldCodes",
         "createdAt", "expiresAt", "attemptNumber", "maximumAttempts",
-        "sessionGeneration",
+        "sessionGeneration", "draft",
       ],
     },
   ],

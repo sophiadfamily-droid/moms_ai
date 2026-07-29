@@ -71,7 +71,16 @@ const CONTRADICTION_TYPES = new Set([
 const CLARIFICATION_KEYS = new Set([
   "schemaVersion", "clarificationId", "reasonCode", "questionText",
   "expectedAnswerType", "allowedChoices", "missingFieldCodes", "createdAt",
-  "expiresAt", "attemptNumber", "maximumAttempts", "sessionGeneration",
+  "expiresAt", "attemptNumber", "maximumAttempts", "sessionGeneration", "draft",
+]);
+const CLARIFICATION_DRAFT_KEYS = new Set([
+  "schemaVersion", "draftType", "logicalRequestId", "draftId", "title",
+  "date", "startTime", "durationMinutes", "travelGoMinutes",
+  "travelBackMinutes", "marginMinutes", "expectedField", "createdAt",
+  "expiresAt", "sessionGeneration",
+]);
+const EVENT_DRAFT_EXPECTED_FIELDS = new Set([
+  "date", "time", "duration", "travelGo", "travelBack", "margin",
 ]);
 const ANSWER_TYPES = new Set([
   "freeTextBounded", "yesNo", "date", "time", "duration", "choice",
@@ -261,6 +270,9 @@ function validateSupportingData(epistemic, request) {
        !Number.isInteger(clarification.sessionGeneration))) {
     fail("response_clarification_invalid");
   }
+  if (clarification !== null) {
+    validateClarificationDraft(clarification.draft, request);
+  }
   if (!Array.isArray(epistemic.usedSourceTypes) ||
       epistemic.usedSourceTypes.some((type) => !SOURCE_TYPES.has(type)) ||
       !Array.isArray(epistemic.uncertaintyCodes) ||
@@ -269,6 +281,63 @@ function validateSupportingData(epistemic, request) {
       !Array.isArray(epistemic.warningCodes) ||
       request.sessionGeneration < 0) {
     fail("response_epistemic_codes_invalid");
+  }
+}
+
+function validNullableMinutes(value, maximum) {
+  return value === null ||
+    Number.isInteger(value) && value >= 0 && value <= maximum;
+}
+
+function validIsoDate(value) {
+  if (value === null) return true;
+  if (typeof value !== "string" ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime()) &&
+    parsed.toISOString().slice(0, 10) === value;
+}
+
+function validTime(value) {
+  return value === null || typeof value === "string" &&
+    /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
+}
+
+function validateClarificationDraft(draft, request) {
+  if (draft === null) return;
+  if (!exactKeys(draft, CLARIFICATION_DRAFT_KEYS) ||
+      draft.schemaVersion !== 1 ||
+      draft.draftType !== "eventCreation" ||
+      typeof draft.logicalRequestId !== "string" ||
+      draft.logicalRequestId.length < 1 ||
+      draft.logicalRequestId.length > 80 ||
+      typeof draft.draftId !== "string" ||
+      draft.draftId.length < 1 ||
+      draft.draftId.length > 80 ||
+      typeof draft.title !== "string" ||
+      draft.title.trim().length < 1 ||
+      draft.title.length > 120 ||
+      !validIsoDate(draft.date) ||
+      !validTime(draft.startTime) ||
+      !validNullableMinutes(draft.durationMinutes, 1440) ||
+      !validNullableMinutes(draft.travelGoMinutes, 480) ||
+      !validNullableMinutes(draft.travelBackMinutes, 480) ||
+      !validNullableMinutes(draft.marginMinutes, 240) ||
+      !EVENT_DRAFT_EXPECTED_FIELDS.has(draft.expectedField) ||
+      typeof draft.createdAt !== "string" ||
+      typeof draft.expiresAt !== "string" ||
+      !Number.isInteger(draft.sessionGeneration) ||
+      draft.sessionGeneration !== request.sessionGeneration) {
+    fail("response_clarification_draft_invalid");
+  }
+  const createdAt = new Date(draft.createdAt);
+  const expiresAt = new Date(draft.expiresAt);
+  if (Number.isNaN(createdAt.getTime()) ||
+      Number.isNaN(expiresAt.getTime()) ||
+      expiresAt <= createdAt ||
+      expiresAt - createdAt > 15 * 60 * 1000 ||
+      serializedBytes(draft) > 2048) {
+    fail("response_clarification_draft_invalid");
   }
 }
 

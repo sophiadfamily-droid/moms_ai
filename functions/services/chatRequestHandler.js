@@ -18,6 +18,7 @@ const {routeModel} = require("./modelRouterService");
 const {sanitizeEventParticipants} = require("./eventParticipantContract");
 const {sanitizeEventMutations} = require("./eventMutationContract");
 const {writeDiagnostic} = require("./diagnostics");
+const {buildEventClarification} = require("./eventClarificationDraft");
 const {validateConversationRequest} =
   require("./conversationContextContract");
 const {validateConversationResponse} =
@@ -131,9 +132,98 @@ async function handleChatRequest(
   const route = dependencies.route || routeModel;
   const timeoutMs = dependencies.openAiTimeoutMs || OPENAI_TIMEOUT_MS;
   const today = now().toISOString().slice(0, 10);
+  const nluStartedAt = Date.now();
   const detectedIntent = detectIntent(message);
+  writeDiagnostic({
+    logger,
+    level: "info",
+    event: "ZELIA_NATURAL_LANGUAGE",
+    component: "natural_language",
+    step: detectedIntent.understandingLevel === "ambiguous" ?
+      "resolve_ambiguity" : "detect_intent",
+    code: detectedIntent.understandingLevel === "ambiguous" ?
+      "clarification-required" : "intent-detected",
+    correlationId,
+    env: dependencies.env || process.env,
+    metadata: {
+      durationMs: Date.now() - nluStartedAt,
+      normalizationCodes:
+        detectedIntent.normalization.normalizationCodes,
+      intentCode: detectedIntent.primaryIntent,
+      understandingLevel: detectedIntent.understandingLevel,
+      entityTypes: [],
+      ambiguityType: detectedIntent.ambiguityType || "",
+    },
+  });
   const planningComplexity = detectPlanningComplexity(message);
   const taskCreation = extractTaskCreation(message, now());
+
+  if (detectedIntent.understandingLevel === "ambiguous") {
+    const ambiguityType = detectedIntent.ambiguityType || "multiple_meanings";
+    const questionText = ambiguityType === "negation_scope" ?
+      "Je veux être sûre de respecter la négation. Que souhaites-tu faire ?" :
+      ambiguityType === "plus_meaning" ?
+        "Veux-tu en ajouter, ou veux-tu dire qu’il n’en reste plus ?" :
+        "Ta phrase peut désigner plusieurs actions. Laquelle veux-tu préparer ?";
+    const createdAt = now();
+    const expiresAt = new Date(createdAt.getTime() + 10 * 60 * 1000);
+    const clarificationResponse = validateConversationResponse({
+      visibleText: questionText,
+      actions: [],
+      memories: [],
+      epistemic: {
+        schemaVersion: 1,
+        responseKind: "clarificationRequired",
+        epistemicState: "insufficientInformation",
+        confidenceLevel: "low",
+        usedSourceTypes: ["currentUserMessage"],
+        groundingReferences: [{
+          schemaVersion: 1,
+          sourceType: "currentUserMessage",
+          section: null,
+          factKey: null,
+          freshness: "current",
+          confirmation: "confirmed",
+          projectionVersion: 0,
+        }],
+        personalClaims: [],
+        missingInformation: [{
+          schemaVersion: 1,
+          code: "missingChoice",
+          domain: "general",
+          field: "intent",
+          isRequired: true,
+          canClarify: true,
+        }],
+        contradictions: [],
+        clarification: {
+          schemaVersion: 1,
+          clarificationId: `nlu-${source.sessionGeneration}`,
+          reasonCode: `nlu_${ambiguityType}`,
+          questionText,
+          expectedAnswerType: "freeTextBounded",
+          allowedChoices: [],
+          missingFieldCodes: ["missingChoice"],
+          createdAt: createdAt.toISOString(),
+          expiresAt: expiresAt.toISOString(),
+          attemptNumber: 1,
+          maximumAttempts: 3,
+          sessionGeneration: source.sessionGeneration,
+          draft: null,
+        },
+        uncertaintyCodes: ["missingRequiredInformation"],
+        contextStateObserved: source.conversationContext.state,
+        warningCodes: [],
+        responseId: `nlu-clarification-${source.sessionGeneration}`,
+      },
+    }, source);
+    return {
+      reply: clarificationResponse.visibleText,
+      actions: clarificationResponse.actions,
+      memories: clarificationResponse.memories,
+      epistemic: clarificationResponse.epistemic,
+    };
+  }
 
   if (detectedIntent.primaryIntent === "task" &&
       taskCreation.isCreation && taskCreation.title.length === 0) {
@@ -180,6 +270,7 @@ async function handleChatRequest(
           attemptNumber: 1,
           maximumAttempts: 3,
           sessionGeneration: source.sessionGeneration,
+          draft: null,
         },
         uncertaintyCodes: ["missingRequiredInformation"],
         contextStateObserved: source.conversationContext.state,
@@ -193,6 +284,28 @@ async function handleChatRequest(
       memories: clarificationResponse.memories,
       epistemic: clarificationResponse.epistemic,
     };
+  }
+
+  if (detectedIntent.primaryIntent === "event") {
+    const eventClarification = buildEventClarification({
+      message,
+      now: now(),
+      correlationId,
+      sessionGeneration: source.sessionGeneration,
+      contextState: source.conversationContext.state,
+    });
+    if (eventClarification !== null) {
+      const validated = validateConversationResponse(
+          eventClarification,
+          source,
+      );
+      return {
+        reply: validated.visibleText,
+        actions: validated.actions,
+        memories: validated.memories,
+        epistemic: validated.epistemic,
+      };
+    }
   }
 
   const systemContent = `

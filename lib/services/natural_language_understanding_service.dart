@@ -1,5 +1,7 @@
+import '../models/natural_language_models.dart';
 import 'natural_date_service.dart';
 import 'natural_duration_service.dart';
+import 'natural_language_normalizer.dart';
 import 'natural_time_service.dart';
 
 class NaturalLanguageUnderstandingResult {
@@ -12,6 +14,9 @@ class NaturalLanguageUnderstandingResult {
   final bool hasDuration;
   final bool expressesUncertainty;
   final double confidence;
+  final NaturalLanguageNormalization normalization;
+  final UnderstandingLevel understandingLevel;
+  final List<NaturalLanguageEntity> entities;
 
   const NaturalLanguageUnderstandingResult({
     required this.originalText,
@@ -23,6 +28,9 @@ class NaturalLanguageUnderstandingResult {
     required this.hasDuration,
     required this.expressesUncertainty,
     required this.confidence,
+    required this.normalization,
+    required this.understandingLevel,
+    required this.entities,
   });
 
   Map<String, dynamic> toJson() {
@@ -36,6 +44,10 @@ class NaturalLanguageUnderstandingResult {
       "hasDuration": hasDuration,
       "expressesUncertainty": expressesUncertainty,
       "confidence": confidence,
+      "normalizedText": normalization.normalizedText,
+      "normalizationCodes": normalization.normalizationCodes,
+      "preservedAmbiguities": normalization.preservedAmbiguities,
+      "understandingLevel": understandingLevel.name,
     };
   }
 }
@@ -46,7 +58,8 @@ class NaturalLanguageUnderstandingService {
     String fallbackIsoDate = "",
     DateTime? now,
   }) {
-    final normalized = _normalize(text);
+    final normalization = const NaturalLanguageNormalizer().normalize(text);
+    final normalized = normalization.normalizedText;
 
     final dateIso = NaturalDateService.resolveDateFromText(
       text,
@@ -69,6 +82,43 @@ class NaturalLanguageUnderstandingService {
       hasDuration: hasDuration,
       expressesUncertainty: uncertainty,
     );
+    final entities = <NaturalLanguageEntity>[
+      if (hasDate)
+        NaturalLanguageEntity(
+          type: 'date',
+          originalText: text,
+          normalizedValue: dateIso,
+          understanding: normalization.normalizationCodes.isEmpty
+              ? EntityUnderstanding.exactMatch
+              : EntityUnderstanding.normalizedMatch,
+          provenance: 'deterministic_date_parser',
+        ),
+      if (hasTime)
+        NaturalLanguageEntity(
+          type: 'time',
+          originalText: text,
+          normalizedValue: time,
+          understanding: normalization.normalizationCodes.isEmpty
+              ? EntityUnderstanding.exactMatch
+              : EntityUnderstanding.normalizedMatch,
+          provenance: 'deterministic_time_parser',
+        ),
+      if (hasDuration)
+        NaturalLanguageEntity(
+          type: 'duration',
+          originalText: text,
+          normalizedValue: durationMinutes.toString(),
+          understanding: EntityUnderstanding.exactMatch,
+          provenance: 'deterministic_duration_parser',
+        ),
+    ];
+    final understandingLevel = normalization.preservedAmbiguities.isNotEmpty
+        ? UnderstandingLevel.ambiguous
+        : entities.isEmpty
+            ? UnderstandingLevel.noMatch
+            : normalization.normalizationCodes.isEmpty
+                ? UnderstandingLevel.exactMatch
+                : UnderstandingLevel.normalizedMatch;
 
     return NaturalLanguageUnderstandingResult(
       originalText: text,
@@ -80,6 +130,9 @@ class NaturalLanguageUnderstandingService {
       hasDuration: hasDuration,
       expressesUncertainty: uncertainty,
       confidence: confidence,
+      normalization: normalization,
+      understandingLevel: understandingLevel,
+      entities: List.unmodifiable(entities),
     );
   }
 
@@ -132,21 +185,6 @@ class NaturalLanguageUnderstandingService {
   }
 
   static String _normalize(String text) {
-    return text
-        .trim()
-        .toLowerCase()
-        .replaceAll("’", "'")
-        .replaceAll("é", "e")
-        .replaceAll("è", "e")
-        .replaceAll("ê", "e")
-        .replaceAll("ë", "e")
-        .replaceAll("à", "a")
-        .replaceAll("â", "a")
-        .replaceAll("ù", "u")
-        .replaceAll("û", "u")
-        .replaceAll("î", "i")
-        .replaceAll("ï", "i")
-        .replaceAll("ô", "o")
-        .replaceAll("ç", "c");
+    return const NaturalLanguageNormalizer().normalize(text).normalizedText;
   }
 }

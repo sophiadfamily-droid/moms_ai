@@ -1,3 +1,5 @@
+import '../natural_language_normalizer.dart';
+
 final class PriorityConsultationIntentDetector {
   const PriorityConsultationIntentDetector();
 
@@ -43,33 +45,6 @@ final class PriorityConsultationIntentDetector {
       RegExp(r'\b(?:prefere|preference)\b').hasMatch(value);
 
   String _normalize(String input) {
-    const replacements = {
-      'à': 'a',
-      'â': 'a',
-      'ä': 'a',
-      'ç': 'c',
-      'é': 'e',
-      'è': 'e',
-      'ê': 'e',
-      'ë': 'e',
-      'î': 'i',
-      'ï': 'i',
-      'ô': 'o',
-      'ö': 'o',
-      'ù': 'u',
-      'û': 'u',
-      'ü': 'u',
-      'ÿ': 'y',
-      'œ': 'oe',
-    };
-    var value = input.toLowerCase().replaceAll(RegExp(r'[’‘`´]'), "'");
-    replacements.forEach((source, target) {
-      value = value.replaceAll(source, target);
-    });
-    return value
-        .replaceAll("'", ' ')
-        .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
-        .trim()
-        .replaceAll(RegExp(r'\s+'), ' ');
+    return const NaturalLanguageNormalizer().normalize(input).normalizedText;
   }
 }

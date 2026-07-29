@@ -101,6 +101,32 @@ function response(epistemicOverrides = {}, actions = []) {
   };
 }
 
+/**
+ * Builds a closed Event clarification draft fixture.
+ * @param {object} overrides Field overrides.
+ * @return {object} Draft fixture.
+ */
+function eventDraft(overrides = {}) {
+  return {
+    schemaVersion: 1,
+    draftType: "eventCreation",
+    logicalRequestId: "logical-event",
+    draftId: "event-draft",
+    title: "Consultation médecin",
+    date: "2026-07-30",
+    startTime: "15:00",
+    durationMinutes: null,
+    travelGoMinutes: null,
+    travelBackMinutes: null,
+    marginMinutes: null,
+    expectedField: "duration",
+    createdAt: "2026-07-29T12:00:00.000Z",
+    expiresAt: "2026-07-29T12:15:00.000Z",
+    sessionGeneration: 4,
+    ...overrides,
+  };
+}
+
 test("accepts general knowledge without a personal claim", () => {
   const value = response({
     usedSourceTypes: ["generalKnowledge"],
@@ -328,10 +354,98 @@ test("validates clarification and binds it to the request generation", () => {
       attemptNumber: 1,
       maximumAttempts: 3,
       sessionGeneration: 0,
+      draft: null,
     },
   });
   validateConversationResponse(value, request());
   assert.equal(value.epistemic.clarification.sessionGeneration, 4);
+});
+
+test("accepts a closed Event draft only with empty actions", () => {
+  const value = response({
+    responseKind: "clarificationRequired",
+    epistemicState: "insufficientInformation",
+    missingInformation: [{
+      schemaVersion: 1,
+      code: "missingDuration",
+      domain: "event",
+      field: "duration",
+      isRequired: true,
+      canClarify: true,
+    }],
+    clarification: {
+      schemaVersion: 1,
+      clarificationId: "event-duration",
+      reasonCode: "event_duration_required",
+      questionText: "Quelle durée ?",
+      expectedAnswerType: "duration",
+      allowedChoices: [],
+      missingFieldCodes: ["missingDuration"],
+      createdAt: "2026-07-29T12:00:00.000Z",
+      expiresAt: "2026-07-29T12:15:00.000Z",
+      attemptNumber: 1,
+      maximumAttempts: 3,
+      sessionGeneration: 4,
+      draft: eventDraft(),
+    },
+  });
+  assert.equal(validateConversationResponse(value, request()), value);
+
+  value.actions.push({
+    type: "event",
+    title: "Consultation médecin",
+    date: "2026-07-30",
+    time: "15:00",
+    durationMinutes: 60,
+  });
+  assert.throws(
+      () => validateConversationResponse(value, request()),
+      /response_action_incomplete/,
+  );
+});
+
+test("rejects malformed Event clarification drafts closed", () => {
+  const variants = [
+    eventDraft({draftType: "unknown"}),
+    {...eventDraft(), internalUid: "forbidden"},
+    eventDraft({date: "2026-02-31"}),
+    eventDraft({startTime: "25:90"}),
+    eventDraft({expectedField: "unknown"}),
+    eventDraft({title: "x".repeat(2100)}),
+  ];
+  for (const draft of variants) {
+    const value = response({
+      responseKind: "clarificationRequired",
+      epistemicState: "insufficientInformation",
+      missingInformation: [{
+        schemaVersion: 1,
+        code: "missingDuration",
+        domain: "event",
+        field: "duration",
+        isRequired: true,
+        canClarify: true,
+      }],
+      clarification: {
+        schemaVersion: 1,
+        clarificationId: "event-duration",
+        reasonCode: "event_duration_required",
+        questionText: "Quelle durée ?",
+        expectedAnswerType: "duration",
+        allowedChoices: [],
+        missingFieldCodes: ["missingDuration"],
+        createdAt: "2026-07-29T12:00:00.000Z",
+        expiresAt: "2026-07-29T12:15:00.000Z",
+        attemptNumber: 1,
+        maximumAttempts: 3,
+        sessionGeneration: 4,
+        draft,
+      },
+    });
+    assert.throws(
+        () => validateConversationResponse(value, request()),
+        /response_clarification_draft_invalid/,
+    );
+  }
 });
 
 test("rejects a clarification without the canonical attempt limit", () => {
@@ -359,6 +473,7 @@ test("rejects a clarification without the canonical attempt limit", () => {
       expiresAt: null,
       attemptNumber: 1,
       sessionGeneration: 0,
+      draft: null,
     },
   });
 

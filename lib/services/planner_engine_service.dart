@@ -1,7 +1,12 @@
 import 'natural_duration_service.dart';
+import 'conversation_answer_classifier.dart';
 
 class PlannerEngineService {
   static bool isNegativeAnswer(String text) {
+    if (const ConversationAnswerClassifier().classify(text) ==
+        ConversationAnswer.negative) {
+      return true;
+    }
     final lower = text.trim().toLowerCase();
 
     return lower == "non" ||
@@ -17,6 +22,10 @@ class PlannerEngineService {
   }
 
   static bool isPositiveAnswer(String text) {
+    if (const ConversationAnswerClassifier().classify(text) ==
+        ConversationAnswer.positive) {
+      return true;
+    }
     final lower = text.trim().toLowerCase();
 
     return lower == "oui" ||
@@ -24,12 +33,9 @@ class PlannerEngineService {
         lower == "ok" ||
         lower == "d’accord" ||
         lower == "daccord" ||
-        lower == "vas-y" ||
-        lower == "vasy" ||
         lower == "réserve" ||
         lower == "reserve" ||
-        lower.contains("oui vas") ||
-        lower.contains("tu peux");
+        lower == "tu peux";
   }
 
   static bool isNoTravelAnswer(String text) {

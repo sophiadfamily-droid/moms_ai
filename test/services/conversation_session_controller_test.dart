@@ -1,11 +1,14 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:moms_ai/models/chat_backend_request.dart';
 import 'package:moms_ai/models/chat_backend_response.dart';
 import 'package:moms_ai/models/conversation_models.dart';
+import 'package:moms_ai/models/conversation_context_envelope.dart';
 import 'package:moms_ai/models/conversation_epistemic_models.dart';
 import 'package:moms_ai/models/conversation_session_models.dart';
+import 'package:moms_ai/models/event_model.dart';
 import 'package:moms_ai/models/priority/proactive_priority_models.dart';
 import 'package:moms_ai/models/smart_planning_continuation.dart';
 import 'package:moms_ai/models/task_model.dart';
@@ -14,8 +17,13 @@ import 'package:moms_ai/services/chat_backend_client.dart';
 import 'package:moms_ai/services/conversation_context_service.dart';
 import 'package:moms_ai/services/conversation_coordinator.dart';
 import 'package:moms_ai/services/conversation_session_controller.dart';
+import 'package:moms_ai/services/event_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  SharedPreferences.setMockInitialValues({});
+
   group('canonical conversation session orchestration', () {
     test('starts immutable, versioned and without public account data', () {
       final harness = _Harness();
@@ -332,6 +340,193 @@ void main() {
           ConversationSessionPhase.awaitingClarification);
       controller.dispose();
     });
+
+    test('production composition consumes callable Event draft before backend',
+        () async {
+      expect(
+        ChatBackendResponse.fromJson(_eventDraftCallableJson())
+            .epistemic
+            ?.clarification
+            ?.draft,
+        isNotNull,
+      );
+      final backend = _JsonCallableBackend(_eventDraftCallableJson());
+      final controller = ConversationSessionController.production(
+        profile: _profile(),
+        backendClient: backend,
+        contextProvider: _Context(),
+        messageStore: _Store(),
+        accountScopeId: 'account',
+        clock: () => DateTime.utc(2026, 7, 29, 12),
+        idGenerator: () => 'production-event-diagnosis',
+      );
+
+      await controller.submitText('medecin demain 15h');
+
+      expect(controller.state.hasPendingAction, isTrue);
+      expect(
+        controller.state.phase,
+        ConversationSessionPhase.awaitingClarification,
+      );
+
+      await controller.submitText('1h');
+
+      expect(backend.invocations, 1);
+      expect(
+        controller.state.messages.last.text,
+        contains('trajet aller'),
+      );
+      controller.dispose();
+    });
+
+    test('callable Event draft follows every local field to confirmation',
+        () async {
+      SharedPreferences.setMockInitialValues({});
+      final backend = _JsonCallableBackend(_eventDraftCallableJson());
+      final controller = ConversationSessionController.production(
+        profile: _profile(),
+        backendClient: backend,
+        contextProvider: _Context(),
+        messageStore: _Store(),
+        accountScopeId: 'account',
+        clock: () => DateTime.utc(2026, 7, 29, 12),
+        idGenerator: () => 'production-event-full-path',
+      );
+
+      await controller.submitText('medecin demain 15h');
+      await controller.submitText('1h');
+      expect(controller.state.messages.last.text, contains('trajet aller'));
+      await controller.submitText('vingt minutes');
+      expect(controller.state.messages.last.text, contains('trajet retour'));
+      await controller.submitText('aucun trajet');
+      expect(controller.state.messages.last.text, contains('marge'));
+      await controller.submitText('aucune');
+
+      expect(backend.invocations, 1);
+      expect(controller.state.phase,
+          ConversationSessionPhase.awaitingConfirmation);
+      expect(
+        controller.state.messages.last.text,
+        contains('Veux-tu que je l’ajoute'),
+      );
+      await controller.submitText('ouais vas-y');
+
+      final preferences = await SharedPreferences.getInstance();
+      final eventKey = EventService.localEventsKeyForAccountScope(null);
+      expect(preferences.getStringList(eventKey), hasLength(1));
+
+      await controller.submitText('ouais vas-y');
+      expect(preferences.getStringList(eventKey), hasLength(1));
+      controller.dispose();
+    });
+
+    test('production composition keeps callable Event draft through a conflict',
+        () async {
+      addTearDown(() => SharedPreferences.setMockInitialValues({}));
+      final existing = EventModel(
+        id: 'existing-event',
+        title: 'Rendez-vous existant',
+        date: '2026-07-30',
+        time: '15:00',
+        notes: '',
+        createdAt: DateTime.utc(2026, 7, 28),
+        startDateTimeIso: '2026-07-30T15:00:00.000',
+        endTime: '16:00',
+        endDateTimeIso: '2026-07-30T16:00:00.000',
+        durationMinutes: 60,
+      );
+      SharedPreferences.setMockInitialValues({
+        EventService.localEventsKeyForAccountScope(null): [
+          jsonEncode(existing.toJson()),
+        ],
+      });
+      final backend = _JsonCallableBackend(_eventDraftCallableJson());
+      final controller = ConversationSessionController.production(
+        profile: _profile(),
+        backendClient: backend,
+        contextProvider: _Context(),
+        messageStore: _Store(),
+        accountScopeId: 'account',
+        clock: () => DateTime.utc(2026, 7, 29, 12),
+        idGenerator: () => 'production-event-conflict',
+      );
+
+      await controller.submitText('medecin demain 15h');
+      await controller.submitText('1h');
+
+      expect(controller.state.messages.last.text, contains('autre horaire'));
+      expect(controller.state.hasPendingAction, isTrue);
+      expect(controller.state.phase,
+          ConversationSessionPhase.awaitingClarification);
+
+      await controller.submitText('19h');
+
+      expect(backend.invocations, 1);
+      expect(controller.state.messages.last.text, contains('trajet aller'));
+      expect(controller.state.hasPendingAction, isTrue);
+      await controller.submitText('vingt minutes');
+      await controller.submitText('aucun trajet');
+      await controller.submitText('aucune');
+      expect(controller.state.phase,
+          ConversationSessionPhase.awaitingConfirmation);
+
+      await controller.submitText('ouais vas-y');
+
+      final preferences = await SharedPreferences.getInstance();
+      final stored = preferences
+          .getStringList(EventService.localEventsKeyForAccountScope(null))!
+          .map((value) => EventModel.fromJson(jsonDecode(value)))
+          .toList(growable: false);
+      expect(stored, hasLength(2));
+      final created =
+          stored.singleWhere((event) => event.id != 'existing-event');
+      expect(created.time, '19:00');
+      expect(created.durationMinutes, 60);
+      expect(created.travelGoMinutes, 20);
+      expect(created.travelBackMinutes, 0);
+      expect(created.marginMinutes, 0);
+      expect(backend.invocations, 1);
+      controller.dispose();
+    });
+
+    test('callable Event draft expires and is invalidated on account change',
+        () async {
+      var now = DateTime.utc(2026, 7, 29, 12);
+      final expiringBackend = _JsonCallableBackend(_eventDraftCallableJson());
+      final expiring = ConversationSessionController.production(
+        profile: _profile(),
+        backendClient: expiringBackend,
+        contextProvider: _Context(),
+        messageStore: _Store(),
+        accountScopeId: 'account-a',
+        clock: () => now,
+        idGenerator: () => 'production-event-expiry',
+      );
+      await expiring.submitText('medecin demain 15h');
+      now = DateTime.utc(2026, 7, 29, 12, 16);
+      await expiring.submitText('1h');
+      expect(expiring.state.messages.last.text, contains('expiré'));
+      expect(expiringBackend.invocations, 1);
+      expiring.dispose();
+
+      final accountBackend = _JsonCallableBackend(_eventDraftCallableJson());
+      final account = ConversationSessionController.production(
+        profile: _profile(),
+        backendClient: accountBackend,
+        contextProvider: _Context(),
+        messageStore: _Store(),
+        accountScopeId: 'account-a',
+        clock: () => DateTime.utc(2026, 7, 29, 12),
+        idGenerator: () => 'production-event-account',
+      );
+      await account.submitText('medecin demain 15h');
+      account.changeAccount(_profile(firstName: 'Compte B'));
+      await account.submitText('1h');
+
+      expect(accountBackend.invocations, 2);
+      expect(account.state.hasPendingAction, isFalse);
+      account.dispose();
+    });
   });
 }
 
@@ -389,6 +584,19 @@ final class _Backend implements ChatBackendClient {
   }
 }
 
+final class _JsonCallableBackend implements ChatBackendClient {
+  _JsonCallableBackend(this.json);
+
+  final Map<String, dynamic> json;
+  int invocations = 0;
+
+  @override
+  Future<ChatBackendResponse> send(ChatBackendRequest request) async {
+    invocations++;
+    return ChatBackendResponse.fromJson(json);
+  }
+}
+
 final class _Context implements ConversationContextProvider {
   int calls = 0;
 
@@ -400,6 +608,18 @@ final class _Context implements ConversationContextProvider {
     calls++;
     return ChatBackendRequest(
       message: message,
+      context: ConversationContextEnvelope(
+        projectionVersion: 0,
+        purpose: ConversationTransportContract.purposeId,
+        generatedAt: DateTime.utc(2026, 7, 29, 12),
+        state: ConversationContextState.complete,
+        sections: const [],
+        budgetRequested: 245,
+        budgetUsed: 0,
+        omittedCount: 0,
+        truncatedSections: const [],
+        warningCodes: const [],
+      ),
       profile: const {},
       profileContext: const {},
       memories: const [],
@@ -427,6 +647,78 @@ final class _Store implements ConversationMessageStore {
 
 ChatBackendResponse _response() =>
     const ChatBackendResponse(reply: 'Réponse', actions: [], memories: []);
+
+Map<String, dynamic> _eventDraftCallableJson() => {
+      'reply': 'Je prépare ce rendez-vous. Il me manque juste la durée.',
+      'actions': <dynamic>[],
+      'memories': <dynamic>[],
+      'epistemic': {
+        'schemaVersion': 1,
+        'responseKind': 'clarificationRequired',
+        'epistemicState': 'insufficientInformation',
+        'confidenceLevel': 'high',
+        'usedSourceTypes': ['currentUserMessage'],
+        'groundingReferences': [
+          {
+            'schemaVersion': 1,
+            'sourceType': 'currentUserMessage',
+            'section': null,
+            'factKey': null,
+            'freshness': 'current',
+            'confirmation': 'confirmed',
+            'projectionVersion': 0,
+          }
+        ],
+        'personalClaims': <dynamic>[],
+        'missingInformation': [
+          {
+            'schemaVersion': 1,
+            'code': 'missingDuration',
+            'domain': 'event',
+            'field': 'duration',
+            'isRequired': true,
+            'canClarify': true,
+          }
+        ],
+        'contradictions': <dynamic>[],
+        'clarification': {
+          'schemaVersion': 1,
+          'clarificationId': 'event-clarification',
+          'reasonCode': 'event_duration_required',
+          'questionText':
+              'Je prépare ce rendez-vous. Il me manque juste la durée.',
+          'expectedAnswerType': 'duration',
+          'allowedChoices': <dynamic>[],
+          'missingFieldCodes': ['missingDuration'],
+          'createdAt': '2026-07-29T12:00:00.000Z',
+          'expiresAt': '2026-07-29T12:15:00.000Z',
+          'attemptNumber': 1,
+          'maximumAttempts': 3,
+          'sessionGeneration': 0,
+          'draft': {
+            'schemaVersion': 1,
+            'draftType': 'eventCreation',
+            'logicalRequestId': 'logical-event-draft',
+            'draftId': 'event-draft',
+            'title': 'Consultation médecin',
+            'date': '2026-07-30',
+            'startTime': '15:00',
+            'durationMinutes': null,
+            'travelGoMinutes': null,
+            'travelBackMinutes': null,
+            'marginMinutes': null,
+            'expectedField': 'duration',
+            'createdAt': '2026-07-29T12:00:00.000Z',
+            'expiresAt': '2026-07-29T12:15:00.000Z',
+            'sessionGeneration': 0,
+          },
+        },
+        'uncertaintyCodes': ['missingRequiredInformation'],
+        'contextStateObserved': 'complete',
+        'warningCodes': <dynamic>[],
+        'responseId': 'event-clarification-response',
+      },
+    };
 
 ConversationVisibleMessage _message() => ConversationVisibleMessage(
       id: 'message',

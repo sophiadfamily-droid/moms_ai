@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:moms_ai/models/chat_backend_request.dart';
@@ -15,9 +16,16 @@ import 'package:moms_ai/services/callable_chat_backend_client.dart';
 import 'package:moms_ai/services/chat_backend_client.dart';
 import 'package:moms_ai/services/conversation_context_service.dart';
 import 'package:moms_ai/services/conversation_coordinator.dart';
+import 'package:moms_ai/services/conversation_legacy_action_executor.dart';
+import 'package:moms_ai/services/event_service.dart';
 import 'package:moms_ai/services/shopping_service.dart';
+import 'package:moms_ai/services/planner_engine_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  SharedPreferences.setMockInitialValues({});
+
   group('ConversationCoordinator', () {
     test(
         'decodes the deterministic Task callable JSON and creates clarification',
@@ -653,6 +661,237 @@ void main() {
         coordinator.state.phase,
         ConversationPhase.awaitingActionConfirmation,
       );
+    });
+
+    test('active Event duration consumes 1h before general routing', () async {
+      final coordinator = _coordinator();
+      final executor = ConversationLegacyActionExecutor(
+        coordinator: coordinator,
+        clock: () => DateTime.utc(2026, 7, 29, 10),
+      );
+
+      final initial = await executor.execute(
+        const {
+          'type': 'event',
+          'title': 'Médecin',
+          'date': '2026-07-30',
+          'time': '15:00',
+          'durationMinutes': 0,
+        },
+        'médecin demain 15h',
+        0,
+      );
+      expect(initial.message, contains('Combien de temps'));
+      expect(executor.hasPendingEventDraft, isTrue);
+
+      final duration = await executor.resolvePending('1h', 0);
+
+      expect(duration?.reply, contains('trajet aller'));
+      expect(duration?.reply, isNot(contains('pour quel rendez-vous')));
+      expect(executor.hasPendingEventDraft, isTrue);
+    });
+
+    test('Event conflict keeps draft identity and consumes a replacement time',
+        () async {
+      addTearDown(() => SharedPreferences.setMockInitialValues({}));
+      final existing = EventModel(
+        id: 'existing-event',
+        title: 'Rendez-vous existant',
+        date: '2026-07-30',
+        time: '15:00',
+        notes: '',
+        createdAt: DateTime.utc(2026, 7, 28),
+        startDateTimeIso: '2026-07-30T15:00:00.000',
+        endTime: '16:00',
+        endDateTimeIso: '2026-07-30T16:00:00.000',
+        durationMinutes: 60,
+      );
+      SharedPreferences.setMockInitialValues({
+        EventService.localEventsKeyForAccountScope(null): [
+          jsonEncode(existing.toJson()),
+        ],
+      });
+      final coordinator = _coordinator();
+      final executor = ConversationLegacyActionExecutor(
+        coordinator: coordinator,
+        clock: () => DateTime.utc(2026, 7, 29, 10),
+      );
+      final draft = ConversationClarificationDraft(
+        schemaVersion: 1,
+        draftType: ConversationClarificationDraftType.eventCreation,
+        logicalRequestId: 'logical-event-draft',
+        draftId: 'event-draft',
+        title: 'Consultation médecin',
+        date: '2026-07-30',
+        startTime: '15:00',
+        durationMinutes: null,
+        travelGoMinutes: null,
+        travelBackMinutes: null,
+        marginMinutes: null,
+        expectedField: ConversationEventDraftExpectedField.duration,
+        createdAt: DateTime.utc(2026, 7, 29, 10),
+        expiresAt: DateTime.utc(2026, 7, 29, 10, 15),
+        sessionGeneration: 0,
+      );
+      expect(executor.registerClarificationDraft(draft, 0), isTrue);
+
+      final conflict = await executor.resolvePending('1h', 0);
+
+      expect(conflict?.reply, contains('autre horaire'));
+      expect(executor.pendingEventDraftId, 'event-draft');
+      expect(executor.pendingEventLogicalRequestId, 'logical-event-draft');
+      expect(executor.pendingEventExpectedFieldCode, 'conflictAlternativeTime');
+
+      final ambiguous = await executor.resolvePending('plus tard', 0);
+      expect(ambiguous?.reply, contains('heure précise'));
+      expect(executor.pendingEventDraftId, 'event-draft');
+
+      final repeatedConflict = await executor.resolvePending('15h', 0);
+      expect(repeatedConflict?.reply, contains('autre horaire'));
+      expect(executor.pendingEventDraftId, 'event-draft');
+
+      final replacementDate =
+          await executor.resolvePending('plutôt vendredi', 0);
+      expect(replacementDate?.reply, contains('heure précise'));
+      expect(executor.pendingEventDraftId, 'event-draft');
+
+      final replacement = await executor.resolvePending('dix-neuf heures', 0);
+      expect(replacement?.reply, contains('trajet aller'));
+      expect(executor.pendingEventDraftId, 'event-draft');
+      expect(executor.pendingEventLogicalRequestId, 'logical-event-draft');
+      expect(executor.pendingEventExpectedFieldCode, 'travelGo');
+
+      await executor.resolvePending('20 minutes', 0);
+      await executor.resolvePending('aucun trajet', 0);
+      await executor.resolvePending('aucune', 0);
+      expect(coordinator.state.pendingAction?.event.date, '2026-07-31');
+      expect(coordinator.state.pendingAction?.event.durationMinutes, 60);
+    });
+
+    test('Event continuation keeps travel return and margin structured',
+        () async {
+      final coordinator = _coordinator();
+      final executor = ConversationLegacyActionExecutor(
+        coordinator: coordinator,
+        clock: () => DateTime.utc(2026, 7, 29, 10),
+      );
+      await executor.execute(
+        const {
+          'type': 'event',
+          'title': 'Médecin',
+          'date': '2026-07-30',
+          'time': '15:00',
+          'durationMinutes': 0,
+        },
+        'médecin demain 15h',
+        0,
+      );
+
+      expect((await executor.resolvePending('une heure', 0))?.reply,
+          contains('trajet aller'));
+      expect((await executor.resolvePending('15 min', 0))?.reply,
+          contains('trajet retour'));
+      expect((await executor.resolvePending('vingt minutes', 0))?.reply,
+          contains('marge'));
+      final confirmation = await executor.resolvePending('aucune', 0);
+
+      expect(confirmation?.reply, contains('Veux-tu que je l’ajoute'));
+      expect(coordinator.state.pendingAction?.event.durationMinutes, 60);
+      expect(coordinator.state.pendingAction?.event.travelGoMinutes, 15);
+      expect(coordinator.state.pendingAction?.event.travelBackMinutes, 20);
+      expect(coordinator.state.pendingAction?.event.marginMinutes, 0);
+    });
+
+    test('simple non cancels active Event continuation locally', () async {
+      final coordinator = _coordinator();
+      final executor = ConversationLegacyActionExecutor(
+        coordinator: coordinator,
+        clock: () => DateTime.utc(2026, 7, 29, 10),
+      );
+      await executor.execute(
+        const {
+          'type': 'event',
+          'title': 'Médecin',
+          'date': '2026-07-30',
+          'time': '15:00',
+          'durationMinutes': 0,
+        },
+        'médecin demain 15h',
+        0,
+      );
+
+      final cancelled = await executor.resolvePending('non', 0);
+
+      expect(cancelled?.reply, contains('ferme cette préparation'));
+      expect(cancelled?.reply, isNot(contains('respecter la négation')));
+      expect(executor.hasPendingEventDraft, isFalse);
+    });
+
+    test('oral Event confirmation executes once and negative refuses locally',
+        () async {
+      final coordinator = _coordinator();
+      coordinator.setPendingEventConfirmation(_event());
+      var executions = 0;
+
+      final accepted = await coordinator.resolvePendingEventConfirmation(
+        answer: 'ouais vas-y',
+        isPositiveAnswer: PlannerEngineService.isPositiveAnswer,
+        isNegativeAnswer: PlannerEngineService.isNegativeAnswer,
+        cancellationMessage: (_) => 'Annulé',
+        expectedAnswerMessage: () => 'Réponds oui ou non',
+        execute: (_) async {
+          executions++;
+          return 'Créé';
+        },
+      );
+      final repeated = await coordinator.resolvePendingEventConfirmation(
+        answer: 'ouais vas-y',
+        isPositiveAnswer: PlannerEngineService.isPositiveAnswer,
+        isNegativeAnswer: PlannerEngineService.isNegativeAnswer,
+        cancellationMessage: (_) => 'Annulé',
+        expectedAnswerMessage: () => 'Réponds oui ou non',
+        execute: (_) async {
+          executions++;
+          return 'Créé';
+        },
+      );
+
+      expect(accepted?.message, 'Créé');
+      expect(repeated, isNull);
+      expect(executions, 1);
+
+      coordinator.setPendingEventConfirmation(_event());
+      final refused = await coordinator.resolvePendingEventConfirmation(
+        answer: 'nan',
+        isPositiveAnswer: PlannerEngineService.isPositiveAnswer,
+        isNegativeAnswer: PlannerEngineService.isNegativeAnswer,
+        cancellationMessage: (_) => 'Annulé',
+        expectedAnswerMessage: () => 'Réponds oui ou non',
+        execute: (_) async => 'Créé',
+      );
+      expect(refused?.message, 'Annulé');
+      expect(coordinator.state.pendingAction, isNull);
+    });
+
+    test('composed confirmation answers are never reduced to booleans', () {
+      for (final answer in const [
+        'ouais mais demain',
+        'oui plutôt mardi',
+        'vas-y à 16h',
+        'd’accord sauf pour le trajet',
+        'oui mais sans marge',
+      ]) {
+        expect(
+          PlannerEngineService.isPositiveAnswer(answer),
+          isFalse,
+          reason: answer,
+        );
+        expect(
+          PlannerEngineService.isNegativeAnswer(answer),
+          isFalse,
+          reason: answer,
+        );
+      }
     });
 
     test('cancels and clears a pending event', () async {
@@ -1341,6 +1580,7 @@ Map<String, dynamic> _deterministicTaskClarificationJson() => {
           'attemptNumber': 1,
           'maximumAttempts': 3,
           'sessionGeneration': 0,
+          'draft': null,
         },
         'uncertaintyCodes': ['missingRequiredInformation'],
         'contextStateObserved': 'complete',

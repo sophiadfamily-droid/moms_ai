@@ -1,5 +1,6 @@
 import '../models/event_model.dart';
 import '../models/event_participant.dart';
+import '../models/natural_language_models.dart';
 import '../models/shopping_item_model.dart';
 import '../models/task_model.dart';
 
@@ -77,7 +78,9 @@ class ActionHandlerService {
 
     var time = normalizeTime(action["time"]?.toString() ?? "");
 
-    if (time.isEmpty && nlu.hasTime) {
+    if (time.isEmpty &&
+        nlu.hasTime &&
+        nlu.understandingLevel != UnderstandingLevel.ambiguous) {
       time = nlu.time;
     }
 
@@ -86,7 +89,9 @@ class ActionHandlerService {
         ) ??
         0;
 
-    if (durationMinutes <= 0) {
+    if (durationMinutes <= 0 && nlu.hasDuration) {
+      durationMinutes = nlu.durationMinutes;
+    } else if (durationMinutes <= 0 && !nlu.hasTime) {
       durationMinutes = parseDurationMinutes(currentUserMessage);
     }
 
@@ -363,7 +368,10 @@ class ActionHandlerService {
       );
 
       if (conflictEvent != null) {
+        pendingAction["date"] = date;
+        pendingAction["time"] = "";
         return ActionHandlerResult(
+          pendingConflictResolutionEvent: pendingAction,
           message:
               "Attention 💕 Tu as déjà quelque chose prévu sur ce créneau : "
               "${conflictEvent.title}. L’événement n’a pas été créé pour éviter un doublon. "

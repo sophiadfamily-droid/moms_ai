@@ -1,5 +1,6 @@
 import '../models/planning_draft_model.dart';
 import '../models/event_participant.dart';
+import '../models/natural_language_models.dart';
 import '../models/task_model.dart';
 import 'natural_language_understanding_service.dart';
 
@@ -40,15 +41,16 @@ class PlanningDraftService {
 
     var updated = draft;
 
-    if (nlu.hasDate) {
+    if (nlu.hasDate && nlu.understandingLevel != UnderstandingLevel.ambiguous) {
       updated = updated.withDate(nlu.dateIso);
     }
 
-    if (nlu.hasTime) {
+    if (nlu.hasTime && nlu.understandingLevel != UnderstandingLevel.ambiguous) {
       updated = updated.withTime(nlu.time);
     }
 
-    if (nlu.hasDuration) {
+    if (nlu.hasDuration &&
+        nlu.understandingLevel != UnderstandingLevel.ambiguous) {
       updated = updated.withDuration(nlu.durationMinutes);
     }
 

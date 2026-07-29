@@ -33,6 +33,15 @@ const ALLOWED_METADATA = new Set([
   "providerCode",
   "authStatus",
   "appCheckStatus",
+  "normalizationCodes",
+  "intentCode",
+  "understandingLevel",
+  "entityTypes",
+  "ambiguityType",
+]);
+const ALLOWED_CODE_ARRAYS = new Set([
+  "normalizationCodes",
+  "entityTypes",
 ]);
 
 const FORBIDDEN_NAMES = [
@@ -58,6 +67,13 @@ function sanitizeDiagnosticMetadata(metadata = {}) {
     if (!ALLOWED_METADATA.has(key) ||
         FORBIDDEN_NAMES.some((name) => normalized.includes(name))) {
       return [];
+    }
+    if (ALLOWED_CODE_ARRAYS.has(key) && Array.isArray(value)) {
+      const codes = value
+          .filter((item) => typeof item === "string" &&
+            /^[a-z0-9_-]{1,48}$/i.test(item))
+          .slice(0, 12);
+      return [[key, codes]];
     }
     if (typeof value !== "string" && typeof value !== "number" &&
         typeof value !== "boolean") {

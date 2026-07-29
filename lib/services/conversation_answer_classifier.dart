@@ -1,3 +1,5 @@
+import 'natural_language_normalizer.dart';
+
 enum ConversationAnswer { positive, negative, ambiguous }
 
 final class ConversationAnswerClassifier {
@@ -15,7 +17,12 @@ final class ConversationAnswerClassifier {
   bool _matchesPositive(String value) {
     const exact = {
       'oui',
+      'ouais',
+      'ouais vas y',
+      'yep',
       'd accord',
+      'vas y',
+      'ok fais le',
       'confirme',
       'garde cette information',
       'tu peux la memoriser',
@@ -32,6 +39,9 @@ final class ConversationAnswerClassifier {
   bool _matchesNegative(String value) {
     const exact = {
       'non',
+      'nan',
+      'non merci',
+      'laisse tomber',
       'oublie',
       'annule',
       'ne retiens pas ca',
@@ -42,21 +52,10 @@ final class ConversationAnswerClassifier {
       'garde l ancienne information',
     };
     if (exact.contains(value)) return true;
-    return value.startsWith('non ') || value.startsWith('ne retiens pas ');
+    return value.startsWith('ne retiens pas ');
   }
 
   String _normalize(String value) {
-    return value
-        .trim()
-        .toLowerCase()
-        .replaceAll(RegExp(r'[.!?;,]+'), '')
-        .replaceAll('’', "'")
-        .replaceAll('é', 'e')
-        .replaceAll('è', 'e')
-        .replaceAll('ê', 'e')
-        .replaceAll('à', 'a')
-        .replaceAll('ç', 'c')
-        .replaceAll("'", ' ')
-        .replaceAll(RegExp(r'\s+'), ' ');
+    return const NaturalLanguageNormalizer().normalize(value).normalizedText;
   }
 }
