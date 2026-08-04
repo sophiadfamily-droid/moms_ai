@@ -534,7 +534,15 @@ Life Context never calculates a Priority score or a Planning decision.
 
 ### 7.3 Profile Engine
 
-**Current state:** Profile models, persistence, structured context building, and planning reasoning exist, but responsibilities remain distributed between application state, a large profile screen, and services.
+**Current state (V1-PR.1):** Profile models, persistence, structured context
+building, and planning reasoning exist, but responsibilities remain distributed
+between application state, a large profile screen, and services. A first pure,
+versioned correction boundary now accepts only the closed set of Profile-owned
+fields, validates bounded typed values, preserves every Human-owned identity
+and family field, and carries an explicit expected revision. It does not read,
+persist, infer, reconcile Human entities or alter Life Context. The existing
+screen and revisioned persistence remain unchanged pending controlled
+integration.
 
 **Planned architecture:** The Profile Engine owns stable user-provided context, validation, correction, and domain projections. It does not own inferred conversational memory.
 
@@ -582,7 +590,15 @@ multi-device conflicts remain M.2/M.3 work.
 
 ### 7.5 Routine Engine
 
-**Current state:** Profile schedules and recurring memories can produce blocked planning periods. Weekly, weekday, biweekly, and other recurrence-date matching capabilities exist in the planning domain.
+**Current state (V1-RO.1):** Profile schedules and recurring memories can
+produce blocked planning periods. Weekly, weekday, biweekly, and monthly
+nth/last-weekday matching capabilities exist. A first typed Routine boundary
+now projects active canonical routines onto a bounded civil-date window. Its
+occurrences contain stable technical identity, local-clock timing, travel,
+margin and source revision time, but no invented timezone and no user-facing
+title. Cancelled routines are excluded, account mismatch fails closed, and the
+projection never creates Events, persists, schedules or notifies. Existing
+Planning recurrence behavior remains unchanged until a controlled migration.
 
 **Planned architecture:** The Routine Engine provides one authoritative recurrence vocabulary and dated projection of routines for planning, notifications, and future organization features. A routine remains distinct from a generated series of persisted calendar events unless explicitly converted.
 
@@ -854,19 +870,60 @@ notification push.
 
 ### 7.8 Reasoning Engine
 
-**Current state:** Reasoning is distributed across profile reasoning, memory reasoning, planning services, prompt context, and model selection. There is no single verified general-purpose Reasoning Engine.
+**Current state (V1-RE.1 / V1-RE.2 / V1-RE.3 / V1-RE.4):** Reasoning remains distributed across profile
+reasoning, memory reasoning, planning services, prompt context, and model
+selection. A first pure construction boundary now produces a versioned,
+account-scoped and read-only `ReasoningInput` from typed Conversation workflow
+state and a bounded Conversation-purpose Life Context projection. It exposes
+only content-free workflow metadata, marks partial context explicitly and
+fails closed on account, purpose, version and time mismatches. It does not call
+a model, persist, confirm, schedule, resolve conflicts or execute a domain
+action. There is still no general-purpose reasoning executor.
+
+RE.2 derives only deterministic structural observations: multi-domain evidence
+coverage, an active typed workflow, limited context, and unavailable context
+sections. Observations contain closed reason codes and bounded technical
+references, never fact values or display text. They are not recommendations,
+scores, explanations for the user, actions, or authorization.
+
+RE.3 reduces those observations to one deterministic assessment with a closed
+outcome and the exact bounded observation identifiers that justify it. Limited
+context takes precedence, followed by an active typed workflow, complete
+multi-domain evidence, then explicit insufficient evidence. The assessment is
+not user-facing copy, a recommendation, a score, an action, or authorization.
+
+RE.4 provides one pure composition boundary that builds RE.1, derives RE.2 and
+assesses RE.3 in sequence. Its versioned result verifies that input,
+observations and assessment share one account, identity, timestamp and purpose.
+It still does not call a model, generate presentation copy, persist, authorize,
+confirm or execute anything.
 
 **Planned architecture:** The Reasoning Engine consumes typed conversation state and typed Life Context projections to support multi-domain organization. It must not replace deterministic domain engines or the domain owners of conflict, persistence, confirmation, or security.
 
 ### 7.9 Task Engine
 
-**Current state:** Tasks have a model, local/cloud persistence, conversational creation, priority processing, and dedicated UI.
+**Current state (V1-T.1):** Tasks have a model, local/cloud persistence,
+conversational creation, priority processing, and dedicated UI. A first pure,
+versioned lifecycle boundary now validates the closed transitions create,
+update, complete, reopen and delete. It requires stable identity and explicit
+expected revision, forbids hiding completion inside a generic update, and
+produces only a non-executable transition description. It does not load,
+persist, authorize, confirm, schedule, prioritize or notify. Production Task
+persistence still follows the existing revisioned services until a separately
+validated integration phase.
 
 **Planned architecture:** The Task Engine owns task lifecycle, state transitions, scheduling intent, priority projections, and stable persistence semantics. A task is not a calendar reservation until planning and confirmation convert it into one.
 
 ### 7.10 Shopping Engine
 
-**Current state:** Shopping items have a model, local/cloud persistence, conversational creation, grouping metadata, and dedicated UI.
+**Current state (V1-SH.1):** Shopping items have a model, local/cloud
+persistence, conversational creation, grouping metadata, and dedicated UI. A
+pure, versioned item-lifecycle boundary now validates add, update, mark bought,
+mark needed and remove with stable identity, explicit revision and preserved
+clear generation. It forbids hiding bought-state changes inside a generic
+update and emits no item content for a removal. Collection-wide clear remains
+a separate future contract. This phase does not read, persist, authorize,
+confirm, group, notify or alter the production Shopping path.
 
 **Planned architecture:** The Shopping Engine owns shopping-item lifecycle, normalization, grouping, and future context-aware assistance. It remains distinct from general tasks even when both originate in one message.
 
