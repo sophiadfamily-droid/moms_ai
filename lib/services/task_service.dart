@@ -19,6 +19,7 @@ import 'revisioned_domain_sync_service.dart';
 import 'revisioned_domain_local_repository.dart';
 import 'revisioned_offline_journal.dart';
 import 'revisioned_action_ledger_observer.dart';
+import 'task/task_lifecycle_mutation_adapter.dart';
 
 final class TaskStorageException implements Exception {
   const TaskStorageException({
@@ -262,9 +263,11 @@ class TaskService {
         if (EntityIdentity.isValid(task.id)) task.id!: task,
     };
     const mutationIds = UuidV7EntityIdGenerator();
+    const lifecycle = TaskLifecycleMutationAdapter();
     for (final entry in proposedById.entries) {
       final existing = currentById[entry.key];
       if (existing == null) {
+        final plan = lifecycle.create(entry.value);
         final mutation = TaskMutation(
           mutationId: mutationIds.generate(),
           targetId: entry.key,
@@ -273,22 +276,20 @@ class TaskService {
           attempt: 0,
           nextRetryAt: null,
           state: RevisionedMutationState.queued,
-          type: TaskMutationType.createTask,
-          task: entry.value,
+          type: plan.mutationType,
+          task: plan.persistencePayload,
         );
         await RevisionedActionLedgerObserver.task(
           scope,
           mutation,
           () => _sync.apply(scope, mutation),
         );
-      } else if (!existing.isTombstone &&
-          jsonEncode(existing.task.toJson()) !=
-              jsonEncode(entry.value.toJson())) {
-        final type = existing.task.isDone == entry.value.isDone
-            ? TaskMutationType.updateTask
-            : entry.value.isDone
-                ? TaskMutationType.completeTask
-                : TaskMutationType.reopenTask;
+      } else {
+        final plan = lifecycle.change(
+          current: existing,
+          proposed: entry.value,
+        );
+        if (plan == null) continue;
         final mutation = TaskMutation(
           mutationId: mutationIds.generate(),
           targetId: entry.key,
@@ -297,8 +298,8 @@ class TaskService {
           attempt: 0,
           nextRetryAt: null,
           state: RevisionedMutationState.queued,
-          type: type,
-          task: entry.value,
+          type: plan.mutationType,
+          task: plan.persistencePayload,
         );
         await RevisionedActionLedgerObserver.task(
           scope,
@@ -311,6 +312,8 @@ class TaskService {
       (value) =>
           !value.isTombstone && !proposedById.containsKey(value.entityId),
     )) {
+      final plan = lifecycle.change(current: existing, proposed: null);
+      if (plan == null) continue;
       final mutation = TaskMutation(
         mutationId: mutationIds.generate(),
         targetId: existing.entityId,
@@ -319,8 +322,8 @@ class TaskService {
         attempt: 0,
         nextRetryAt: null,
         state: RevisionedMutationState.queued,
-        type: TaskMutationType.deleteTask,
-        task: existing.task,
+        type: plan.mutationType,
+        task: plan.persistencePayload,
       );
       await RevisionedActionLedgerObserver.task(
         scope,

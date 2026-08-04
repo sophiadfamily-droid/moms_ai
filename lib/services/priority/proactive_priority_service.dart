@@ -5,6 +5,9 @@ import '../../models/life_context/life_context_projection.dart';
 import '../../models/priority/proactive_priority_models.dart';
 import '../../models/priority/priority_models.dart';
 import '../../models/priority/priority_suggestion_models.dart';
+import '../../models/conversation_models.dart';
+import '../../models/reasoning/reasoning_input.dart';
+import '../../models/reasoning/reasoning_result.dart';
 import '../app_diagnostics.dart';
 import 'priority_candidate_adapter.dart';
 import 'priority_engine.dart';
@@ -12,9 +15,13 @@ import 'priority_suggestion_builder.dart';
 import 'priority_suggestion_conversation_context.dart';
 import 'proactive_suggestion_history_repository.dart';
 import 'proactive_suggestion_policy.dart';
+import '../reasoning/reasoning_application_service.dart';
 
 typedef ProactivePriorityProjectionLoader = Future<LifeContextProjection>
     Function();
+typedef ProactiveReasoningLoader = Future<ReasoningResult> Function(
+  int sessionGeneration,
+);
 
 final class ProactivePriorityService {
   static const _buildMarker = String.fromEnvironment(
@@ -28,16 +35,19 @@ final class ProactivePriorityService {
     required ProactiveSuggestionHistoryRepository history,
     DateTime Function()? clock,
     ProactiveSuggestionPolicy policy = const ProactiveSuggestionPolicy(),
+    ProactiveReasoningLoader? loadReasoning,
   })  : _loadProjection = loadProjection,
         _history = history,
         _clock = clock ?? DateTime.now,
-        _policy = policy;
+        _policy = policy,
+        _loadReasoning = loadReasoning;
 
   final String accountScopeId;
   final ProactivePriorityProjectionLoader _loadProjection;
   final ProactiveSuggestionHistoryRepository _history;
   final DateTime Function() _clock;
   final ProactiveSuggestionPolicy _policy;
+  final ProactiveReasoningLoader? _loadReasoning;
   bool _presentedThisSession = false;
   bool _blockedThisSession = false;
   String? _pendingPresentationId;
@@ -64,6 +74,13 @@ final class ProactivePriorityService {
           await SharedPreferences.getInstance(),
         ),
         clock: clock,
+        loadReasoning: (sessionGeneration) =>
+            ReasoningApplicationService.production().evaluate(
+          accountScopeId: accountScopeId,
+          purpose: ReasoningPurpose.organizeAcrossDomains,
+          conversationState: const ConversationState(),
+          sessionGeneration: sessionGeneration,
+        ),
       );
 
   Future<ProactiveSuggestionDecision> evaluate({
@@ -84,6 +101,7 @@ final class ProactivePriorityService {
         );
       }
       final now = _clock();
+      final reasoning = await _loadReasoning?.call(interactionGeneration);
       final candidates = const PriorityCandidateAdapter().fromProjection(
         projection,
         evaluatedAt: now.toUtc(),
@@ -121,6 +139,7 @@ final class ProactivePriorityService {
         alreadyPresentedThisSession: _presentedThisSession,
         presentationReserved: _pendingPresentationId != null,
         historyPersistenceBlocked: _blockedThisSession,
+        reasoningAssessment: reasoning?.assessment,
       );
       if (decision.suggestion case final suggestion?) {
         _pendingPresentationId = suggestion.suggestionId;

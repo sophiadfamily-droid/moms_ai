@@ -8,12 +8,15 @@ import 'package:moms_ai/models/life_context/life_context_projection.dart';
 import 'package:moms_ai/models/priority/proactive_priority_models.dart';
 import 'package:moms_ai/models/priority/priority_suggestion_models.dart';
 import 'package:moms_ai/models/task_model.dart';
+import 'package:moms_ai/models/conversation_models.dart';
+import 'package:moms_ai/models/reasoning/reasoning_input.dart';
 import 'package:moms_ai/screens/tasks_screen.dart';
 import 'package:moms_ai/services/priority/proactive_priority_service.dart';
 import 'package:moms_ai/services/priority/proactive_interaction_registry.dart';
 import 'package:moms_ai/services/priority/proactive_suggestion_presentation_builder.dart';
 import 'package:moms_ai/services/priority/proactive_suggestion_history_repository.dart';
 import 'package:moms_ai/services/task_service.dart';
+import 'package:moms_ai/services/reasoning/reasoning_engine.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -450,6 +453,38 @@ void main() {
           .suggestion,
       isNull,
     );
+  });
+
+  test('limited optional context does not hide a single-task suggestion',
+      () async {
+    final priorityProjection = _projection(now, [_task(now, 'task-1')]);
+    final limitedReasoningProjection = _projection(
+      now,
+      [_task(now, 'task-1')],
+      complete: false,
+    );
+    final service = ProactivePriorityService(
+      accountScopeId: 'account',
+      loadProjection: () async => priorityProjection,
+      loadReasoning: (_) async => ReasoningEngine(clock: () => now).evaluate(
+        accountScopeId: 'account',
+        purpose: ReasoningPurpose.organizeAcrossDomains,
+        conversationState: const ConversationState(),
+        sessionGeneration: 2,
+        lifeContext: limitedReasoningProjection,
+      ),
+      history: _History(),
+      clock: () => now,
+    );
+
+    final decision = await service.evaluate(
+      dashboardReady: true,
+      interactionActive: false,
+      interactionGeneration: 2,
+    );
+
+    expect(decision.suggestion, isNotNull);
+    expect(decision.code, 'suggestion_selected');
   });
 
   test(

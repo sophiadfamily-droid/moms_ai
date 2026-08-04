@@ -12,6 +12,7 @@ import 'app_error_classifier.dart';
 import 'revisioned_cloud_repositories.dart';
 import 'revisioned_domain_sync_service.dart';
 import 'revisioned_action_ledger_observer.dart';
+import 'profile/profile_patch_mutation_adapter.dart';
 
 class StorageService {
   static const String userProfileKey = "user_profile";
@@ -64,6 +65,14 @@ class StorageService {
       if (scope != null) {
         final current = await _sync.bootstrap(scope);
         final mutationId = idGenerator.generate();
+        final patchPlan = current == null
+            ? null
+            : const ProfilePatchMutationAdapter().plan(
+                accountScopeId: scope,
+                current: current,
+                proposed: persistedProfile,
+              );
+        if (current != null && patchPlan == null) return persistedProfile;
         final mutation = ProfileMutation(
           mutationId: mutationId,
           targetId: RevisionedProfileState.entityId,
@@ -75,8 +84,9 @@ class StorageService {
           type: current == null
               ? ProfileMutationType.updateCompatibilityProjection
               : ProfileMutationType.updateProfileFields,
-          changedFields: ProfileFieldOwnership.profileOwnedFields,
-          profile: persistedProfile,
+          changedFields: patchPlan?.changedFields ??
+              ProfileFieldOwnership.profileOwnedFields,
+          profile: patchPlan?.profile ?? persistedProfile,
         );
         final result = await RevisionedActionLedgerObserver.profile(
           scope,

@@ -6,6 +6,8 @@ import '../../models/life_context/life_context_projection.dart';
 import '../../models/priority/priority_models.dart';
 import '../../models/priority/priority_suggestion_models.dart';
 import '../../models/priority/proactive_priority_models.dart';
+import '../../models/reasoning/reasoning_assessment.dart';
+import 'proactive_reasoning_gate.dart';
 
 final class ProactiveSuggestionPolicy {
   static const currentSchemaVersion = 1;
@@ -26,6 +28,7 @@ final class ProactiveSuggestionPolicy {
     required bool alreadyPresentedThisSession,
     bool presentationReserved = false,
     bool historyPersistenceBlocked = false,
+    ReasoningAssessment? reasoningAssessment,
   }) {
     final inputSuggestionCount = suggestions.suggestions.length;
     if (interactionActive) {
@@ -51,6 +54,18 @@ final class ProactiveSuggestionPolicy {
         'context_blocked',
         inputSuggestionCount: inputSuggestionCount,
       );
+    }
+    if (reasoningAssessment != null) {
+      final gate = const ProactiveReasoningGate().evaluate(
+        reasoningAssessment,
+        requiresCrossDomainContext: false,
+      );
+      if (!gate.allowed) {
+        return ProactiveSuggestionDecision.noSuggestion(
+          gate.code,
+          inputSuggestionCount: inputSuggestionCount,
+        );
+      }
     }
     if (historyPersistenceBlocked) {
       return ProactiveSuggestionDecision.noSuggestion(
@@ -87,6 +102,17 @@ final class ProactiveSuggestionPolicy {
     for (var rank = 0; rank < suggestions.suggestions.length; rank++) {
       evaluatedCandidateCount++;
       final source = suggestions.suggestions[rank];
+      if (reasoningAssessment != null &&
+          source.supportingCandidateIds.isNotEmpty) {
+        final gate = const ProactiveReasoningGate().evaluate(
+          reasoningAssessment,
+          requiresCrossDomainContext: true,
+        );
+        if (!gate.allowed) {
+          skippedIneligibleCount++;
+          continue;
+        }
+      }
       if (rank >= presentationMessages.length ||
           source.expiresAt.toLocal().isBefore(localNow) ||
           source.confidenceLevel == PrioritySuggestionConfidence.limited ||

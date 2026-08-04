@@ -56,14 +56,19 @@ final class ShoppingLifecycleEngine {
 
   ShoppingLifecycleTransition _markBought(ShoppingLifecycleRequest request) {
     final current = _existing(request);
-    if (request.proposed != null || current.isBought) {
+    final proposed = request.proposed ?? current.copyWith(isBought: true);
+    if (current.isBought ||
+        proposed.id != current.id ||
+        proposed.createdAt != current.createdAt ||
+        !proposed.isBought) {
       throw const ShoppingLifecycleException(
         'invalid_shopping_mark_bought_transition',
       );
     }
+    _validateItem(proposed);
     return _result(
       request: request,
-      item: current.copyWith(isBought: true),
+      item: proposed,
       before: ShoppingLifecycleState.needed,
       after: ShoppingLifecycleState.bought,
     );
@@ -71,14 +76,19 @@ final class ShoppingLifecycleEngine {
 
   ShoppingLifecycleTransition _markNeeded(ShoppingLifecycleRequest request) {
     final current = _existing(request);
-    if (request.proposed != null || !current.isBought) {
+    final proposed = request.proposed ?? current.copyWith(isBought: false);
+    if (!current.isBought ||
+        proposed.id != current.id ||
+        proposed.createdAt != current.createdAt ||
+        proposed.isBought) {
       throw const ShoppingLifecycleException(
         'invalid_shopping_mark_needed_transition',
       );
     }
+    _validateItem(proposed);
     return _result(
       request: request,
-      item: current.copyWith(isBought: false),
+      item: proposed,
       before: ShoppingLifecycleState.bought,
       after: ShoppingLifecycleState.needed,
     );

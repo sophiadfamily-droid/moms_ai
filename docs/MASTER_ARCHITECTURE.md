@@ -542,7 +542,11 @@ fields, validates bounded typed values, preserves every Human-owned identity
 and family field, and carries an explicit expected revision. It does not read,
 persist, infer, reconcile Human entities or alter Life Context. The existing
 screen and revisioned persistence remain unchanged pending controlled
-integration.
+integration. PR.2 now compares an existing revisioned Profile with the proposed
+value, sends only changed Profile-owned fields through PR.1, and uses the
+validated result for the existing revisioned mutation. Human-owned-only
+changes do not create a Profile mutation, while initial compatibility creation
+and the established local, journal, ledger and cloud paths remain unchanged.
 
 **Planned architecture:** The Profile Engine owns stable user-provided context, validation, correction, and domain projections. It does not own inferred conversational memory.
 
@@ -599,6 +603,10 @@ margin and source revision time, but no invented timezone and no user-facing
 title. Cancelled routines are excluded, account mismatch fails closed, and the
 projection never creates Events, persists, schedules or notifies. Existing
 Planning recurrence behavior remains unchanged until a controlled migration.
+RO.2 adds the account-scoped application service that loads canonical routines
+from the production repository and delegates the bounded dated calculation to
+RO.1. The service fails before loading for an empty account and still creates
+no persisted occurrence or Event.
 
 **Planned architecture:** The Routine Engine provides one authoritative recurrence vocabulary and dated projection of routines for planning, notifications, and future organization features. A routine remains distinct from a generated series of persisted calendar events unless explicitly converted.
 
@@ -898,6 +906,24 @@ observations and assessment share one account, identity, timestamp and purpose.
 It still does not call a model, generate presentation copy, persist, authorize,
 confirm or execute anything.
 
+RE.5 adds the account-scoped application boundary that loads the bounded
+Conversation-purpose Life Context projection from the production owner and
+passes it, with content-free Conversation workflow state, through RE.1-4. Empty
+or mismatched accounts fail closed. The result remains internal read-only
+assessment data and still cannot produce copy, recommend, authorize or act.
+Daily-life regression scenarios now protect the first composed uses: Task plus
+Event plus Routine can make context structurally ready; an active confirmation
+still takes precedence; truncated or unavailable context forces a limited
+assessment; and one isolated domain remains insufficient. Scenario evidence
+also remains content-free.
+The proactive Priority production factory now obtains that assessment through
+RE.5 and passes it only to a read-only presentation gate. An active workflow
+always blocks presentation. Limited context blocks only a suggestion that
+depends on supporting cross-domain candidates; it cannot hide a safe,
+single-domain Task suggestion merely because an unrelated optional section is
+limited. The existing deterministic Priority policy remains in charge, and
+Reasoning cannot create, rank, rewrite or execute a suggestion.
+
 **Planned architecture:** The Reasoning Engine consumes typed conversation state and typed Life Context projections to support multi-domain organization. It must not replace deterministic domain engines or the domain owners of conflict, persistence, confirmation, or security.
 
 ### 7.9 Task Engine
@@ -910,7 +936,12 @@ expected revision, forbids hiding completion inside a generic update, and
 produces only a non-executable transition description. It does not load,
 persist, authorize, confirm, schedule, prioritize or notify. Production Task
 persistence still follows the existing revisioned services until a separately
-validated integration phase.
+validated integration phase. T.2 now routes the production reconciliation
+decision through T.1 before creating the existing revisioned mutation. Create,
+update, complete, reopen and delete therefore share the closed lifecycle
+contract while the established journal, ledger, cloud protocol and UI remain
+unchanged. The legacy tombstone payload is retained only at the persistence
+adapter boundary.
 
 **Planned architecture:** The Task Engine owns task lifecycle, state transitions, scheduling intent, priority projections, and stable persistence semantics. A task is not a calendar reservation until planning and confirmation convert it into one.
 
@@ -922,8 +953,11 @@ pure, versioned item-lifecycle boundary now validates add, update, mark bought,
 mark needed and remove with stable identity, explicit revision and preserved
 clear generation. It forbids hiding bought-state changes inside a generic
 update and emits no item content for a removal. Collection-wide clear remains
-a separate future contract. This phase does not read, persist, authorize,
-confirm, group, notify or alter the production Shopping path.
+a separate future contract. SH.2 now routes production add and reconciliation
+decisions through SH.1 before creating the existing revisioned mutation. Add,
+update, mark bought, mark needed and remove share the closed lifecycle contract
+while the journal, ledger, cloud protocol and UI remain unchanged. The legacy
+tombstone payload is retained only at the persistence adapter boundary.
 
 **Planned architecture:** The Shopping Engine owns shopping-item lifecycle, normalization, grouping, and future context-aware assistance. It remains distinct from general tasks even when both originate in one message.
 

@@ -16,6 +16,7 @@ import 'app_error_classifier.dart';
 import 'revisioned_cloud_repositories.dart';
 import 'revisioned_domain_sync_service.dart';
 import 'revisioned_action_ledger_observer.dart';
+import 'shopping/shopping_lifecycle_mutation_adapter.dart';
 
 enum ShoppingPersistenceStatus { durable, synchronizationPending }
 
@@ -180,6 +181,10 @@ class ShoppingService {
             entityId: entityId,
           );
         }
+        final plan = const ShoppingLifecycleMutationAdapter().add(
+          identified,
+          clearGeneration: 0,
+        );
         final mutation = ShoppingMutation(
           mutationId: stableMutationId,
           targetId: entityId,
@@ -188,9 +193,9 @@ class ShoppingService {
           attempt: 0,
           nextRetryAt: null,
           state: RevisionedMutationState.queued,
-          type: ShoppingMutationType.addItem,
-          item: identified,
-          clearGeneration: 0,
+          type: plan.mutationType,
+          item: plan.persistencePayload,
+          clearGeneration: plan.transition.clearGeneration,
         );
         final result = await RevisionedActionLedgerObserver.shopping(
           scope,
@@ -331,8 +336,13 @@ class ShoppingService {
         if (EntityIdentity.isValid(item.id)) item.id!: item,
     };
     const mutationIds = UuidV7EntityIdGenerator();
+    const lifecycle = ShoppingLifecycleMutationAdapter();
     for (final entry in proposedById.entries) {
       final existing = currentById[entry.key];
+      final plan = existing == null
+          ? lifecycle.add(entry.value, clearGeneration: 0)
+          : lifecycle.change(current: existing, proposed: entry.value);
+      if (plan == null) continue;
       final mutation = ShoppingMutation(
         mutationId: mutationIds.generate(),
         targetId: entry.key,
@@ -341,27 +351,22 @@ class ShoppingService {
         attempt: 0,
         nextRetryAt: null,
         state: RevisionedMutationState.queued,
-        type: existing == null
-            ? ShoppingMutationType.addItem
-            : ShoppingMutationType.updateItem,
-        item: entry.value,
-        clearGeneration: existing?.clearGeneration ?? 0,
+        type: plan.mutationType,
+        item: plan.persistencePayload,
+        clearGeneration: plan.transition.clearGeneration,
       );
-      if (existing == null ||
-          !existing.isTombstone &&
-              jsonEncode(existing.item.toJson()) !=
-                  jsonEncode(entry.value.toJson())) {
-        await RevisionedActionLedgerObserver.shopping(
-          scope,
-          mutation,
-          () => _sync.apply(scope, mutation),
-        );
-      }
+      await RevisionedActionLedgerObserver.shopping(
+        scope,
+        mutation,
+        () => _sync.apply(scope, mutation),
+      );
     }
     for (final existing in current.where(
       (value) =>
           !value.isTombstone && !proposedById.containsKey(value.entityId),
     )) {
+      final plan = lifecycle.change(current: existing, proposed: null);
+      if (plan == null) continue;
       final mutation = ShoppingMutation(
         mutationId: mutationIds.generate(),
         targetId: existing.entityId,
@@ -370,9 +375,9 @@ class ShoppingService {
         attempt: 0,
         nextRetryAt: null,
         state: RevisionedMutationState.queued,
-        type: ShoppingMutationType.removeItem,
-        item: existing.item,
-        clearGeneration: existing.clearGeneration,
+        type: plan.mutationType,
+        item: plan.persistencePayload,
+        clearGeneration: plan.transition.clearGeneration,
       );
       await RevisionedActionLedgerObserver.shopping(
         scope,

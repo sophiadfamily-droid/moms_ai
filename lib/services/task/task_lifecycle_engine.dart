@@ -53,12 +53,17 @@ final class TaskLifecycleEngine {
 
   TaskLifecycleTransition _complete(TaskLifecycleRequest request) {
     final current = _existing(request);
-    if (request.proposed != null || current.isDone) {
+    final proposed = request.proposed ?? current.copyWith(isDone: true);
+    if (current.isDone ||
+        proposed.id != current.id ||
+        proposed.createdAt != current.createdAt ||
+        !proposed.isDone) {
       throw const TaskLifecycleException('invalid_task_complete_transition');
     }
+    _validateTask(proposed);
     return _result(
       request: request,
-      task: current.copyWith(isDone: true),
+      task: proposed,
       before: TaskLifecycleState.active,
       after: TaskLifecycleState.completed,
     );
@@ -66,12 +71,17 @@ final class TaskLifecycleEngine {
 
   TaskLifecycleTransition _reopen(TaskLifecycleRequest request) {
     final current = _existing(request);
-    if (request.proposed != null || !current.isDone) {
+    final proposed = request.proposed ?? current.copyWith(isDone: false);
+    if (!current.isDone ||
+        proposed.id != current.id ||
+        proposed.createdAt != current.createdAt ||
+        proposed.isDone) {
       throw const TaskLifecycleException('invalid_task_reopen_transition');
     }
+    _validateTask(proposed);
     return _result(
       request: request,
-      task: current.copyWith(isDone: false),
+      task: proposed,
       before: TaskLifecycleState.completed,
       after: TaskLifecycleState.active,
     );
