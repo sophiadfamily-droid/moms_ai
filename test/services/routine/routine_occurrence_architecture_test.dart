@@ -6,6 +6,7 @@ void main() {
   test('V1-RO.1 is a pure dated projection and never creates Events', () {
     final source = [
       'lib/models/routine/routine_occurrence_models.dart',
+      'lib/services/routine/routine_date_applicability_engine.dart',
       'lib/services/routine/routine_occurrence_engine.dart',
     ].map((path) => File(path).readAsStringSync()).join('\n');
 

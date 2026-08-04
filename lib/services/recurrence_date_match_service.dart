@@ -1,4 +1,8 @@
+import 'routine/routine_date_applicability_engine.dart';
+
 class RecurrenceDateMatchService {
+  static const _engine = RoutineDateApplicabilityEngine();
+
   static bool appliesToDate(
     Map<String, dynamic> item,
     DateTime date,
@@ -6,90 +10,34 @@ class RecurrenceDateMatchService {
     final recurrenceType =
         item["recurrenceType"]?.toString().trim().toLowerCase() ?? "weekly";
 
-    if (recurrenceType == "weekdays") {
-      return date.weekday >= DateTime.monday && date.weekday <= DateTime.friday;
-    }
-
-    if (recurrenceType == "monthly_nth_weekday") {
-      if (!_matchesConfiguredDay(item, date)) {
-        return false;
-      }
-
-      final occurrence =
-          int.tryParse(item["weekOfMonth"]?.toString() ?? "0") ?? 0;
-
-      if (occurrence == -1) {
-        return _isLastWeekdayOfMonth(date);
-      }
-
-      if (occurrence < 1 || occurrence > 5) {
-        return false;
-      }
-
-      return _weekOfMonth(date) == occurrence;
-    }
-
-    if (recurrenceType == "biweekly") {
-      if (!_matchesConfiguredDay(item, date)) {
-        return false;
-      }
-
-      final anchorIso = item["anchorDateIso"]?.toString().trim() ?? "";
-      final anchor = DateTime.tryParse(anchorIso);
-
-      if (anchor == null) {
-        return false;
-      }
-
-      final anchorDay = DateTime(anchor.year, anchor.month, anchor.day);
-      final targetDay = DateTime(date.year, date.month, date.day);
-      final differenceInDays = targetDay.difference(anchorDay).inDays;
-
-      if (differenceInDays < 0) {
-        return false;
-      }
-
-      return (differenceInDays ~/ 7).isEven;
-    }
-
-    return _matchesConfiguredDay(item, date);
+    return _engine.applies(
+      recurrenceType: recurrenceType,
+      weekdays: _configuredWeekdays(item),
+      date: date,
+      anchorDateIso: item["anchorDateIso"]?.toString(),
+      weekOfMonth: int.tryParse(item["weekOfMonth"]?.toString() ?? ""),
+      // Old blocked periods without `days` historically applied every day.
+      emptyWeekdaysMatchAll: true,
+    );
   }
 
-  static bool _matchesConfiguredDay(
-    Map<String, dynamic> item,
-    DateTime date,
-  ) {
+  static List<int> _configuredWeekdays(Map<String, dynamic> item) {
     final rawDays = item["days"];
-
     if (rawDays is! List || rawDays.isEmpty) {
-      return true;
+      return const [];
     }
-
     final normalizedDays = rawDays
         .map((day) => _normalize(day.toString()))
         .where((day) => day.isNotEmpty)
         .toList();
-
-    if (normalizedDays.isEmpty) {
-      return true;
-    }
-
-    final acceptedNames = _dayNamesForWeekday(date.weekday);
-
-    return normalizedDays.any((day) {
-      return acceptedNames.contains(day) ||
-          acceptedNames.any(day.contains) ||
-          day == date.weekday.toString();
-    });
-  }
-
-  static int _weekOfMonth(DateTime date) {
-    return ((date.day - 1) ~/ 7) + 1;
-  }
-
-  static bool _isLastWeekdayOfMonth(DateTime date) {
-    final nextSameWeekday = date.add(const Duration(days: 7));
-    return nextSameWeekday.month != date.month;
+    return [
+      for (var weekday = DateTime.monday; weekday <= DateTime.sunday; weekday++)
+        if (normalizedDays.any((day) {
+          final acceptedNames = _dayNamesForWeekday(weekday);
+          return acceptedNames.contains(day) || acceptedNames.any(day.contains);
+        }))
+          weekday,
+    ];
   }
 
   static List<String> _dayNamesForWeekday(int weekday) {

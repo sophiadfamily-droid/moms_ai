@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:moms_ai/services/recurrence_date_match_service.dart';
+import 'package:moms_ai/services/routine/routine_date_applicability_engine.dart';
 import 'package:moms_ai/services/smart_planning_service.dart';
 
 void main() {
@@ -303,5 +304,50 @@ void main() {
         false,
       );
     });
+  });
+
+  test('legacy planning and canonical routine rules stay equivalent', () {
+    const engine = RoutineDateApplicabilityEngine();
+    const scenarios = <Map<String, dynamic>>[
+      {
+        'recurrenceType': 'weekly',
+        'days': ['Mardi', 'Vendredi'],
+        'weekdays': [DateTime.tuesday, DateTime.friday],
+      },
+      {
+        'recurrenceType': 'weekdays',
+        'days': <String>[],
+        'weekdays': <int>[],
+      },
+      {
+        'recurrenceType': 'biweekly',
+        'days': ['Mercredi'],
+        'weekdays': [DateTime.wednesday],
+        'anchorDateIso': '2026-07-01',
+      },
+      {
+        'recurrenceType': 'monthly_nth_weekday',
+        'days': ['Vendredi'],
+        'weekdays': [DateTime.friday],
+        'weekOfMonth': -1,
+      },
+    ];
+
+    for (final scenario in scenarios) {
+      for (var day = 1; day <= 31; day++) {
+        final date = DateTime(2026, 7, day);
+        expect(
+          RecurrenceDateMatchService.appliesToDate(scenario, date),
+          engine.applies(
+            recurrenceType: scenario['recurrenceType']! as String,
+            weekdays: scenario['weekdays']! as List<int>,
+            date: date,
+            anchorDateIso: scenario['anchorDateIso'] as String?,
+            weekOfMonth: scenario['weekOfMonth'] as int?,
+          ),
+          reason: '${scenario['recurrenceType']} on $date',
+        );
+      }
+    }
   });
 }

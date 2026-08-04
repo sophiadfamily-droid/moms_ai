@@ -1,12 +1,18 @@
 import '../../models/routine/routine_occurrence_models.dart';
 import '../../models/routine_model.dart';
+import 'routine_date_applicability_engine.dart';
 
 /// V1-RO.1 projects active routines onto bounded civil dates.
 ///
 /// It emits local-clock facts only: no timezone is invented, no Event is
 /// created, and no persistence or notification is triggered.
 final class RoutineOccurrenceEngine {
-  const RoutineOccurrenceEngine();
+  const RoutineOccurrenceEngine({
+    RoutineDateApplicabilityEngine dateApplicabilityEngine =
+        const RoutineDateApplicabilityEngine(),
+  }) : _dateApplicabilityEngine = dateApplicabilityEngine;
+
+  final RoutineDateApplicabilityEngine _dateApplicabilityEngine;
 
   RoutineOccurrenceProjection project({
     required String accountScopeId,
@@ -74,24 +80,13 @@ final class RoutineOccurrenceEngine {
   }
 
   bool _applies(RoutineModel routine, DateTime date) =>
-      switch (routine.recurrenceType) {
-        RoutineRecurrenceType.weekdays =>
-          date.weekday >= DateTime.monday && date.weekday <= DateTime.friday,
-        RoutineRecurrenceType.weekly => routine.days.contains(date.weekday),
-        RoutineRecurrenceType.biweekly =>
-          routine.days.contains(date.weekday) && _isBiweekly(routine, date),
-        RoutineRecurrenceType.monthlyNthWeekday =>
-          routine.days.single == date.weekday &&
-              (routine.weekOfMonth == -1
-                  ? date.add(const Duration(days: 7)).month != date.month
-                  : ((date.day - 1) ~/ 7) + 1 == routine.weekOfMonth),
-      };
-
-  bool _isBiweekly(RoutineModel routine, DateTime date) {
-    final anchor = DateTime.parse(routine.anchorDateIso!).toUtc();
-    final difference = date.difference(_civilUtc(anchor)).inDays;
-    return difference >= 0 && (difference ~/ 7).isEven;
-  }
+      _dateApplicabilityEngine.applies(
+        recurrenceType: routine.recurrenceType.name,
+        weekdays: routine.days,
+        date: date,
+        anchorDateIso: routine.anchorDateIso,
+        weekOfMonth: routine.weekOfMonth,
+      );
 
   DateTime _civilUtc(DateTime value) =>
       DateTime.utc(value.year, value.month, value.day);
