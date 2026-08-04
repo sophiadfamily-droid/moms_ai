@@ -1,7 +1,9 @@
 import '../../models/routine/routine_occurrence_models.dart';
+import '../../models/routine/routine_zoned_occurrence_models.dart';
 import '../../models/routine_model.dart';
 import '../routine_repository.dart';
 import 'routine_occurrence_engine.dart';
+import 'routine_zoned_occurrence_engine.dart';
 
 typedef RoutineOccurrenceLoader = Future<List<RoutineModel>> Function(
   String accountScopeId,
@@ -13,8 +15,11 @@ final class RoutineOccurrenceService {
   const RoutineOccurrenceService({
     required RoutineOccurrenceLoader loadRoutines,
     RoutineOccurrenceEngine engine = const RoutineOccurrenceEngine(),
+    RoutineZonedOccurrenceEngine zonedEngine =
+        const RoutineZonedOccurrenceEngine(),
   })  : _loadRoutines = loadRoutines,
-        _engine = engine;
+        _engine = engine,
+        _zonedEngine = zonedEngine;
 
   factory RoutineOccurrenceService.production({
     RoutineRepository? repository,
@@ -25,6 +30,7 @@ final class RoutineOccurrenceService {
 
   final RoutineOccurrenceLoader _loadRoutines;
   final RoutineOccurrenceEngine _engine;
+  final RoutineZonedOccurrenceEngine _zonedEngine;
 
   Future<RoutineOccurrenceProjection> project({
     required String accountScopeId,
@@ -40,6 +46,23 @@ final class RoutineOccurrenceService {
       windowStartDate: windowStartDate,
       windowEndDateExclusive: windowEndDateExclusive,
       routines: routines,
+    );
+  }
+
+  Future<RoutineZonedOccurrenceProjection> projectZoned({
+    required String accountScopeId,
+    required DateTime windowStartDate,
+    required DateTime windowEndDateExclusive,
+    required String timezoneId,
+  }) async {
+    final localClockProjection = await project(
+      accountScopeId: accountScopeId,
+      windowStartDate: windowStartDate,
+      windowEndDateExclusive: windowEndDateExclusive,
+    );
+    return _zonedEngine.resolve(
+      projection: localClockProjection,
+      timezoneId: timezoneId,
     );
   }
 }

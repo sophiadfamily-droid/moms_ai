@@ -2,8 +2,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:moms_ai/models/routine/routine_occurrence_models.dart';
 import 'package:moms_ai/models/routine_model.dart';
 import 'package:moms_ai/services/routine/routine_occurrence_service.dart';
+import 'package:timezone/data/latest.dart' as tz_data;
 
 void main() {
+  setUpAll(tz_data.initializeTimeZones);
+
   test('loads the requested account and projects canonical occurrences',
       () async {
     String? loadedAccount;
@@ -66,6 +69,30 @@ void main() {
       throwsA(isA<RoutineOccurrenceException>()),
     );
     expect(loads, 0);
+  });
+
+  test('exposes a zoned protected projection without creating Events',
+      () async {
+    final service = RoutineOccurrenceService(
+      loadRoutines: (_) async => [_routine('account-a')],
+    );
+
+    final result = await service.projectZoned(
+      accountScopeId: 'account-a',
+      windowStartDate: DateTime.utc(2026, 8, 4),
+      windowEndDateExclusive: DateTime.utc(2026, 8, 5),
+      timezoneId: 'Europe/Paris',
+    );
+
+    expect(result.occurrences.single.start, DateTime.utc(2026, 8, 4, 7));
+    expect(
+      result.occurrences.single.protectedStart,
+      DateTime.utc(2026, 8, 4, 6, 50),
+    );
+    expect(
+      result.occurrences.single.protectedEnd,
+      DateTime.utc(2026, 8, 4, 8, 10),
+    );
   });
 }
 

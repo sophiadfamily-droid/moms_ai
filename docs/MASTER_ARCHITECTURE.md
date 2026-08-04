@@ -610,6 +610,11 @@ no persisted occurrence or Event. RO.3 makes recurrence-date applicability a
 single pure rule shared by the canonical Routine projection and the existing
 Planning compatibility adapter. The adapter alone preserves historical
 blocked periods with no configured day; canonical routines remain strict.
+RO.4 can resolve that bounded local-clock projection to explicit UTC instants
+only when a valid IANA timezone is supplied. It exposes the complete protected
+range (outbound travel, duration, return travel and margin), rejects impossible
+local wall times, contains no user-facing content, and still neither creates an
+Event nor schedules a notification.
 
 **Planned architecture:** The Routine Engine provides one authoritative recurrence vocabulary and dated projection of routines for planning, notifications, and future organization features. A routine remains distinct from a generated series of persisted calendar events unless explicitly converted.
 
