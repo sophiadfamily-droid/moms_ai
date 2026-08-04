@@ -107,6 +107,7 @@ enum ConversationClarificationDecision {
 enum ConversationClarificationDraftType { eventCreation }
 
 enum ConversationEventDraftExpectedField {
+  eventTitle,
   date,
   time,
   duration,

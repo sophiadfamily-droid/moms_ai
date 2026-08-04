@@ -420,6 +420,60 @@ void main() {
       controller.dispose();
     });
 
+    test(
+        'production composition clarifies a generic Event title and creates once',
+        () async {
+      SharedPreferences.setMockInitialValues({});
+      final json = jsonDecode(jsonEncode(_eventDraftCallableJson()))
+          as Map<String, dynamic>;
+      final epistemic = json['epistemic'] as Map<String, dynamic>;
+      final clarification = epistemic['clarification'] as Map<String, dynamic>;
+      final draft = clarification['draft'] as Map<String, dynamic>;
+      draft['title'] = 'Rendez-vous';
+      draft['startTime'] = null;
+      final backend = _JsonCallableBackend(json);
+      final controller = ConversationSessionController.production(
+        profile: _profile(),
+        backendClient: backend,
+        contextProvider: _Context(),
+        messageStore: _Store(),
+        accountScopeId: 'account',
+        clock: () => DateTime.utc(2026, 7, 29, 12),
+        idGenerator: () => 'production-generic-event',
+      );
+
+      await controller.submitText('rdv demain 14heur');
+      expect(controller.state.messages.last.text, contains('motif'));
+      await controller.submitText('dentiste');
+      expect(controller.state.messages.last.text, contains('Combien de temps'));
+      expect(backend.invocations, 1);
+      await controller.submitText('1h');
+      await controller.submitText('10');
+      await controller.submitText('5');
+      await controller.submitText('5');
+
+      expect(controller.state.phase,
+          ConversationSessionPhase.awaitingConfirmation);
+      expect(controller.state.messages.last.text,
+          contains('Rendez-vous dentiste'));
+      await controller.submitText('ouais vas-y');
+      await controller.submitText('ouais vas-y');
+
+      final preferences = await SharedPreferences.getInstance();
+      final stored = preferences
+          .getStringList(EventService.localEventsKeyForAccountScope(null))!
+          .map((value) => EventModel.fromJson(jsonDecode(value)))
+          .toList(growable: false);
+      expect(stored, hasLength(1));
+      expect(stored.single.title, 'Rendez-vous dentiste');
+      expect(stored.single.time, '14:00');
+      expect(stored.single.durationMinutes, 60);
+      expect(stored.single.travelGoMinutes, 10);
+      expect(stored.single.travelBackMinutes, 5);
+      expect(stored.single.marginMinutes, 5);
+      controller.dispose();
+    });
+
     test('production composition keeps callable Event draft through a conflict',
         () async {
       addTearDown(() => SharedPreferences.setMockInitialValues({}));
@@ -486,6 +540,37 @@ void main() {
       expect(created.travelBackMinutes, 0);
       expect(created.marginMinutes, 0);
       expect(backend.invocations, 1);
+      controller.dispose();
+    });
+
+    test('production conflict time leaves an unknown duration missing',
+        () async {
+      final json = jsonDecode(jsonEncode(_eventDraftCallableJson()))
+          as Map<String, dynamic>;
+      final epistemic = json['epistemic'] as Map<String, dynamic>;
+      final clarification = epistemic['clarification'] as Map<String, dynamic>;
+      final draft = clarification['draft'] as Map<String, dynamic>;
+      clarification['expectedAnswerType'] = 'time';
+      draft['startTime'] = null;
+      draft['expectedField'] = 'conflictAlternativeTime';
+      final backend = _JsonCallableBackend(json);
+      final controller = ConversationSessionController.production(
+        profile: _profile(),
+        backendClient: backend,
+        contextProvider: _Context(),
+        messageStore: _Store(),
+        accountScopeId: 'account',
+        clock: () => DateTime.utc(2026, 7, 29, 12),
+        idGenerator: () => 'production-conflict-missing-duration',
+      );
+
+      await controller.submitText('medecin demain 15h');
+      await controller.submitText('23h');
+
+      expect(backend.invocations, 1);
+      expect(controller.state.messages.last.text, contains('Combien de temps'));
+      expect(controller.state.phase,
+          ConversationSessionPhase.awaitingClarification);
       controller.dispose();
     });
 

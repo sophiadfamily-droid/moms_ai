@@ -72,4 +72,35 @@ void main() {
       expect(result.hasTime, isFalse, reason: text);
     }
   });
+
+  test('a clock occurrence is never reused as a duration', () {
+    for (final text in <String>[
+      'médecin demain 15h',
+      'rdv demain 15heur',
+      'médecin demain 15 heures',
+      '23h',
+    ]) {
+      final result = NaturalLanguageUnderstandingService.parse(
+        text,
+        now: reference,
+      );
+      expect(result.hasTime, isTrue, reason: text);
+      expect(result.hasDuration, isFalse, reason: text);
+      expect(result.durationMinutes, 0, reason: text);
+    }
+  });
+
+  test('keeps distinct time and explicit duration entities', () {
+    for (final entry in <String, int>{
+      'médecin demain 15h durée 1h': 60,
+      'médecin demain à 15h pendant 45 minutes': 45,
+    }.entries) {
+      final result = NaturalLanguageUnderstandingService.parse(
+        entry.key,
+        now: reference,
+      );
+      expect(result.time, '15:00', reason: entry.key);
+      expect(result.durationMinutes, entry.value, reason: entry.key);
+    }
+  });
 }

@@ -6,6 +6,7 @@ import '../models/task_model.dart';
 
 import 'event_confirmation_service.dart';
 import 'event_service.dart';
+import 'event_title_service.dart';
 import 'notification_service.dart';
 import 'shopping_service.dart';
 import 'task_service.dart';
@@ -18,6 +19,7 @@ typedef ShoppingItemWriter = Future<ShoppingPersistenceResult> Function(
 
 class ActionHandlerResult {
   final String message;
+  final Map<String, dynamic>? pendingTitleEvent;
   final Map<String, dynamic>? pendingDateEvent;
   final Map<String, dynamic>? pendingTimeEvent;
   final Map<String, dynamic>? pendingDurationEvent;
@@ -29,6 +31,7 @@ class ActionHandlerResult {
 
   const ActionHandlerResult({
     this.message = "",
+    this.pendingTitleEvent,
     this.pendingDateEvent,
     this.pendingTimeEvent,
     this.pendingDurationEvent,
@@ -89,6 +92,16 @@ class ActionHandlerService {
         ) ??
         0;
 
+    final parsedStartHour =
+        time.isEmpty ? null : int.tryParse(time.split(':').first);
+    final durationCollidesWithStartTime = nlu.hasTime &&
+        !nlu.hasDuration &&
+        parsedStartHour != null &&
+        durationMinutes == parsedStartHour * 60;
+    if (durationCollidesWithStartTime) {
+      durationMinutes = 0;
+    }
+
     if (durationMinutes <= 0 && nlu.hasDuration) {
       durationMinutes = nlu.durationMinutes;
     } else if (durationMinutes <= 0 && !nlu.hasTime) {
@@ -110,7 +123,9 @@ class ActionHandlerService {
       date = nextDateForWeekday(recurringWeekday);
     }
 
-    if (title.trim().isEmpty) return const ActionHandlerResult();
+    if (title.trim().isEmpty && type != "event") {
+      return const ActionHandlerResult();
+    }
 
     if (type == "shopping") {
       final rawItems = action['items'];
@@ -196,6 +211,16 @@ class ActionHandlerService {
       pendingAction["isRecurring"] = isRecurringWeekly;
       pendingAction["recurringType"] = isRecurringWeekly ? "weekly" : "";
       pendingAction["recurringWeekday"] = recurringWeekday;
+
+      if (EventTitleService.isGeneric(title)) {
+        pendingAction["date"] = date;
+        pendingAction["time"] = time;
+        pendingAction["durationMinutes"] = durationMinutes;
+        return ActionHandlerResult(
+          pendingTitleEvent: pendingAction,
+          message: EventTitleService.clarificationQuestion,
+        );
+      }
 
       if (date.isEmpty) {
         return ActionHandlerResult(

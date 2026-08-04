@@ -99,13 +99,30 @@ class NaturalTimeService {
     }
 
     final directTime = RegExp(
-      r'\b(\d{1,2})(?:h|:)(\d{2})?\b',
+      r'\b(\d{1,2})\s*(?:h(?:eur(?:es?)?|rs?)?)'
+      r'(?:\s*(\d{1,2})|\s+et\s+(quart|demi(?:e)?))?\b',
     ).firstMatch(lower);
 
     if (directTime != null) {
+      final minute = switch (directTime.group(3)) {
+        'quart' => '15',
+        'demi' || 'demie' => '30',
+        _ => directTime.group(2),
+      };
       return _formatTime(
         hourText: directTime.group(1),
-        minuteText: directTime.group(2),
+        minuteText: minute,
+      );
+    }
+
+    final colonTime = RegExp(
+      r'\b(\d{1,2})\s*:\s*(\d{1,2})\b',
+    ).firstMatch(lower);
+
+    if (colonTime != null) {
+      return _formatTime(
+        hourText: colonTime.group(1),
+        minuteText: colonTime.group(2),
       );
     }
 
@@ -154,14 +171,16 @@ class NaturalTimeService {
     final alternatives = hours.keys.toList()
       ..sort((left, right) => right.length.compareTo(left.length));
     final match = RegExp(
-      '\\b(${alternatives.join('|')})\\s+heures?'
-      r'(?:\s+(et demie|trente|\d{1,2}))?\b',
+      '\\b(${alternatives.join('|')})\\s*'
+      r'(?:h(?:eur(?:es?)?|rs?)?)'
+      r'(?:\s+(et demie|et demi|et quart|trente|\d{1,2}))?\b',
     ).firstMatch(text);
     if (match == null) return '';
     final hour = hours[match.group(1)];
     final minuteToken = match.group(2);
     final minute = switch (minuteToken) {
-      'et demie' || 'trente' => 30,
+      'et demie' || 'et demi' || 'trente' => 30,
+      'et quart' => 15,
       null => 0,
       _ => int.tryParse(minuteToken),
     };

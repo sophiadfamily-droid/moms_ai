@@ -34,6 +34,16 @@ void main() {
       );
     }
   });
+
+  test('decodes the closed Event title expected field', () {
+    final draft = ConversationClarificationDraft.fromJson({
+      ..._draft(),
+      'title': 'Rendez-vous',
+      'expectedField': 'eventTitle',
+    });
+
+    expect(draft.expectedField, ConversationEventDraftExpectedField.eventTitle);
+  });
 }
 
 Map<String, dynamic> _draft() => {

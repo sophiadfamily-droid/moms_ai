@@ -117,7 +117,7 @@ void main() {
 
     final base = <String, dynamic>{
       'type': 'event',
-      'title': 'Rendez-vous',
+      'title': 'Rendez-vous médecin',
       'participant': participant,
     };
     final date = await handle(base);

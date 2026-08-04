@@ -691,6 +691,48 @@ void main() {
       expect(executor.hasPendingEventDraft, isTrue);
     });
 
+    test('generic Event title is completed on the same local draft', () async {
+      final coordinator = _coordinator();
+      final executor = ConversationLegacyActionExecutor(
+        coordinator: coordinator,
+        clock: () => DateTime.utc(2026, 7, 29, 10),
+      );
+      final draft = ConversationClarificationDraft(
+        schemaVersion: 1,
+        draftType: ConversationClarificationDraftType.eventCreation,
+        logicalRequestId: 'logical-generic-event',
+        draftId: 'generic-event-draft',
+        title: 'Rendez-vous',
+        date: '2026-07-30',
+        startTime: '15:00',
+        durationMinutes: null,
+        travelGoMinutes: null,
+        travelBackMinutes: null,
+        marginMinutes: null,
+        expectedField: ConversationEventDraftExpectedField.duration,
+        createdAt: DateTime.utc(2026, 7, 29, 10),
+        expiresAt: DateTime.utc(2026, 7, 29, 10, 15),
+        sessionGeneration: 0,
+      );
+      expect(executor.registerClarificationDraft(draft, 0), isTrue);
+      expect(executor.pendingEventExpectedFieldCode, 'eventTitle');
+
+      final independent =
+          await executor.resolvePending('ajoute du lait aux courses', 0);
+      expect(independent, isNull);
+      expect(executor.pendingEventDraftId, 'generic-event-draft');
+
+      final ambiguous = await executor.resolvePending('un truc', 0);
+      expect(ambiguous?.reply, contains('préciser le motif'));
+      expect(executor.pendingEventDraftId, 'generic-event-draft');
+
+      final motif = await executor.resolvePending('dentiste', 0);
+      expect(motif?.reply, contains('Combien de temps'));
+      expect(executor.pendingEventDraftId, 'generic-event-draft');
+      expect(executor.pendingEventLogicalRequestId, 'logical-generic-event');
+      expect(executor.pendingEventExpectedFieldCode, 'duration');
+    });
+
     test('Event conflict keeps draft identity and consumes a replacement time',
         () async {
       addTearDown(() => SharedPreferences.setMockInitialValues({}));
@@ -755,7 +797,7 @@ void main() {
       expect(replacementDate?.reply, contains('heure précise'));
       expect(executor.pendingEventDraftId, 'event-draft');
 
-      final replacement = await executor.resolvePending('dix-neuf heures', 0);
+      final replacement = await executor.resolvePending('19heur', 0);
       expect(replacement?.reply, contains('trajet aller'));
       expect(executor.pendingEventDraftId, 'event-draft');
       expect(executor.pendingEventLogicalRequestId, 'logical-event-draft');
@@ -800,6 +842,70 @@ void main() {
       expect(coordinator.state.pendingAction?.event.travelGoMinutes, 15);
       expect(coordinator.state.pendingAction?.event.travelBackMinutes, 20);
       expect(coordinator.state.pendingAction?.event.marginMinutes, 0);
+    });
+
+    test('Event contextual bare numbers stay minutes for travel and margin',
+        () async {
+      final coordinator = _coordinator();
+      final executor = ConversationLegacyActionExecutor(
+        coordinator: coordinator,
+        clock: () => DateTime.utc(2026, 7, 29, 10),
+      );
+      await executor.execute(
+        const {
+          'type': 'event',
+          'title': 'Médecin',
+          'date': '2026-07-30',
+          'time': '15:00',
+          'durationMinutes': 0,
+        },
+        'médecin demain 15h',
+        0,
+      );
+
+      await executor.resolvePending('1h', 0);
+      await executor.resolvePending('10', 0);
+      await executor.resolvePending('5', 0);
+      final confirmation = await executor.resolvePending('5', 0);
+
+      expect(confirmation?.reply, contains('Veux-tu que je l’ajoute'));
+      expect(coordinator.state.pendingAction?.event.durationMinutes, 60);
+      expect(coordinator.state.pendingAction?.event.travelGoMinutes, 10);
+      expect(coordinator.state.pendingAction?.event.travelBackMinutes, 5);
+      expect(coordinator.state.pendingAction?.event.marginMinutes, 5);
+    });
+
+    test('conflict replacement time cannot fill a missing duration', () async {
+      final coordinator = _coordinator();
+      final executor = ConversationLegacyActionExecutor(
+        coordinator: coordinator,
+        clock: () => DateTime.utc(2026, 7, 29, 10),
+      );
+      final draft = ConversationClarificationDraft(
+        schemaVersion: 1,
+        draftType: ConversationClarificationDraftType.eventCreation,
+        logicalRequestId: 'logical-missing-duration',
+        draftId: 'event-missing-duration',
+        title: 'Consultation médecin',
+        date: '2026-07-30',
+        startTime: null,
+        durationMinutes: null,
+        travelGoMinutes: null,
+        travelBackMinutes: null,
+        marginMinutes: null,
+        expectedField:
+            ConversationEventDraftExpectedField.conflictAlternativeTime,
+        createdAt: DateTime.utc(2026, 7, 29, 10),
+        expiresAt: DateTime.utc(2026, 7, 29, 10, 15),
+        sessionGeneration: 0,
+      );
+      expect(executor.registerClarificationDraft(draft, 0), isTrue);
+
+      final replacement = await executor.resolvePending('23h', 0);
+
+      expect(replacement?.reply, contains('Combien de temps'));
+      expect(executor.pendingEventExpectedFieldCode, 'duration');
+      expect(coordinator.state.pendingAction?.event, isNull);
     });
 
     test('simple non cancels active Event continuation locally', () async {

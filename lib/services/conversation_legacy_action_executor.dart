@@ -8,6 +8,7 @@ import 'chat_planning_helper_service.dart';
 import 'conversation_coordinator.dart';
 import 'event_confirmation_service.dart';
 import 'event_service.dart';
+import 'event_title_service.dart';
 import 'notification_service.dart';
 import 'natural_date_service.dart';
 import 'natural_duration_service.dart';
@@ -50,7 +51,9 @@ final class ConversationLegacyActionExecutor {
       draftId: draft.draftId,
       logicalRequestId: draft.logicalRequestId,
       sessionGeneration: sessionGeneration,
-      expectedField: _PendingEventField.values.byName(draft.expectedField.name),
+      expectedField: EventTitleService.isGeneric(draft.title)
+          ? _PendingEventField.eventTitle
+          : _PendingEventField.values.byName(draft.expectedField.name),
       action: {
         'type': 'event',
         'title': draft.title,
@@ -64,6 +67,40 @@ final class ConversationLegacyActionExecutor {
       expiresAt: draft.expiresAt,
     );
     return true;
+  }
+
+  bool registerClarificationDraftFromMessage(
+    ConversationClarificationDraft draft,
+    int sessionGeneration,
+    String userMessage,
+  ) {
+    final parsedDate = draft.date?.trim().isNotEmpty == true
+        ? draft.date
+        : NaturalDateService.resolveDateFromText(
+            userMessage,
+            now: _clock(),
+          );
+    final parsedTime = draft.startTime?.trim().isNotEmpty == true
+        ? draft.startTime
+        : NaturalTimeService.parseTime(userMessage);
+    final enriched = ConversationClarificationDraft(
+      schemaVersion: draft.schemaVersion,
+      draftType: draft.draftType,
+      logicalRequestId: draft.logicalRequestId,
+      draftId: draft.draftId,
+      title: draft.title,
+      date: parsedDate?.trim().isEmpty == true ? null : parsedDate,
+      startTime: parsedTime?.trim().isEmpty == true ? null : parsedTime,
+      durationMinutes: draft.durationMinutes,
+      travelGoMinutes: draft.travelGoMinutes,
+      travelBackMinutes: draft.travelBackMinutes,
+      marginMinutes: draft.marginMinutes,
+      expectedField: draft.expectedField,
+      createdAt: draft.createdAt,
+      expiresAt: draft.expiresAt,
+      sessionGeneration: draft.sessionGeneration,
+    );
+    return registerClarificationDraft(enriched, sessionGeneration);
   }
 
   void invalidate() {
@@ -174,6 +211,16 @@ final class ConversationLegacyActionExecutor {
 
     final action = Map<String, dynamic>.from(pending.action);
     switch (pending.expectedField) {
+      case _PendingEventField.eventTitle:
+        if (EventTitleService.shouldRouteIndependently(answer)) return null;
+        final title = EventTitleService.titleFromMotif(answer);
+        if (title == null) {
+          return const ConversationOutcome(
+            reply: EventTitleService.precisionQuestion,
+          );
+        }
+        action['title'] = title;
+        break;
       case _PendingEventField.date:
         final date = NaturalDateService.resolveDateFromText(
           answer,
@@ -188,7 +235,10 @@ final class ConversationLegacyActionExecutor {
         action['time'] = time;
         break;
       case _PendingEventField.duration:
-        final minutes = _durationMinutes(answer);
+        final minutes = _contextualDurationMinutes(
+          answer,
+          NaturalDurationExpectedField.duration,
+        );
         if (minutes <= 0) {
           final revised = _applyDateOrTimeRevision(action, answer);
           if (revised == null) {
@@ -207,7 +257,10 @@ final class ConversationLegacyActionExecutor {
         action['durationMinutes'] = minutes;
         break;
       case _PendingEventField.travelGo:
-        final minutes = _travelMinutes(answer);
+        final minutes = _travelMinutes(
+          answer,
+          NaturalDurationExpectedField.travelGo,
+        );
         if (minutes == null) return null;
         action['travelGoMinutes'] = minutes;
         _pendingEventDraft = pending.copyWith(
@@ -218,7 +271,10 @@ final class ConversationLegacyActionExecutor {
           reply: 'Combien de temps faut-il prévoir pour le trajet retour ?',
         );
       case _PendingEventField.travelBack:
-        final minutes = _travelMinutes(answer);
+        final minutes = _travelMinutes(
+          answer,
+          NaturalDurationExpectedField.travelBack,
+        );
         if (minutes == null) return null;
         action['travelBackMinutes'] = minutes;
         _pendingEventDraft = pending.copyWith(
@@ -296,21 +352,30 @@ final class ConversationLegacyActionExecutor {
     return action;
   }
 
-  static int _durationMinutes(String answer) {
+  static int _contextualDurationMinutes(
+    String answer,
+    NaturalDurationExpectedField expectedField,
+  ) {
+    final contextual = NaturalDurationService.parseMinutes(
+      answer,
+      expectedField: expectedField,
+    );
+    if (contextual > 0) return contextual;
     final legacy = ChatPlanningHelperService.parseDurationMinutes(answer);
     if (legacy > 0) return legacy;
-    final natural = NaturalDurationService.parseMinutes(answer);
-    if (natural > 0) return natural;
     return SmartPlanningService.parseTravelMinutes(answer);
   }
 
-  static int? _travelMinutes(String answer) {
+  static int? _travelMinutes(
+    String answer,
+    NaturalDurationExpectedField expectedField,
+  ) {
     if (PlannerEngineService.isNoTravelAnswer(answer) ||
         _normalized(answer) == 'aucun' ||
         _normalized(answer) == 'aucune') {
       return 0;
     }
-    final minutes = _durationMinutes(answer);
+    final minutes = _contextualDurationMinutes(answer, expectedField);
     return minutes > 0 ? minutes : null;
   }
 
@@ -322,7 +387,10 @@ final class ConversationLegacyActionExecutor {
         value == 'sans marge') {
       return 0;
     }
-    final minutes = _durationMinutes(answer);
+    final minutes = _contextualDurationMinutes(
+      answer,
+      NaturalDurationExpectedField.margin,
+    );
     return minutes > 0 ? minutes : null;
   }
 
@@ -382,6 +450,7 @@ final class ConversationLegacyActionExecutor {
       }
     }
     final pendingEvent = result.pendingDateEvent ??
+        result.pendingTitleEvent ??
         result.pendingTimeEvent ??
         result.pendingDurationEvent ??
         result.pendingTravelEvent ??
@@ -398,15 +467,17 @@ final class ConversationLegacyActionExecutor {
             ? current.logicalRequestId
             : 'local-event-$sessionGeneration',
         sessionGeneration: sessionGeneration,
-        expectedField: result.pendingConflictResolutionEvent != null
-            ? _PendingEventField.conflictAlternativeTime
-            : result.pendingDateEvent != null
-                ? _PendingEventField.date
-                : result.pendingTimeEvent != null
-                    ? _PendingEventField.time
-                    : result.pendingDurationEvent != null
-                        ? _PendingEventField.duration
-                        : _PendingEventField.travelGo,
+        expectedField: result.pendingTitleEvent != null
+            ? _PendingEventField.eventTitle
+            : result.pendingConflictResolutionEvent != null
+                ? _PendingEventField.conflictAlternativeTime
+                : result.pendingDateEvent != null
+                    ? _PendingEventField.date
+                    : result.pendingTimeEvent != null
+                        ? _PendingEventField.time
+                        : result.pendingDurationEvent != null
+                            ? _PendingEventField.duration
+                            : _PendingEventField.travelGo,
         action: pendingEvent,
         expiresAt: preservesCurrentDraft
             ? current.expiresAt
@@ -507,6 +578,7 @@ final class ConversationLegacyActionExecutor {
 }
 
 enum _PendingEventField {
+  eventTitle,
   date,
   time,
   duration,

@@ -23,6 +23,7 @@ import 'conversation_legacy_action_executor.dart';
 import 'conversation_reference_history_store.dart';
 import 'conversation_reference_resolver.dart';
 import 'event_conversation_mutation_service.dart';
+import 'event_title_service.dart';
 import 'routine_conversation_service.dart';
 import 'identity/identity_production_services.dart';
 import 'priority/proactive_interaction_registry.dart';
@@ -41,6 +42,7 @@ typedef ConversationPendingResolver = Future<ConversationOutcome?> Function(
 typedef ConversationClarificationDraftRegistrar = bool Function(
   ConversationClarificationDraft draft,
   int sessionGeneration,
+  String userMessage,
 );
 typedef ConversationSessionInvalidator = void Function(
   UserProfile profile,
@@ -210,7 +212,8 @@ final class ConversationSessionController extends ChangeNotifier {
       coordinator: coordinator,
       executeAction: executeAction ?? legacyExecutor.execute,
       resolvePending: legacyExecutor.resolvePending,
-      registerClarificationDraft: legacyExecutor.registerClarificationDraft,
+      registerClarificationDraft:
+          legacyExecutor.registerClarificationDraftFromMessage,
       invalidateSession: (nextProfile, _) {
         coordinator.invalidateSession();
         smartPlanning.invalidate();
@@ -433,7 +436,11 @@ final class ConversationSessionController extends ChangeNotifier {
       if (!_isCurrent(requestId, generation) || outcome == null) return;
       final clarificationDraft = outcome.epistemicClarification?.draft;
       if (pendingOutcome == null && clarificationDraft != null) {
-        _registerClarificationDraft?.call(clarificationDraft, generation);
+        _registerClarificationDraft?.call(
+          clarificationDraft,
+          generation,
+          text,
+        );
       }
       await _saveReferenceHistory();
       if (!_isCurrent(requestId, generation)) return;
@@ -445,6 +452,11 @@ final class ConversationSessionController extends ChangeNotifier {
       var responseKind = outcome.responseKind;
       var visibleReply = outcome.reply;
       final clarification = outcome.epistemicClarification;
+      if (pendingOutcome == null &&
+          clarificationDraft != null &&
+          EventTitleService.isGeneric(clarificationDraft.title)) {
+        visibleReply = EventTitleService.clarificationQuestion;
+      }
       if (responseKind == ConversationResponseKind.clarificationRequired &&
           clarification != null) {
         final codes = clarification.missingFieldCodes;

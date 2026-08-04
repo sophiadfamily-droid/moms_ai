@@ -68,7 +68,11 @@ class NaturalLanguageUnderstandingService {
     );
 
     final time = NaturalTimeService.parseTime(text);
-    final durationMinutes = NaturalDurationService.parseMinutes(text);
+    final parsedDurationMinutes = NaturalDurationService.parseMinutes(text);
+    final durationMinutes =
+        time.isNotEmpty && !_containsDistinctDurationExpression(text)
+            ? 0
+            : parsedDurationMinutes;
     final uncertainty = expressesUncertainty(text);
 
     final hasDate = dateIso.trim().isNotEmpty;
@@ -155,6 +159,13 @@ class NaturalLanguageUnderstandingService {
       "je connais pas",
       "je ne connais pas",
     ]);
+  }
+
+  static bool _containsDistinctDurationExpression(String text) {
+    final normalized = _normalize(text);
+    return RegExp(
+      r'\b(pendant|duree|durer|pour une duree|combien de temps)\b',
+    ).hasMatch(normalized);
   }
 
   static double _computeConfidence({

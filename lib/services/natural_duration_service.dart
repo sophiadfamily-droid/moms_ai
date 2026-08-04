@@ -1,5 +1,15 @@
+enum NaturalDurationExpectedField {
+  duration,
+  travelGo,
+  travelBack,
+  margin,
+}
+
 class NaturalDurationService {
-  static int parseMinutes(String text) {
+  static int parseMinutes(
+    String text, {
+    NaturalDurationExpectedField? expectedField,
+  }) {
     final lower = _normalize(text);
 
     if (lower.isEmpty) return 0;
@@ -117,6 +127,10 @@ class NaturalDurationService {
       final value = int.tryParse(onlyNumber.group(1) ?? "0") ?? 0;
 
       if (value <= 0) return 0;
+
+      if (expectedField != null) {
+        return _safeDuration(value);
+      }
 
       if (value >= 1 && value <= 5) {
         return value * 60;
