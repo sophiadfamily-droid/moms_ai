@@ -42,6 +42,14 @@ final class RoutineAgendaService {
     );
     return projection.occurrences.map((occurrence) {
       final routine = byId[occurrence.routineId]!;
+      final timeParts = occurrence.startTime.split(':');
+      final startTime = DateTime(
+        day.year,
+        day.month,
+        day.day,
+        int.parse(timeParts[0]),
+        int.parse(timeParts[1]),
+      );
       return RoutineAgendaItem(
         occurrenceId: occurrence.occurrenceId,
         routineId: occurrence.routineId,
@@ -49,6 +57,16 @@ final class RoutineAgendaService {
         title: routine.title,
         startTime: occurrence.startTime,
         endTime: routine.endTime,
+        protectedStart: startTime.subtract(
+          Duration(minutes: occurrence.travelGoMinutes),
+        ),
+        protectedEnd: startTime.add(
+          Duration(
+            minutes: occurrence.durationMinutes +
+                occurrence.travelBackMinutes +
+                occurrence.marginMinutes,
+          ),
+        ),
       );
     }).toList(growable: false);
   }

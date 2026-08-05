@@ -39,6 +39,8 @@ void main() {
     expect(items.single.dateIso, '2026-08-05');
     expect(items.single.startTime, '07:30');
     expect(items.single.endTime, '08:15');
+    expect(items.single.protectedStart, DateTime(2026, 8, 5, 7, 30));
+    expect(items.single.protectedEnd, DateTime(2026, 8, 5, 8, 15));
   });
 
   test('does not show a cancelled routine', () async {

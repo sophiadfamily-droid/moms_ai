@@ -21,11 +21,15 @@ final class ConflictAttentionViewData {
     required this.eventTitle,
     required this.routineTitle,
     required this.targetDate,
+    this.eventId,
+    this.routineId,
   });
 
   final String eventTitle;
   final String routineTitle;
   final DateTime? targetDate;
+  final String? eventId;
+  final String? routineId;
 }
 
 typedef AttentionSourceLabelLoader = Future<AttentionSourceLabels> Function(
@@ -211,6 +215,8 @@ final class DailySummaryViewService {
           'une routine',
         ),
         targetDate: targetDate,
+        eventId: eventId,
+        routineId: routineId,
       );
     }).toList(growable: false);
   }

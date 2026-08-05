@@ -9,6 +9,8 @@ final class RoutineAgendaItem {
     required this.title,
     required this.startTime,
     required this.endTime,
+    required this.protectedStart,
+    required this.protectedEnd,
   });
 
   final String occurrenceId;
@@ -17,4 +19,6 @@ final class RoutineAgendaItem {
   final String title;
   final String startTime;
   final String endTime;
+  final DateTime protectedStart;
+  final DateTime protectedEnd;
 }

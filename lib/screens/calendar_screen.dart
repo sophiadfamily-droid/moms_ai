@@ -24,6 +24,8 @@ class CalendarScreen extends StatefulWidget {
     this.routinesVersionForTest,
     this.accountScopeToken = 'guest',
     this.initialDate,
+    this.highlightedEventId,
+    this.highlightedRoutineId,
   });
 
   final Future<List<EventModel>> Function()? loadEventsForTest;
@@ -46,6 +48,8 @@ class CalendarScreen extends StatefulWidget {
   final ValueNotifier<int>? routinesVersionForTest;
   final String accountScopeToken;
   final DateTime? initialDate;
+  final String? highlightedEventId;
+  final String? highlightedRoutineId;
   final Future<List<EventSyncConflict>> Function()? loadSyncConflictsForTest;
   final Future<EventConflictResolutionResult> Function({
     required String conflictId,
@@ -1786,8 +1790,27 @@ class _CalendarScreenState extends State<CalendarScreen> {
     return result;
   }
 
+  List<({EventModel event, RoutineAgendaItem routine})> dailyRoutineConflicts(
+    List<EventModel> dayEvents,
+  ) {
+    final conflicts = <({EventModel event, RoutineAgendaItem routine})>[];
+    for (final event in dayEvents) {
+      final eventStart = EventService.parseProtectedStart(event);
+      final eventEnd = EventService.parseProtectedEnd(event);
+      if (eventStart == null || eventEnd == null) continue;
+      for (final routine in routineItems) {
+        if (eventStart.isBefore(routine.protectedEnd) &&
+            routine.protectedStart.isBefore(eventEnd)) {
+          conflicts.add((event: event, routine: routine));
+        }
+      }
+    }
+    return conflicts;
+  }
+
   Widget buildEventsList() {
     final events = eventsForSelectedDate();
+    final routineConflicts = dailyRoutineConflicts(events);
 
     if (events.isEmpty && routineItems.isEmpty) {
       return Padding(
@@ -1826,6 +1849,30 @@ class _CalendarScreenState extends State<CalendarScreen> {
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
       child: Column(
         children: [
+          for (final conflict in routineConflicts)
+            Container(
+              key: ValueKey(
+                'agenda-conflict-${conflict.event.id}-'
+                '${conflict.routine.routineId}',
+              ),
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Text(
+                'Regarde, « ${cleanEventTitle(conflict.event.title)} » et '
+                '« ${conflict.routine.title} » se chevauchent. '
+                'Je ne change rien sans ton accord.',
+                style: TextStyle(
+                  color: textDark,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
           ...events.map(buildEventCard),
           ...routineItems.map(buildRoutineCard),
         ],
@@ -1833,59 +1880,70 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  Widget buildRoutineCard(RoutineAgendaItem routine) => Container(
-        key: ValueKey('routine-agenda-${routine.occurrenceId}'),
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        decoration: BoxDecoration(
-          color: const Color(0xFFFFF8F5),
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: accent.withValues(alpha: 0.25)),
+  Widget buildRoutineCard(RoutineAgendaItem routine) {
+    final highlighted = routine.routineId == widget.highlightedRoutineId ||
+        dailyRoutineConflicts(eventsForSelectedDate())
+            .any((conflict) => conflict.routine.routineId == routine.routineId);
+    return Container(
+      key: ValueKey('routine-agenda-${routine.occurrenceId}'),
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF8F5),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: accent.withValues(alpha: highlighted ? 0.9 : 0.25),
+          width: highlighted ? 2.5 : 1,
         ),
-        child: Row(
-          children: [
-            Icon(Icons.autorenew_rounded, color: accent),
-            const SizedBox(width: 14),
-            SizedBox(
-              width: 92,
-              child: Text(
-                '${routine.startTime} - ${routine.endTime}',
-                style: TextStyle(
-                  color: accent,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.autorenew_rounded, color: accent),
+          const SizedBox(width: 14),
+          SizedBox(
+            width: 92,
+            child: Text(
+              '${routine.startTime} - ${routine.endTime}',
+              style: TextStyle(
+                color: accent,
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  routine.title,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: textDark,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-              ),
+                const SizedBox(height: 4),
+                Text(
+                  'Routine prévue par Zelia',
+                  style: TextStyle(color: textSoft, fontSize: 13),
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    routine.title,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: textDark,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Routine prévue par Zelia',
-                    style: TextStyle(color: textSoft, fontSize: 13),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget buildEventCard(EventModel event) {
     final color = categoryColor(categoryOf(event));
     final displayTitle = cleanEventTitle(event.title);
+    final highlighted = event.id == widget.highlightedEventId ||
+        dailyRoutineConflicts(eventsForSelectedDate())
+            .any((conflict) => conflict.event.id == event.id);
 
     final details = <String>[
       if (event.durationMinutes > 0)
@@ -1910,6 +1968,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.92),
           borderRadius: BorderRadius.circular(22),
+          border: highlighted
+              ? Border.all(color: accent.withValues(alpha: 0.9), width: 2.5)
+              : null,
         ),
         child: Row(
           children: [

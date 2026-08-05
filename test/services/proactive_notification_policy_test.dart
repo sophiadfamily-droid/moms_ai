@@ -479,6 +479,8 @@ void main() {
       expect(view!.conflicts.single.eventTitle, 'Rendez-vous coiffeur');
       expect(view.conflicts.single.routineTitle, 'Sport');
       expect(view.conflicts.single.targetDate, conflictStart);
+      expect(view.conflicts.single.eventId, 'event-one');
+      expect(view.conflicts.single.routineId, 'routine-one');
     });
 
     test('delivery history is bounded and contains no business content', () {
@@ -747,12 +749,16 @@ void main() {
                   eventTitle: 'le rendez-vous coiffeur',
                   routineTitle: 'la routine sport',
                   targetDate: conflictDate,
+                  eventId: 'event-coiffeur',
+                  routineId: 'routine-sport',
                 ),
               ],
             ),
-            onOpenAgenda: (date) {
+            onOpenAgenda: (focus) {
               agendaOpened = true;
-              openedDate = date;
+              openedDate = focus.date;
+              expect(focus.eventId, 'event-coiffeur');
+              expect(focus.routineId, 'routine-sport');
             },
           ),
         ),

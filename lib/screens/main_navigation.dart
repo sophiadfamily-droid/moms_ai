@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../models/user_profile.dart';
+import '../models/agenda_focus.dart';
 import '../models/priority/proactive_priority_models.dart';
 import '../services/conversation_session_controller.dart';
 import '../services/identity/identity_production_services.dart';
@@ -43,7 +44,7 @@ class MainNavigation extends StatefulWidget {
 
 class _MainNavigationState extends State<MainNavigation> {
   int currentIndex = 0;
-  DateTime? requestedAgendaDate;
+  AgendaFocus? requestedAgendaFocus;
 
   late UserProfile currentProfile;
 
@@ -82,9 +83,9 @@ class _MainNavigationState extends State<MainNavigation> {
     });
   }
 
-  void openAgendaDate(DateTime? date) {
+  void openAgenda(AgendaFocus focus) {
     setState(() {
-      requestedAgendaDate = date;
+      requestedAgendaFocus = focus;
       currentIndex = 2;
     });
   }
@@ -120,7 +121,7 @@ class _MainNavigationState extends State<MainNavigation> {
           HomeScreen(
             profile: currentProfile,
             onNavigate: changeTab,
-            onOpenAgendaDate: openAgendaDate,
+            onOpenAgenda: openAgenda,
           ),
           ChatScreen(
             profile: currentProfile,
@@ -131,10 +132,14 @@ class _MainNavigationState extends State<MainNavigation> {
           CalendarScreen(
             key: ValueKey(
               'calendar:${widget.accountScopeId ?? 'guest'}:'
-              '${requestedAgendaDate?.toUtc().toIso8601String() ?? 'today'}',
+              '${requestedAgendaFocus?.date?.toUtc().toIso8601String() ?? 'today'}:'
+              '${requestedAgendaFocus?.eventId ?? ''}:'
+              '${requestedAgendaFocus?.routineId ?? ''}',
             ),
             accountScopeToken: widget.accountScopeId ?? 'guest',
-            initialDate: requestedAgendaDate,
+            initialDate: requestedAgendaFocus?.date,
+            highlightedEventId: requestedAgendaFocus?.eventId,
+            highlightedRoutineId: requestedAgendaFocus?.routineId,
           ),
           TasksScreen(
             onOpenZeliaSuggestion: openChatWithSuggestion,

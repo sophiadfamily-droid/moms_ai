@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/event_model.dart';
+import '../models/agenda_focus.dart';
 import '../models/shopping_item_model.dart';
 import '../models/task_model.dart';
 import '../models/user_profile.dart';
@@ -20,13 +21,13 @@ import 'daily_summary_screen.dart';
 class HomeScreen extends StatefulWidget {
   final UserProfile profile;
   final ValueChanged<int>? onNavigate;
-  final ValueChanged<DateTime?>? onOpenAgendaDate;
+  final ValueChanged<AgendaFocus>? onOpenAgenda;
 
   const HomeScreen({
     super.key,
     required this.profile,
     this.onNavigate,
-    this.onOpenAgendaDate,
+    this.onOpenAgenda,
   });
 
   @override
@@ -413,10 +414,10 @@ class _HomeScreenState extends State<HomeScreen>
               Navigator.of(context).push(
                 MaterialPageRoute<void>(
                   builder: (_) => DailySummaryScreen(
-                    onOpenAgenda: (date) {
+                    onOpenAgenda: (focus) {
                       Navigator.of(context).pop();
-                      if (widget.onOpenAgendaDate != null) {
-                        widget.onOpenAgendaDate!(date);
+                      if (widget.onOpenAgenda != null) {
+                        widget.onOpenAgenda!(focus);
                       } else {
                         navigateToTab(2);
                       }

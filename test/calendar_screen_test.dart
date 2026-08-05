@@ -44,6 +44,109 @@ Widget buildCalendar({
 }
 
 void main() {
+  testWidgets('shows a conflict from earlier on the selected day',
+      (WidgetTester tester) async {
+    final today = DateTime.now();
+    final date = isoDate(today);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CalendarScreen(
+          accountScopeToken: 'account-a',
+          initialDate: today,
+          eventsVersionForTest: ValueNotifier<int>(0),
+          routinesVersionForTest: ValueNotifier<int>(0),
+          loadEventsForTest: () async => [
+            EventModel(
+              id: 'past-event',
+              title: 'Ancien rendez-vous',
+              date: date,
+              time: '06:00',
+              durationMinutes: 60,
+              notes: '',
+              createdAt: DateTime.utc(2026, 8, 1),
+              startDateTimeIso: '${date}T06:00:00',
+            ),
+          ],
+          loadSyncConflictsForTest: () async => const [],
+          loadRoutinesForDayForTest: (_, day) async => [
+            RoutineAgendaItem(
+              occurrenceId: 'past-routine:${isoDate(day)}',
+              routineId: 'past-routine',
+              dateIso: isoDate(day),
+              title: 'Routine du matin',
+              startTime: '06:30',
+              endTime: '07:00',
+              protectedStart: DateTime(day.year, day.month, day.day, 6, 30),
+              protectedEnd: DateTime(day.year, day.month, day.day, 7),
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(
+        'Regarde, « Ancien rendez-vous » et « Routine du matin » se '
+        'chevauchent. Je ne change rien sans ton accord.',
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('highlights the exact event and routine opened from an alert',
+      (WidgetTester tester) async {
+    final today = DateTime.now();
+    final date = isoDate(today);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CalendarScreen(
+          accountScopeToken: 'account-a',
+          initialDate: today,
+          highlightedEventId: 'event-coiffeur',
+          highlightedRoutineId: 'routine-enfants',
+          eventsVersionForTest: ValueNotifier<int>(0),
+          routinesVersionForTest: ValueNotifier<int>(0),
+          loadEventsForTest: () async => [
+            EventModel(
+              id: 'event-coiffeur',
+              title: 'Coiffeur',
+              date: date,
+              time: '08:00',
+              notes: '',
+              createdAt: DateTime.utc(2026, 8, 1),
+              startDateTimeIso: '${date}T08:00:00',
+            ),
+          ],
+          loadSyncConflictsForTest: () async => const [],
+          loadRoutinesForDayForTest: (_, day) async => [
+            RoutineAgendaItem(
+              occurrenceId: 'routine-enfants:${isoDate(day)}',
+              routineId: 'routine-enfants',
+              dateIso: isoDate(day),
+              title: 'Préparer les enfants',
+              startTime: '07:30',
+              endTime: '08:15',
+              protectedStart: DateTime(day.year, day.month, day.day, 7, 30),
+              protectedEnd: DateTime(day.year, day.month, day.day, 8, 15),
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(
+        'Regarde, « Coiffeur » et « Préparer les enfants » se chevauchent. '
+        'Je ne change rien sans ton accord.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Coiffeur'), findsOneWidget);
+    expect(find.text('Préparer les enfants'), findsOneWidget);
+  });
+
   testWidgets('shows a routine as a read-only Zelia Agenda item',
       (WidgetTester tester) async {
     final today = DateTime.now();
@@ -65,6 +168,8 @@ void main() {
               title: 'Préparer les enfants',
               startTime: '07:30',
               endTime: '08:15',
+              protectedStart: DateTime(day.year, day.month, day.day, 7, 30),
+              protectedEnd: DateTime(day.year, day.month, day.day, 8, 15),
             ),
           ],
         ),

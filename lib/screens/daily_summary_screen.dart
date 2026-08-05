@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/proactive_notification_policy.dart';
+import '../models/agenda_focus.dart';
 import '../services/daily_summary_view_service.dart';
 import '../services/notification_service.dart';
 import '../services/auth_service.dart';
@@ -16,7 +17,7 @@ final class DailySummaryScreen extends StatelessWidget {
   });
 
   final Future<DailySummaryViewData?> Function()? loader;
-  final ValueChanged<DateTime?>? onOpenAgenda;
+  final ValueChanged<AgendaFocus>? onOpenAgenda;
   final VoidCallback? onOpenTasks;
 
   @override
@@ -63,10 +64,13 @@ final class DailySummaryScreen extends StatelessWidget {
                       ),
                       subtitle: const Text('Voir dans l’Agenda'),
                       trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () => _openCategory(
+                      onTap: () => _openAgenda(
                         context,
-                        ProactiveAlertCategory.structuredConflict,
-                        conflict.targetDate,
+                        AgendaFocus(
+                          date: conflict.targetDate,
+                          eventId: conflict.eventId,
+                          routineId: conflict.routineId,
+                        ),
                       ),
                     ),
                   for (final entry in data.categoryCounts.entries.where(
@@ -156,18 +160,7 @@ final class DailySummaryScreen extends StatelessWidget {
     DateTime? targetDate,
   ) {
     if (category == ProactiveAlertCategory.structuredConflict) {
-      if (onOpenAgenda != null) {
-        onOpenAgenda!(targetDate);
-        return;
-      }
-      Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => CalendarScreen(
-            accountScopeToken: AuthService.currentUserId ?? 'guest',
-            initialDate: targetDate,
-          ),
-        ),
-      );
+      _openAgenda(context, AgendaFocus(date: targetDate));
       return;
     }
     if (onOpenTasks != null) {
@@ -176,6 +169,23 @@ final class DailySummaryScreen extends StatelessWidget {
     }
     Navigator.of(context).push(
       MaterialPageRoute<void>(builder: (_) => const TasksScreen()),
+    );
+  }
+
+  void _openAgenda(BuildContext context, AgendaFocus focus) {
+    if (onOpenAgenda != null) {
+      onOpenAgenda!(focus);
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => CalendarScreen(
+          accountScopeToken: AuthService.currentUserId ?? 'guest',
+          initialDate: focus.date,
+          highlightedEventId: focus.eventId,
+          highlightedRoutineId: focus.routineId,
+        ),
+      ),
     );
   }
 }
