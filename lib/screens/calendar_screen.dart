@@ -3,9 +3,12 @@ import 'package:flutter/material.dart';
 import '../models/event_model.dart';
 import '../models/event_sync_conflict.dart';
 import '../models/event_sync_models.dart';
+import '../models/routine/routine_agenda_item.dart';
 import '../services/event_service.dart';
 import '../services/event_mutation_result.dart';
 import '../services/event_mutation_service.dart';
+import '../services/routine/routine_agenda_service.dart';
+import '../services/routine_repository.dart';
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({
@@ -17,6 +20,8 @@ class CalendarScreen extends StatefulWidget {
     this.loadSyncConflictsForTest,
     this.resolveSyncConflictForTest,
     this.eventsVersionForTest,
+    this.loadRoutinesForDayForTest,
+    this.routinesVersionForTest,
     this.accountScopeToken = 'guest',
     this.initialDate,
   });
@@ -34,6 +39,11 @@ class CalendarScreen extends StatefulWidget {
     required int expectedEventRevision,
   })? deleteEventForTest;
   final ValueNotifier<int>? eventsVersionForTest;
+  final Future<List<RoutineAgendaItem>> Function(
+    String accountScopeId,
+    DateTime day,
+  )? loadRoutinesForDayForTest;
+  final ValueNotifier<int>? routinesVersionForTest;
   final String accountScopeToken;
   final DateTime? initialDate;
   final Future<List<EventSyncConflict>> Function()? loadSyncConflictsForTest;
@@ -50,6 +60,7 @@ class CalendarScreen extends StatefulWidget {
 class _CalendarScreenState extends State<CalendarScreen> {
   List<EventModel> events = [];
   List<EventSyncConflict> syncConflicts = [];
+  List<RoutineAgendaItem> routineItems = [];
 
   late DateTime selectedDate;
   late DateTime visibleMonth;
@@ -57,6 +68,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   String selectedView = 'Mois';
   bool loading = true;
   int _loadGeneration = 0;
+  int _routineLoadGeneration = 0;
   int _screenInstanceGeneration = 0;
 
   final Color bg = const Color(0xFFF8EFEA);
@@ -66,10 +78,19 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   ValueNotifier<int> get eventsVersion =>
       widget.eventsVersionForTest ?? EventService.eventsVersion;
+  ValueNotifier<int> get routineChanges =>
+      widget.routinesVersionForTest ?? routinesVersion;
 
   Future<List<EventModel>> getEvents() {
     return widget.loadEventsForTest?.call() ?? EventService.getEvents();
   }
+
+  Future<List<RoutineAgendaItem>> getRoutinesForDay(DateTime day) =>
+      widget.loadRoutinesForDayForTest?.call(widget.accountScopeToken, day) ??
+      RoutineAgendaService.production().forDay(
+        accountScopeId: widget.accountScopeToken,
+        day: day,
+      );
 
   Future<void> addEvent(EventModel event) {
     return widget.addEventForTest?.call(event) ?? EventService.addEvent(event);
@@ -111,7 +132,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
     _screenInstanceGeneration++;
     EventService.updateScreenInstanceGeneration(_screenInstanceGeneration);
     eventsVersion.addListener(loadEvents);
+    routineChanges.addListener(loadRoutineItems);
     loadEvents();
+    loadRoutineItems();
   }
 
   @override
@@ -120,19 +143,24 @@ class _CalendarScreenState extends State<CalendarScreen> {
     if (oldWidget.accountScopeToken == widget.accountScopeToken) return;
     _screenInstanceGeneration++;
     _loadGeneration++;
+    _routineLoadGeneration++;
     EventService.updateScreenInstanceGeneration(_screenInstanceGeneration);
     setState(() {
       events = [];
       syncConflicts = [];
+      routineItems = [];
       loading = true;
     });
     loadEvents();
+    loadRoutineItems();
   }
 
   @override
   void dispose() {
     _loadGeneration++;
+    _routineLoadGeneration++;
     eventsVersion.removeListener(loadEvents);
+    routineChanges.removeListener(loadRoutineItems);
     super.dispose();
   }
 
@@ -165,6 +193,31 @@ class _CalendarScreenState extends State<CalendarScreen> {
       syncConflicts = conflicts;
       loading = false;
     });
+  }
+
+  Future<void> loadRoutineItems() async {
+    final generation = ++_routineLoadGeneration;
+    final day = selectedDate;
+    List<RoutineAgendaItem> loaded;
+    try {
+      loaded = await getRoutinesForDay(day);
+    } catch (_) {
+      loaded = const [];
+    }
+    if (!mounted ||
+        generation != _routineLoadGeneration ||
+        formatIsoDate(day) != formatIsoDate(selectedDate)) {
+      return;
+    }
+    setState(() => routineItems = loaded);
+  }
+
+  void selectDate(DateTime date) {
+    setState(() {
+      selectedDate = date;
+      routineItems = [];
+    });
+    loadRoutineItems();
   }
 
   Future<void> showNextSyncConflict() async {
@@ -448,14 +501,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
     return filtered;
   }
 
-  void previousDay() => setState(
-      () => selectedDate = selectedDate.subtract(const Duration(days: 1)));
-  void nextDay() =>
-      setState(() => selectedDate = selectedDate.add(const Duration(days: 1)));
-  void previousWeek() => setState(
-      () => selectedDate = selectedDate.subtract(const Duration(days: 7)));
-  void nextWeek() =>
-      setState(() => selectedDate = selectedDate.add(const Duration(days: 7)));
+  void previousDay() =>
+      selectDate(selectedDate.subtract(const Duration(days: 1)));
+  void nextDay() => selectDate(selectedDate.add(const Duration(days: 1)));
+  void previousWeek() =>
+      selectDate(selectedDate.subtract(const Duration(days: 7)));
+  void nextWeek() => selectDate(selectedDate.add(const Duration(days: 7)));
   void previousMonth() => setState(() =>
       visibleMonth = DateTime(visibleMonth.year, visibleMonth.month - 1, 1));
   void nextMonth() => setState(() =>
@@ -1392,9 +1443,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                   await addEvent(updatedEvent);
                                 }
 
-                                selectedDate = selectedEventDate;
                                 visibleMonth = DateTime(selectedEventDate.year,
                                     selectedEventDate.month, 1);
+                                selectDate(selectedEventDate);
                                 if (context.mounted) Navigator.pop(context);
                                 await loadEvents();
                               },
@@ -1572,10 +1623,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   formatIsoDate(day) == formatIsoDate(selectedDate);
               final dayEvents = eventsForDay(day).take(3).toList();
               return GestureDetector(
-                onTap: () => setState(() {
-                  selectedDate = day;
-                  visibleMonth = DateTime(day.year, day.month, 1);
-                }),
+                onTap: () {
+                  setState(
+                      () => visibleMonth = DateTime(day.year, day.month, 1));
+                  selectDate(day);
+                },
                 child: Column(
                   children: [
                     Container(
@@ -1674,7 +1726,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           final hasEvent = hasEventOnDay(day);
           return Expanded(
             child: GestureDetector(
-              onTap: () => setState(() => selectedDate = day),
+              onTap: () => selectDate(day),
               child: Container(
                 margin: const EdgeInsets.symmetric(horizontal: 3),
                 padding: const EdgeInsets.symmetric(vertical: 14),
@@ -1737,7 +1789,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   Widget buildEventsList() {
     final events = eventsForSelectedDate();
 
-    if (events.isEmpty) {
+    if (events.isEmpty && routineItems.isEmpty) {
       return Padding(
         padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
         child: Container(
@@ -1773,10 +1825,63 @@ class _CalendarScreenState extends State<CalendarScreen> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
       child: Column(
-        children: events.map(buildEventCard).toList(),
+        children: [
+          ...events.map(buildEventCard),
+          ...routineItems.map(buildRoutineCard),
+        ],
       ),
     );
   }
+
+  Widget buildRoutineCard(RoutineAgendaItem routine) => Container(
+        key: ValueKey('routine-agenda-${routine.occurrenceId}'),
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF8F5),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: accent.withValues(alpha: 0.25)),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.autorenew_rounded, color: accent),
+            const SizedBox(width: 14),
+            SizedBox(
+              width: 92,
+              child: Text(
+                '${routine.startTime} - ${routine.endTime}',
+                style: TextStyle(
+                  color: accent,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    routine.title,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: textDark,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Routine prévue par Zelia',
+                    style: TextStyle(color: textSoft, fontSize: 13),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
 
   Widget buildEventCard(EventModel event) {
     final color = categoryColor(categoryOf(event));

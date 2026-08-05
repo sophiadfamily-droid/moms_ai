@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:moms_ai/models/event_model.dart';
 import 'package:moms_ai/models/event_sync_conflict.dart';
 import 'package:moms_ai/models/event_sync_models.dart';
+import 'package:moms_ai/models/routine/routine_agenda_item.dart';
 import 'package:moms_ai/screens/calendar_screen.dart';
 import 'package:moms_ai/services/event_mutation_result.dart';
 
@@ -43,6 +44,44 @@ Widget buildCalendar({
 }
 
 void main() {
+  testWidgets('shows a routine as a read-only Zelia Agenda item',
+      (WidgetTester tester) async {
+    final today = DateTime.now();
+    final routineVersion = ValueNotifier<int>(0);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CalendarScreen(
+          accountScopeToken: 'account-a',
+          initialDate: today,
+          eventsVersionForTest: ValueNotifier<int>(0),
+          routinesVersionForTest: routineVersion,
+          loadEventsForTest: () async => const [],
+          loadSyncConflictsForTest: () async => const [],
+          loadRoutinesForDayForTest: (_, day) async => [
+            RoutineAgendaItem(
+              occurrenceId: 'routine-1:${isoDate(day)}',
+              routineId: 'routine-1',
+              dateIso: isoDate(day),
+              title: 'Préparer les enfants',
+              startTime: '07:30',
+              endTime: '08:15',
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Préparer les enfants'), findsOneWidget);
+    expect(find.text('07:30 - 08:15'), findsOneWidget);
+    expect(find.text('Routine prévue par Zelia'), findsOneWidget);
+    expect(
+      find.byKey(ValueKey('routine-agenda-routine-1:${isoDate(today)}')),
+      findsOneWidget,
+    );
+    expect(find.byIcon(Icons.more_horiz), findsNothing);
+  });
+
   testWidgets(
     'account scope change clears immediately and discards the old load',
     (WidgetTester tester) async {
