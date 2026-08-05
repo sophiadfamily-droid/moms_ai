@@ -403,6 +403,84 @@ void main() {
       expect(view!.categoryCounts.values.single, 1);
     });
 
+    test('attention view resolves the real event and routine names', () async {
+      final conflictStart = DateTime.utc(2026, 7, 28, 14);
+      final conflict = ProactiveDetectionSignal(
+        detectionId: 'conflict-one',
+        accountScopeId: 'account-a',
+        detectorType: ProactiveDetectorType.conflict,
+        reasonCode: ProactiveDetectionReason.structuredConflict,
+        state: ProactiveDetectionState.scheduled,
+        confidenceLevel: DetectionConfidenceLevel.certain,
+        evidenceLevel: DetectionEvidenceLevel.confirmedStructured,
+        evidence: [
+          DetectionEvidence(
+            sourceType: DetectionEvidenceSource.fixedEventInterval,
+            domain: LifeContextDomain.event,
+            sourceId: 'event-one',
+            revision: 1,
+            freshness: LifeContextFreshness.current,
+            availability: LifeContextAvailability.available,
+            certainty: DetectionEvidenceLevel.confirmedStructured,
+            intervalStart: conflictStart,
+            intervalEnd: conflictStart.add(const Duration(hours: 1)),
+            confirmed: true,
+          ),
+          DetectionEvidence(
+            sourceType: DetectionEvidenceSource.structuredRoutineOccurrence,
+            domain: LifeContextDomain.routine,
+            sourceId: 'routine-one:2026-07-28',
+            revision: 1,
+            freshness: LifeContextFreshness.current,
+            availability: LifeContextAvailability.available,
+            certainty: DetectionEvidenceLevel.confirmedStructured,
+            intervalStart: conflictStart,
+            intervalEnd: conflictStart.add(const Duration(hours: 1)),
+            confirmed: true,
+          ),
+        ],
+        sourceRevisions: const {'event-one': 1, 'routine-one': 1},
+        detectedAt: now,
+        validFrom: now,
+        validUntil: now.add(const Duration(days: 7)),
+        observedAt: now,
+        replacementKey: 'conflict-one',
+        incidentFingerprint: 'conflict-one',
+        notificationLogicalId: 'notification-one',
+        interactionDestination: NotificationDestinationType.home,
+        policyVersion: 1,
+        coverageState: DetectionCoverageKind.complete,
+        technicalSeverity: DetectionTechnicalSeverity.important,
+      );
+      final registry = _SignalRegistry(now)
+        ..state = ProactiveDetectionRegistryState(
+          accountScopeId: 'account-a',
+          signals: [conflict],
+          updatedAt: now,
+        );
+      final repository = _PolicyRepository()
+        ..values['account-a'] = _policy(now, summary: false);
+      final view = await DailySummaryViewService(
+        registry: registry,
+        policyService: ProactiveNotificationPolicyService(
+          repository: repository,
+          currentAccountScopeId: () => 'account-a',
+          currentTimezoneId: () async => 'Europe/Paris',
+          now: () => now,
+        ),
+        currentAccountScopeId: () => 'account-a',
+        loadSourceLabels: (_) async => const AttentionSourceLabels(
+          eventTitles: {'event-one': 'Rendez-vous coiffeur'},
+          routineTitles: {'routine-one': 'Sport'},
+        ),
+        now: () => now,
+      ).load();
+
+      expect(view!.conflicts.single.eventTitle, 'Rendez-vous coiffeur');
+      expect(view.conflicts.single.routineTitle, 'Sport');
+      expect(view.conflicts.single.targetDate, conflictStart);
+    });
+
     test('delivery history is bounded and contains no business content', () {
       expect(
         () => ProactiveNotificationDeliveryState(
@@ -648,10 +726,12 @@ void main() {
 
     testWidgets('a simple conflict row opens the agenda', (tester) async {
       var agendaOpened = false;
+      DateTime? openedDate;
+      final conflictDate = DateTime.utc(2026, 7, 28, 14);
       await tester.pumpWidget(
         MaterialApp(
           home: DailySummaryScreen(
-            loader: () async => const DailySummaryViewData(
+            loader: () async => DailySummaryViewData(
               localDate: '2026-07-24',
               categoryCounts: {
                 ProactiveAlertCategory.structuredConflict: 1,
@@ -659,15 +739,32 @@ void main() {
               coverageState: DetectionCoverageKind.complete,
               omittedCount: 0,
               hasStaleInformation: false,
+              categoryTargetDates: {
+                ProactiveAlertCategory.structuredConflict: conflictDate,
+              },
+              conflicts: [
+                ConflictAttentionViewData(
+                  eventTitle: 'le rendez-vous coiffeur',
+                  routineTitle: 'la routine sport',
+                  targetDate: conflictDate,
+                ),
+              ],
             ),
-            onOpenAgenda: () => agendaOpened = true,
+            onOpenAgenda: (date) {
+              agendaOpened = true;
+              openedDate = date;
+            },
           ),
         ),
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Deux choses sont prévues en même temps'));
+      await tester.tap(find.text(
+        'Attention : le rendez-vous coiffeur et la routine sport sont prévus '
+        'en même temps.',
+      ));
       expect(agendaOpened, isTrue);
+      expect(openedDate, conflictDate);
     });
   });
 }

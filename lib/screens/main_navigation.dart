@@ -43,6 +43,7 @@ class MainNavigation extends StatefulWidget {
 
 class _MainNavigationState extends State<MainNavigation> {
   int currentIndex = 0;
+  DateTime? requestedAgendaDate;
 
   late UserProfile currentProfile;
 
@@ -81,6 +82,13 @@ class _MainNavigationState extends State<MainNavigation> {
     });
   }
 
+  void openAgendaDate(DateTime? date) {
+    setState(() {
+      requestedAgendaDate = date;
+      currentIndex = 2;
+    });
+  }
+
   void openChatWithSuggestion(ProactiveTaskDurationHandoff handoff) {
     _conversationSessionController!.beginProactiveTaskDuration(
       handoff: handoff,
@@ -112,6 +120,7 @@ class _MainNavigationState extends State<MainNavigation> {
           HomeScreen(
             profile: currentProfile,
             onNavigate: changeTab,
+            onOpenAgendaDate: openAgendaDate,
           ),
           ChatScreen(
             profile: currentProfile,
@@ -120,8 +129,12 @@ class _MainNavigationState extends State<MainNavigation> {
             proactiveInteractionRegistry: _proactiveInteractionRegistry,
           ),
           CalendarScreen(
-            key: ValueKey('calendar:${widget.accountScopeId ?? 'guest'}'),
+            key: ValueKey(
+              'calendar:${widget.accountScopeId ?? 'guest'}:'
+              '${requestedAgendaDate?.toUtc().toIso8601String() ?? 'today'}',
+            ),
             accountScopeToken: widget.accountScopeId ?? 'guest',
+            initialDate: requestedAgendaDate,
           ),
           TasksScreen(
             onOpenZeliaSuggestion: openChatWithSuggestion,

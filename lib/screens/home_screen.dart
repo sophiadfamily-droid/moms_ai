@@ -20,11 +20,13 @@ import 'daily_summary_screen.dart';
 class HomeScreen extends StatefulWidget {
   final UserProfile profile;
   final ValueChanged<int>? onNavigate;
+  final ValueChanged<DateTime?>? onOpenAgendaDate;
 
   const HomeScreen({
     super.key,
     required this.profile,
     this.onNavigate,
+    this.onOpenAgendaDate,
   });
 
   @override
@@ -411,9 +413,13 @@ class _HomeScreenState extends State<HomeScreen>
               Navigator.of(context).push(
                 MaterialPageRoute<void>(
                   builder: (_) => DailySummaryScreen(
-                    onOpenAgenda: () {
+                    onOpenAgenda: (date) {
                       Navigator.of(context).pop();
-                      navigateToTab(2);
+                      if (widget.onOpenAgendaDate != null) {
+                        widget.onOpenAgendaDate!(date);
+                      } else {
+                        navigateToTab(2);
+                      }
                     },
                     onOpenTasks: () {
                       Navigator.of(context).pop();

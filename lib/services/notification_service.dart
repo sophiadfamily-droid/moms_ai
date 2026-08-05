@@ -27,6 +27,7 @@ import 'daily_summary_view_service.dart';
 import 'proactive_notification_delivery_registry.dart';
 import 'proactive_notification_orchestrator.dart';
 import 'proactive_notification_policy_service.dart';
+import 'life_context_production_factory.dart';
 import 'event_service.dart';
 import 'task_service.dart';
 import 'routine_repository.dart';
@@ -404,7 +405,30 @@ class NotificationService {
             (throw StateError('notification_service_not_initialized')),
         policyService: proactivePolicyService,
         currentAccountScopeId: () => AuthService.currentUserId,
+        loadSourceLabels: _loadAttentionSourceLabels,
       ).load();
+
+  static Future<AttentionSourceLabels> _loadAttentionSourceLabels(
+    String accountScopeId,
+  ) async {
+    final lifeContext = await LifeContextProductionFactory.production();
+    lifeContext.handleAccountScopeChanged(accountScopeId);
+    final snapshot = await lifeContext.refreshIfNeeded();
+    snapshot.validateCanonical();
+    if (snapshot.accountScopeId != accountScopeId) {
+      throw const FormatException('attention_center_account_mismatch');
+    }
+    return AttentionSourceLabels(
+      eventTitles: {
+        for (final event in snapshot.eventDomain!.events) event.id: event.title,
+      },
+      routineTitles: {
+        for (final routine in snapshot.routineDomain!.routines)
+          if (routine.label?.trim().isNotEmpty == true)
+            routine.id: routine.label!.trim(),
+      },
+    );
+  }
 
   static Future<void> evaluateDetections(
     DetectionEvaluationTrigger trigger,

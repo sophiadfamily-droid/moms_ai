@@ -6,6 +6,32 @@ import 'proactive_detection_registry.dart';
 import 'proactive_notification_policy_engine.dart';
 import 'proactive_notification_policy_service.dart';
 
+final class AttentionSourceLabels {
+  const AttentionSourceLabels({
+    this.eventTitles = const {},
+    this.routineTitles = const {},
+  });
+
+  final Map<String, String> eventTitles;
+  final Map<String, String> routineTitles;
+}
+
+final class ConflictAttentionViewData {
+  const ConflictAttentionViewData({
+    required this.eventTitle,
+    required this.routineTitle,
+    required this.targetDate,
+  });
+
+  final String eventTitle;
+  final String routineTitle;
+  final DateTime? targetDate;
+}
+
+typedef AttentionSourceLabelLoader = Future<AttentionSourceLabels> Function(
+  String accountScopeId,
+);
+
 final class DailySummaryViewData {
   const DailySummaryViewData({
     required this.localDate,
@@ -13,6 +39,8 @@ final class DailySummaryViewData {
     required this.coverageState,
     required this.omittedCount,
     required this.hasStaleInformation,
+    this.categoryTargetDates = const {},
+    this.conflicts = const [],
   });
 
   final String localDate;
@@ -20,6 +48,8 @@ final class DailySummaryViewData {
   final DetectionCoverageKind coverageState;
   final int omittedCount;
   final bool hasStaleInformation;
+  final Map<ProactiveAlertCategory, DateTime> categoryTargetDates;
+  final List<ConflictAttentionViewData> conflicts;
 }
 
 /// Read-only presentation boundary. The snapshot remains a projection, never
@@ -31,6 +61,7 @@ final class DailySummaryViewService {
     required this.currentAccountScopeId,
     this.builder = const DailySummaryBuilder(),
     this.now = DateTime.now,
+    this.loadSourceLabels,
   });
 
   final ProactiveDetectionRegistry registry;
@@ -38,6 +69,7 @@ final class DailySummaryViewService {
   final String? Function() currentAccountScopeId;
   final DailySummaryBuilder builder;
   final DateTime Function() now;
+  final AttentionSourceLabelLoader? loadSourceLabels;
 
   Future<DailySummaryViewData?> load() async {
     final scope = currentAccountScopeId();
@@ -80,6 +112,8 @@ final class DailySummaryViewService {
       policy: policy,
       now: now(),
     );
+    final targetDates = _targetDates(active);
+    final conflicts = await _conflictDetails(scope, active);
     final snapshot = result.snapshot;
     if (snapshot == null) {
       if (active.isEmpty) return null;
@@ -110,6 +144,8 @@ final class DailySummaryViewService {
         coverageState: coverage.kind,
         omittedCount: byIncident.length - selected.length,
         hasStaleInformation: coverage.kind != DetectionCoverageKind.complete,
+        categoryTargetDates: targetDates,
+        conflicts: conflicts,
       );
     }
     return DailySummaryViewData(
@@ -119,6 +155,93 @@ final class DailySummaryViewService {
       omittedCount: snapshot.omittedCount,
       hasStaleInformation:
           snapshot.coverageState != DetectionCoverageKind.complete,
+      categoryTargetDates: targetDates,
+      conflicts: conflicts,
     );
+  }
+
+  Future<List<ConflictAttentionViewData>> _conflictDetails(
+    String scope,
+    List<ProactiveDetectionSignal> signals,
+  ) async {
+    final conflictSignals = signals
+        .where(
+          (item) =>
+              item.isActiveAttention &&
+              item.reasonCode == ProactiveDetectionReason.structuredConflict,
+        )
+        .take(20)
+        .toList(growable: false);
+    if (conflictSignals.isEmpty) return const [];
+    AttentionSourceLabels labels = const AttentionSourceLabels();
+    final loader = loadSourceLabels;
+    if (loader != null) {
+      try {
+        labels = await loader(scope);
+      } on Object {
+        // The attention center keeps a safe generic fallback when a domain
+        // label is temporarily unavailable.
+      }
+    }
+    return conflictSignals.map((signal) {
+      final eventEvidence = signal.evidence.where(
+        (item) => item.domain.name == 'event',
+      );
+      final routineEvidence = signal.evidence.where(
+        (item) => item.domain.name == 'routine',
+      );
+      final eventId =
+          eventEvidence.isEmpty ? null : eventEvidence.first.sourceId;
+      final occurrenceId =
+          routineEvidence.isEmpty ? null : routineEvidence.first.sourceId;
+      final routineId = occurrenceId == null ? null : _routineId(occurrenceId);
+      final starts = signal.evidence
+          .map((item) => item.intervalStart)
+          .whereType<DateTime>();
+      final targetDate = starts.isEmpty
+          ? null
+          : starts.reduce((a, b) => a.isBefore(b) ? a : b);
+      return ConflictAttentionViewData(
+        eventTitle: _safeLabel(
+          eventId == null ? null : labels.eventTitles[eventId],
+          'un rendez-vous',
+        ),
+        routineTitle: _safeLabel(
+          routineId == null ? null : labels.routineTitles[routineId],
+          'une routine',
+        ),
+        targetDate: targetDate,
+      );
+    }).toList(growable: false);
+  }
+
+  static String _routineId(String occurrenceId) {
+    final match = RegExp(r'^(.*):\d{4}-\d{2}-\d{2}$').firstMatch(occurrenceId);
+    return match?.group(1) ?? occurrenceId;
+  }
+
+  static String _safeLabel(String? value, String fallback) {
+    final normalized = value?.trim() ?? '';
+    return normalized.isEmpty ? fallback : normalized;
+  }
+
+  static Map<ProactiveAlertCategory, DateTime> _targetDates(
+    List<ProactiveDetectionSignal> signals,
+  ) {
+    final result = <ProactiveAlertCategory, DateTime>{};
+    for (final signal in signals.where((item) => item.isActiveAttention)) {
+      final starts = signal.evidence
+          .map((item) => item.intervalStart)
+          .whereType<DateTime>();
+      if (starts.isEmpty) continue;
+      final earliest = starts.reduce((a, b) => a.isBefore(b) ? a : b);
+      final category =
+          ProactiveNotificationPolicyEngine.categoryForSignal(signal);
+      final previous = result[category];
+      if (previous == null || earliest.isBefore(previous)) {
+        result[category] = earliest;
+      }
+    }
+    return Map.unmodifiable(result);
   }
 }

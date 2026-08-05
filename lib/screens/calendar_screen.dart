@@ -18,6 +18,7 @@ class CalendarScreen extends StatefulWidget {
     this.resolveSyncConflictForTest,
     this.eventsVersionForTest,
     this.accountScopeToken = 'guest',
+    this.initialDate,
   });
 
   final Future<List<EventModel>> Function()? loadEventsForTest;
@@ -34,6 +35,7 @@ class CalendarScreen extends StatefulWidget {
   })? deleteEventForTest;
   final ValueNotifier<int>? eventsVersionForTest;
   final String accountScopeToken;
+  final DateTime? initialDate;
   final Future<List<EventSyncConflict>> Function()? loadSyncConflictsForTest;
   final Future<EventConflictResolutionResult> Function({
     required String conflictId,
@@ -49,12 +51,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
   List<EventModel> events = [];
   List<EventSyncConflict> syncConflicts = [];
 
-  DateTime selectedDate = DateTime.now();
-  DateTime visibleMonth = DateTime(
-    DateTime.now().year,
-    DateTime.now().month,
-    1,
-  );
+  late DateTime selectedDate;
+  late DateTime visibleMonth;
 
   String selectedView = 'Mois';
   bool loading = true;
@@ -108,6 +106,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
   @override
   void initState() {
     super.initState();
+    selectedDate = widget.initialDate?.toLocal() ?? DateTime.now();
+    visibleMonth = DateTime(selectedDate.year, selectedDate.month, 1);
     _screenInstanceGeneration++;
     EventService.updateScreenInstanceGeneration(_screenInstanceGeneration);
     eventsVersion.addListener(loadEvents);

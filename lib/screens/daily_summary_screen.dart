@@ -16,7 +16,7 @@ final class DailySummaryScreen extends StatelessWidget {
   });
 
   final Future<DailySummaryViewData?> Function()? loader;
-  final VoidCallback? onOpenAgenda;
+  final ValueChanged<DateTime?>? onOpenAgenda;
   final VoidCallback? onOpenTasks;
 
   @override
@@ -53,14 +53,39 @@ final class DailySummaryScreen extends StatelessWidget {
                       'Certaines informations ne sont pas disponibles ou '
                       'doivent être actualisées.',
                     ),
-                  for (final entry in data.categoryCounts.entries)
+                  for (final conflict in data.conflicts)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.event_busy_outlined),
+                      title: Text(
+                        'Attention : ${conflict.eventTitle} et '
+                        '${conflict.routineTitle} sont prévus en même temps.',
+                      ),
+                      subtitle: const Text('Voir dans l’Agenda'),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () => _openCategory(
+                        context,
+                        ProactiveAlertCategory.structuredConflict,
+                        conflict.targetDate,
+                      ),
+                    ),
+                  for (final entry in data.categoryCounts.entries.where(
+                    (entry) =>
+                        entry.key !=
+                            ProactiveAlertCategory.structuredConflict ||
+                        data.conflicts.isEmpty,
+                  ))
                     ListTile(
                       contentPadding: EdgeInsets.zero,
                       leading: const Icon(Icons.notifications_outlined),
                       title: Text(_label(entry.key, entry.value)),
                       subtitle: Text(_destinationLabel(entry.key)),
                       trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () => _openCategory(context, entry.key),
+                      onTap: () => _openCategory(
+                        context,
+                        entry.key,
+                        data.categoryTargetDates[entry.key],
+                      ),
                     ),
                   if (data.omittedCount > 0)
                     Text(
@@ -125,16 +150,21 @@ final class DailySummaryScreen extends StatelessWidget {
           ? 'Voir dans l’Agenda'
           : 'Voir dans les Tâches';
 
-  void _openCategory(BuildContext context, ProactiveAlertCategory category) {
+  void _openCategory(
+    BuildContext context,
+    ProactiveAlertCategory category,
+    DateTime? targetDate,
+  ) {
     if (category == ProactiveAlertCategory.structuredConflict) {
       if (onOpenAgenda != null) {
-        onOpenAgenda!();
+        onOpenAgenda!(targetDate);
         return;
       }
       Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => CalendarScreen(
             accountScopeToken: AuthService.currentUserId ?? 'guest',
+            initialDate: targetDate,
           ),
         ),
       );
