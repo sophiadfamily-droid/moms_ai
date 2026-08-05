@@ -66,16 +66,18 @@ final class NotificationInteractionCoordinator {
       );
     }
     return NotificationNavigationIntent(
-      switch (request.destinationType) {
-        NotificationDestinationType.home =>
-          NotificationNavigationIntentType.home,
-        NotificationDestinationType.actionHistory =>
-          NotificationNavigationIntentType.actionHistory,
-        NotificationDestinationType.notificationsSettings =>
-          NotificationNavigationIntentType.notificationsSettings,
-        NotificationDestinationType.dailySummary =>
-          NotificationNavigationIntentType.dailySummary,
-      },
+      request.destinationReference == 'attention'
+          ? NotificationNavigationIntentType.dailySummary
+          : switch (request.destinationType) {
+              NotificationDestinationType.home =>
+                NotificationNavigationIntentType.home,
+              NotificationDestinationType.actionHistory =>
+                NotificationNavigationIntentType.actionHistory,
+              NotificationDestinationType.notificationsSettings =>
+                NotificationNavigationIntentType.notificationsSettings,
+              NotificationDestinationType.dailySummary =>
+                NotificationNavigationIntentType.dailySummary,
+            },
       'notification_navigation_safe',
     );
   }

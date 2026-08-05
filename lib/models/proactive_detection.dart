@@ -511,6 +511,16 @@ final class ProactiveDetectionSignal {
       coverageState != DetectionCoverageKind.unavailable &&
       coverageState != DetectionCoverageKind.corrupted;
 
+  bool get isActiveAttention =>
+      (state == ProactiveDetectionState.eligible ||
+          state == ProactiveDetectionState.scheduled ||
+          state == ProactiveDetectionState.notified) &&
+      confidenceLevel != DetectionConfidenceLevel.insufficient &&
+      evidenceLevel != DetectionEvidenceLevel.insufficient &&
+      coverageState != DetectionCoverageKind.stale &&
+      coverageState != DetectionCoverageKind.unavailable &&
+      coverageState != DetectionCoverageKind.corrupted;
+
   ProactiveDetectionSignal copyWith({
     ProactiveDetectionState? state,
     DateTime? resolvedAt,

@@ -14,6 +14,8 @@ import '../services/auth_service.dart';
 import '../services/event_service.dart';
 import '../services/shopping_service.dart';
 import '../services/task_service.dart';
+import '../services/notification_service.dart';
+import 'daily_summary_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final UserProfile profile;
@@ -51,6 +53,7 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   bool loading = true;
+  bool hasAttention = false;
 
   final Color bg = const Color(0xFFF8EFEA);
   final Color accent = const Color(0xFFE95D5D);
@@ -92,6 +95,14 @@ class _HomeScreenState extends State<HomeScreen>
     final loadedShopping = await ShoppingService.getItems();
     final prefs = await SharedPreferences.getInstance();
     final loadedPhotos = prefs.getStringList(scopedFamilyPhotosKey) ?? [];
+    var loadedAttention = false;
+    try {
+      final summary = await NotificationService.loadDailySummary();
+      loadedAttention = summary != null &&
+          summary.categoryCounts.values.any((count) => count > 0);
+    } on Object {
+      // The dashboard remains usable when notification context is unavailable.
+    }
 
     loadedEvents.sort((a, b) {
       final aValue = a.startDateTimeIso.isEmpty
@@ -113,6 +124,7 @@ class _HomeScreenState extends State<HomeScreen>
       tasks = AiPriorityService.sortTasks(loadedTasks);
       shoppingItems = loadedShopping;
       familyPhotoPaths = loadedPhotos;
+      hasAttention = loadedAttention;
       loading = false;
     });
   }
@@ -394,8 +406,23 @@ class _HomeScreenState extends State<HomeScreen>
           const Spacer(),
           buildRoundIcon(
             icon: Icons.notifications_none_rounded,
-            hasDot: true,
-            onTap: () {},
+            hasDot: hasAttention,
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => DailySummaryScreen(
+                    onOpenAgenda: () {
+                      Navigator.of(context).pop();
+                      navigateToTab(2);
+                    },
+                    onOpenTasks: () {
+                      Navigator.of(context).pop();
+                      navigateToTab(3);
+                    },
+                  ),
+                ),
+              );
+            },
           ),
           const SizedBox(width: 12),
           buildRoundIcon(

@@ -531,6 +531,7 @@ final class ProactiveDetectionEngine {
         .where(
           (item) =>
               item.state != ProactiveDetectionState.resolved &&
+              _canResolveFromCoverage(item, input.coverage) &&
               !activeFingerprints.contains(item.incidentFingerprint),
         )
         .map(
@@ -580,6 +581,18 @@ final class ProactiveDetectionEngine {
         ProactiveDetectorType.delay => 2,
         ProactiveDetectorType.potentialOmission => 3,
       };
+
+  static bool _canResolveFromCoverage(
+    ProactiveDetectionSignal signal,
+    DetectionCoverageState coverage,
+  ) {
+    if (!coverage.evaluableCategories.contains(signal.detectorType)) {
+      return false;
+    }
+    final evidenceDomains = signal.evidence.map((item) => item.domain).toSet();
+    return evidenceDomains.intersection(coverage.unavailableDomains).isEmpty &&
+        evidenceDomains.intersection(coverage.staleDomains).isEmpty;
+  }
 }
 
 ProactiveDetectionSignal _signal({

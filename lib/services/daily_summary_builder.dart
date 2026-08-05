@@ -38,7 +38,7 @@ final class DailySummaryBuilder {
     final byIncident = <String, ProactiveDetectionSignal>{};
     for (final signal in signals) {
       if (signal.accountScopeId != accountScopeId ||
-          !signal.isNotifiable ||
+          !signal.isActiveAttention ||
           !signal.validUntil.isAfter(current)) {
         continue;
       }

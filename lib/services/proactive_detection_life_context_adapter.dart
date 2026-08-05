@@ -15,6 +15,7 @@ final class ProactiveDetectionLifeContextAdapter {
     required LifeContextGraph graph,
     required List<StructuredConflictObservation> confirmedConflicts,
     bool conflictSourceAvailable = true,
+    bool routineConflictSourceAvailable = true,
     required List<ProactiveDetectionSignal> existingSignals,
     required String timezoneId,
   }) {
@@ -125,6 +126,9 @@ final class ProactiveDetectionLifeContextAdapter {
         .toSet();
     if (!conflictSourceAvailable) {
       unavailable.add(LifeContextDomain.event);
+    }
+    if (!routineConflictSourceAvailable) {
+      unavailable.add(LifeContextDomain.routine);
     }
     final corrupted = metadata.any(
       (item) => item.availability == LifeContextAvailability.corrupted,

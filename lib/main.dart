@@ -185,9 +185,9 @@ class _ZeliaAppState extends State<ZeliaApp> with WidgetsBindingObserver {
   }
 
   Future<void> _openPendingNotificationDestination() async {
+    if (!mounted || !onboardingDone) return;
     final intent = await NotificationService.consumePendingInteraction();
     if (!mounted ||
-        !onboardingDone ||
         intent?.type != NotificationNavigationIntentType.dailySummary) {
       return;
     }

@@ -172,32 +172,32 @@ final class _NotificationSettingsScreenState
                     _categorySwitch(
                       proactive,
                       ProactiveAlertCategory.deadlineApproaching,
-                      'Échéances proches',
+                      'Ce qui est à faire bientôt',
                     ),
                     _categorySwitch(
                       proactive,
                       ProactiveAlertCategory.deadlinePassed,
-                      'Échéances dépassées',
+                      'Ce qui est en retard',
                     ),
                     _categorySwitch(
                       proactive,
                       ProactiveAlertCategory.objectivelyDelayed,
-                      'Retards objectivement vérifiables',
+                      'Ce qui prend du retard',
                     ),
                     _categorySwitch(
                       proactive,
                       ProactiveAlertCategory.structuredConflict,
-                      'Conflits structurés',
+                      'Plusieurs choses prévues en même temps',
                     ),
                     _categorySwitch(
                       proactive,
                       ProactiveAlertCategory.potentialOmission,
-                      'Oublis potentiels',
+                      'Ce qui semble avoir été oublié',
                     ),
                     _categorySwitch(
                       proactive,
                       ProactiveAlertCategory.explicitReminder,
-                      'Rappels explicitement demandés',
+                      'Rappels demandés',
                     ),
                     _categorySwitch(
                       proactive,
@@ -494,15 +494,16 @@ final class _NotificationSettingsScreenState
 
   static String _categoryLabel(ProactiveAlertCategory category) =>
       switch (category) {
-        ProactiveAlertCategory.deadlineApproaching => 'Échéances proches',
-        ProactiveAlertCategory.deadlinePassed => 'Échéances dépassées',
-        ProactiveAlertCategory.objectivelyDelayed => 'Retards',
-        ProactiveAlertCategory.structuredConflict => 'Conflits',
-        ProactiveAlertCategory.potentialOmission => 'Oublis potentiels',
+        ProactiveAlertCategory.deadlineApproaching => 'À faire bientôt',
+        ProactiveAlertCategory.deadlinePassed => 'En retard',
+        ProactiveAlertCategory.objectivelyDelayed => 'Prend du retard',
+        ProactiveAlertCategory.structuredConflict =>
+          'Plusieurs choses en même temps',
+        ProactiveAlertCategory.potentialOmission => 'Peut-être oublié',
         ProactiveAlertCategory.explicitReminder => 'Rappels demandés',
         ProactiveAlertCategory.pendingActionAttention => 'Actions à consulter',
-        ProactiveAlertCategory.systemInformation => 'Informations système',
-        ProactiveAlertCategory.dailySummary => 'Résumé quotidien',
+        ProactiveAlertCategory.systemInformation => 'Informations utiles',
+        ProactiveAlertCategory.dailySummary => 'Résumé de la journée',
       };
 
   static String _permissionLabel(NotificationPermissionStatus? state) =>

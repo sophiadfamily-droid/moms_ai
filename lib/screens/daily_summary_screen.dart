@@ -3,14 +3,21 @@ import 'package:flutter/material.dart';
 import '../models/proactive_notification_policy.dart';
 import '../services/daily_summary_view_service.dart';
 import '../services/notification_service.dart';
+import '../services/auth_service.dart';
+import 'calendar_screen.dart';
+import 'tasks_screen.dart';
 
 final class DailySummaryScreen extends StatelessWidget {
   const DailySummaryScreen({
     super.key,
     this.loader,
+    this.onOpenAgenda,
+    this.onOpenTasks,
   });
 
   final Future<DailySummaryViewData?> Function()? loader;
+  final VoidCallback? onOpenAgenda;
+  final VoidCallback? onOpenTasks;
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -28,8 +35,7 @@ final class DailySummaryScreen extends StatelessWidget {
                   child: Padding(
                     padding: EdgeInsets.all(24),
                     child: Text(
-                      'Aucune information structurée n’est disponible pour ce '
-                      'résumé.',
+                      'Tu n’as rien à vérifier pour le moment.',
                     ),
                   ),
                 );
@@ -38,7 +44,7 @@ final class DailySummaryScreen extends StatelessWidget {
                 padding: const EdgeInsets.all(20),
                 children: [
                   Text(
-                    'Résumé du ${data.localDate}',
+                    _heading(data.localDate),
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                   const SizedBox(height: 12),
@@ -51,18 +57,20 @@ final class DailySummaryScreen extends StatelessWidget {
                     ListTile(
                       contentPadding: EdgeInsets.zero,
                       leading: const Icon(Icons.notifications_outlined),
-                      title: Text(_label(entry.key)),
-                      trailing: Text('${entry.value}'),
+                      title: Text(_label(entry.key, entry.value)),
+                      subtitle: Text(_destinationLabel(entry.key)),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () => _openCategory(context, entry.key),
                     ),
                   if (data.omittedCount > 0)
                     Text(
                       '${data.omittedCount} élément(s) supplémentaire(s) '
-                      'n’ont pas été affiché(s) pour garder le résumé court.',
+                      'à vérifier ne sont pas affichés ici.',
                     ),
                   const SizedBox(height: 16),
                   const Text(
-                    'Ouvre Agenda ou Tâches pour consulter les informations '
-                    'actuelles. Le résumé ne modifie rien.',
+                    'Ouvre l’Agenda ou les Tâches pour voir les détails. '
+                    'Zelia ne change rien sans ton accord.',
                   ),
                 ],
               );
@@ -71,16 +79,73 @@ final class DailySummaryScreen extends StatelessWidget {
         ),
       );
 
-  static String _label(ProactiveAlertCategory category) => switch (category) {
-        ProactiveAlertCategory.deadlineApproaching => 'Échéances proches',
-        ProactiveAlertCategory.deadlinePassed => 'Échéances dépassées',
-        ProactiveAlertCategory.objectivelyDelayed => 'Retards à vérifier',
-        ProactiveAlertCategory.structuredConflict => 'Conflits structurés',
+  static String _heading(String date) {
+    final parsed = DateTime.tryParse(date);
+    final today = DateTime.now();
+    if (parsed != null &&
+        parsed.year == today.year &&
+        parsed.month == today.month &&
+        parsed.day == today.day) {
+      return 'Ce qui demande ton attention aujourd’hui';
+    }
+    if (parsed == null) return 'Ce qui demande ton attention';
+    return 'Ce qui demande ton attention le '
+        '${parsed.day.toString().padLeft(2, '0')}/'
+        '${parsed.month.toString().padLeft(2, '0')}/${parsed.year}';
+  }
+
+  static String _label(ProactiveAlertCategory category, int count) =>
+      switch (category) {
+        ProactiveAlertCategory.deadlineApproaching => count == 1
+            ? 'Une chose est à faire bientôt'
+            : '$count choses sont à faire bientôt',
+        ProactiveAlertCategory.deadlinePassed => count == 1
+            ? 'Une chose est en retard'
+            : '$count choses sont en retard',
+        ProactiveAlertCategory.objectivelyDelayed => count == 1
+            ? 'Une chose prend du retard'
+            : '$count choses prennent du retard',
+        ProactiveAlertCategory.structuredConflict => count == 1
+            ? 'Deux choses sont prévues en même temps'
+            : '$count moments où plusieurs choses se chevauchent',
         ProactiveAlertCategory.potentialOmission =>
-          'Éléments pouvant nécessiter ton attention',
-        ProactiveAlertCategory.explicitReminder => 'Rappels demandés',
-        ProactiveAlertCategory.pendingActionAttention => 'Actions à consulter',
-        ProactiveAlertCategory.systemInformation => 'Informations système',
-        ProactiveAlertCategory.dailySummary => 'Résumé quotidien',
+          count == 1 ? 'Une chose est à vérifier' : '$count choses à vérifier',
+        ProactiveAlertCategory.explicitReminder =>
+          count == 1 ? 'Un rappel' : '$count rappels',
+        ProactiveAlertCategory.pendingActionAttention => count == 1
+            ? 'Une action attend ta réponse'
+            : '$count actions attendent ta réponse',
+        ProactiveAlertCategory.systemInformation =>
+          count == 1 ? 'Une information utile' : '$count informations utiles',
+        ProactiveAlertCategory.dailySummary => 'Ton résumé de la journée',
       };
+
+  static String _destinationLabel(ProactiveAlertCategory category) =>
+      category == ProactiveAlertCategory.structuredConflict
+          ? 'Voir dans l’Agenda'
+          : 'Voir dans les Tâches';
+
+  void _openCategory(BuildContext context, ProactiveAlertCategory category) {
+    if (category == ProactiveAlertCategory.structuredConflict) {
+      if (onOpenAgenda != null) {
+        onOpenAgenda!();
+        return;
+      }
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => CalendarScreen(
+            accountScopeToken: AuthService.currentUserId ?? 'guest',
+          ),
+        ),
+      );
+      return;
+    }
+    if (onOpenTasks != null) {
+      onOpenTasks!();
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const TasksScreen()),
+    );
+  }
 }

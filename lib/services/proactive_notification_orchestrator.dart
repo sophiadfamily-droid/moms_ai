@@ -4,6 +4,7 @@ import '../models/local_notification_models.dart';
 import '../models/proactive_detection.dart';
 import '../models/proactive_notification_policy.dart';
 import 'daily_summary_builder.dart';
+import 'app_diagnostics.dart';
 import 'detection_notification_coordinator.dart';
 import 'local_notification_scheduler.dart';
 import 'notification_permission_service.dart';
@@ -99,6 +100,23 @@ final class ProactiveNotificationOrchestrator
         permission: permission,
         notificationSettings: notificationSettings,
         now: current,
+      );
+      AppDiagnostics.record(
+        component: 'proactive_notification',
+        domain: 'notification',
+        operation: 'decide',
+        step: 'policy_${decision.type.name}',
+        code: decision.type == NotificationDeliveryDecisionType.schedule ||
+                decision.type == NotificationDeliveryDecisionType.deliverNow
+            ? AppErrorCode.proactiveShow
+            : AppErrorCode.proactiveNoShow,
+        severity: AppErrorSeverity.info,
+        metadata: {
+          'decision': decision.type.name,
+          'reasonCodes': decision.reasonCode.name,
+          'count': decision.dailyCount,
+          'candidateCount': decision.windowCount,
+        },
       );
       if (decision.type ==
           NotificationDeliveryDecisionType.includeInDailySummary) {

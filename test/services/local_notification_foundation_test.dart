@@ -316,6 +316,29 @@ void main() {
           .payload;
       expect((await coordinator.resolve(payload)).type,
           NotificationNavigationIntentType.home);
+
+      final attentionRequest = _request(
+        id: 'notification-attention',
+        platformId: 43,
+        destinationReference: 'attention',
+      );
+      await registry.save(
+        NotificationRegistryState(
+          accountScopeId: 'account-a',
+          entries: [attentionRequest],
+        ),
+      );
+      final attentionPayload = const NotificationPrivacySanitizer()
+          .sanitize(
+            request: attentionRequest,
+            privacyMode: NotificationPrivacyMode.genericOnly,
+            interactionToken: attentionRequest.correlationId,
+          )
+          .payload;
+      expect(
+        (await coordinator.resolve(attentionPayload)).type,
+        NotificationNavigationIntentType.dailySummary,
+      );
       scope = 'account-b';
       expect((await coordinator.resolve(payload)).type,
           NotificationNavigationIntentType.neutral);
@@ -368,6 +391,11 @@ void main() {
           .readAsStringSync();
       expect(main, isNot(contains('requestAfterExplicitExplanation')));
       expect(appDelegate, isNot(contains('requestAuthorization')));
+      expect(appDelegate, contains('import UserNotifications'));
+      expect(
+        appDelegate,
+        contains('UNUserNotificationCenter.current().delegate = self'),
+      );
       expect(activity, isNot(contains('requestPermissions')));
       expect(manifest, contains('android.permission.POST_NOTIFICATIONS'));
       expect(manifest, isNot(contains('SCHEDULE_EXACT_ALARM')));
@@ -404,6 +432,7 @@ LocalNotificationRequest _request({
       NotificationScheduleMeaning.absoluteInstant,
   LocalNotificationCategory category = LocalNotificationCategory.test,
   LocalNotificationStatus status = LocalNotificationStatus.registered,
+  String destinationReference = 'home',
 }) =>
     LocalNotificationRequest(
       logicalNotificationId: id,
@@ -417,7 +446,7 @@ LocalNotificationRequest _request({
       privacyLevel: NotificationPrivacyLevel.generic,
       interactionType: NotificationInteractionType.openOnly,
       destinationType: NotificationDestinationType.home,
-      destinationReference: 'home',
+      destinationReference: destinationReference,
       replacementKey: replacementKey,
       source: LocalNotificationSource.explicitTest,
       status: status,

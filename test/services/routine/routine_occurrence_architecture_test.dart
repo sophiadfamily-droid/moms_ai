@@ -9,6 +9,7 @@ void main() {
       'lib/models/routine/routine_zoned_occurrence_models.dart',
       'lib/services/routine/routine_date_applicability_engine.dart',
       'lib/services/routine/routine_occurrence_engine.dart',
+      'lib/services/routine/routine_event_conflict_engine.dart',
       'lib/services/routine/routine_zoned_occurrence_engine.dart',
     ].map((path) => File(path).readAsStringSync()).join('\n');
 

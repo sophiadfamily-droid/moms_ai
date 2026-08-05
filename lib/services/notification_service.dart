@@ -29,6 +29,7 @@ import 'proactive_notification_orchestrator.dart';
 import 'proactive_notification_policy_service.dart';
 import 'event_service.dart';
 import 'task_service.dart';
+import 'routine_repository.dart';
 
 final class FlutterNotificationPermissionGateway
     implements NotificationPermissionGateway {
@@ -338,8 +339,10 @@ class NotificationService {
     await _scheduler!.initialize();
     EventService.eventsVersion.removeListener(_eventChanged);
     TaskService.tasksVersion.removeListener(_taskChanged);
+    routinesVersion.removeListener(_routineChanged);
     EventService.eventsVersion.addListener(_eventChanged);
     TaskService.tasksVersion.addListener(_taskChanged);
+    routinesVersion.addListener(_routineChanged);
     _observedScope = AuthService.currentUserId;
     await _authSubscription?.cancel();
     _authSubscription = AuthService.authStateChanges.listen((_) async {
@@ -413,15 +416,51 @@ class NotificationService {
     }
     _detectionEvaluationRunning = true;
     try {
-      await _detectionLifecycle?.evaluate(trigger);
+      final result = await _detectionLifecycle?.evaluate(trigger);
+      if (result != null) {
+        _recordDetectionResult(trigger, result);
+      }
       final queued = _queuedDetectionTrigger;
       _queuedDetectionTrigger = null;
       if (queued != null && AuthService.currentUserId != null) {
-        await _detectionLifecycle?.evaluate(queued);
+        final queuedResult = await _detectionLifecycle?.evaluate(queued);
+        if (queuedResult != null) {
+          _recordDetectionResult(queued, queuedResult);
+        }
       }
     } finally {
       _detectionEvaluationRunning = false;
     }
+  }
+
+  static void _recordDetectionResult(
+    DetectionEvaluationTrigger trigger,
+    ProactiveDetectionLifecycleResult result,
+  ) {
+    final detection = result.detection;
+    final notifications = result.notifications;
+    AppDiagnostics.record(
+      component: 'proactive_detection',
+      domain: 'notification',
+      operation: 'evaluate',
+      step: 'lifecycle_result',
+      code: detection.activeSignals.isNotEmpty
+          ? AppErrorCode.proactiveShow
+          : AppErrorCode.proactiveNoShow,
+      severity: AppErrorSeverity.info,
+      technicalStatus: notifications.type.name,
+      metadata: {
+        'eventType': trigger.name,
+        'candidateCount': detection.activeSignals.length,
+        'count': detection.resolvedSignals.length,
+        'attemptCount': notifications.numberScheduled,
+        'pendingMutationCount': notifications.numberCancelled,
+        'revision': notifications.numberFailed,
+        'reasonCodes': detection.coverage.unavailableDomains
+            .map((domain) => domain.name)
+            .join(','),
+      },
+    );
   }
 
   static void _eventChanged() {
@@ -438,6 +477,15 @@ class NotificationService {
       _evaluateDetectionsSafely(
         DetectionEvaluationTrigger.taskChanged,
         'task_changed',
+      ),
+    );
+  }
+
+  static void _routineChanged() {
+    unawaited(
+      _evaluateDetectionsSafely(
+        DetectionEvaluationTrigger.routineChanged,
+        'routine_changed',
       ),
     );
   }
@@ -514,9 +562,9 @@ class NotificationService {
         timezoneId: await currentTimezoneId(),
         scheduleMeaning: NotificationScheduleMeaning.absoluteInstant,
         privacyLevel: NotificationPrivacyLevel.generic,
-        interactionType: NotificationInteractionType.openOnly,
-        destinationType: NotificationDestinationType.home,
-        destinationReference: 'home',
+        interactionType: NotificationInteractionType.openSafeDestination,
+        destinationType: NotificationDestinationType.dailySummary,
+        destinationReference: 'daily-summary',
         source: LocalNotificationSource.explicitTest,
         status: LocalNotificationStatus.registered,
         platformNotificationId: platformId(logicalId),

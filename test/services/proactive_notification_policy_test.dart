@@ -347,6 +347,62 @@ void main() {
       );
     });
 
+    test('manual attention view remains available when summaries are off',
+        () async {
+      final registry = _SignalRegistry(now)
+        ..state = ProactiveDetectionRegistryState(
+          accountScopeId: 'account-a',
+          signals: [_signal(now)],
+          updatedAt: now,
+        );
+      final repository = _PolicyRepository()
+        ..values['account-a'] = _policy(now, summary: false);
+      final view = await DailySummaryViewService(
+        registry: registry,
+        policyService: ProactiveNotificationPolicyService(
+          repository: repository,
+          currentAccountScopeId: () => 'account-a',
+          currentTimezoneId: () async => 'Europe/Paris',
+          now: () => now,
+        ),
+        currentAccountScopeId: () => 'account-a',
+        now: () => now,
+      ).load();
+
+      expect(view, isNotNull);
+      expect(view!.categoryCounts.values.single, 1);
+    });
+
+    test('a scheduled alert remains visible in the attention view', () async {
+      final registry = _SignalRegistry(now)
+        ..state = ProactiveDetectionRegistryState(
+          accountScopeId: 'account-a',
+          signals: [
+            _signal(now).copyWith(
+              state: ProactiveDetectionState.scheduled,
+              notificationLogicalId: 'notification-one',
+            ),
+          ],
+          updatedAt: now,
+        );
+      final repository = _PolicyRepository()
+        ..values['account-a'] = _policy(now, summary: false);
+      final view = await DailySummaryViewService(
+        registry: registry,
+        policyService: ProactiveNotificationPolicyService(
+          repository: repository,
+          currentAccountScopeId: () => 'account-a',
+          currentTimezoneId: () async => 'Europe/Paris',
+          now: () => now,
+        ),
+        currentAccountScopeId: () => 'account-a',
+        now: () => now,
+      ).load();
+
+      expect(view, isNotNull);
+      expect(view!.categoryCounts.values.single, 1);
+    });
+
     test('delivery history is bounded and contains no business content', () {
       expect(
         () => ProactiveNotificationDeliveryState(
@@ -583,10 +639,35 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('Résumé quotidien'), findsOneWidget);
-      expect(find.text('Échéances dépassées'), findsOneWidget);
+      expect(find.text('2 choses sont en retard'), findsOneWidget);
+      expect(find.textContaining('Conflits structurés'), findsNothing);
       expect(find.textContaining('Certaines informations'), findsOneWidget);
       expect(find.textContaining('incident-'), findsNothing);
       expect(find.textContaining('account-a'), findsNothing);
+    });
+
+    testWidgets('a simple conflict row opens the agenda', (tester) async {
+      var agendaOpened = false;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DailySummaryScreen(
+            loader: () async => const DailySummaryViewData(
+              localDate: '2026-07-24',
+              categoryCounts: {
+                ProactiveAlertCategory.structuredConflict: 1,
+              },
+              coverageState: DetectionCoverageKind.complete,
+              omittedCount: 0,
+              hasStaleInformation: false,
+            ),
+            onOpenAgenda: () => agendaOpened = true,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Deux choses sont prévues en même temps'));
+      expect(agendaOpened, isTrue);
     });
   });
 }

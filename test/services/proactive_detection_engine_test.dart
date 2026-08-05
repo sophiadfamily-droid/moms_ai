@@ -344,6 +344,42 @@ void main() {
           DetectionSuppressionReason.alreadyResolved);
     });
 
+    test('unavailable routine evidence never cancels a proven conflict', () {
+      final active = const ProactiveDetectionEngine()
+          .evaluate(
+            input: _input(now, conflicts: [_routineConflict(now)]),
+            policy: const ProactiveDetectionPolicy(),
+            now: now,
+          )
+          .activeSignals
+          .single;
+      final incompleteCoverage = DetectionCoverageState(
+        kind: DetectionCoverageKind.partial,
+        evaluatedDomains: const {
+          LifeContextDomain.event,
+          LifeContextDomain.routine,
+        },
+        unavailableDomains: const {LifeContextDomain.routine},
+        staleDomains: const {},
+        numberEvaluated: 0,
+        numberTruncated: 0,
+        evaluableCategories: const {ProactiveDetectorType.conflict},
+        nonEvaluableCategories: const {},
+      );
+      final result = const ProactiveDetectionEngine().evaluate(
+        input: _input(
+          now,
+          existing: [active],
+          coverage: incompleteCoverage,
+        ),
+        policy: const ProactiveDetectionPolicy(),
+        now: now.add(const Duration(minutes: 1)),
+      );
+
+      expect(result.activeSignals, isEmpty);
+      expect(result.resolvedSignals, isEmpty);
+    });
+
     test('account mismatch fails closed', () {
       expect(
         () => const ProactiveDetectionEngine().evaluate(
@@ -542,13 +578,22 @@ void main() {
               .readAsStringSync();
       final events = File('lib/services/event_service.dart').readAsStringSync();
       final main = File('lib/main.dart').readAsStringSync();
+      final notifications =
+          File('lib/services/notification_service.dart').readAsStringSync();
       expect(
         production,
         contains('EventService.getProtectedConflictsForDetection'),
       );
+      expect(production, contains('RoutineOccurrenceService.production'));
+      expect(production, contains('RoutineEventConflictEngine'));
       expect(events, contains('eventsProtectedOverlap'));
       expect(main, contains('authenticatedBootstrap'));
       expect(main, contains('DetectionEvaluationTrigger.foreground'));
+      expect(notifications, contains('routinesVersion.addListener'));
+      expect(
+        notifications,
+        contains('DetectionEvaluationTrigger.routineChanged'),
+      );
       expect(main, isNot(contains('Timer.periodic')));
     });
   });
@@ -688,6 +733,42 @@ StructuredConflictObservation _conflict(
       ],
     );
 
+StructuredConflictObservation _routineConflict(DateTime now) =>
+    StructuredConflictObservation(
+      conflictId: 'event-1:routine-1:protected-routine-v1',
+      firstSourceId: 'event-1',
+      secondSourceId: 'routine-1:2026-08-05',
+      firstRevision: 1,
+      secondRevision: 2,
+      confirmedByCanonicalEngine: true,
+      evidence: [
+        DetectionEvidence(
+          sourceType: DetectionEvidenceSource.fixedEventInterval,
+          domain: LifeContextDomain.event,
+          sourceId: 'event-1',
+          revision: 1,
+          freshness: LifeContextFreshness.current,
+          availability: LifeContextAvailability.available,
+          certainty: DetectionEvidenceLevel.confirmedStructured,
+          intervalStart: now.add(const Duration(hours: 1)),
+          intervalEnd: now.add(const Duration(hours: 2)),
+          confirmed: true,
+        ),
+        DetectionEvidence(
+          sourceType: DetectionEvidenceSource.structuredRoutineOccurrence,
+          domain: LifeContextDomain.routine,
+          sourceId: 'routine-1:2026-08-05',
+          revision: 2,
+          freshness: LifeContextFreshness.current,
+          availability: LifeContextAvailability.available,
+          certainty: DetectionEvidenceLevel.confirmedStructured,
+          intervalStart: now.add(const Duration(hours: 1)),
+          intervalEnd: now.add(const Duration(hours: 2)),
+          confirmed: true,
+        ),
+      ],
+    );
+
 LifeContextDependency _dependency(DateTime now) => LifeContextDependency(
       prerequisiteNodeId: 'task:task:prep',
       dependentNodeId: 'event:event:event',
@@ -712,13 +793,14 @@ ProactiveDetectionInput _input(
   List<StructuredConflictObservation> conflicts = const [],
   List<LifeContextDependency> dependencies = const [],
   List<ProactiveDetectionSignal> existing = const [],
+  DetectionCoverageState? coverage,
 }) =>
     ProactiveDetectionInput(
       accountScopeId: 'account-a',
       subjects: subjects,
       conflicts: conflicts,
       dependencies: dependencies,
-      coverage: _coverage(DetectionCoverageKind.complete),
+      coverage: coverage ?? _coverage(DetectionCoverageKind.complete),
       existingSignals: existing,
       observedAt: now,
       timezoneId: 'Europe/Paris',

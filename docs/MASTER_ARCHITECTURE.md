@@ -615,6 +615,13 @@ only when a valid IANA timezone is supplied. It exposes the complete protected
 range (outbound travel, duration, return travel and margin), rejects impossible
 local wall times, contains no user-facing content, and still neither creates an
 Event nor schedules a notification.
+RO.5 can compare those protected Routine occurrences with canonical Event
+protected ranges over a bounded horizon. It emits only confirmed structured
+conflict evidence for N.2; it does not itself notify, persist, resolve, or
+modify either domain. RO.6 connects this proof to the event-driven N.2 input
+provider over its fourteen-day horizon. Event and Routine conflict sources
+fail independently, so one unavailable source cannot erase valid evidence
+from the other; no polling or background worker is added.
 
 **Planned architecture:** The Routine Engine provides one authoritative recurrence vocabulary and dated projection of routines for planning, notifications, and future organization features. A routine remains distinct from a generated series of persisted calendar events unless explicitly converted.
 
