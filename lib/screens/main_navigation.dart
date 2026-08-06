@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../models/user_profile.dart';
 import '../models/agenda_focus.dart';
+import '../models/agenda_conflict_help.dart';
 import '../models/priority/proactive_priority_models.dart';
 import '../services/conversation_session_controller.dart';
 import '../services/identity/identity_production_services.dart';
@@ -99,6 +100,13 @@ class _MainNavigationState extends State<MainNavigation> {
     });
   }
 
+  void openConflictHelp(AgendaConflictHelp help) {
+    _conversationSessionController!.addInitialAssistantMessage(
+      help.assistantMessage,
+    );
+    setState(() => currentIndex = 1);
+  }
+
   void updateProfile(UserProfile updatedProfile) {
     setState(() {
       currentProfile = updatedProfile;
@@ -140,6 +148,7 @@ class _MainNavigationState extends State<MainNavigation> {
             initialDate: requestedAgendaFocus?.date,
             highlightedEventId: requestedAgendaFocus?.eventId,
             highlightedRoutineId: requestedAgendaFocus?.routineId,
+            onAskZeliaForConflict: openConflictHelp,
           ),
           TasksScreen(
             onOpenZeliaSuggestion: openChatWithSuggestion,

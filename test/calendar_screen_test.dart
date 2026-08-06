@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:moms_ai/models/event_model.dart';
+import 'package:moms_ai/models/agenda_conflict_help.dart';
 import 'package:moms_ai/models/event_sync_conflict.dart';
 import 'package:moms_ai/models/event_sync_models.dart';
 import 'package:moms_ai/models/routine/routine_agenda_item.dart';
@@ -98,6 +99,7 @@ void main() {
       (WidgetTester tester) async {
     final today = DateTime.now();
     final date = isoDate(today);
+    AgendaConflictHelp? requestedHelp;
     await tester.pumpWidget(
       MaterialApp(
         home: CalendarScreen(
@@ -105,6 +107,7 @@ void main() {
           initialDate: today,
           highlightedEventId: 'event-coiffeur',
           highlightedRoutineId: 'routine-enfants',
+          onAskZeliaForConflict: (help) => requestedHelp = help,
           eventsVersionForTest: ValueNotifier<int>(0),
           routinesVersionForTest: ValueNotifier<int>(0),
           loadEventsForTest: () async => [
@@ -145,6 +148,18 @@ void main() {
     );
     expect(find.text('Coiffeur'), findsOneWidget);
     expect(find.text('Préparer les enfants'), findsOneWidget);
+    final helpButton = find.text('Aide-moi à trouver une solution');
+    await tester.ensureVisible(helpButton);
+    await tester.pumpAndSettle();
+    await tester.tap(helpButton);
+    expect(requestedHelp?.eventTitle, 'Coiffeur');
+    expect(requestedHelp?.routineTitle, 'Préparer les enfants');
+    expect(
+      requestedHelp?.assistantMessage,
+      'Je vois que « Coiffeur » et « Préparer les enfants » se chevauchent. '
+      'Je peux t’aider à trouver une solution. Dis-moi ce que tu préfères '
+      'déplacer.',
+    );
   });
 
   testWidgets('shows a routine as a read-only Zelia Agenda item',
