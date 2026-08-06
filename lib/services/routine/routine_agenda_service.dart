@@ -27,26 +27,37 @@ final class RoutineAgendaService {
   Future<List<RoutineAgendaItem>> forDay({
     required String accountScopeId,
     required DateTime day,
+  }) =>
+      forWindow(accountScopeId: accountScopeId, startDay: day, days: 1);
+
+  Future<List<RoutineAgendaItem>> forWindow({
+    required String accountScopeId,
+    required DateTime startDay,
+    required int days,
   }) async {
     if (accountScopeId.trim().isEmpty || accountScopeId == 'guest') {
       return const [];
     }
+    if (days < 1 || days > 31) {
+      throw const FormatException('invalid_routine_agenda_window');
+    }
     final routines = await _loadRoutines(accountScopeId);
     final byId = {for (final routine in routines) routine.id: routine};
-    final start = DateTime.utc(day.year, day.month, day.day);
+    final start = DateTime.utc(startDay.year, startDay.month, startDay.day);
     final projection = _engine.project(
       accountScopeId: accountScopeId,
       windowStartDate: start,
-      windowEndDateExclusive: start.add(const Duration(days: 1)),
+      windowEndDateExclusive: start.add(Duration(days: days)),
       routines: routines,
     );
     return projection.occurrences.map((occurrence) {
       final routine = byId[occurrence.routineId]!;
       final timeParts = occurrence.startTime.split(':');
+      final dateParts = occurrence.dateIso.split('-');
       final startTime = DateTime(
-        day.year,
-        day.month,
-        day.day,
+        int.parse(dateParts[0]),
+        int.parse(dateParts[1]),
+        int.parse(dateParts[2]),
         int.parse(timeParts[0]),
         int.parse(timeParts[1]),
       );

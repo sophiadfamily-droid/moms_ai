@@ -6,6 +6,7 @@ import '../models/action_autonomy_policy.dart';
 import '../models/action_confirmation.dart';
 import '../models/conversation_epistemic_models.dart';
 import '../models/conversation_session_models.dart';
+import '../models/agenda_conflict_move_suggestion.dart';
 import '../models/smart_planning_continuation.dart';
 import '../models/task_model.dart';
 import '../models/priority/proactive_priority_models.dart';
@@ -299,6 +300,7 @@ final class ConversationSessionController extends ChangeNotifier {
   final ConversationTaskDurationStarter? _startTaskDuration;
   final ConversationActiveSmartPlanningContinuation?
       _applicationSmartPlanningContinuation;
+  bool _proactiveEventMoveAwaitingConfirmation = false;
   final ConversationMessageStore _messageStore;
   final ConversationReferenceHistoryStore? _referenceHistoryStore;
   String? _accountScopeId;
@@ -376,6 +378,32 @@ final class ConversationSessionController extends ChangeNotifier {
     _emit(ConversationUiEffectType.showClarification);
   }
 
+  Future<void> beginProactiveEventMove(
+    AgendaConflictMoveSuggestion suggestion,
+  ) async {
+    if (_disposed || _state.isBusy) return;
+    final result = await _coordinator.beginSuggestedEventMove(
+      eventId: suggestion.eventId,
+      dateIso: suggestion.dateIso,
+      time: suggestion.time,
+    );
+    _appendMessage(ConversationMessageRole.assistant, result.message);
+    final pending = _coordinator.state.pendingAction != null;
+    _proactiveEventMoveAwaitingConfirmation =
+        _coordinator.state.pendingAction?.type ==
+            PendingConversationActionType.eventMutationConfirmation;
+    _setState(
+      _state.copyWith(
+        phase: pending
+            ? ConversationSessionPhase.awaitingConfirmation
+            : ConversationSessionPhase.ready,
+        hasPendingAction: pending,
+        clearCurrentRequest: true,
+      ),
+    );
+    if (pending) _emit(ConversationUiEffectType.showConfirmation);
+  }
+
   Future<void> submitText(String rawText) async {
     final text = rawText.trim();
     if (_disposed || text.isEmpty || _state.isBusy) return;
@@ -421,7 +449,9 @@ final class ConversationSessionController extends ChangeNotifier {
     );
     try {
       await _loadReferenceHistory();
-      final pendingOutcome = await _resolvePending?.call(text, generation);
+      final pendingOutcome = _proactiveEventMoveAwaitingConfirmation
+          ? null
+          : await _resolvePending?.call(text, generation);
       final outcome = pendingOutcome ??
           await _coordinator.send(
             input: ConversationInput(
@@ -434,6 +464,11 @@ final class ConversationSessionController extends ChangeNotifier {
             executeAction: (action) => _executeAction(action, text, generation),
           );
       if (!_isCurrent(requestId, generation) || outcome == null) return;
+      if (_proactiveEventMoveAwaitingConfirmation &&
+          _coordinator.state.pendingAction?.type !=
+              PendingConversationActionType.eventMutationConfirmation) {
+        _proactiveEventMoveAwaitingConfirmation = false;
+      }
       final clarificationDraft = outcome.epistemicClarification?.draft;
       if (pendingOutcome == null && clarificationDraft != null) {
         _registerClarificationDraft?.call(
@@ -588,6 +623,7 @@ final class ConversationSessionController extends ChangeNotifier {
   }
 
   void changeAccount(UserProfile profile) {
+    _proactiveEventMoveAwaitingConfirmation = false;
     if (_disposed || identical(profile, _profile)) return;
     _proactiveInteractionRegistry.deactivateOwner(
       _accountScopeId,

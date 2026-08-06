@@ -70,6 +70,8 @@ final class DailySummaryScreen extends StatelessWidget {
                           date: conflict.targetDate,
                           eventId: conflict.eventId,
                           routineId: conflict.routineId,
+                          eventTitle: conflict.eventTitle,
+                          routineTitle: conflict.routineTitle,
                         ),
                       ),
                     ),

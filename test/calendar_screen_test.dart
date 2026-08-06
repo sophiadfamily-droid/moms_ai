@@ -97,16 +97,18 @@ void main() {
 
   testWidgets('highlights the exact event and routine opened from an alert',
       (WidgetTester tester) async {
-    final today = DateTime.now();
-    final date = isoDate(today);
+    final testDay = DateTime.now().add(const Duration(days: 1));
+    final date = isoDate(testDay);
     AgendaConflictHelp? requestedHelp;
     await tester.pumpWidget(
       MaterialApp(
         home: CalendarScreen(
           accountScopeToken: 'account-a',
-          initialDate: today,
+          initialDate: testDay,
           highlightedEventId: 'event-coiffeur',
           highlightedRoutineId: 'routine-enfants',
+          highlightedEventTitle: 'Coiffeur',
+          highlightedRoutineTitle: 'Préparer les enfants',
           onAskZeliaForConflict: (help) => requestedHelp = help,
           eventsVersionForTest: ValueNotifier<int>(0),
           routinesVersionForTest: ValueNotifier<int>(0),
@@ -128,10 +130,10 @@ void main() {
               routineId: 'routine-enfants',
               dateIso: isoDate(day),
               title: 'Préparer les enfants',
-              startTime: '07:30',
-              endTime: '08:15',
-              protectedStart: DateTime(day.year, day.month, day.day, 7, 30),
-              protectedEnd: DateTime(day.year, day.month, day.day, 8, 15),
+              startTime: '10:00',
+              endTime: '11:00',
+              protectedStart: DateTime(day.year, day.month, day.day, 10),
+              protectedEnd: DateTime(day.year, day.month, day.day, 11),
             ),
           ],
         ),
@@ -153,6 +155,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(helpButton);
     expect(requestedHelp?.eventTitle, 'Coiffeur');
+    expect(requestedHelp?.eventId, 'event-coiffeur');
     expect(requestedHelp?.routineTitle, 'Préparer les enfants');
     expect(
       requestedHelp?.assistantMessage,

@@ -5,8 +5,10 @@ import 'package:moms_ai/models/chat_backend_response.dart';
 import 'package:moms_ai/models/conversation_models.dart';
 import 'package:moms_ai/models/conversation_reference_resolution.dart';
 import 'package:moms_ai/models/conversation_session_models.dart';
+import 'package:moms_ai/models/agenda_conflict_move_suggestion.dart';
 import 'package:moms_ai/models/event_model.dart';
 import 'package:moms_ai/models/event_mutation_models.dart';
+import 'package:moms_ai/models/routine_model.dart';
 import 'package:moms_ai/models/user_profile.dart';
 import 'package:moms_ai/services/chat_backend_client.dart';
 import 'package:moms_ai/services/conversation_context_service.dart';
@@ -16,9 +18,108 @@ import 'package:moms_ai/services/conversation_reference_history_store.dart';
 import 'package:moms_ai/services/conversation_session_controller.dart';
 import 'package:moms_ai/services/event_conversation_mutation_service.dart';
 import 'package:moms_ai/services/event_mutation_result.dart';
+import 'package:moms_ai/services/routine_conversation_service.dart';
+import 'package:moms_ai/services/routine_repository.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  test('proactive suggestion waits for yes before moving the exact event',
+      () async {
+    final fixture = _fixture([_event('event-1', '10:00')]);
+
+    final proposal = await fixture.coordinator.beginSuggestedEventMove(
+      eventId: 'event-1',
+      dateIso: '2026-07-23',
+      time: '14:00',
+    );
+
+    expect(proposal.message, contains('14 h'));
+    expect(proposal.message, contains('Est-ce que ça te va ?'));
+    expect(fixture.writes, 0);
+    expect(
+      fixture.coordinator.state.pendingAction?.type,
+      PendingConversationActionType.eventMutationConfirmation,
+    );
+
+    await fixture.coordinator.send(
+      input: ConversationInput(message: 'oui', profile: _profile()),
+      executeAction: (_) async => const ConversationActionOutcome(),
+    );
+    expect(fixture.writes, 1);
+    expect(fixture.written?.time, '14:00');
+  });
+
+  test('proactive move confirmation cannot be stolen by an older flow',
+      () async {
+    final fixture = _fixture([_event('event-1', '10:00')]);
+    var olderFlowCalls = 0;
+    final controller = ConversationSessionController(
+      profile: _profile(),
+      coordinator: fixture.coordinator,
+      executeAction: (_, __, ___) async => const ConversationActionOutcome(),
+      resolvePending: (_, __) async {
+        olderFlowCalls++;
+        return const ConversationOutcome(
+          reply: 'C’est fait. La routine est maintenant prise en compte.',
+        );
+      },
+      messageStore: _NoopMessageStore(),
+      accountScopeId: 'conversation-local',
+      idGenerator: () => 'proactive-session',
+    );
+
+    await controller.beginProactiveEventMove(
+      const AgendaConflictMoveSuggestion(
+        eventId: 'event-1',
+        eventTitle: 'Médecin',
+        dateIso: '2026-07-23',
+        time: '14:00',
+        label: '14 h',
+      ),
+    );
+    await controller.submitText('oui');
+
+    expect(olderFlowCalls, 0);
+    expect(fixture.writes, 1);
+    expect(fixture.written?.time, '14:00');
+    expect(controller.state.messages.last.text, isNot(contains('routine')));
+    controller.dispose();
+  });
+
+  test('event move yes takes priority over a retained routine confirmation',
+      () async {
+    final repository = _RoutineRepository();
+    final routineService = RoutineConversationService(
+      repository: repository,
+      currentAccountScopeId: () => 'conversation-local',
+      clock: () => DateTime.utc(2026, 7, 22, 10),
+    );
+    await routineService.process(
+      'Tous les mardis de 9 h à 10 h, je vais au sport.',
+      logicalRequestId: 'old-routine',
+    );
+    expect(routineService.hasPending, isTrue);
+    final fixture = _fixture(
+      [_event('event-1', '10:00')],
+      routineConversationService: routineService,
+    );
+
+    await fixture.coordinator.beginSuggestedEventMove(
+      eventId: 'event-1',
+      dateIso: '2026-07-23',
+      time: '14:00',
+    );
+    final result = await fixture.coordinator.send(
+      input: ConversationInput(message: 'oui', profile: _profile()),
+      executeAction: (_) async => const ConversationActionOutcome(),
+    );
+
+    expect(result?.reply, 'C’est fait, l’événement a été modifié.');
+    expect(fixture.writes, 1);
+    expect(fixture.written?.time, '14:00');
+    expect(repository.commits, 0);
+  });
+
   test('backend mutation selects one target and waits for confirmation',
       () async {
     final fixture = _fixture([_event('event-1', '10:00')]);
@@ -29,7 +130,7 @@ void main() {
         return const ConversationActionOutcome();
       },
     );
-    expect(outcome?.reply, contains('Confirmer'));
+    expect(outcome?.reply, contains('Est-ce que ça te va ?'));
     expect(
       outcome?.referenceResolution?.status,
       ConversationReferenceResolutionStatus.resolved,
@@ -72,7 +173,7 @@ void main() {
       input: ConversationInput(message: '2', profile: _profile()),
       executeAction: (_) async => const ConversationActionOutcome(),
     );
-    expect(selected?.reply, contains('Confirmer'));
+    expect(selected?.reply, contains('Est-ce que ça te va ?'));
     expect(
       selected?.referenceResolution?.source,
       ConversationReferenceSource.pendingAction,
@@ -288,7 +389,7 @@ void main() {
       executeAction: (_) async => const ConversationActionOutcome(),
     );
 
-    expect(selected?.reply, contains('Confirmer'));
+    expect(selected?.reply, contains('Est-ce que ça te va ?'));
     expect(retry?.reply, contains('oui'));
     expect(fixture.writes, 0);
     expect(
@@ -484,6 +585,7 @@ _Fixture _fixture(
   List<EventModel> events, {
   EventMutationTarget? target,
   List<ValidatedConversationReference> validatedReferenceHistory = const [],
+  RoutineConversationService? routineConversationService,
 }) {
   final nowBox = [DateTime.utc(2026, 7, 22, 10)];
   late _Fixture fixture;
@@ -513,12 +615,58 @@ _Fixture _fixture(
     backend: backend,
     contextProvider: _Context(),
     eventConversationMutationService: service,
+    routineConversationService: routineConversationService,
     actionDraftIdGenerator: _Ids(),
     validatedReferenceHistory: validatedReferenceHistory,
     clock: () => fixture.now,
   );
   fixture = _Fixture._(coordinator, events, nowBox.single);
   return fixture;
+}
+
+final class _RoutineRepository implements RoutineRepository {
+  RoutineProposal? proposal;
+  int commits = 0;
+
+  @override
+  Future<RoutineProposal?> createOrVerifyProposal(
+          RoutineProposal value) async =>
+      proposal ??= value;
+
+  @override
+  Future<RoutineProposal?> findActiveProposal(String accountScopeId) async =>
+      proposal;
+
+  @override
+  Future<RoutineProposal?> findLatestProposal(String accountScopeId) async =>
+      proposal;
+
+  @override
+  Future<RoutineProposal?> findProposal({
+    required String accountScopeId,
+    required String proposalId,
+  }) async =>
+      proposal?.proposalId == proposalId ? proposal : null;
+
+  @override
+  Future<RoutineProposal?> updateProposal(RoutineProposal value) async =>
+      proposal = value;
+
+  @override
+  Future<RoutineCommitResult> commitProposal(
+    RoutineProposal value,
+    DateTime committedAt,
+  ) async {
+    commits++;
+    return const RoutineCommitResult(RoutineCommitCode.committed);
+  }
+
+  @override
+  Future<RoutineModel?> createOrVerify(RoutineModel routine) async => routine;
+
+  @override
+  Future<List<RoutineModel>> listForAccount(String accountScopeId) async =>
+      const [];
 }
 
 class _Backend implements ChatBackendClient {

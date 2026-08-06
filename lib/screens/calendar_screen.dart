@@ -27,6 +27,8 @@ class CalendarScreen extends StatefulWidget {
     this.initialDate,
     this.highlightedEventId,
     this.highlightedRoutineId,
+    this.highlightedEventTitle,
+    this.highlightedRoutineTitle,
     this.onAskZeliaForConflict,
   });
 
@@ -52,6 +54,8 @@ class CalendarScreen extends StatefulWidget {
   final DateTime? initialDate;
   final String? highlightedEventId;
   final String? highlightedRoutineId;
+  final String? highlightedEventTitle;
+  final String? highlightedRoutineTitle;
   final ValueChanged<AgendaConflictHelp>? onAskZeliaForConflict;
   final Future<List<EventSyncConflict>> Function()? loadSyncConflictsForTest;
   final Future<EventConflictResolutionResult> Function({
@@ -1814,6 +1818,32 @@ class _CalendarScreenState extends State<CalendarScreen> {
   Widget buildEventsList() {
     final events = eventsForSelectedDate();
     final routineConflicts = dailyRoutineConflicts(events);
+    final focusedEvent = events
+        .where((event) => event.id == widget.highlightedEventId)
+        .firstOrNull;
+    final hasFocusedConflict = routineConflicts.any(
+      (conflict) =>
+          conflict.event.id == widget.highlightedEventId &&
+          conflict.routine.routineId == widget.highlightedRoutineId,
+    );
+    final focusedRoutineTitle = routineItems
+        .where((routine) => routine.routineId == widget.highlightedRoutineId)
+        .map((routine) => routine.title)
+        .firstOrNull;
+    final focusedConflictHelp = focusedEvent != null &&
+            widget.highlightedRoutineId?.trim().isNotEmpty == true &&
+            !hasFocusedConflict
+        ? AgendaConflictHelp(
+            eventId: focusedEvent.id ?? '',
+            eventTitle: cleanEventTitle(
+              widget.highlightedEventTitle ?? focusedEvent.title,
+            ),
+            routineTitle:
+                widget.highlightedRoutineTitle?.trim().isNotEmpty == true
+                    ? widget.highlightedRoutineTitle!.trim()
+                    : focusedRoutineTitle ?? 'ta routine',
+          )
+        : null;
 
     if (events.isEmpty && routineItems.isEmpty) {
       return Padding(
@@ -1852,54 +1882,68 @@ class _CalendarScreenState extends State<CalendarScreen> {
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
       child: Column(
         children: [
+          if (focusedConflictHelp != null)
+            buildConflictHelpCard(
+              help: focusedConflictHelp,
+              keySuffix: widget.highlightedRoutineId!,
+              event: focusedEvent!,
+            ),
           for (final conflict in routineConflicts)
-            Container(
-              key: ValueKey(
-                'agenda-conflict-${conflict.event.id}-'
-                '${conflict.routine.routineId}',
+            buildConflictHelpCard(
+              help: AgendaConflictHelp(
+                eventId: conflict.event.id ?? '',
+                eventTitle: cleanEventTitle(conflict.event.title),
+                routineTitle: conflict.routine.title,
               ),
-              width: double.infinity,
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: accent.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(18),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Regarde, « ${cleanEventTitle(conflict.event.title)} » et '
-                    '« ${conflict.routine.title} » se chevauchent. '
-                    'Je ne change rien sans ton accord.',
-                    style: TextStyle(
-                      color: textDark,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  if (widget.onAskZeliaForConflict != null) ...[
-                    const SizedBox(height: 8),
-                    TextButton.icon(
-                      key: ValueKey(
-                        'ask-zelia-${conflict.event.id}-'
-                        '${conflict.routine.routineId}',
-                      ),
-                      onPressed: () => widget.onAskZeliaForConflict!(
-                        AgendaConflictHelp(
-                          eventTitle: cleanEventTitle(conflict.event.title),
-                          routineTitle: conflict.routine.title,
-                        ),
-                      ),
-                      icon: const Icon(Icons.auto_awesome_rounded),
-                      label: const Text('Aide-moi à trouver une solution'),
-                    ),
-                  ],
-                ],
-              ),
+              keySuffix: conflict.routine.routineId,
+              event: conflict.event,
             ),
           ...events.map(buildEventCard),
           ...routineItems.map(buildRoutineCard),
+        ],
+      ),
+    );
+  }
+
+  Widget buildConflictHelpCard({
+    required AgendaConflictHelp help,
+    required String keySuffix,
+    required EventModel event,
+  }) {
+    final canAskZelia = widget.onAskZeliaForConflict != null &&
+        help.eventId.trim().isNotEmpty &&
+        (EventService.parseProtectedEnd(event)?.isAfter(DateTime.now()) ??
+            false);
+    return Container(
+      key: ValueKey('agenda-conflict-${help.eventId}-$keySuffix'),
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Regarde, « ${help.eventTitle} » et « ${help.routineTitle} » se '
+            'chevauchent. Je ne change rien sans ton accord.',
+            style: TextStyle(
+              color: textDark,
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          if (canAskZelia) ...[
+            const SizedBox(height: 8),
+            TextButton.icon(
+              key: ValueKey('ask-zelia-${help.eventId}-$keySuffix'),
+              onPressed: () => widget.onAskZeliaForConflict!(help),
+              icon: const Icon(Icons.auto_awesome_rounded),
+              label: const Text('Aide-moi à trouver une solution'),
+            ),
+          ],
         ],
       ),
     );

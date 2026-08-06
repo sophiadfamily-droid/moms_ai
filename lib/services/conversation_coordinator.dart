@@ -190,6 +190,33 @@ class ConversationCoordinator {
       _state.pendingAction?.canonicalConfirmation;
   ActionAutonomyPolicy? get lastAutonomyPolicy => _lastAutonomyPolicy;
 
+  Future<PendingConversationResolution> beginSuggestedEventMove({
+    required String eventId,
+    required String dateIso,
+    required String time,
+  }) async {
+    final selection =
+        await eventConversationMutationService.selectVerifiedIds([eventId]);
+    if (selection.status != EventTargetSelectionStatus.selected) {
+      return const PendingConversationResolution(
+        'Ce rendez-vous n’est plus disponible. Je n’ai rien modifié.',
+        diagnosticCode: 'suggested_event_move_target_unavailable',
+      );
+    }
+    final original = selection.selected!;
+    return _continueSelectedEventMutation(
+      request: EventMutationRequest.update(
+        target: EventMutationTarget(
+          title: original.title,
+          date: original.date,
+          time: original.time,
+        ),
+        changes: EventMutationChanges(date: dateIso, time: time),
+      ),
+      original: original,
+    );
+  }
+
   String _nextConfirmationId() =>
       'confirmation-$_sessionGeneration-${++_confirmationSequence}';
 
@@ -1628,7 +1655,7 @@ class ConversationCoordinator {
     return value - 1;
   }
 
-  static String _eventMutationConfirmationMessage(
+  String _eventMutationConfirmationMessage(
       EventModel original, EventModel proposed,
       [EventMutationRequest? request]) {
     if (request?.operation == EventMutationOperation.replaceParticipant) {
@@ -1639,9 +1666,33 @@ class ConversationCoordinator {
       return 'Je vais retirer le participant de « ${original.title} ». '
           'L’identité restera enregistrée dans Zelia. Confirmer ?';
     }
-    return 'Je vais modifier « ${original.title} » du ${original.date} à '
-        '${original.time} vers le ${proposed.date} à ${proposed.time}. '
-        'Confirmer ?';
+    return 'Je te propose de déplacer « ${original.title} » '
+        '${_humanEventDate(proposed.date)} à '
+        '${_humanEventTime(proposed.time)}. Est-ce que ça te va ?';
+  }
+
+  String _humanEventDate(String dateIso) {
+    final date = DateTime.tryParse(dateIso);
+    if (date == null) return 'le $dateIso';
+    final now = _clock().toLocal();
+    final today = DateTime(now.year, now.month, now.day);
+    final target = DateTime(date.year, date.month, date.day);
+    final difference = target.difference(today).inDays;
+    if (difference == 0) return 'aujourd’hui';
+    if (difference == 1) return 'demain';
+    return 'le ${date.day.toString().padLeft(2, '0')}/'
+        '${date.month.toString().padLeft(2, '0')}/${date.year}';
+  }
+
+  static String _humanEventTime(String time) {
+    final parts = time.split(':');
+    if (parts.length != 2) return time;
+    final hour = int.tryParse(parts[0]);
+    final minute = int.tryParse(parts[1]);
+    if (hour == null || minute == null) return time;
+    return minute == 0
+        ? '$hour h'
+        : '$hour h ${minute.toString().padLeft(2, '0')}';
   }
 
   Future<PendingConversationResolution?> resolvePendingEventConfirmation({
@@ -2441,6 +2492,15 @@ class ConversationCoordinator {
     required ConversationActionExecutor executeAction,
   }) async {
     _sessionGeneration = input.sessionGeneration;
+    final eventMutationResolution = await resolvePendingEventMutation(
+      answer: input.message,
+    );
+    if (eventMutationResolution != null) {
+      return ConversationOutcome(
+        reply: eventMutationResolution.message,
+        referenceResolution: eventMutationResolution.referenceResolution,
+      );
+    }
     final routineResult = await routineConversationService?.process(
       input.message,
       logicalRequestId:
@@ -2454,15 +2514,6 @@ class ConversationCoordinator {
             : ConversationPhase.idle,
       );
       return ConversationOutcome(reply: routineResult.message);
-    }
-    final eventMutationResolution = await resolvePendingEventMutation(
-      answer: input.message,
-    );
-    if (eventMutationResolution != null) {
-      return ConversationOutcome(
-        reply: eventMutationResolution.message,
-        referenceResolution: eventMutationResolution.referenceResolution,
-      );
     }
     final creationResolution = await resolvePendingIdentityCreation(
       answer: input.message,

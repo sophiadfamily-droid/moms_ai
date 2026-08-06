@@ -6,6 +6,7 @@ import '../models/agenda_focus.dart';
 import '../models/agenda_conflict_help.dart';
 import '../models/priority/proactive_priority_models.dart';
 import '../services/conversation_session_controller.dart';
+import '../services/agenda_conflict_suggestion_service.dart';
 import '../services/identity/identity_production_services.dart';
 import '../services/priority/proactive_interaction_registry.dart';
 
@@ -46,6 +47,7 @@ class MainNavigation extends StatefulWidget {
 class _MainNavigationState extends State<MainNavigation> {
   int currentIndex = 0;
   AgendaFocus? requestedAgendaFocus;
+  bool _isFindingConflictSolution = false;
 
   late UserProfile currentProfile;
 
@@ -100,11 +102,37 @@ class _MainNavigationState extends State<MainNavigation> {
     });
   }
 
-  void openConflictHelp(AgendaConflictHelp help) {
+  Future<void> openConflictHelp(AgendaConflictHelp help) async {
+    if (_isFindingConflictSolution) return;
+    _isFindingConflictSolution = true;
     _conversationSessionController!.addInitialAssistantMessage(
-      help.assistantMessage,
+      'Je regarde où je peux déplacer « ${help.eventTitle} » sans créer '
+      'un autre problème.',
     );
     setState(() => currentIndex = 1);
+    try {
+      final suggestion = await AgendaConflictSuggestionService().suggest(
+        accountScopeId: widget.accountScopeId ?? 'guest',
+        eventId: help.eventId,
+      );
+      if (!mounted) return;
+      if (suggestion == null) {
+        _conversationSessionController!.addInitialAssistantMessage(
+          'Je n’ai pas trouvé de créneau assez sûr pour le moment. '
+          'Je n’ai rien modifié.',
+        );
+        return;
+      }
+      await _conversationSessionController!.beginProactiveEventMove(suggestion);
+    } catch (_) {
+      if (!mounted) return;
+      _conversationSessionController!.addInitialAssistantMessage(
+        'Je n’arrive pas à vérifier ton agenda pour le moment. '
+        'Je n’ai rien modifié.',
+      );
+    } finally {
+      _isFindingConflictSolution = false;
+    }
   }
 
   void updateProfile(UserProfile updatedProfile) {
@@ -148,6 +176,8 @@ class _MainNavigationState extends State<MainNavigation> {
             initialDate: requestedAgendaFocus?.date,
             highlightedEventId: requestedAgendaFocus?.eventId,
             highlightedRoutineId: requestedAgendaFocus?.routineId,
+            highlightedEventTitle: requestedAgendaFocus?.eventTitle,
+            highlightedRoutineTitle: requestedAgendaFocus?.routineTitle,
             onAskZeliaForConflict: openConflictHelp,
           ),
           TasksScreen(

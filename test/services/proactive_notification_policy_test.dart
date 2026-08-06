@@ -759,6 +759,8 @@ void main() {
               openedDate = focus.date;
               expect(focus.eventId, 'event-coiffeur');
               expect(focus.routineId, 'routine-sport');
+              expect(focus.eventTitle, 'le rendez-vous coiffeur');
+              expect(focus.routineTitle, 'la routine sport');
             },
           ),
         ),
