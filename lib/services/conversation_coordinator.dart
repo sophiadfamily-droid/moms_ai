@@ -1352,9 +1352,15 @@ class ConversationCoordinator {
         );
       }
       _clearPendingAction();
-      final message = result.status == EventMutationExecutionStatus.conflict
-          ? 'Je n’ai pas modifié l’événement, car le nouveau créneau est en conflit.'
-          : 'L’événement a changé ou n’est plus disponible. Je ne l’ai pas modifié.';
+      final message = switch (result.status) {
+        EventMutationExecutionStatus.conflict =>
+          'Je n’ai pas modifié le rendez-vous, car ce créneau n’est plus libre.',
+        EventMutationExecutionStatus.verificationUnavailable =>
+          'Je n’arrive pas à revérifier ton planning pour le moment. '
+              'Je n’ai rien modifié.',
+        _ =>
+          'L’événement a changé ou n’est plus disponible. Je ne l’ai pas modifié.',
+      };
       return PendingConversationResolution(
         message,
         diagnosticCode: result.diagnosticCode,

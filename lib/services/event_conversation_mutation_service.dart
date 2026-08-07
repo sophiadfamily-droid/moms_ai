@@ -7,6 +7,7 @@ import 'event_mutation_result.dart';
 import 'event_mutation_invariant_service.dart';
 import 'event_service.dart';
 import 'event_target_selector.dart';
+import 'routine/routine_planning_blocker_service.dart';
 
 typedef EventMutationLoader = Future<List<EventModel>> Function();
 typedef EventMutationWriter = Future<EventMutationResult> Function({
@@ -15,12 +16,16 @@ typedef EventMutationWriter = Future<EventMutationResult> Function({
   required int expectedEventRevision,
   required EventParticipantMutationIntent participantIntent,
 });
+typedef EventMutationPlanningBlockerLoader = Future<List<EventModel>> Function(
+  EventModel proposed,
+);
 
 enum EventMutationExecutionStatus {
   updated,
   notFound,
   concurrentChange,
   conflict,
+  verificationUnavailable,
   invalid,
 }
 
@@ -34,12 +39,34 @@ final class EventMutationExecutionResult {
 final class EventConversationMutationService {
   final EventMutationLoader _loadEvents;
   final EventMutationWriter _write;
+  final EventMutationPlanningBlockerLoader? _loadPlanningBlockers;
 
   EventConversationMutationService({
     EventMutationLoader? loadEvents,
     EventMutationWriter? write,
+    EventMutationPlanningBlockerLoader? loadPlanningBlockers,
   })  : _loadEvents = loadEvents ?? EventService.getEvents,
-        _write = write ?? EventService.mutateEvent;
+        _write = write ?? EventService.mutateEvent,
+        _loadPlanningBlockers = loadPlanningBlockers;
+
+  factory EventConversationMutationService.production({
+    required String? accountScopeId,
+  }) {
+    final routinePlanningBlockers = RoutinePlanningBlockerService.production();
+    return EventConversationMutationService(
+      loadPlanningBlockers: (proposed) async {
+        final scope = accountScopeId?.trim();
+        final start = EventService.parseStart(proposed);
+        if (scope == null || scope.isEmpty || start == null) {
+          throw StateError('event_mutation_planning_context_unavailable');
+        }
+        return routinePlanningBlockers.load(
+          accountScopeId: scope,
+          startDay: start,
+        );
+      },
+    );
+  }
 
   Future<EventTargetSelectionResult> select(
       EventMutationRequest request) async {
@@ -166,10 +193,22 @@ final class EventConversationMutationService {
         'event_mutation_concurrent_change',
       );
     }
+    List<EventModel> planningBlockers = const [];
+    final blockerLoader = _loadPlanningBlockers;
+    if (blockerLoader != null) {
+      try {
+        planningBlockers = await blockerLoader(proposed);
+      } catch (_) {
+        return const EventMutationExecutionResult(
+          EventMutationExecutionStatus.verificationUnavailable,
+          'event_mutation_planning_verification_unavailable',
+        );
+      }
+    }
     final validation = EventMutationInvariantService.validate(
       existing: current,
       proposed: proposed,
-      events: events,
+      events: [...events, ...planningBlockers],
     );
     if (validation.status == EventMutationInvariantStatus.planningConflict) {
       return const EventMutationExecutionResult(

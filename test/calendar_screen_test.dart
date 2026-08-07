@@ -156,7 +156,7 @@ void main() {
     await tester.tap(helpButton);
     expect(requestedHelp?.eventTitle, 'Coiffeur');
     expect(requestedHelp?.eventId, 'event-coiffeur');
-    expect(requestedHelp?.routineTitle, 'Préparer les enfants');
+    expect(requestedHelp?.otherTitle, 'Préparer les enfants');
     expect(
       requestedHelp?.assistantMessage,
       'Je vois que « Coiffeur » et « Préparer les enfants » se chevauchent. '
@@ -203,6 +203,63 @@ void main() {
       findsOneWidget,
     );
     expect(find.byIcon(Icons.more_horiz), findsNothing);
+  });
+
+  testWidgets('offers Zelia help when two future events overlap',
+      (WidgetTester tester) async {
+    final day = DateTime.now().add(const Duration(days: 2));
+    final date = isoDate(day);
+    AgendaConflictHelp? requestedHelp;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CalendarScreen(
+          accountScopeToken: 'account-a',
+          initialDate: day,
+          onAskZeliaForConflict: (help) => requestedHelp = help,
+          eventsVersionForTest: ValueNotifier<int>(0),
+          routinesVersionForTest: ValueNotifier<int>(0),
+          loadEventsForTest: () async => [
+            EventModel(
+              id: 'event-one',
+              title: 'Médecin',
+              date: date,
+              time: '14:00',
+              durationMinutes: 60,
+              notes: '',
+              createdAt: DateTime.utc(2026, 8, 1),
+              startDateTimeIso: '${date}T14:00:00',
+            ),
+            EventModel(
+              id: 'event-two',
+              title: 'Banque',
+              date: date,
+              time: '14:30',
+              durationMinutes: 60,
+              notes: '',
+              createdAt: DateTime.utc(2026, 8, 1),
+              startDateTimeIso: '${date}T14:30:00',
+            ),
+          ],
+          loadSyncConflictsForTest: () async => const [],
+          loadRoutinesForDayForTest: (_, __) async => const [],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(
+        'Regarde, « Banque » et « Médecin » se chevauchent. '
+        'Je ne change rien sans ton accord.',
+      ),
+      findsOneWidget,
+    );
+    final helpButton = find.text('Aide-moi à trouver une solution');
+    await tester.ensureVisible(helpButton);
+    await tester.tap(helpButton);
+    expect(requestedHelp?.eventId, 'event-two');
+    expect(requestedHelp?.eventTitle, 'Banque');
+    expect(requestedHelp?.otherTitle, 'Médecin');
   });
 
   testWidgets(

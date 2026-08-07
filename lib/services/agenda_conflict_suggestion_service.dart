@@ -3,6 +3,7 @@ import '../models/event_model.dart';
 import 'event_service.dart';
 import 'planning_proposal_engine.dart';
 import 'routine/routine_agenda_service.dart';
+import 'routine/routine_planning_blocker_service.dart';
 
 final class AgendaConflictSuggestionService {
   AgendaConflictSuggestionService({
@@ -31,25 +32,14 @@ final class AgendaConflictSuggestionService {
       return null;
     }
     final blocked = events.where((event) => event.id != eventId).toList();
-    final routines = await _routineAgendaService.forWindow(
+    final routineBlockers = await RoutinePlanningBlockerService(
+      routineAgendaService: _routineAgendaService,
+    ).load(
       accountScopeId: accountScopeId,
       startDay: now,
       days: 7,
     );
-    blocked.addAll(routines.map((routine) => EventModel(
-          id: 'routine:${routine.occurrenceId}',
-          title: routine.title,
-          date: _dateIso(routine.protectedStart),
-          time: _time(routine.protectedStart),
-          notes: '',
-          category: 'Routine',
-          createdAt: now,
-          startDateTimeIso: routine.protectedStart.toIso8601String(),
-          endTime: _time(routine.protectedEnd),
-          endDateTimeIso: routine.protectedEnd.toIso8601String(),
-          durationMinutes:
-              routine.protectedEnd.difference(routine.protectedStart).inMinutes,
-        )));
+    blocked.addAll(routineBlockers);
     final duration = target.durationMinutes > 0 ? target.durationMinutes : 60;
     final protectedMinutes = target.resolvedTravelGoMinutes +
         duration +

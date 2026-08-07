@@ -1815,9 +1815,30 @@ class _CalendarScreenState extends State<CalendarScreen> {
     return conflicts;
   }
 
+  List<({EventModel event, EventModel other})> dailyEventConflicts(
+    List<EventModel> dayEvents,
+  ) {
+    final conflicts = <({EventModel event, EventModel other})>[];
+    for (var first = 0; first < dayEvents.length; first++) {
+      final firstStart = EventService.parseProtectedStart(dayEvents[first]);
+      final firstEnd = EventService.parseProtectedEnd(dayEvents[first]);
+      if (firstStart == null || firstEnd == null) continue;
+      for (var second = first + 1; second < dayEvents.length; second++) {
+        final secondStart = EventService.parseProtectedStart(dayEvents[second]);
+        final secondEnd = EventService.parseProtectedEnd(dayEvents[second]);
+        if (secondStart == null || secondEnd == null) continue;
+        if (firstStart.isBefore(secondEnd) && secondStart.isBefore(firstEnd)) {
+          conflicts.add((event: dayEvents[second], other: dayEvents[first]));
+        }
+      }
+    }
+    return conflicts;
+  }
+
   Widget buildEventsList() {
     final events = eventsForSelectedDate();
     final routineConflicts = dailyRoutineConflicts(events);
+    final eventConflicts = dailyEventConflicts(events);
     final focusedEvent = events
         .where((event) => event.id == widget.highlightedEventId)
         .firstOrNull;
@@ -1838,7 +1859,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             eventTitle: cleanEventTitle(
               widget.highlightedEventTitle ?? focusedEvent.title,
             ),
-            routineTitle:
+            otherTitle:
                 widget.highlightedRoutineTitle?.trim().isNotEmpty == true
                     ? widget.highlightedRoutineTitle!.trim()
                     : focusedRoutineTitle ?? 'ta routine',
@@ -1888,12 +1909,22 @@ class _CalendarScreenState extends State<CalendarScreen> {
               keySuffix: widget.highlightedRoutineId!,
               event: focusedEvent!,
             ),
+          for (final conflict in eventConflicts)
+            buildConflictHelpCard(
+              help: AgendaConflictHelp(
+                eventId: conflict.event.id ?? '',
+                eventTitle: cleanEventTitle(conflict.event.title),
+                otherTitle: cleanEventTitle(conflict.other.title),
+              ),
+              keySuffix: 'event-${conflict.other.id ?? 'unknown'}',
+              event: conflict.event,
+            ),
           for (final conflict in routineConflicts)
             buildConflictHelpCard(
               help: AgendaConflictHelp(
                 eventId: conflict.event.id ?? '',
                 eventTitle: cleanEventTitle(conflict.event.title),
-                routineTitle: conflict.routine.title,
+                otherTitle: conflict.routine.title,
               ),
               keySuffix: conflict.routine.routineId,
               event: conflict.event,
@@ -1927,7 +1958,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Regarde, « ${help.eventTitle} » et « ${help.routineTitle} » se '
+            'Regarde, « ${help.eventTitle} » et « ${help.otherTitle} » se '
             'chevauchent. Je ne change rien sans ton accord.',
             style: TextStyle(
               color: textDark,
@@ -2011,6 +2042,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final color = categoryColor(categoryOf(event));
     final displayTitle = cleanEventTitle(event.title);
     final highlighted = event.id == widget.highlightedEventId ||
+        dailyEventConflicts(eventsForSelectedDate()).any(
+          (conflict) =>
+              conflict.event.id == event.id || conflict.other.id == event.id,
+        ) ||
         dailyRoutineConflicts(eventsForSelectedDate())
             .any((conflict) => conflict.event.id == event.id);
 

@@ -99,6 +99,80 @@ void main() {
         EventMutationExecutionStatus.conflict);
   });
 
+  test('rechecks routine blockers immediately before writing', () async {
+    final original = _event();
+    var writes = 0;
+    final service = EventConversationMutationService(
+      loadEvents: () async => [original],
+      loadPlanningBlockers: (_) async => [
+        EventModel(
+          id: 'routine:sport:2026-07-23',
+          title: 'Sport',
+          date: '2026-07-23',
+          time: '11:00',
+          notes: '',
+          createdAt: DateTime.utc(2026, 7, 20),
+          startDateTimeIso: '2026-07-23T11:00:00',
+          endDateTimeIso: '2026-07-23T12:00:00',
+          durationMinutes: 60,
+        ),
+      ],
+      write: ({
+        required existing,
+        required proposed,
+        required expectedEventRevision,
+        required participantIntent,
+      }) async {
+        writes++;
+        return EventMutationResult.success(proposed);
+      },
+    );
+    final proposed = service.propose(
+      original,
+      EventMutationChanges(time: '11:00'),
+    );
+
+    final result = await service.execute(
+      original: original,
+      proposed: proposed,
+    );
+
+    expect(result.status, EventMutationExecutionStatus.conflict);
+    expect(writes, 0);
+  });
+
+  test('fails closed when routine planning cannot be verified', () async {
+    final original = _event();
+    var writes = 0;
+    final service = EventConversationMutationService(
+      loadEvents: () async => [original],
+      loadPlanningBlockers: (_) async => throw StateError('offline'),
+      write: ({
+        required existing,
+        required proposed,
+        required expectedEventRevision,
+        required participantIntent,
+      }) async {
+        writes++;
+        return EventMutationResult.success(proposed);
+      },
+    );
+
+    final result = await service.execute(
+      original: original,
+      proposed: service.propose(
+        original,
+        EventMutationChanges(time: '11:00'),
+      ),
+    );
+
+    expect(
+      result.status,
+      EventMutationExecutionStatus.verificationUnavailable,
+    );
+    expect(writes, 0);
+  });
+
   test('locally revalidates stable event IDs from conversation state',
       () async {
     final service = EventConversationMutationService(

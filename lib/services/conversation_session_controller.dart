@@ -182,6 +182,10 @@ final class ConversationSessionController extends ChangeNotifier {
       return (await loadAutonomyService()).load();
     }
 
+    final mutationService = eventConversationMutationService ??
+        EventConversationMutationService.production(
+          accountScopeId: resolvedAccountScopeId,
+        );
     final coordinator = ConversationCoordinator(
       backend: backend,
       contextProvider:
@@ -191,7 +195,7 @@ final class ConversationSessionController extends ChangeNotifier {
       identityAccountScope: identityServices?.scope,
       eventParticipantIdentityValidationService:
           identityServices?.eventParticipantValidation,
-      eventConversationMutationService: eventConversationMutationService,
+      eventConversationMutationService: mutationService,
       loadAutonomyPolicy: loadAutonomyPolicy,
       routineConversationService: RoutineConversationService.production(),
       clock: clock,

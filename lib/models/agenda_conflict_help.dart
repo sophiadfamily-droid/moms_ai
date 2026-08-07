@@ -3,15 +3,15 @@ final class AgendaConflictHelp {
   const AgendaConflictHelp({
     required this.eventId,
     required this.eventTitle,
-    required this.routineTitle,
+    required this.otherTitle,
   });
 
   final String eventId;
   final String eventTitle;
-  final String routineTitle;
+  final String otherTitle;
 
   String get assistantMessage =>
-      'Je vois que « $eventTitle » et « $routineTitle » se chevauchent. '
+      'Je vois que « $eventTitle » et « $otherTitle » se chevauchent. '
       'Je peux t’aider à trouver une solution. Dis-moi ce que tu préfères '
       'déplacer.';
 }
