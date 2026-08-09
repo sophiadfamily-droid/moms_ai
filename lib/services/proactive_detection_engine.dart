@@ -510,6 +510,7 @@ final class ProactiveDetectionEngine {
       final previous = existingByFingerprint[signal.incidentFingerprint];
       if (previous != null &&
           previous.state == ProactiveDetectionState.resolved &&
+          signal.detectorType != ProactiveDetectorType.conflict &&
           current.difference(previous.resolvedAt ?? previous.detectedAt) <
               policy.cooldown) {
         suppressed++;

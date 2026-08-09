@@ -57,6 +57,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   bool loading = true;
   bool hasAttention = false;
+  int _dashboardLoadGeneration = 0;
 
   final Color bg = const Color(0xFFF8EFEA);
   final Color accent = const Color(0xFFE95D5D);
@@ -77,6 +78,7 @@ class _HomeScreenState extends State<HomeScreen>
     TaskService.tasksVersion.addListener(loadDashboardData);
     ShoppingService.shoppingVersion.addListener(loadDashboardData);
     EventService.eventsVersion.addListener(loadDashboardData);
+    NotificationService.detectionsVersion.addListener(loadDashboardData);
 
     loadDashboardData();
   }
@@ -86,6 +88,7 @@ class _HomeScreenState extends State<HomeScreen>
     TaskService.tasksVersion.removeListener(loadDashboardData);
     ShoppingService.shoppingVersion.removeListener(loadDashboardData);
     EventService.eventsVersion.removeListener(loadDashboardData);
+    NotificationService.detectionsVersion.removeListener(loadDashboardData);
 
     robotController.dispose();
     familyPhotoController.dispose();
@@ -93,6 +96,7 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Future<void> loadDashboardData() async {
+    final generation = ++_dashboardLoadGeneration;
     final loadedEvents = await EventService.getEvents();
     final loadedTasks = await TaskService.getTasks();
     final loadedShopping = await ShoppingService.getItems();
@@ -118,7 +122,7 @@ class _HomeScreenState extends State<HomeScreen>
       return aValue.compareTo(bValue);
     });
 
-    if (!mounted) {
+    if (!mounted || generation != _dashboardLoadGeneration) {
       return;
     }
 

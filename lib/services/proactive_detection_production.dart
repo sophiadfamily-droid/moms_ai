@@ -44,6 +44,29 @@ final class ProductionProactiveDetectionInputProvider
   }) async {
     final lifeContext = await LifeContextProductionFactory.production();
     lifeContext.handleAccountScopeChanged(accountScopeId);
+    // The domain notifier and the detection listener are both synchronous.
+    // Do not depend on their registration order: mark the changed canonical
+    // section dirty before reading the snapshot used to validate detections.
+    switch (trigger) {
+      case DetectionEvaluationTrigger.eventChanged:
+        lifeContext.invalidateSection(LifeContextDomain.event);
+      case DetectionEvaluationTrigger.taskChanged:
+        lifeContext.invalidateSection(LifeContextDomain.task);
+      case DetectionEvaluationTrigger.routineChanged:
+        lifeContext.invalidateSection(LifeContextDomain.routine);
+      case DetectionEvaluationTrigger.explicitInternalRefresh:
+        lifeContext
+          ..invalidateSection(LifeContextDomain.event)
+          ..invalidateSection(LifeContextDomain.task)
+          ..invalidateSection(LifeContextDomain.routine);
+      case DetectionEvaluationTrigger.authenticatedBootstrap:
+      case DetectionEvaluationTrigger.foreground:
+      case DetectionEvaluationTrigger.dependencyChanged:
+      case DetectionEvaluationTrigger.timezoneChanged:
+      case DetectionEvaluationTrigger.sourceResolved:
+      case DetectionEvaluationTrigger.networkRestored:
+        break;
+    }
     final snapshot = await lifeContext.refreshIfNeeded();
     final graph = lifeContext.currentGraph ??
         const LifeContextRelationEngine().build(snapshot);

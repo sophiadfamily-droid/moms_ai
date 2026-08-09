@@ -263,6 +263,7 @@ final class FlutterLocalNotificationPlatformGateway
 }
 
 class NotificationService {
+  static final ValueNotifier<int> detectionsVersion = ValueNotifier<int>(0);
   static LocalNotificationScheduler? _scheduler;
   static NotificationSettingsService? _settings;
   static NotificationPermissionService? _permissions;
@@ -485,6 +486,7 @@ class NotificationService {
             .join(','),
       },
     );
+    detectionsVersion.value++;
   }
 
   static void _eventChanged() {

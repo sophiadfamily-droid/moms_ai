@@ -121,6 +121,10 @@ final class ProactiveNotificationOrchestrator
       if (decision.type ==
           NotificationDeliveryDecisionType.includeInDailySummary) {
         summaryCandidates.add(signal);
+        signalUpdates.add(signal.copyWith(
+          state: ProactiveDetectionState.eligible,
+          clearNotificationLogicalId: true,
+        ));
         continue;
       }
       if (decision.type != NotificationDeliveryDecisionType.schedule &&
@@ -141,6 +145,14 @@ final class ProactiveNotificationOrchestrator
           } else {
             failed++;
           }
+        } else {
+          // Delivery policy controls OS notifications, not the in-app
+          // attention center. A currently proven signal must remain visible
+          // even when a duplicate notification is intentionally suppressed.
+          signalUpdates.add(signal.copyWith(
+            state: ProactiveDetectionState.eligible,
+            clearNotificationLogicalId: true,
+          ));
         }
         continue;
       }

@@ -188,14 +188,16 @@ final class DailySummaryViewService {
       }
     }
     return conflictSignals.map((signal) {
-      final eventEvidence = signal.evidence.where(
-        (item) => item.domain.name == 'event',
-      );
+      final eventEvidence = signal.evidence
+          .where((item) => item.domain.name == 'event')
+          .toList(growable: false);
       final routineEvidence = signal.evidence.where(
         (item) => item.domain.name == 'routine',
       );
       final eventId =
           eventEvidence.isEmpty ? null : eventEvidence.first.sourceId;
+      final secondEventId =
+          eventEvidence.length < 2 ? null : eventEvidence[1].sourceId;
       final occurrenceId =
           routineEvidence.isEmpty ? null : routineEvidence.first.sourceId;
       final routineId = occurrenceId == null ? null : _routineId(occurrenceId);
@@ -211,8 +213,12 @@ final class DailySummaryViewService {
           'un rendez-vous',
         ),
         routineTitle: _safeLabel(
-          routineId == null ? null : labels.routineTitles[routineId],
-          'une routine',
+          routineId == null
+              ? (secondEventId == null
+                  ? null
+                  : labels.eventTitles[secondEventId])
+              : labels.routineTitles[routineId],
+          routineId == null ? 'un autre rendez-vous' : 'une routine',
         ),
         targetDate: targetDate,
         eventId: eventId,

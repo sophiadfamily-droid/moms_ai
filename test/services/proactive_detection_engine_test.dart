@@ -331,6 +331,36 @@ void main() {
       expect(second.activeSignals, isEmpty);
     });
 
+    test('a proven conflict stays visible even if its old alert was resolved',
+        () {
+      final conflict = _conflict(now);
+      final first = const ProactiveDetectionEngine().evaluate(
+        input: _input(now, conflicts: [conflict]),
+        policy: const ProactiveDetectionPolicy(),
+        now: now,
+      );
+      final oldResolved = first.activeSignals.single.copyWith(
+        state: ProactiveDetectionState.resolved,
+        resolvedAt: now,
+      );
+
+      final second = const ProactiveDetectionEngine().evaluate(
+        input: _input(
+          now,
+          conflicts: [conflict],
+          existing: [oldResolved],
+        ),
+        policy: const ProactiveDetectionPolicy(),
+        now: now.add(const Duration(minutes: 10)),
+      );
+
+      expect(second.activeSignals, hasLength(1));
+      expect(
+        second.activeSignals.single.reasonCode,
+        ProactiveDetectionReason.structuredConflict,
+      );
+    });
+
     test('changed or absent source resolves old signal without mutation', () {
       final old = _signal(now);
       final result = const ProactiveDetectionEngine().evaluate(

@@ -5,6 +5,7 @@ import '../models/agenda_focus.dart';
 import '../services/daily_summary_view_service.dart';
 import '../services/notification_service.dart';
 import '../services/auth_service.dart';
+import '../services/proactive_detection_lifecycle.dart';
 import 'calendar_screen.dart';
 import 'tasks_screen.dart';
 
@@ -25,7 +26,7 @@ final class DailySummaryScreen extends StatelessWidget {
         appBar: AppBar(title: const Text('Résumé quotidien')),
         body: SafeArea(
           child: FutureBuilder<DailySummaryViewData?>(
-            future: (loader ?? NotificationService.loadDailySummary)(),
+            future: _loadCurrentSummary(),
             builder: (context, snapshot) {
               if (snapshot.connectionState != ConnectionState.done) {
                 return const Center(child: CircularProgressIndicator());
@@ -109,6 +110,20 @@ final class DailySummaryScreen extends StatelessWidget {
           ),
         ),
       );
+
+  Future<DailySummaryViewData?> _loadCurrentSummary() async {
+    final injectedLoader = loader;
+    if (injectedLoader != null) return injectedLoader();
+    try {
+      await NotificationService.evaluateDetections(
+        DetectionEvaluationTrigger.explicitInternalRefresh,
+      );
+    } on Object {
+      // The center can still show the last proven alerts when a live refresh
+      // is temporarily unavailable.
+    }
+    return NotificationService.loadDailySummary();
+  }
 
   static String _heading(String date) {
     final parsed = DateTime.tryParse(date);

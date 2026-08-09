@@ -407,16 +407,11 @@ class EventService {
       throw const FormatException('event_conflict_detection_limit_invalid');
     }
     final current = (observedAt ?? DateTime.now()).toUtc();
-    final events = (await getEventsForLifeContext(accountScopeId))
-        .where(
-          (event) =>
-              event.id != null &&
-              event.id!.trim().isNotEmpty &&
-              (parseProtectedEnd(event)?.toUtc().isAfter(current) ?? false),
-        )
-        .take(maximumEvents)
-        .toList()
-      ..sort((a, b) => a.id!.compareTo(b.id!));
+    final events = selectUpcomingEventsForConflictDetection(
+      await getEventsForLifeContext(accountScopeId),
+      observedAt: current,
+      maximumEvents: maximumEvents,
+    );
     final conflicts = <EventProtectedConflictReference>[];
     for (var first = 0; first < events.length; first++) {
       for (var second = first + 1; second < events.length; second++) {
@@ -444,6 +439,31 @@ class EventService {
       }
     }
     return conflicts;
+  }
+
+  @visibleForTesting
+  static List<EventModel> selectUpcomingEventsForConflictDetection(
+    List<EventModel> source, {
+    required DateTime observedAt,
+    required int maximumEvents,
+  }) {
+    final current = observedAt.toUtc();
+    final upcoming = source
+        .where(
+          (event) =>
+              event.id != null &&
+              event.id!.trim().isNotEmpty &&
+              parseProtectedStart(event) != null &&
+              (parseProtectedEnd(event)?.toUtc().isAfter(current) ?? false),
+        )
+        .toList(growable: false)
+      ..sort((first, second) {
+        final firstStart = parseProtectedStart(first)!.toUtc();
+        final secondStart = parseProtectedStart(second)!.toUtc();
+        final byStart = firstStart.compareTo(secondStart);
+        return byStart != 0 ? byStart : first.id!.compareTo(second.id!);
+      });
+    return upcoming.take(maximumEvents).toList(growable: false);
   }
 
   static Future<void> addEvent(
