@@ -366,11 +366,20 @@ void main() {
           now: () => now,
         ),
         currentAccountScopeId: () => 'account-a',
+        loadSourceLabels: (_) async => const AttentionSourceLabels(
+          taskTitles: {'task-one': 'Payer la facture'},
+        ),
         now: () => now,
       ).load();
 
       expect(view, isNotNull);
       expect(view!.categoryCounts.values.single, 1);
+      expect(view.tasks.single.taskTitle, 'Payer la facture');
+      expect(view.tasks.single.taskId, 'task-one');
+      expect(
+        view.tasks.single.category,
+        ProactiveAlertCategory.deadlinePassed,
+      );
     });
 
     test('a scheduled alert remains visible in the attention view', () async {

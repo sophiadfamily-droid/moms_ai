@@ -10,10 +10,24 @@ final class AttentionSourceLabels {
   const AttentionSourceLabels({
     this.eventTitles = const {},
     this.routineTitles = const {},
+    this.taskTitles = const {},
   });
 
   final Map<String, String> eventTitles;
   final Map<String, String> routineTitles;
+  final Map<String, String> taskTitles;
+}
+
+final class TaskAttentionViewData {
+  const TaskAttentionViewData({
+    required this.taskTitle,
+    required this.category,
+    required this.taskId,
+  });
+
+  final String taskTitle;
+  final ProactiveAlertCategory category;
+  final String taskId;
 }
 
 final class ConflictAttentionViewData {
@@ -45,6 +59,7 @@ final class DailySummaryViewData {
     required this.hasStaleInformation,
     this.categoryTargetDates = const {},
     this.conflicts = const [],
+    this.tasks = const [],
   });
 
   final String localDate;
@@ -54,6 +69,7 @@ final class DailySummaryViewData {
   final bool hasStaleInformation;
   final Map<ProactiveAlertCategory, DateTime> categoryTargetDates;
   final List<ConflictAttentionViewData> conflicts;
+  final List<TaskAttentionViewData> tasks;
 }
 
 /// Read-only presentation boundary. The snapshot remains a projection, never
@@ -118,6 +134,7 @@ final class DailySummaryViewService {
     );
     final targetDates = _targetDates(active);
     final conflicts = await _conflictDetails(scope, active);
+    final tasks = await _taskDetails(scope, active);
     final snapshot = result.snapshot;
     if (snapshot == null) {
       if (active.isEmpty) return null;
@@ -150,6 +167,7 @@ final class DailySummaryViewService {
         hasStaleInformation: coverage.kind != DetectionCoverageKind.complete,
         categoryTargetDates: targetDates,
         conflicts: conflicts,
+        tasks: tasks,
       );
     }
     return DailySummaryViewData(
@@ -161,7 +179,52 @@ final class DailySummaryViewService {
           snapshot.coverageState != DetectionCoverageKind.complete,
       categoryTargetDates: targetDates,
       conflicts: conflicts,
+      tasks: tasks,
     );
+  }
+
+  Future<List<TaskAttentionViewData>> _taskDetails(
+    String scope,
+    List<ProactiveDetectionSignal> signals,
+  ) async {
+    final taskSignals = signals
+        .where(
+          (item) =>
+              item.isActiveAttention &&
+              {
+                ProactiveDetectionReason.deadlineApproaching,
+                ProactiveDetectionReason.deadlinePassed,
+                ProactiveDetectionReason.objectivelyDelayed,
+              }.contains(item.reasonCode),
+        )
+        .take(20)
+        .toList(growable: false);
+    if (taskSignals.isEmpty) return const [];
+    AttentionSourceLabels labels = const AttentionSourceLabels();
+    final loader = loadSourceLabels;
+    if (loader != null) {
+      try {
+        labels = await loader(scope);
+      } on Object {
+        // A safe generic title remains available if labels cannot be loaded.
+      }
+    }
+    final byTask = <String, TaskAttentionViewData>{};
+    for (final signal in taskSignals) {
+      final evidence = signal.evidence.where(
+        (item) => item.domain.name == 'task',
+      );
+      final taskId = evidence.isNotEmpty
+          ? evidence.first.sourceId
+          : signal.sourceRevisions.keys.firstOrNull;
+      if (taskId == null || taskId.trim().isEmpty) continue;
+      byTask[taskId] = TaskAttentionViewData(
+        taskTitle: _safeLabel(labels.taskTitles[taskId], 'une tâche'),
+        category: ProactiveNotificationPolicyEngine.categoryForSignal(signal),
+        taskId: taskId,
+      );
+    }
+    return byTask.values.toList(growable: false);
   }
 
   Future<List<ConflictAttentionViewData>> _conflictDetails(

@@ -76,11 +76,21 @@ final class DailySummaryScreen extends StatelessWidget {
                         ),
                       ),
                     ),
+                  for (final task in data.tasks)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.task_alt_rounded),
+                      title: Text(_taskLabel(task)),
+                      subtitle: const Text('Voir dans les Tâches'),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () => _openTasks(context),
+                    ),
                   for (final entry in data.categoryCounts.entries.where(
                     (entry) =>
-                        entry.key !=
-                            ProactiveAlertCategory.structuredConflict ||
-                        data.conflicts.isEmpty,
+                        (entry.key !=
+                                ProactiveAlertCategory.structuredConflict ||
+                            data.conflicts.isEmpty) &&
+                        (!_taskCategory(entry.key) || data.tasks.isEmpty),
                   ))
                     ListTile(
                       contentPadding: EdgeInsets.zero,
@@ -166,6 +176,21 @@ final class DailySummaryScreen extends StatelessWidget {
         ProactiveAlertCategory.dailySummary => 'Ton résumé de la journée',
       };
 
+  static bool _taskCategory(ProactiveAlertCategory category) => {
+        ProactiveAlertCategory.deadlineApproaching,
+        ProactiveAlertCategory.deadlinePassed,
+        ProactiveAlertCategory.objectivelyDelayed,
+      }.contains(category);
+
+  static String _taskLabel(TaskAttentionViewData task) =>
+      switch (task.category) {
+        ProactiveAlertCategory.deadlinePassed =>
+          'La tâche « ${task.taskTitle} » est en retard.',
+        ProactiveAlertCategory.objectivelyDelayed =>
+          'La tâche « ${task.taskTitle} » prend du retard.',
+        _ => 'La tâche « ${task.taskTitle} » est à faire bientôt.',
+      };
+
   static String _destinationLabel(ProactiveAlertCategory category) =>
       category == ProactiveAlertCategory.structuredConflict
           ? 'Voir dans l’Agenda'
@@ -180,6 +205,10 @@ final class DailySummaryScreen extends StatelessWidget {
       _openAgenda(context, AgendaFocus(date: targetDate));
       return;
     }
+    _openTasks(context);
+  }
+
+  void _openTasks(BuildContext context) {
     if (onOpenTasks != null) {
       onOpenTasks!();
       return;

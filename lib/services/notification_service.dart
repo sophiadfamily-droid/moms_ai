@@ -428,6 +428,9 @@ class NotificationService {
           if (routine.label?.trim().isNotEmpty == true)
             routine.id: routine.label!.trim(),
       },
+      taskTitles: {
+        for (final task in snapshot.taskDomain!.tasks) task.id: task.title,
+      },
     );
   }
 
