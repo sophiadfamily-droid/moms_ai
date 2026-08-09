@@ -188,6 +188,7 @@ class _MainNavigationState extends State<MainNavigation> {
             highlightedEventTitle: requestedAgendaFocus?.eventTitle,
             highlightedRoutineTitle: requestedAgendaFocus?.routineTitle,
             onAskZeliaForConflict: openConflictHelp,
+            onBackToHome: () => changeTab(0),
           ),
           TasksScreen(
             highlightedTaskId: requestedTaskId,

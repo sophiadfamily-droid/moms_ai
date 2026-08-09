@@ -376,6 +376,7 @@ void main() {
       expect(view!.categoryCounts.values.single, 1);
       expect(view.tasks.single.taskTitle, 'Payer la facture');
       expect(view.tasks.single.taskId, 'task-one');
+      expect(view.tasks.single.targetDate, now);
       expect(
         view.tasks.single.category,
         ProactiveAlertCategory.deadlinePassed,

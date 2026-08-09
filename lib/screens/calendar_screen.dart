@@ -30,6 +30,7 @@ class CalendarScreen extends StatefulWidget {
     this.highlightedEventTitle,
     this.highlightedRoutineTitle,
     this.onAskZeliaForConflict,
+    this.onBackToHome,
   });
 
   final Future<List<EventModel>> Function()? loadEventsForTest;
@@ -57,6 +58,7 @@ class CalendarScreen extends StatefulWidget {
   final String? highlightedEventTitle;
   final String? highlightedRoutineTitle;
   final ValueChanged<AgendaConflictHelp>? onAskZeliaForConflict;
+  final VoidCallback? onBackToHome;
   final Future<List<EventSyncConflict>> Function()? loadSyncConflictsForTest;
   final Future<EventConflictResolutionResult> Function({
     required String conflictId,
@@ -1487,7 +1489,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
             radius: 26,
             backgroundColor: Colors.white,
             child: IconButton(
-              onPressed: () => Navigator.pop(context),
+              key: const ValueKey('agenda-back-to-home'),
+              onPressed: widget.onBackToHome ??
+                  () {
+                    if (Navigator.of(context).canPop()) {
+                      Navigator.of(context).pop();
+                    }
+                  },
               icon: Icon(Icons.arrow_back_ios_new, color: textDark, size: 20),
             ),
           ),

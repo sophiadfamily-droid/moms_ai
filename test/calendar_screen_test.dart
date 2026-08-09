@@ -45,6 +45,25 @@ Widget buildCalendar({
 }
 
 void main() {
+  testWidgets('agenda back arrow returns to the dashboard', (tester) async {
+    var returnedHome = false;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CalendarScreen(
+          loadEventsForTest: () async => const [],
+          loadRoutinesForDayForTest: (_, __) async => const [],
+          onBackToHome: () => returnedHome = true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('agenda-back-to-home')));
+
+    expect(returnedHome, isTrue);
+  });
+
   testWidgets('shows a conflict from earlier on the selected day',
       (WidgetTester tester) async {
     final today = DateTime.now();

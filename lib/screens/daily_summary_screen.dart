@@ -65,7 +65,9 @@ final class DailySummaryScreen extends StatelessWidget {
                         'Attention : ${conflict.eventTitle} et '
                         '${conflict.routineTitle} sont prévus en même temps.',
                       ),
-                      subtitle: const Text('Voir dans l’Agenda'),
+                      subtitle: Text(
+                        '${_when(conflict.targetDate)} • Voir dans l’Agenda',
+                      ),
                       trailing: const Icon(Icons.chevron_right_rounded),
                       onTap: () => _openAgenda(
                         context,
@@ -83,7 +85,12 @@ final class DailySummaryScreen extends StatelessWidget {
                       contentPadding: EdgeInsets.zero,
                       leading: const Icon(Icons.task_alt_rounded),
                       title: Text(_taskLabel(task)),
-                      subtitle: const Text('Voir dans les Tâches'),
+                      subtitle: Text(
+                        task.targetDate == null
+                            ? 'Voir dans les Tâches'
+                            : 'Échéance : ${_when(task.targetDate)} • '
+                                'Voir dans les Tâches',
+                      ),
                       trailing: const Icon(Icons.chevron_right_rounded),
                       onTap: () => _openTask(context, task.taskId),
                     ),
@@ -192,6 +199,38 @@ final class DailySummaryScreen extends StatelessWidget {
           'La tâche « ${task.taskTitle} » prend du retard.',
         _ => 'La tâche « ${task.taskTitle} » est à faire bientôt.',
       };
+
+  static String _when(DateTime? value) {
+    if (value == null) return 'Horaire à vérifier';
+    final local = value.toLocal();
+    const weekdays = [
+      'lundi',
+      'mardi',
+      'mercredi',
+      'jeudi',
+      'vendredi',
+      'samedi',
+      'dimanche',
+    ];
+    const months = [
+      'janvier',
+      'février',
+      'mars',
+      'avril',
+      'mai',
+      'juin',
+      'juillet',
+      'août',
+      'septembre',
+      'octobre',
+      'novembre',
+      'décembre',
+    ];
+    final minutes =
+        local.minute == 0 ? '' : ' ${local.minute.toString().padLeft(2, '0')}';
+    return '${weekdays[local.weekday - 1]} ${local.day} '
+        '${months[local.month - 1]} à ${local.hour} h$minutes';
+  }
 
   static String _destinationLabel(ProactiveAlertCategory category) =>
       category == ProactiveAlertCategory.structuredConflict

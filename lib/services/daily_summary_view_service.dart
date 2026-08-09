@@ -23,11 +23,13 @@ final class TaskAttentionViewData {
     required this.taskTitle,
     required this.category,
     required this.taskId,
+    required this.targetDate,
   });
 
   final String taskTitle;
   final ProactiveAlertCategory category;
   final String taskId;
+  final DateTime? targetDate;
 }
 
 final class ConflictAttentionViewData {
@@ -222,6 +224,10 @@ final class DailySummaryViewService {
         taskTitle: _safeLabel(labels.taskTitles[taskId], 'une tâche'),
         category: ProactiveNotificationPolicyEngine.categoryForSignal(signal),
         taskId: taskId,
+        targetDate: evidence
+            .map((item) => item.instant ?? item.intervalStart)
+            .whereType<DateTime>()
+            .firstOrNull,
       );
     }
     return byTask.values.toList(growable: false);
