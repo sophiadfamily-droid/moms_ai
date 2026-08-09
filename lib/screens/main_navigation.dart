@@ -48,6 +48,7 @@ class _MainNavigationState extends State<MainNavigation> {
   int currentIndex = 0;
   AgendaFocus? requestedAgendaFocus;
   bool _isFindingConflictSolution = false;
+  String? requestedTaskId;
 
   late UserProfile currentProfile;
 
@@ -90,6 +91,13 @@ class _MainNavigationState extends State<MainNavigation> {
     setState(() {
       requestedAgendaFocus = focus;
       currentIndex = 2;
+    });
+  }
+
+  void openTask(String taskId) {
+    setState(() {
+      requestedTaskId = taskId;
+      currentIndex = 3;
     });
   }
 
@@ -158,6 +166,7 @@ class _MainNavigationState extends State<MainNavigation> {
             profile: currentProfile,
             onNavigate: changeTab,
             onOpenAgenda: openAgenda,
+            onOpenTask: openTask,
           ),
           ChatScreen(
             profile: currentProfile,
@@ -181,6 +190,7 @@ class _MainNavigationState extends State<MainNavigation> {
             onAskZeliaForConflict: openConflictHelp,
           ),
           TasksScreen(
+            highlightedTaskId: requestedTaskId,
             onOpenZeliaSuggestion: openChatWithSuggestion,
             onNavigate: changeTab,
             isDashboardActive: currentIndex == 3,

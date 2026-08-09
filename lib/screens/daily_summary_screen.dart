@@ -15,11 +15,13 @@ final class DailySummaryScreen extends StatelessWidget {
     this.loader,
     this.onOpenAgenda,
     this.onOpenTasks,
+    this.onOpenTask,
   });
 
   final Future<DailySummaryViewData?> Function()? loader;
   final ValueChanged<AgendaFocus>? onOpenAgenda;
   final VoidCallback? onOpenTasks;
+  final ValueChanged<String>? onOpenTask;
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -83,7 +85,7 @@ final class DailySummaryScreen extends StatelessWidget {
                       title: Text(_taskLabel(task)),
                       subtitle: const Text('Voir dans les Tâches'),
                       trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () => _openTasks(context),
+                      onTap: () => _openTask(context, task.taskId),
                     ),
                   for (final entry in data.categoryCounts.entries.where(
                     (entry) =>
@@ -216,6 +218,14 @@ final class DailySummaryScreen extends StatelessWidget {
     Navigator.of(context).push(
       MaterialPageRoute<void>(builder: (_) => const TasksScreen()),
     );
+  }
+
+  void _openTask(BuildContext context, String taskId) {
+    if (onOpenTask != null) {
+      onOpenTask!(taskId);
+      return;
+    }
+    _openTasks(context);
   }
 
   void _openAgenda(BuildContext context, AgendaFocus focus) {

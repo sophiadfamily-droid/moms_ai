@@ -17,6 +17,7 @@ class TasksScreen extends StatefulWidget {
   final ValueChanged<int>? onNavigate;
   final bool isDashboardActive;
   final ProactivePriorityService? proactivePriorityService;
+  final String? highlightedTaskId;
   final ProactiveInteractionRegistry? _proactiveInteractionRegistry;
   ProactiveInteractionRegistry get proactiveInteractionRegistry =>
       _proactiveInteractionRegistry ?? ProactiveInteractionRegistry.instance;
@@ -27,6 +28,7 @@ class TasksScreen extends StatefulWidget {
     this.onNavigate,
     this.isDashboardActive = true,
     this.proactivePriorityService,
+    this.highlightedTaskId,
     ProactiveInteractionRegistry? proactiveInteractionRegistry,
   }) : _proactiveInteractionRegistry = proactiveInteractionRegistry;
 
@@ -35,6 +37,7 @@ class TasksScreen extends StatefulWidget {
 }
 
 class _TasksScreenState extends State<TasksScreen> {
+  final GlobalKey _highlightedTaskKey = GlobalKey();
   static const bool _priorityDiagnosticsEnabled = bool.fromEnvironment(
     'ZELIA_PRIORITY_DIAGNOSTICS',
   );
@@ -103,6 +106,9 @@ class _TasksScreenState extends State<TasksScreen> {
     if (!oldWidget.isDashboardActive && widget.isDashboardActive) {
       _loadProactiveSuggestion();
     }
+    if (oldWidget.highlightedTaskId != widget.highlightedTaskId) {
+      _revealHighlightedTask();
+    }
   }
 
   @override
@@ -142,7 +148,22 @@ class _TasksScreenState extends State<TasksScreen> {
       tasks = sortedTasks;
       loading = false;
     });
+    _revealHighlightedTask();
     await _loadProactiveSuggestion();
+  }
+
+  void _revealHighlightedTask() {
+    if (widget.highlightedTaskId == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final context = _highlightedTaskKey.currentContext;
+      if (!mounted || context == null) return;
+      Scrollable.ensureVisible(
+        context,
+        duration: const Duration(milliseconds: 450),
+        curve: Curves.easeOutCubic,
+        alignment: 0.35,
+      );
+    });
   }
 
   Future<void> _loadProactiveSuggestion() async {
@@ -1375,84 +1396,97 @@ class _TasksScreenState extends State<TasksScreen> {
   }
 
   Widget buildTaskRow(TaskModel task) {
-    return GestureDetector(
-      onTap: () => toggleTask(task),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 17),
-        child: Row(
-          children: [
-            buildCheckCircle(
-              checked: task.isDone,
-              onTap: () => toggleTask(task),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: GestureDetector(
-                onTap: () => showTaskSheet(task: task),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      task.title,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: task.isDone
-                            ? textSoft.withValues(alpha: 0.65)
-                            : textDark,
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800,
-                        decoration:
-                            task.isDone ? TextDecoration.lineThrough : null,
-                      ),
-                    ),
-                    const SizedBox(height: 7),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: [
-                        buildPriorityBadge(task),
-                        buildTag(task.category),
-                        if (task.dueDate.trim().isNotEmpty)
-                          buildTag(task.dueDate),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      priorityReason(task),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: textSoft,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    if (task.notes.trim().isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 5),
-                        child: Text(
-                          task.notes,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: textSoft,
-                            fontSize: 13,
-                          ),
+    final highlighted = task.id != null && task.id == widget.highlightedTaskId;
+    return AnimatedContainer(
+      key: highlighted ? _highlightedTaskKey : null,
+      duration: const Duration(milliseconds: 250),
+      padding: highlighted ? const EdgeInsets.symmetric(horizontal: 10) : null,
+      decoration: highlighted
+          ? BoxDecoration(
+              color: accent.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: accent.withValues(alpha: 0.5)),
+            )
+          : null,
+      child: GestureDetector(
+        onTap: () => toggleTask(task),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 17),
+          child: Row(
+            children: [
+              buildCheckCircle(
+                checked: task.isDone,
+                onTap: () => toggleTask(task),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => showTaskSheet(task: task),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        task.title,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: task.isDone
+                              ? textSoft.withValues(alpha: 0.65)
+                              : textDark,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                          decoration:
+                              task.isDone ? TextDecoration.lineThrough : null,
                         ),
                       ),
-                  ],
+                      const SizedBox(height: 7),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          buildPriorityBadge(task),
+                          buildTag(task.category),
+                          if (task.dueDate.trim().isNotEmpty)
+                            buildTag(task.dueDate),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        priorityReason(task),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: textSoft,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      if (task.notes.trim().isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 5),
+                          child: Text(
+                            task.notes,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: textSoft,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-            IconButton(
-              onPressed: () => showTaskOptions(task),
-              icon: Icon(
-                Icons.more_horiz,
-                color: textSoft,
-                size: 26,
+              IconButton(
+                onPressed: () => showTaskOptions(task),
+                icon: Icon(
+                  Icons.more_horiz,
+                  color: textSoft,
+                  size: 26,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

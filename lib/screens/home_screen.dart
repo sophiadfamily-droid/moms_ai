@@ -22,12 +22,14 @@ class HomeScreen extends StatefulWidget {
   final UserProfile profile;
   final ValueChanged<int>? onNavigate;
   final ValueChanged<AgendaFocus>? onOpenAgenda;
+  final ValueChanged<String>? onOpenTask;
 
   const HomeScreen({
     super.key,
     required this.profile,
     this.onNavigate,
     this.onOpenAgenda,
+    this.onOpenTask,
   });
 
   @override
@@ -429,6 +431,14 @@ class _HomeScreenState extends State<HomeScreen>
                     onOpenTasks: () {
                       Navigator.of(context).pop();
                       navigateToTab(3);
+                    },
+                    onOpenTask: (taskId) {
+                      Navigator.of(context).pop();
+                      if (widget.onOpenTask != null) {
+                        widget.onOpenTask!(taskId);
+                      } else {
+                        navigateToTab(3);
+                      }
                     },
                   ),
                 ),
