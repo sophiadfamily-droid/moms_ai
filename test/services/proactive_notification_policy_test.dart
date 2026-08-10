@@ -728,7 +728,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Résumé quotidien'), findsOneWidget);
+      expect(find.text('À vérifier'), findsOneWidget);
       expect(find.text('2 choses sont en retard'), findsOneWidget);
       expect(find.textContaining('Conflits structurés'), findsNothing);
       expect(find.textContaining('Certaines informations'), findsOneWidget);

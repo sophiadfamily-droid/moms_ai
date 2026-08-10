@@ -995,7 +995,7 @@ class _TasksScreenState extends State<TasksScreen> {
                 children: [
                   Expanded(
                     child: Text(
-                      'La suggestion locale est momentanément indisponible.',
+                      'Je n’arrive pas à préparer une suggestion pour le moment.',
                       style: TextStyle(color: textSoft),
                     ),
                   ),
@@ -1012,7 +1012,7 @@ class _TasksScreenState extends State<TasksScreen> {
                       const SizedBox(width: 14),
                       Expanded(
                         child: Text(
-                          'Rien de prioritaire à suggérer pour le moment.',
+                          'Tout est sous contrôle pour le moment.',
                           style: TextStyle(
                             color: textSoft,
                             fontWeight: FontWeight.w600,

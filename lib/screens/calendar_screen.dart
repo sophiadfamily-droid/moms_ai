@@ -239,9 +239,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final decision = await showDialog<EventConflictResolutionDecision>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Modification à vérifier'),
+        title: const Text('Ton agenda a changé'),
         content: const Text(
-          'Cet événement a changé ailleurs. Choisissez comment continuer.',
+          'Cet événement a aussi été modifié sur un autre appareil. '
+          'Que veux-tu garder ?',
         ),
         actions: conflict.decisions
             .map(
@@ -263,9 +264,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
       confirmed = await showDialog<bool>(
             context: context,
             builder: (context) => AlertDialog(
-              title: const Text('Confirmer cette action ?'),
+              title: const Text('Tu confirmes ?'),
               content: const Text(
-                'Zélia relira la dernière version avant toute écriture.',
+                'Zelia vérifiera les changements les plus récents avant de '
+                'continuer.',
               ),
               actions: [
                 TextButton(
@@ -297,15 +299,19 @@ class _CalendarScreenState extends State<CalendarScreen> {
       SnackBar(
         content: Text(
           switch (result.status) {
-            EventConflictResolutionStatus.success => 'Le conflit a été traité.',
+            EventConflictResolutionStatus.success =>
+              'C’est bon, ton agenda est à jour.',
             EventConflictResolutionStatus.planningConflict =>
-              'Ce changement crée un conflit dans ton planning. '
-                  'Vérifie le créneau avant de réessayer.',
+              'Ce changement place deux choses en même temps. '
+                  'Choisis un autre horaire avant de réessayer.',
             EventConflictResolutionStatus.cloudChangedAgain =>
-              'Cet événement a encore été modifié ailleurs. Recharge-le avant de continuer.',
+              'Cet événement vient encore de changer sur un autre appareil. '
+                  'Rouvre-le avant de continuer.',
             EventConflictResolutionStatus.unsupportedRebase =>
-              'Cette ancienne modification ne peut pas être reprise automatiquement.',
-            _ => 'Le conflit n’a pas pu être traité. Recharge puis réessaie.',
+              'Zelia ne peut pas reprendre cette ancienne modification sans '
+                  'risquer une erreur.',
+            _ =>
+              'Je n’ai pas pu mettre l’agenda à jour. Rouvre-le puis réessaie.',
           },
         ),
       ),
@@ -315,14 +321,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   String _decisionLabel(EventConflictResolutionDecision decision) =>
       switch (decision) {
-        EventConflictResolutionDecision.keepCloud => 'Garder la version cloud',
-        EventConflictResolutionDecision.discardLocal => 'Abandonner localement',
-        EventConflictResolutionDecision.retryAgainstLatest => 'Reprendre',
-        EventConflictResolutionDecision.recreateAsNew => 'Recréer',
+        EventConflictResolutionDecision.keepCloud =>
+          'Garder la version de l’autre appareil',
+        EventConflictResolutionDecision.discardLocal =>
+          'Ignorer mes changements ici',
+        EventConflictResolutionDecision.retryAgainstLatest =>
+          'Appliquer mes changements',
+        EventConflictResolutionDecision.recreateAsNew =>
+          'Créer un nouvel événement',
         EventConflictResolutionDecision.cancelDeletion =>
           'Annuler la suppression',
         EventConflictResolutionDecision.retryDeletion =>
-          'Retenter la suppression',
+          'Essayer à nouveau de supprimer',
       };
 
   String formatIsoDate(DateTime date) {
@@ -605,7 +615,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
-                "Cet événement a changé. Rechargez l'agenda puis réessayez.",
+                "Cet événement vient de changer. Rouvre l’agenda puis réessaie.",
               ),
             ),
           );
@@ -620,7 +630,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
                 content: Text(
-                  "Cet événement a changé. Rechargez l'agenda puis réessayez.",
+                  "Cet événement vient de changer. Rouvre l’agenda puis réessaie.",
                 ),
               ),
             );
@@ -1446,7 +1456,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       const SnackBar(
                                         content: Text(
-                                          "Cet événement a changé. Rechargez l'agenda puis réessayez.",
+                                          "Cet événement vient de changer. Rouvre l’agenda puis réessaie.",
                                         ),
                                       ),
                                     );

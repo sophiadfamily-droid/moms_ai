@@ -691,7 +691,7 @@ class _HomeScreenState extends State<HomeScreen>
                     children: [
                       if (count == 0)
                         const TextSpan(
-                          text: "Aucune chose importante aujourd’hui.",
+                          text: "Rien d’important à prévoir aujourd’hui.",
                         )
                       else ...[
                         const TextSpan(text: "Tu as "),
@@ -731,7 +731,7 @@ class _HomeScreenState extends State<HomeScreen>
           ),
           const SizedBox(height: 22),
           buildZeliaButton(
-            title: "✨ Communiquer avec Zelia",
+            title: "✨ Parler avec Zelia",
             icon: Icons.auto_awesome,
             filled: true,
             onTap: () => navigateToTab(1),

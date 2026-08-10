@@ -25,7 +25,7 @@ final class DailySummaryScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Résumé quotidien')),
+        appBar: AppBar(title: const Text('À vérifier')),
         body: SafeArea(
           child: FutureBuilder<DailySummaryViewData?>(
             future: _loadCurrentSummary(),

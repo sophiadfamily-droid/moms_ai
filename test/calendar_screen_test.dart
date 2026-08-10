@@ -433,14 +433,14 @@ void main() {
 
     await tester.tap(find.text('1 modification(s) à vérifier'));
     await tester.pumpAndSettle();
-    expect(find.text('Modification à vérifier'), findsOneWidget);
-    await tester.tap(find.text('Reprendre'));
+    expect(find.text('Ton agenda a changé'), findsOneWidget);
+    await tester.tap(find.text('Appliquer mes changements'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Confirmer'));
     await tester.pumpAndSettle();
 
     expect(transmitted, EventConflictResolutionDecision.retryAgainstLatest);
-    expect(find.textContaining('conflit dans ton planning'), findsOneWidget);
+    expect(find.textContaining('deux choses en même temps'), findsOneWidget);
     expect(find.textContaining('Exception'), findsNothing);
   });
 

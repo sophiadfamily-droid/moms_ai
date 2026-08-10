@@ -627,7 +627,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.text('Rien de prioritaire à suggérer pour le moment.'),
+      find.text('Tout est sous contrôle pour le moment.'),
       findsOneWidget,
     );
     expect(history.values, isEmpty);
@@ -640,7 +640,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.text('Rien de prioritaire à suggérer pour le moment.'),
+      find.text('Tout est sous contrôle pour le moment.'),
       findsNothing,
     );
     expect(find.byIcon(Icons.close), findsOneWidget);
