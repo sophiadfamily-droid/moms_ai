@@ -130,15 +130,24 @@ class StorageService {
   static Future<UserProfile?> getUserProfile() async {
     final prefs = await SharedPreferences.getInstance();
     final scope = _currentAccountScope();
+    final compatibilityKey =
+        scope == null ? userProfileKey : _scopedCompatibilityKey(scope);
+    final localCompatibility = _decodeProfile(
+      prefs.getString(compatibilityKey),
+    );
 
     try {
       final cloudProfile =
           scope == null ? null : (await _sync.bootstrap(scope))?.profile;
 
       if (cloudProfile != null) {
+        final restoredProfile = mergeProfileOwnedCloudWithCompatibility(
+          cloud: cloudProfile,
+          localCompatibility: localCompatibility,
+        );
         await prefs.setString(
           _scopedCompatibilityKey(scope!),
-          jsonEncode(cloudProfile.toJson()),
+          jsonEncode(restoredProfile.toJson()),
         );
 
         await prefs.setBool(
@@ -146,7 +155,7 @@ class StorageService {
           true,
         );
 
-        return cloudProfile;
+        return restoredProfile;
       }
     } catch (error) {
       final descriptor = AppErrorClassifier.classify(
@@ -166,19 +175,32 @@ class StorageService {
       );
     }
 
-    final profileData = prefs.getString(
-      scope == null ? userProfileKey : _scopedCompatibilityKey(scope),
-    );
+    return localCompatibility;
+  }
 
-    if (profileData == null) {
+  static UserProfile mergeProfileOwnedCloudWithCompatibility({
+    required UserProfile cloud,
+    required UserProfile? localCompatibility,
+  }) {
+    if (localCompatibility == null) return cloud;
+    final merged = Map<String, dynamic>.from(localCompatibility.toJson());
+    final cloudJson = cloud.toJson();
+    for (final field in ProfileFieldOwnership.profileOwnedFields) {
+      if (cloudJson.containsKey(field)) merged[field] = cloudJson[field];
+    }
+    merged.addAll(cloud.legacyExtensions);
+    return UserProfile.fromJson(merged);
+  }
+
+  static UserProfile? _decodeProfile(String? encoded) {
+    if (encoded == null) return null;
+    try {
+      return UserProfile.fromJson(
+        Map<String, dynamic>.from(jsonDecode(encoded) as Map),
+      );
+    } on Object {
       return null;
     }
-
-    final decodedData = jsonDecode(profileData);
-
-    return UserProfile.fromJson(
-      Map<String, dynamic>.from(decodedData),
-    );
   }
 
   static Future<bool> isOnboardingDone() async {
