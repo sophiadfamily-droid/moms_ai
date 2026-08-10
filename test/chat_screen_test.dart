@@ -64,7 +64,7 @@ void main() {
     expect(find.textContaining('private provider detail'), findsNothing);
     expect(
       find.text(
-        'Une erreur inattendue est survenue. Tu peux réessayer.',
+        'Je rencontre un problème. Tu peux réessayer.',
       ),
       findsOneWidget,
     );

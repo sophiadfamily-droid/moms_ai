@@ -122,7 +122,7 @@ void main() {
 
       expect(
         harness.controller.state.messages.last.text,
-        'La sauvegarde locale a échoué. Réessaie avant de quitter.',
+        'Je n’ai pas réussi à enregistrer ça. Réessaie avant de quitter.',
       );
       expect(harness.controller.state.retryAvailable, isTrue);
       expect(harness.backend.calls, 0);
@@ -143,7 +143,7 @@ void main() {
 
       expect(
         harness.controller.state.messages.last.text,
-        'La sauvegarde locale a échoué. Réessaie avant de quitter.',
+        'Je n’ai pas réussi à enregistrer ça. Réessaie avant de quitter.',
       );
       expect(harness.controller.state.retryAvailable, isTrue);
       expect(harness.backend.calls, 0);

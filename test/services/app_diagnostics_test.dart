@@ -233,7 +233,11 @@ void main() {
     }
     expect(
       AppErrorCatalog.describe(AppErrorCode.syncPending).userMessage,
-      contains('enregistré sur cet appareil'),
+      contains('bien enregistré ici'),
+    );
+    expect(
+      AppErrorCatalog.describe(AppErrorCode.serviceUnavailable).userMessage,
+      contains('Vérifie ta connexion Internet'),
     );
   });
 }

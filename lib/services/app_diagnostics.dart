@@ -118,7 +118,7 @@ final class AppErrorCatalog {
       AppErrorCode.unauthenticated => _descriptor(
           code,
           AppErrorCategory.authentication,
-          'Ta session a expiré. Reconnecte-toi pour continuer.',
+          'Je dois te reconnecter avant de continuer.',
           'Authenticated session required.',
           AppRetryStrategy.retryAfterReauthentication,
           id,
@@ -126,7 +126,7 @@ final class AppErrorCatalog {
       AppErrorCode.appCheckRequired => _descriptor(
           code,
           AppErrorCategory.authorization,
-          'Cette version de Zélia doit être vérifiée avant de continuer.',
+          'Je ne peux pas vérifier l’application pour le moment. Ferme-la puis rouvre-la avant de continuer.',
           'Application attestation required.',
           AppRetryStrategy.notRetryable,
           id,
@@ -134,7 +134,7 @@ final class AppErrorCatalog {
       AppErrorCode.permissionDenied => _descriptor(
           code,
           AppErrorCategory.authorization,
-          'Cette action n’est pas autorisée.',
+          'Je n’ai pas l’autorisation de faire cela.',
           'Permission denied.',
           AppRetryStrategy.notRetryable,
           id,
@@ -142,7 +142,7 @@ final class AppErrorCatalog {
       AppErrorCode.invalidArgument => _descriptor(
           code,
           AppErrorCategory.validation,
-          'Certaines informations ne sont pas valides. Vérifie ta demande.',
+          'Je n’arrive pas à utiliser certaines informations. Vérifie ta demande.',
           'Invalid input.',
           AppRetryStrategy.retryAfterUserAction,
           id,
@@ -150,7 +150,7 @@ final class AppErrorCatalog {
       AppErrorCode.contractFailure => _descriptor(
           code,
           AppErrorCategory.contract,
-          'La réponse reçue ne peut pas être utilisée. Réessaie dans un instant.',
+          'Je n’ai pas réussi à comprendre la réponse. Réessaie dans un instant.',
           'Closed contract validation failed.',
           AppRetryStrategy.retryWithBackoff,
           id,
@@ -158,7 +158,7 @@ final class AppErrorCatalog {
       AppErrorCode.resourceExhausted => _descriptor(
           code,
           AppErrorCategory.quota,
-          'Trop de demandes ont été envoyées. Réessaie plus tard.',
+          'J’ai reçu beaucoup de demandes. Attends un peu avant de réessayer.',
           'Technical request quota exceeded.',
           AppRetryStrategy.retryWithBackoff,
           id,
@@ -166,7 +166,7 @@ final class AppErrorCatalog {
       AppErrorCode.networkUnavailable => _descriptor(
           code,
           AppErrorCategory.network,
-          'Tu sembles hors connexion. Réessaie lorsque le réseau revient.',
+          'Je n’ai pas de connexion pour le moment. Réessaie quand le réseau revient.',
           'Network unavailable.',
           AppRetryStrategy.retryWithBackoff,
           id,
@@ -174,7 +174,7 @@ final class AppErrorCatalog {
       AppErrorCode.timeout => _descriptor(
           code,
           AppErrorCategory.timeout,
-          'L’opération prend trop de temps. Tu peux réessayer.',
+          'Ça prend plus de temps que prévu. Tu peux réessayer.',
           'Operation timed out.',
           AppRetryStrategy.retryWithBackoff,
           id,
@@ -184,7 +184,7 @@ final class AppErrorCatalog {
         _descriptor(
           code,
           AppErrorCategory.availability,
-          'Le service est temporairement indisponible. Tu peux réessayer.',
+          'Je ne peux pas répondre pour le moment. Vérifie ta connexion Internet, puis réessaie dans un instant.',
           'Dependency temporarily unavailable.',
           AppRetryStrategy.retryWithBackoff,
           id,
@@ -192,7 +192,7 @@ final class AppErrorCatalog {
       AppErrorCode.providerFailure => _descriptor(
           code,
           AppErrorCategory.provider,
-          'Zélia ne peut pas répondre pour le moment. Tu peux réessayer.',
+          'Je ne peux pas répondre pour le moment. Vérifie ta connexion Internet, puis réessaie dans un instant.',
           'Provider operation failed.',
           AppRetryStrategy.retryWithBackoff,
           id,
@@ -200,7 +200,7 @@ final class AppErrorCatalog {
       AppErrorCode.configurationFailure => _descriptor(
           code,
           AppErrorCategory.configuration,
-          'Cette version de Zélia ne peut pas continuer.',
+          'Je ne peux pas continuer avec cette version de l’application.',
           'Application configuration invalid.',
           AppRetryStrategy.notRetryable,
           id,
@@ -209,7 +209,7 @@ final class AppErrorCatalog {
       AppErrorCode.conflict || AppErrorCode.staleRevision => _descriptor(
           code,
           AppErrorCategory.concurrency,
-          'Cette information a été modifiée ailleurs. Vérifie la version à conserver.',
+          'Cette information a changé sur un autre appareil. Vérifie ce que tu veux garder.',
           'Concurrent change detected.',
           AppRetryStrategy.retryAfterUserAction,
           id,
@@ -217,7 +217,7 @@ final class AppErrorCatalog {
       AppErrorCode.staleResult => _descriptor(
           code,
           AppErrorCategory.staleResult,
-          'Le résultat reçu n’est plus à jour.',
+          'Les informations viennent de changer. Réessaie pour que je les vérifie à nouveau.',
           'Stale asynchronous result discarded.',
           AppRetryStrategy.retryImmediately,
           id,
@@ -226,7 +226,7 @@ final class AppErrorCatalog {
       AppErrorCode.accountScopeMismatch => _descriptor(
           code,
           AppErrorCategory.accountScope,
-          'L’action a été interrompue après le changement de compte.',
+          'Je me suis arrêtée parce que tu as changé de compte.',
           'Account scope mismatch.',
           AppRetryStrategy.notRetryable,
           id,
@@ -235,7 +235,7 @@ final class AppErrorCatalog {
       AppErrorCode.notFound => _descriptor(
           code,
           AppErrorCategory.validation,
-          'Cette information n’est plus disponible.',
+          'Je ne retrouve plus cette information.',
           'Requested resource not found.',
           AppRetryStrategy.notRetryable,
           id,
@@ -243,7 +243,7 @@ final class AppErrorCatalog {
       AppErrorCode.cancelled => _descriptor(
           code,
           AppErrorCategory.cancellation,
-          'L’action a été annulée.',
+          'D’accord, j’arrête ici.',
           'Operation cancelled.',
           AppRetryStrategy.notRetryable,
           id,
@@ -252,7 +252,7 @@ final class AppErrorCatalog {
       AppErrorCode.storageFailure => _descriptor(
           code,
           AppErrorCategory.persistence,
-          'La sauvegarde locale a échoué. Réessaie avant de quitter.',
+          'Je n’ai pas réussi à enregistrer ça. Réessaie avant de quitter.',
           'Local persistence operation failed.',
           AppRetryStrategy.retryImmediately,
           id,
@@ -260,7 +260,7 @@ final class AppErrorCatalog {
       AppErrorCode.syncPending => _descriptor(
           code,
           AppErrorCategory.synchronization,
-          'C’est enregistré sur cet appareil. La synchronisation reprendra automatiquement.',
+          'C’est bien enregistré ici. Je le transmettrai à tes autres appareils dès que possible.',
           'Durable local write pending cloud synchronization.',
           AppRetryStrategy.retryWithBackoff,
           id,
@@ -269,7 +269,7 @@ final class AppErrorCatalog {
       AppErrorCode.syncFailure || AppErrorCode.permanentlyFailed => _descriptor(
           code,
           AppErrorCategory.synchronization,
-          'La synchronisation n’a pas abouti. Tes données restent à vérifier.',
+          'Je n’ai pas réussi à transmettre les changements à tes autres appareils. Vérifie qu’ils sont bien enregistrés ici.',
           'Synchronization operation failed.',
           code == AppErrorCode.syncFailure
               ? AppRetryStrategy.retryWithBackoff
@@ -288,7 +288,7 @@ final class AppErrorCatalog {
       AppErrorCode.proactiveShow => _descriptor(
           code,
           AppErrorCategory.persistence,
-          'Une suggestion utile est disponible.',
+          'J’ai une suggestion qui pourrait t’aider.',
           'Eligible proactive suggestion selected.',
           AppRetryStrategy.notRetryable,
           id,
@@ -297,7 +297,7 @@ final class AppErrorCatalog {
       AppErrorCode.proactiveNoShow => _descriptor(
           code,
           AppErrorCategory.persistence,
-          'Aucune suggestion n’est nécessaire pour le moment.',
+          'Tout est sous contrôle pour le moment.',
           'No proactive suggestion selected.',
           AppRetryStrategy.notRetryable,
           id,
@@ -306,7 +306,7 @@ final class AppErrorCatalog {
       AppErrorCode.proactivePersistenceFailure => _descriptor(
           code,
           AppErrorCategory.persistence,
-          'La suggestion ne peut pas être affichée pour le moment.',
+          'Je n’arrive pas à afficher cette suggestion pour le moment.',
           'Proactive suggestion receipt persistence failed.',
           AppRetryStrategy.retryWithBackoff,
           id,
@@ -314,7 +314,7 @@ final class AppErrorCatalog {
       AppErrorCode.internalFailure || AppErrorCode.unknown => _descriptor(
           code,
           AppErrorCategory.internal,
-          'Une erreur inattendue est survenue. Tu peux réessayer.',
+          'Je rencontre un problème. Tu peux réessayer.',
           'Unexpected application failure.',
           AppRetryStrategy.retryWithBackoff,
           id,
