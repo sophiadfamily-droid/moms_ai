@@ -29,6 +29,8 @@ dependencies:
   geolocator: ^14.0.3
   geocoding: ^5.0.0
   country_picker: ^2.0.28
+  package_info_plus: ^10.2.1
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:

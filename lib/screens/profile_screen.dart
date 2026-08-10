@@ -21,6 +21,8 @@ import 'auth/auth_screen.dart';
 import 'human_profile_screen.dart';
 import 'memory_library_screen.dart';
 import 'notification_settings_screen.dart';
+import 'privacy_data_screen.dart';
+import 'help_information_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final UserProfile profile;
@@ -2910,6 +2912,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     var schoolRanges = List<TimeRangeModel>.from(child?.schoolTimeRanges ?? []);
     var activities = List<ActivityModel>.from(child?.activities ?? []);
+    var photoPath = child?.photoPath ?? '';
 
     ChildProfile? result;
 
@@ -2941,10 +2944,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       child: buildSmallAvatar(
                         name: firstNameController.text,
                         size: 78,
-                        imagePath: child?.photoPath ?? "",
-                        onTap: index == null
-                            ? null
-                            : () => updateChildPhoto(index),
+                        imagePath: photoPath,
+                        onTap: () async {
+                          final selected = await pickImagePath();
+                          if (selected.isNotEmpty) {
+                            setModalState(() => photoPath = selected);
+                          }
+                        },
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -3142,7 +3148,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           gender: gender,
                           school: "",
                           notes: notesController.text.trim(),
-                          photoPath: child?.photoPath ?? "",
+                          photoPath: photoPath,
                           className: classController.text.trim(),
                           allergies: allergiesController.text.trim(),
                           doctor: doctorController.text.trim(),
@@ -4543,7 +4549,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         buildProfileRow(
           icon: Icons.language_outlined,
           label: "Langue et région",
-          value: spokenLanguage,
+          value: null,
           iconColor: textSoft,
           onTap: showLocationSheet,
           showChevron: true,
@@ -4552,7 +4558,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         buildProfileRow(
           icon: Icons.notifications_none_rounded,
           label: "Notifications",
-          value: wantsNotifications ? "Actives" : "Désactivées",
+          value: null,
           iconColor: textSoft,
           onTap: showNotificationsSettings,
           showChevron: true,
@@ -4561,12 +4567,42 @@ class _ProfileScreenState extends State<ProfileScreen> {
         buildProfileRow(
           icon: Icons.auto_awesome,
           label: "Mémoire Zelia",
-          value: "Gérer les consentements",
+          value: null,
           iconColor: textSoft,
           onTap: () {
             Navigator.of(context).push(
               MaterialPageRoute<void>(
                 builder: (_) => const MemoryLibraryScreen(),
+              ),
+            );
+          },
+          showChevron: true,
+        ),
+        buildDivider(),
+        buildProfileRow(
+          icon: Icons.shield_outlined,
+          label: 'Confidentialité et mes données',
+          value: null,
+          iconColor: textSoft,
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const PrivacyDataScreen(),
+              ),
+            );
+          },
+          showChevron: true,
+        ),
+        buildDivider(),
+        buildProfileRow(
+          icon: Icons.help_outline,
+          label: 'Aide et informations',
+          value: null,
+          iconColor: textSoft,
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const HelpInformationScreen(),
               ),
             );
           },
@@ -4579,14 +4615,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget buildAccountRow() {
     final user = FirebaseAuth.instance.currentUser;
     final hasPermanentAccount = user != null && !user.isAnonymous;
-    final email = hasPermanentAccount ? user.email : null;
 
     return buildProfileRow(
       icon: hasPermanentAccount
           ? Icons.verified_user_outlined
           : Icons.lock_outline,
-      label: "Compte Zélia",
-      value: hasPermanentAccount ? email ?? "Connecté" : "Créer ou connecter",
+      label: "Compte Zelia",
+      value: null,
       iconColor: hasPermanentAccount ? accent : textSoft,
       onTap: showAccountSheet,
       showChevron: true,
@@ -4733,7 +4768,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget buildProfileRow({
     required IconData icon,
     required String label,
-    required String value,
+    required String? value,
     required VoidCallback onTap,
     Color? iconColor,
     bool showChevron = false,
@@ -4766,20 +4801,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
               leadingAvatar,
               const SizedBox(width: 10),
             ],
-            Flexible(
-              child: Text(
-                value,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.right,
-                style: TextStyle(
-                  color: value == "À compléter"
-                      ? textSoft.withValues(alpha: 0.75)
-                      : textDark,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
+            if (value != null && value.trim().isNotEmpty)
+              Flexible(
+                child: Text(
+                  value,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style: TextStyle(
+                    color: value == "À compléter"
+                        ? textSoft.withValues(alpha: 0.75)
+                        : textDark,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
-            ),
             if (showChevron) ...[
               const SizedBox(width: 10),
               Icon(
