@@ -398,11 +398,13 @@ void main() {
       );
       expect(activity, isNot(contains('requestPermissions')));
       expect(manifest, contains('android.permission.POST_NOTIFICATIONS'));
+      expect(manifest, contains('android.permission.ACCESS_COARSE_LOCATION'));
+      expect(manifest, contains('android.permission.ACCESS_FINE_LOCATION'));
       expect(manifest, isNot(contains('SCHEDULE_EXACT_ALARM')));
       expect(manifest, isNot(contains('ActionBroadcastReceiver')));
       expect(
         RegExp(r'<uses-permission\b').allMatches(manifest),
-        hasLength(5),
+        hasLength(7),
       );
       expect(notificationIcon.existsSync(), isTrue);
       expect(notificationIcon.readAsStringSync(), contains('<vector'));

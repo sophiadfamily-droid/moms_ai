@@ -4,6 +4,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:country_picker/country_picker.dart';
 
 import '../models/user_profile.dart';
 import '../models/human/human_model.dart';
@@ -12,12 +15,11 @@ import '../services/storage_service.dart';
 import '../services/auth_service.dart';
 import '../services/app_diagnostics.dart';
 import '../services/app_error_classifier.dart';
+import '../services/notification_service.dart';
 import '../services/human/human_model_edit_service.dart';
 import 'auth/auth_screen.dart';
 import 'human_profile_screen.dart';
-import 'memory_settings_screen.dart';
-import 'action_autonomy_settings_screen.dart';
-import 'action_history_screen.dart';
+import 'memory_library_screen.dart';
 import 'notification_settings_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -70,6 +72,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   late TextEditingController adminNotesController;
   late TextEditingController budgetNotesController;
   late TextEditingController importantPlacesController;
+  late TextEditingController homeAddressController;
+  late TextEditingController workAddressController;
 
   late String selectedFamilyStatus;
   late String selectedWorkStatus;
@@ -89,6 +93,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String mainLifePriority = "";
   String spokenLanguage = "";
   String country = "";
+  String city = "";
+  String currentCountry = "";
   String timeZone = "";
 
   final Color bg = const Color(0xFFF8EFEA);
@@ -217,6 +223,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     budgetNotesController = TextEditingController(text: profile.budgetNotes);
     importantPlacesController =
         TextEditingController(text: profile.importantPlaces);
+    homeAddressController = TextEditingController(text: profile.homeAddress);
+    workAddressController = TextEditingController(text: profile.workAddress);
 
     selectedFamilyStatus = inferFamilyStatus(profile);
     selectedWorkStatus = inferWorkStatus(profile);
@@ -248,9 +256,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     spokenLanguage =
         profile.spokenLanguage.isNotEmpty ? profile.spokenLanguage : "Français";
     country = profile.country.isNotEmpty ? profile.country : "France";
+    city = profile.city;
+    currentCountry = profile.currentCountry;
     timeZone = profile.timeZone.isNotEmpty ? profile.timeZone : "Europe/Paris";
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadAdditionalProfiles();
+      _refreshTimeZoneFromPhone();
     });
   }
 
@@ -304,6 +315,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     adminNotesController.text = newProfile.adminNotes;
     budgetNotesController.text = newProfile.budgetNotes;
     importantPlacesController.text = newProfile.importantPlaces;
+    homeAddressController.text = newProfile.homeAddress;
+    workAddressController.text = newProfile.workAddress;
 
     selectedFamilyStatus = inferFamilyStatus(newProfile);
     selectedWorkStatus = inferWorkStatus(newProfile);
@@ -332,6 +345,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ? newProfile.spokenLanguage
         : "Français";
     country = newProfile.country.isNotEmpty ? newProfile.country : "France";
+    city = newProfile.city;
+    currentCountry = newProfile.currentCountry;
     timeZone =
         newProfile.timeZone.isNotEmpty ? newProfile.timeZone : "Europe/Paris";
   }
@@ -366,6 +381,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     adminNotesController.dispose();
     budgetNotesController.dispose();
     importantPlacesController.dispose();
+    homeAddressController.dispose();
+    workAddressController.dispose();
     super.dispose();
   }
 
@@ -904,6 +921,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       mainLifePriority: mainLifePriority,
       spokenLanguage: spokenLanguage,
       country: country,
+      city: city,
+      currentCountry: currentCountry,
+      homeAddress: homeAddressController.text.trim(),
+      workAddress: workAddressController.text.trim(),
       timeZone: timeZone,
       personalGoals: personalGoalsController.text.trim(),
       businessGoals: businessGoalsController.text.trim(),
@@ -2357,13 +2378,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         const SizedBox(height: 12),
         buildTextField(
-          controller: importantPlacesController,
-          label: "Lieux importants",
-          hint: "École, travail, sport, famille...",
-          maxLines: 3,
-        ),
-        const SizedBox(height: 12),
-        buildTextField(
           controller: adminNotesController,
           label: "Administratif",
           hint: "Documents, démarches, contraintes...",
@@ -2381,48 +2395,309 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> showLocationSheet() async {
-    final countryController = TextEditingController(text: country);
-    final languageController = TextEditingController(text: spokenLanguage);
-    final timeZoneController = TextEditingController(text: timeZone);
-
-    await showPremiumSheet(
-      title: "Pays & langue",
-      icon: Icons.language_outlined,
-      onSave: () async {
-        setState(() {
-          country = countryController.text.trim();
-          spokenLanguage = languageController.text.trim();
-          timeZone = timeZoneController.text.trim();
-        });
-
-        await saveProfile();
-
-        if (!mounted) return;
-
-        if (Navigator.canPop(context)) {
-          Navigator.pop(context);
-        }
-      },
-      children: [
-        buildTextField(
-          controller: countryController,
-          label: "Pays",
-          hint: "France",
+    var selectedCountry = country;
+    var selectedLanguage = spokenLanguage;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) => buildSheetContainer(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              buildSheetHandle(),
+              const SizedBox(height: 18),
+              buildSheetTitle(
+                title: 'Langue et région',
+                icon: Icons.language_outlined,
+              ),
+              const SizedBox(height: 18),
+              buildSelectionField(
+                label: 'Pays',
+                value: selectedCountry,
+                onTap: () async {
+                  showCountryPicker(
+                    context: sheetContext,
+                    showPhoneCode: false,
+                    useSafeArea: true,
+                    header: Builder(
+                      builder: (countryContext) => Padding(
+                        padding: const EdgeInsets.fromLTRB(8, 8, 16, 4),
+                        child: Row(
+                          children: [
+                            IconButton(
+                              tooltip: 'Retour',
+                              onPressed: () => Navigator.pop(countryContext),
+                              icon: const Icon(Icons.arrow_back_ios_new),
+                            ),
+                            const SizedBox(width: 6),
+                            const Text(
+                              'Choisir un pays',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    countryListTheme: CountryListThemeData(
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(32),
+                      ),
+                      backgroundColor: bg,
+                      inputDecoration: const InputDecoration(
+                        labelText: 'Rechercher un pays',
+                        prefixIcon: Icon(Icons.search),
+                      ),
+                    ),
+                    onSelect: (value) => setSheetState(
+                      () => selectedCountry =
+                          value.getTranslatedName(sheetContext) ?? value.name,
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 14),
+              buildSelectionField(
+                label: 'Langue principale',
+                value: selectedLanguage,
+                onTap: () async {
+                  final selected = await showLanguageChoice(selectedLanguage);
+                  if (selected != null && sheetContext.mounted) {
+                    setSheetState(() => selectedLanguage = selected);
+                  }
+                },
+              ),
+              const SizedBox(height: 22),
+              buildSheetActions(
+                onSave: () async {
+                  setState(() {
+                    country = selectedCountry;
+                    spokenLanguage = selectedLanguage;
+                  });
+                  Navigator.pop(sheetContext);
+                  await saveProfile();
+                },
+              ),
+            ],
+          ),
         ),
-        const SizedBox(height: 12),
-        buildTextField(
-          controller: timeZoneController,
-          label: "Fuseau horaire",
-          hint: "Europe/Paris",
-        ),
-        const SizedBox(height: 12),
-        buildTextField(
-          controller: languageController,
-          label: "Langue principale",
-          hint: "Français",
-        ),
-      ],
+      ),
     );
+  }
+
+  Future<String?> showLanguageChoice(String selected) async {
+    const languages = [
+      'Français',
+      'English (bientôt disponible)',
+    ];
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (choiceContext) => buildSheetContainer(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            buildSheetHandle(),
+            const SizedBox(height: 18),
+            buildSheetTitle(
+              title: 'Langue principale',
+              icon: Icons.translate,
+            ),
+            const SizedBox(height: 14),
+            for (final language in languages)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(language),
+                trailing: language == selected
+                    ? Icon(Icons.check_circle, color: accent)
+                    : const Icon(Icons.chevron_right),
+                onTap: () => Navigator.pop(choiceContext, language),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (choice == null || choice == 'Français') return choice;
+    if (!mounted) return null;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text(
+          'L’anglais sera disponible dans une prochaine version.',
+        ),
+      ),
+    );
+    return null;
+  }
+
+  Future<void> _refreshTimeZoneFromPhone() async {
+    final detected = await NotificationService.currentTimezoneId();
+    if (!mounted || detected == timeZone) return;
+    setState(() => timeZone = detected);
+    await saveProfile();
+  }
+
+  Future<void> showPlacesSheet() async {
+    var locating = false;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) {
+          final bottomInset = MediaQuery.viewInsetsOf(sheetContext).bottom;
+          return Padding(
+            padding: EdgeInsets.only(bottom: bottomInset),
+            child: buildSheetContainer(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  buildSheetHandle(),
+                  const SizedBox(height: 18),
+                  buildSheetTitle(
+                    title: 'Mes lieux',
+                    icon: Icons.place_outlined,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Ces lieux aident Zelia à mieux organiser tes trajets.',
+                    style: TextStyle(color: textSoft, height: 1.4),
+                  ),
+                  const SizedBox(height: 18),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: 0.07),
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.my_location, color: accent),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Ma position actuelle',
+                                style: TextStyle(fontWeight: FontWeight.w800),
+                              ),
+                              Text(
+                                currentLocationLabel(),
+                                style: TextStyle(color: textSoft),
+                              ),
+                            ],
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: locating
+                              ? null
+                              : () async {
+                                  setSheetState(() => locating = true);
+                                  final message = await updateCurrentLocation();
+                                  if (!mounted || !sheetContext.mounted) return;
+                                  setSheetState(() => locating = false);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text(message)),
+                                  );
+                                },
+                          child: locating
+                              ? const SizedBox.square(
+                                  dimension: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Text('Actualiser'),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  buildTextField(
+                    controller: homeAddressController,
+                    label: 'Mon domicile',
+                    hint: 'Adresse du domicile',
+                  ),
+                  const SizedBox(height: 14),
+                  buildTextField(
+                    controller: workAddressController,
+                    label: 'Mon travail',
+                    hint: 'Adresse du travail',
+                  ),
+                  const SizedBox(height: 14),
+                  buildTextField(
+                    controller: importantPlacesController,
+                    label: 'Mes autres lieux importants',
+                    hint: 'École, sport, famille…',
+                    maxLines: 3,
+                  ),
+                  const SizedBox(height: 22),
+                  buildSheetActions(
+                    onSave: () async {
+                      await saveProfile();
+                      if (sheetContext.mounted) Navigator.pop(sheetContext);
+                    },
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  String currentLocationLabel() {
+    final visibleCountry = currentCountry.trim().isNotEmpty
+        ? currentCountry.trim()
+        : country.trim();
+    final parts =
+        [city.trim(), visibleCountry].where((part) => part.isNotEmpty).toList();
+    return parts.isEmpty ? 'À compléter' : parts.join(', ');
+  }
+
+  Future<String> updateCurrentLocation() async {
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        return 'Active la localisation du téléphone pour continuer.';
+      }
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        return 'La localisation n’est pas autorisée. Tu peux saisir tes lieux manuellement.';
+      }
+      final position = await Geolocator.getCurrentPosition();
+      final places = await Geocoding().placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
+      if (places.isEmpty) return 'Je n’ai pas trouvé le nom de cette ville.';
+      final place = places.first;
+      final resolvedCity = (place.locality?.trim().isNotEmpty == true
+              ? place.locality
+              : place.subAdministrativeArea) ??
+          '';
+      final resolvedCountry = place.country ?? '';
+      if (!mounted) return 'Position trouvée.';
+      setState(() {
+        city = resolvedCity.trim();
+        currentCountry = resolvedCountry.trim();
+      });
+      await saveProfile();
+      return 'Ta position actuelle a été mise à jour.';
+    } catch (_) {
+      return 'Je n’ai pas pu trouver ta position. Réessaie dans un instant.';
+    }
   }
 
   Future<void> showNotificationsSettings() async {
@@ -3668,9 +3943,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        country.trim().isEmpty
-                            ? 'Pays à compléter'
-                            : country.trim(),
+                        currentLocationLabel(),
                         style: TextStyle(
                           color: textSoft,
                           fontSize: 14,
@@ -4069,6 +4342,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             _personalHubRow(
               sheetContext,
+              icon: Icons.place_outlined,
+              title: 'Mes lieux',
+              subtitle: currentLocationLabel(),
+              open: showPlacesSheet,
+            ),
+            _personalHubRow(
+              sheetContext,
               icon: Icons.auto_awesome_outlined,
               title: 'Ce que Zelia doit savoir sur moi',
               subtitle: personalNotesController.text.trim().isEmpty
@@ -4261,18 +4541,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         buildAccountRow(),
         buildDivider(),
         buildProfileRow(
-          icon: Icons.psychology_alt_outlined,
-          label: "Façon de parler de Zelia",
-          value: aiTone,
-          iconColor: textSoft,
-          onTap: showAiPreferencesSheet,
-          showChevron: true,
-        ),
-        buildDivider(),
-        buildProfileRow(
           icon: Icons.language_outlined,
-          label: "Pays & langue",
-          value: "$country • $spokenLanguage",
+          label: "Langue et région",
+          value: spokenLanguage,
           iconColor: textSoft,
           onTap: showLocationSheet,
           showChevron: true,
@@ -4295,37 +4566,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           onTap: () {
             Navigator.of(context).push(
               MaterialPageRoute<void>(
-                builder: (_) => const MemorySettingsScreen(),
-              ),
-            );
-          },
-          showChevron: true,
-        ),
-        buildDivider(),
-        buildProfileRow(
-          icon: Icons.tune,
-          label: "Mode d’action",
-          value: "Normal, suggestions ou pause",
-          iconColor: textSoft,
-          onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => const ActionAutonomySettingsScreen(),
-              ),
-            );
-          },
-          showChevron: true,
-        ),
-        buildDivider(),
-        buildProfileRow(
-          icon: Icons.history,
-          label: 'Historique des actions',
-          value: 'Consulter les modifications et leur état',
-          iconColor: textSoft,
-          onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => const ActionHistoryScreen(),
+                builder: (_) => const MemoryLibraryScreen(),
               ),
             );
           },

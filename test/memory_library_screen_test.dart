@@ -29,7 +29,17 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Ce que Zélia retient'), findsOneWidget);
+      expect(find.text('Mémoire'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('Souvenirs actifs'),
+        250,
+        scrollable: find
+            .descendant(
+              of: find.byType(ListView).first,
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
       expect(find.text('Souvenirs actifs'), findsOneWidget);
       expect(find.text('À confirmer'), findsOneWidget);
       expect(tester.takeException(), isNull);
@@ -51,6 +61,16 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.textContaining('autre appareil'), findsWidgets);
+    await tester.scrollUntilVisible(
+      find.text('En attente de synchronisation'),
+      250,
+      scrollable: find
+          .descendant(
+            of: find.byType(ListView).first,
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
     expect(find.text('En attente de synchronisation'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -69,6 +89,17 @@ void main() {
           ),
         ),
       ),
+    );
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('Zélia n’a encore rien mémorisé ici.'),
+      250,
+      scrollable: find
+          .descendant(
+            of: find.byType(ListView).first,
+            matching: find.byType(Scrollable),
+          )
+          .first,
     );
     expect(find.text('Zélia n’a encore rien mémorisé ici.'), findsOneWidget);
   });

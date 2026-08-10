@@ -4,7 +4,6 @@ import '../models/memory_policy.dart';
 import '../services/auth_service.dart';
 import '../services/memory_policy_engine.dart';
 import '../services/memory_policy_service.dart';
-import 'memory_library_screen.dart';
 
 final class MemorySettingsScreen extends StatefulWidget {
   const MemorySettingsScreen({
@@ -107,17 +106,6 @@ final class _MemorySettingsScreenState extends State<MemorySettingsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Mémoire Zélia'),
-        actions: [
-          IconButton(
-            tooltip: 'Ce que Zélia retient',
-            icon: const Icon(Icons.auto_stories_outlined),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => const MemoryLibraryScreen(),
-              ),
-            ),
-          ),
-        ],
       ),
       body: SafeArea(
         child: _loading

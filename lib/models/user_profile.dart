@@ -320,6 +320,10 @@ class UserProfile {
     "mainLifePriority",
     "spokenLanguage",
     "country",
+    "city",
+    "currentCountry",
+    "homeAddress",
+    "workAddress",
     "timeZone",
     "personalGoals",
     "businessGoals",
@@ -386,6 +390,10 @@ class UserProfile {
   final String mainLifePriority;
   final String spokenLanguage;
   final String country;
+  final String city;
+  final String currentCountry;
+  final String homeAddress;
+  final String workAddress;
   final String timeZone;
 
   final String personalGoals;
@@ -449,6 +457,10 @@ class UserProfile {
     this.mainLifePriority = "",
     this.spokenLanguage = "",
     this.country = "",
+    this.city = "",
+    this.currentCountry = "",
+    this.homeAddress = "",
+    this.workAddress = "",
     this.timeZone = "",
     this.personalGoals = "",
     this.businessGoals = "",
@@ -510,6 +522,10 @@ class UserProfile {
     String? mainLifePriority,
     String? spokenLanguage,
     String? country,
+    String? city,
+    String? currentCountry,
+    String? homeAddress,
+    String? workAddress,
     String? timeZone,
     String? personalGoals,
     String? businessGoals,
@@ -571,6 +587,10 @@ class UserProfile {
       mainLifePriority: mainLifePriority ?? this.mainLifePriority,
       spokenLanguage: spokenLanguage ?? this.spokenLanguage,
       country: country ?? this.country,
+      city: city ?? this.city,
+      currentCountry: currentCountry ?? this.currentCountry,
+      homeAddress: homeAddress ?? this.homeAddress,
+      workAddress: workAddress ?? this.workAddress,
       timeZone: timeZone ?? this.timeZone,
       personalGoals: personalGoals ?? this.personalGoals,
       businessGoals: businessGoals ?? this.businessGoals,
@@ -634,6 +654,10 @@ class UserProfile {
       "mainLifePriority": mainLifePriority,
       "spokenLanguage": spokenLanguage,
       "country": country,
+      "city": city,
+      "currentCountry": currentCountry,
+      "homeAddress": homeAddress,
+      "workAddress": workAddress,
       "timeZone": timeZone,
       "personalGoals": personalGoals,
       "businessGoals": businessGoals,
@@ -708,6 +732,10 @@ class UserProfile {
       mainLifePriority: json["mainLifePriority"] ?? "",
       spokenLanguage: json["spokenLanguage"] ?? "",
       country: json["country"] ?? "",
+      city: json["city"] ?? "",
+      currentCountry: json["currentCountry"] ?? "",
+      homeAddress: json["homeAddress"] ?? "",
+      workAddress: json["workAddress"] ?? "",
       timeZone: json["timeZone"] ?? "",
       personalGoals: json["personalGoals"] ?? "",
       businessGoals: json["businessGoals"] ?? "",

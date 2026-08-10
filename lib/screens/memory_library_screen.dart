@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/memory_lifecycle_state.dart';
 import '../models/memory_sync.dart';
 import '../services/memory_library_service.dart';
+import 'memory_settings_screen.dart';
 
 final class MemoryLibraryScreen extends StatefulWidget {
   const MemoryLibraryScreen({
@@ -22,18 +23,30 @@ final class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
   MemoryLibraryService? _service;
   MemoryLibrarySnapshot? _snapshot;
   MemoryLibraryFilter _filter = MemoryLibraryFilter.all;
+  final TextEditingController _searchController = TextEditingController();
+  String _query = '';
   bool _loading = true;
   String? _error;
 
   @override
   void initState() {
     super.initState();
+    _searchController.addListener(() {
+      if (!mounted) return;
+      setState(() => _query = _searchController.text.trim().toLowerCase());
+    });
     if (widget.initialSnapshot != null) {
       _snapshot = widget.initialSnapshot;
       _loading = false;
       return;
     }
     _refresh();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _refresh() async {
@@ -63,63 +76,191 @@ final class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
   Widget build(BuildContext context) {
     final snapshot = _snapshot;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Ce que Zélia retient'),
-        actions: [
-          IconButton(
-            tooltip: 'Actualiser',
-            onPressed: _loading ? null : _refresh,
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
+      backgroundColor: const Color(0xFFF9EFEB),
       body: SafeArea(
-        child: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : _error != null
-                ? _ErrorState(message: _error!, retry: _refresh)
-                : snapshot == null
-                    ? const SizedBox.shrink()
-                    : _content(snapshot),
+        child: Column(
+          children: [
+            _header(),
+            Expanded(
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _error != null
+                      ? _ErrorState(message: _error!, retry: _refresh)
+                      : snapshot == null
+                          ? const SizedBox.shrink()
+                          : _content(snapshot),
+            ),
+          ],
+        ),
       ),
     );
   }
 
+  Widget _header() => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 8),
+        child: Row(
+          children: [
+            IconButton.filledTonal(
+              tooltip: 'Retour',
+              onPressed: () => Navigator.maybePop(context),
+              icon: const Icon(Icons.arrow_back_ios_new),
+            ),
+            const SizedBox(width: 14),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Mémoire',
+                    style: TextStyle(
+                      fontFamily: 'PlayfairDisplay',
+                      fontSize: 38,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  Text(
+                    'Ce que Zelia connaît pour mieux t’accompagner.',
+                    style: TextStyle(
+                      color: Color(0xFF8B6F67),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            IconButton.filledTonal(
+              tooltip: 'Réglages de la mémoire',
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const MemorySettingsScreen(),
+                ),
+              ),
+              icon: const Icon(Icons.tune),
+            ),
+            const SizedBox(width: 8),
+            IconButton.filledTonal(
+              tooltip: 'Actualiser',
+              onPressed: _loading ? null : _refresh,
+              icon: const Icon(Icons.refresh),
+            ),
+          ],
+        ),
+      );
+
   Widget _content(MemoryLibrarySnapshot snapshot) {
-    final memories = snapshot.filtered(_filter).toList();
+    final memories = snapshot
+        .filtered(_filter)
+        .where((memory) =>
+            _query.isEmpty || memory.text.toLowerCase().contains(_query))
+        .toList();
+    final activeCount = snapshot.memories.where(_active).length;
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 36),
       children: [
+        TextField(
+          controller: _searchController,
+          decoration: InputDecoration(
+            hintText: 'Rechercher dans ma mémoire…',
+            prefixIcon: const Icon(Icons.search),
+            suffixIcon: _query.isEmpty
+                ? null
+                : IconButton(
+                    onPressed: _searchController.clear,
+                    icon: const Icon(Icons.close),
+                  ),
+            filled: true,
+            fillColor: Colors.white.withValues(alpha: 0.9),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(28),
+              borderSide: BorderSide.none,
+            ),
+          ),
+        ),
+        const SizedBox(height: 18),
         if (snapshot.syncStatus != MemorySyncStatus.synced)
           _StatusBanner(
             text: snapshot.syncStatus == MemorySyncStatus.conflict
                 ? 'Certaines informations ont changé sur un autre appareil.'
                 : 'Certains changements seront synchronisés lorsque la connexion reviendra.',
           ),
-        Semantics(
-          label: 'Filtres de la bibliothèque de mémoire',
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: MemoryLibraryFilter.values
-                  .where((filter) =>
-                      filter != MemoryLibraryFilter.health ||
-                      snapshot.policy.healthConsentGranted)
-                  .map(
-                    (filter) => Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: FilterChip(
-                        label: Text(_filterLabel(filter)),
-                        selected: _filter == filter,
-                        onSelected: (_) => setState(() => _filter = filter),
-                      ),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: _memoryCardDecoration(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Semantics(
+                label: 'Filtres de la bibliothèque de mémoire',
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: MemoryLibraryFilter.values
+                        .where((filter) =>
+                            filter != MemoryLibraryFilter.health ||
+                            snapshot.policy.healthConsentGranted)
+                        .map(
+                          (filter) => Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: FilterChip(
+                              label: Text(_filterLabel(filter)),
+                              selected: _filter == filter,
+                              selectedColor: const Color(0xFFE9957E),
+                              onSelected: (_) =>
+                                  setState(() => _filter = filter),
+                            ),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  const CircleAvatar(
+                    radius: 25,
+                    backgroundColor: Color(0xFFF8DDD5),
+                    child: Icon(Icons.auto_awesome, color: Color(0xFFE76A5E)),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Ce que je retiens pour toi',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        Text(
+                          '$activeCount information(s) active(s)',
+                          style: const TextStyle(color: Color(0xFF8B6F67)),
+                        ),
+                      ],
                     ),
-                  )
-                  .toList(),
-            ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 18),
+        const Text(
+          'Explorer ma mémoire',
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 12),
+        _categoryGrid(snapshot),
+        const SizedBox(height: 20),
+        Text(
+          _filter == MemoryLibraryFilter.all
+              ? 'Toutes les informations'
+              : _filterLabel(_filter),
+          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 10),
         if (memories.isEmpty)
           const _EmptyState()
         else
@@ -131,6 +272,86 @@ final class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
           label: const Text('Supprimer toute ma mémoire'),
         ),
       ],
+    );
+  }
+
+  BoxDecoration _memoryCardDecoration() => BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.88),
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: Colors.white),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFE76A5E).withValues(alpha: 0.08),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      );
+
+  Widget _categoryGrid(MemoryLibrarySnapshot snapshot) {
+    final textScale = MediaQuery.textScalerOf(context).scale(1);
+    const categories = [
+      (MemoryLibraryFilter.preference, Icons.favorite_border, 'Préférences'),
+      (MemoryLibraryFilter.personalFact, Icons.person_outline, 'Personnel'),
+      (MemoryLibraryFilter.habit, Icons.repeat, 'Habitudes'),
+      (MemoryLibraryFilter.goal, Icons.flag_outlined, 'Objectifs'),
+      (
+        MemoryLibraryFilter.constraint,
+        Icons.event_busy_outlined,
+        'Contraintes'
+      ),
+      (MemoryLibraryFilter.historical, Icons.history, 'Archives'),
+    ];
+    return GridView.count(
+      crossAxisCount: 2,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      mainAxisSpacing: 12,
+      crossAxisSpacing: 12,
+      mainAxisExtent: 88 + ((textScale - 1).clamp(0, 1) * 125),
+      children: categories.map((item) {
+        final count = snapshot.filtered(item.$1).length;
+        return InkWell(
+          onTap: () => setState(() => _filter = item.$1),
+          borderRadius: BorderRadius.circular(26),
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: _memoryCardDecoration(),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: const Color(0xFFF8DDD5),
+                  child: Icon(item.$2, color: const Color(0xFFE76A5E)),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.$3,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                      Text(
+                        '$count élément(s)',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFF8B6F67),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 
