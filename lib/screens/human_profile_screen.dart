@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../models/human/human_model.dart';
 import '../models/human/human_model_persistence.dart';
@@ -7,6 +10,28 @@ import '../services/auth_service.dart';
 import '../services/app_diagnostics.dart';
 import '../services/human/human_model_edit_service.dart';
 
+final class HumanProfileAddition {
+  const HumanProfileAddition({
+    required this.personId,
+    required this.name,
+    required this.birthDate,
+    required this.relationshipType,
+    required this.photoPath,
+    required this.relationshipStatus,
+    required this.engagementDate,
+    required this.marriageDate,
+  });
+
+  final String personId;
+  final String name;
+  final String birthDate;
+  final String relationshipType;
+  final String photoPath;
+  final String relationshipStatus;
+  final String engagementDate;
+  final String marriageDate;
+}
+
 class HumanProfileScreen extends StatefulWidget {
   const HumanProfileScreen({
     super.key,
@@ -14,12 +39,16 @@ class HumanProfileScreen extends StatefulWidget {
     this.editService,
     this.accountScopeId,
     this.onLegacyProfileUpdated,
+    this.startAddingPerson = false,
+    this.personIdToEdit,
   });
 
   final UserProfile legacyProfile;
   final HumanModelEditService? editService;
   final String? accountScopeId;
   final ValueChanged<UserProfile>? onLegacyProfileUpdated;
+  final bool startAddingPerson;
+  final String? personIdToEdit;
 
   @override
   State<HumanProfileScreen> createState() => _HumanProfileScreenState();
@@ -76,6 +105,619 @@ class _HumanProfileScreenState extends State<HumanProfileScreen> {
           ? 'Ton profil humain n’est pas encore disponible.'
           : null;
     });
+    if (widget.startAddingPerson && state != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _addPersonWithRelationship();
+      });
+    } else if (widget.personIdToEdit != null && state != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        final model = state!.model;
+        final person = model.personById(widget.personIdToEdit!);
+        final relations = model.relationships.where(
+          (item) =>
+              item.sourcePersonId == model.primaryPersonId &&
+              item.targetPersonId == widget.personIdToEdit &&
+              item.status == HumanRecordStatus.active,
+        );
+        if (person != null) {
+          await _editPersonFromProfile(
+            person,
+            relationship: relations.isEmpty ? null : relations.first,
+          );
+        }
+        if (mounted) Navigator.pop(context);
+      });
+    }
+  }
+
+  Future<void> _editPersonFromProfile(
+    HumanPerson person, {
+    HumanRelationship? relationship,
+  }) async {
+    final name = TextEditingController(text: person.displayName ?? '');
+    final birth = TextEditingController(
+      text: person.customFields['birthDate']?.toString().split('T').first ?? '',
+    );
+    final workSchedule = TextEditingController(
+      text: person.customFields['workSchedule']?.toString() ?? '',
+    );
+    final usefulNotes = TextEditingController(
+      text: person.customFields['usefulNotes']?.toString() ?? '',
+    );
+    final engagementDate = TextEditingController(
+      text: person.customFields['engagementDate']?.toString() ?? '',
+    );
+    final marriageDate = TextEditingController(
+      text: person.customFields['marriageDate']?.toString() ?? '',
+    );
+    var photoPath = person.customFields['photoPath']?.toString() ?? '';
+    final isPartner = relationship?.type == HumanRelationshipTypes.partner ||
+        relationship?.type == HumanRelationshipTypes.spouse;
+    final storedStatus =
+        person.customFields['relationshipStatus']?.toString() ?? '';
+    final relationshipStatus = ValueNotifier<String>(
+      storedStatus.isNotEmpty
+          ? storedStatus
+          : marriageDate.text.isNotEmpty
+              ? 'Mariée'
+              : engagementDate.text.isNotEmpty
+                  ? 'Fiancée'
+                  : 'En couple',
+    );
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(24, 12, 24, 28),
+          decoration: const BoxDecoration(
+            color: Color(0xFFFFF7F3),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(34)),
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 46,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE4CFC8),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'Profil de la personne',
+                  style: TextStyle(fontSize: 25, fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 18),
+                Center(
+                  child: _personPhotoButton(
+                    name: name.text,
+                    photoPath: photoPath,
+                    onSelected: (path) => photoPath = path,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                _zeliaPersonField(name, 'Prénom ou nom'),
+                const SizedBox(height: 12),
+                _zeliaPersonField(
+                  birth,
+                  'Date de naissance',
+                  hint: 'JJ/MM/AAAA',
+                ),
+                if (isPartner) ...[
+                  const SizedBox(height: 12),
+                  ValueListenableBuilder<String>(
+                    valueListenable: relationshipStatus,
+                    builder: (context, status, _) => Column(
+                      children: [
+                        DropdownButtonFormField<String>(
+                          initialValue: status,
+                          decoration: const InputDecoration(
+                            labelText: 'Votre relation',
+                            filled: true,
+                            fillColor: Colors.white,
+                            border: OutlineInputBorder(),
+                          ),
+                          items: const ['En couple', 'Fiancée', 'Mariée']
+                              .map(
+                                (value) => DropdownMenuItem(
+                                  value: value,
+                                  child: Text(value),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (value) {
+                            if (value != null) relationshipStatus.value = value;
+                          },
+                        ),
+                        if (status == 'Fiancée') ...[
+                          const SizedBox(height: 12),
+                          _zeliaPersonField(
+                            engagementDate,
+                            'Date de fiançailles',
+                            hint: 'JJ/MM/AAAA',
+                          ),
+                        ],
+                        if (status == 'Mariée') ...[
+                          const SizedBox(height: 12),
+                          _zeliaPersonField(
+                            marriageDate,
+                            'Date de mariage',
+                            hint: 'JJ/MM/AAAA',
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                _zeliaPersonField(
+                  workSchedule,
+                  'Horaires ou planning de travail',
+                  hint: 'Ex : du lundi au vendredi, 8 h à 17 h',
+                  maxLines: 3,
+                ),
+                const SizedBox(height: 12),
+                _zeliaPersonField(
+                  usefulNotes,
+                  'Ce que Zelia doit savoir',
+                  hint: 'Disponibilités, organisation et informations utiles',
+                  maxLines: 4,
+                ),
+                const SizedBox(height: 22),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFFE95D5D),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                    onPressed: () => Navigator.pop(context, 'save'),
+                    child: const Text('Enregistrer'),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: TextButton.icon(
+                    onPressed: () => Navigator.pop(context, 'delete'),
+                    icon: const Icon(Icons.delete_outline),
+                    label: const Text('Supprimer ce profil'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    if (action == 'save') {
+      final parsedBirth = _parseFrenchDate(birth.text.trim());
+      await _commit((model) {
+        final updated = person.copyWith(
+          displayName: name.text.trim(),
+          clearDisplayName: name.text.trim().isEmpty,
+          evidence: _confirmed,
+          customFields: {
+            ...person.customFields,
+            if (parsedBirth != null)
+              'birthDate': parsedBirth.toUtc().toIso8601String(),
+            'workSchedule': workSchedule.text.trim(),
+            'usefulNotes': usefulNotes.text.trim(),
+            'photoPath': photoPath,
+            if (isPartner) 'relationshipStatus': relationshipStatus.value,
+            if (isPartner && relationshipStatus.value == 'Fiancée')
+              'engagementDate': engagementDate.text.trim(),
+            if (isPartner && relationshipStatus.value == 'Mariée')
+              'marriageDate': marriageDate.text.trim(),
+          }..removeWhere(
+              (key, _) =>
+                  (key == 'birthDate' && parsedBirth == null) ||
+                  (key == 'engagementDate' &&
+                      relationshipStatus.value != 'Fiancée') ||
+                  (key == 'marriageDate' &&
+                      relationshipStatus.value != 'Mariée'),
+            ),
+        );
+        return model.copyWith(
+          persons: model.persons
+              .map((item) => item.id == person.id ? updated : item)
+              .toList(),
+        );
+      });
+    } else if (action == 'delete') {
+      if (!mounted) return;
+      final confirmed = await _confirmProfileDeletion();
+
+      if (confirmed == true) {
+        await _commit((model) => model.copyWith(
+              persons: model.persons
+                  .map(
+                    (item) => item.id == person.id
+                        ? item.copyWith(status: HumanPersonStatus.historical)
+                        : item,
+                  )
+                  .toList(),
+              relationships: model.relationships
+                  .map(
+                    (item) => item.targetPersonId == person.id ||
+                            item.sourcePersonId == person.id
+                        ? item.copyWith(status: HumanRecordStatus.historical)
+                        : item,
+                  )
+                  .toList(),
+            ));
+      }
+    }
+  }
+
+  Future<bool> _confirmProfileDeletion() async {
+    return await showModalBottomSheet<bool>(
+          context: context,
+          backgroundColor: Colors.transparent,
+          builder: (sheetContext) => Container(
+            margin: const EdgeInsets.all(14),
+            padding: const EdgeInsets.fromLTRB(22, 18, 22, 22),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF7F3),
+              borderRadius: BorderRadius.circular(34),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 46,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE4CFC8),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Row(
+                  children: [
+                    CircleAvatar(
+                      backgroundColor: Color(0xFFF5DCD6),
+                      child: Icon(
+                        Icons.delete_outline,
+                        color: Color(0xFFE95D5D),
+                      ),
+                    ),
+                    SizedBox(width: 14),
+                    Text(
+                      'Supprimer ce profil ?',
+                      style: TextStyle(
+                        fontSize: 23,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'Cette personne ne sera plus affichée dans ton profil.',
+                  style: TextStyle(
+                    color: Color(0xFF8B6F67),
+                    fontSize: 16,
+                    height: 1.45,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(sheetContext, false),
+                        child: const Text('Annuler'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFFE95D5D),
+                        ),
+                        onPressed: () => Navigator.pop(sheetContext, true),
+                        child: const Text('Supprimer'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ) ??
+        false;
+  }
+
+  Widget _personPhotoButton({
+    required String name,
+    required String photoPath,
+    required ValueChanged<String> onSelected,
+  }) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(50),
+      onTap: () async {
+        final image = await ImagePicker().pickImage(
+          source: ImageSource.gallery,
+          imageQuality: 85,
+          maxWidth: 1200,
+        );
+        if (image != null) onSelected(image.path);
+      },
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          CircleAvatar(
+            radius: 42,
+            backgroundColor: const Color(0xFFF5DCD6),
+            backgroundImage:
+                photoPath.isNotEmpty && File(photoPath).existsSync()
+                    ? FileImage(File(photoPath))
+                    : null,
+            child: photoPath.isEmpty || !File(photoPath).existsSync()
+                ? Text(
+                    name.trim().isEmpty
+                        ? '?'
+                        : name.trim().substring(0, 1).toUpperCase(),
+                    style: const TextStyle(
+                      color: Color(0xFFE95D5D),
+                      fontSize: 30,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  )
+                : null,
+          ),
+          const Positioned(
+            right: -4,
+            bottom: -2,
+            child: CircleAvatar(
+              radius: 16,
+              backgroundColor: Colors.white,
+              child: Icon(
+                Icons.photo_camera_outlined,
+                size: 18,
+                color: Color(0xFFE95D5D),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _zeliaPersonField(
+    TextEditingController controller,
+    String label, {
+    String? hint,
+    int maxLines = 1,
+  }) =>
+      TextField(
+        controller: controller,
+        maxLines: maxLines,
+        decoration: InputDecoration(
+          labelText: label,
+          hintText: hint,
+          filled: true,
+          fillColor: Colors.white.withValues(alpha: 0.92),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(22),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(22),
+            borderSide: const BorderSide(color: Color(0x22E95D5D)),
+          ),
+        ),
+      );
+
+  Future<void> _addPersonWithRelationship() async {
+    final name = TextEditingController();
+    final birth = TextEditingController();
+    final customRelationship = TextEditingController();
+    var relationshipType = HumanRelationshipTypes.partner;
+    const relationshipChoices = [
+      HumanRelationshipTypes.partner,
+      HumanRelationshipTypes.spouse,
+      HumanRelationshipTypes.child,
+      HumanRelationshipTypes.custom,
+    ];
+    InputDecoration fieldDecoration(String label, {String? hint}) =>
+        InputDecoration(
+          labelText: label,
+          hintText: hint,
+          filled: true,
+          fillColor: Colors.white.withValues(alpha: 0.92),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(22),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(22),
+            borderSide: const BorderSide(color: Color(0x22E95D5D)),
+          ),
+        );
+    final accepted = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: StatefulBuilder(
+          builder: (context, setDialogState) => Container(
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, 28),
+            decoration: const BoxDecoration(
+              color: Color(0xFFFFF7F3),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(34)),
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 46,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE4CFC8),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  const Text(
+                    'Ajouter une personne',
+                    style: TextStyle(fontSize: 25, fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Ajoute seulement les informations utiles à votre organisation.',
+                    style: TextStyle(color: Color(0xFF8B6F67), height: 1.4),
+                  ),
+                  const SizedBox(height: 18),
+                  TextField(
+                    controller: name,
+                    autofocus: true,
+                    decoration: fieldDecoration('Prénom'),
+                    onChanged: (_) => setDialogState(() {}),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: birth,
+                    decoration: fieldDecoration(
+                      'Date de naissance',
+                      hint: 'JJ/MM/AAAA',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    initialValue: relationshipType,
+                    decoration: fieldDecoration('Quel est son lien avec toi ?'),
+                    items: relationshipChoices
+                        .map(
+                          (value) => DropdownMenuItem(
+                            value: value,
+                            child: Text(_relationshipTypeLabel(value)),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      if (value != null) {
+                        setDialogState(() => relationshipType = value);
+                      }
+                    },
+                  ),
+                  if (relationshipType == HumanRelationshipTypes.custom)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 12),
+                      child: TextField(
+                        controller: customRelationship,
+                        decoration: fieldDecoration(
+                          'Écris le lien avec tes mots',
+                          hint: 'Ex : personne hébergée chez moi',
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 24),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(context, false),
+                          child: const Text('Annuler'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: const Color(0xFFE95D5D),
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                          ),
+                          onPressed: name.text.trim().isEmpty
+                              ? null
+                              : () => Navigator.pop(context, true),
+                          child: const Text('Ajouter'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    if (accepted != true) {
+      if (mounted && widget.startAddingPerson) Navigator.pop(context);
+      return;
+    }
+    final parsedBirth = _parseFrenchDate(birth.text.trim());
+    String? createdPersonId;
+    final saved = await _commit((model) {
+      final person = _editService!.newPerson(
+        model.accountScopeId,
+        displayName: name.text,
+        birthDate: parsedBirth,
+      );
+      createdPersonId = person.id;
+      final relationship = _editService!.newRelationship(
+        accountScopeId: model.accountScopeId,
+        sourcePersonId: model.primaryPersonId,
+        targetPersonId: person.id,
+        type: relationshipType,
+        customType: relationshipType == HumanRelationshipTypes.custom &&
+                customRelationship.text.trim().isEmpty
+            ? 'Autre'
+            : customRelationship.text,
+      );
+      return model.copyWith(
+        persons: [...model.persons, person],
+        relationships: [...model.relationships, relationship],
+      );
+    });
+    final current = _scope == null ? null : await _editService?.load(_scope!);
+    final storedLocally = createdPersonId != null &&
+        (_state?.model.personById(createdPersonId!) != null ||
+            current?.model.personById(createdPersonId!) != null);
+    if (createdPersonId != null &&
+        (saved || storedLocally) &&
+        mounted &&
+        widget.startAddingPerson) {
+      Navigator.pop(
+        context,
+        HumanProfileAddition(
+          personId: createdPersonId!,
+          name: name.text.trim(),
+          birthDate: parsedBirth == null ? '' : _formatFrenchDate(parsedBirth),
+          relationshipType: relationshipType,
+          photoPath: '',
+          relationshipStatus: 'En couple',
+          engagementDate: '',
+          marriageDate: '',
+        ),
+      );
+    } else if (mounted && widget.startAddingPerson) {
+      Navigator.pop(context);
+    }
   }
 
   Future<bool> _commit(HumanModel Function(HumanModel) transform) async {
@@ -97,7 +739,10 @@ class _HumanProfileScreenState extends State<HumanProfileScreen> {
       _saving = false;
       _message = _messageFor(result.status);
     });
-    if (result.status == HumanModelEditStatus.success && state != null) {
+    if ((result.status == HumanModelEditStatus.success ||
+            result.status == HumanModelEditStatus.pendingSync) &&
+        state != null &&
+        !widget.startAddingPerson) {
       final persisted = await service.persistLegacyProjection(
         model: state.model,
         legacy: widget.legacyProfile,
@@ -130,6 +775,25 @@ class _HumanProfileScreenState extends State<HumanProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final model = _model;
+    if (widget.startAddingPerson || widget.personIdToEdit != null) {
+      return Scaffold(
+        backgroundColor: Color(0xFFF8EFEA),
+        body: SafeArea(
+          child: Center(
+            child: _saving
+                ? const Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(height: 18),
+                      Text('J’enregistre ce profil…'),
+                    ],
+                  )
+                : const SizedBox.shrink(),
+          ),
+        ),
+      );
+    }
     return Scaffold(
       appBar: AppBar(title: const Text('Mon organisation')),
       body: SafeArea(
@@ -303,13 +967,13 @@ class _HumanProfileScreenState extends State<HumanProfileScreen> {
                 TextField(
                   controller: name,
                   decoration: const InputDecoration(
-                    labelText: 'Nom d’affichage (facultatif)',
+                    labelText: 'Nom d’affichage',
                   ),
                 ),
                 TextField(
                   controller: birth,
                   decoration: const InputDecoration(
-                    labelText: 'Date de naissance (facultative)',
+                    labelText: 'Date de naissance',
                     hintText: 'AAAA-MM-JJ',
                   ),
                 ),
@@ -580,7 +1244,7 @@ class _HumanProfileScreenState extends State<HumanProfileScreen> {
         TextField(
           controller: name,
           decoration: const InputDecoration(
-            labelText: 'Nom du foyer (facultatif)',
+            labelText: 'Nom du foyer',
           ),
         ),
         DropdownButtonFormField<HouseholdStatus>(
@@ -850,7 +1514,7 @@ class _HumanProfileScreenState extends State<HumanProfileScreen> {
         TextField(
           controller: scope,
           decoration: const InputDecoration(
-            labelText: 'Précision (facultative)',
+            labelText: 'Précision',
           ),
         ),
         DropdownButtonFormField<HumanRecordStatus>(
@@ -1025,7 +1689,7 @@ class _HumanProfileScreenState extends State<HumanProfileScreen> {
                 children: [
                   ...fields(setDialogState),
                   ExpansionTile(
-                    title: const Text('Période (facultative)'),
+                    title: const Text('Période'),
                     children: [
                       TextField(
                         controller: from,
@@ -1210,6 +1874,34 @@ String _relationshipLabel(HumanRelationship relationship) =>
     relationship.type == HumanRelationshipTypes.custom
         ? (relationship.customType ?? 'Autre relation')
         : _relationshipTypeLabel(relationship.type);
+
+DateTime? _parseFrenchDate(String value) {
+  final parts = value.split('/');
+  if (parts.length == 3) {
+    final day = int.tryParse(parts[0]);
+    final month = int.tryParse(parts[1]);
+    final year = int.tryParse(parts[2]);
+    if (day != null && month != null && year != null) {
+      final parsed = DateTime.tryParse(
+        '${year.toString().padLeft(4, '0')}-'
+        '${month.toString().padLeft(2, '0')}-'
+        '${day.toString().padLeft(2, '0')}',
+      );
+      if (parsed != null &&
+          parsed.day == day &&
+          parsed.month == month &&
+          parsed.year == year) {
+        return parsed;
+      }
+    }
+  }
+  return DateTime.tryParse(value);
+}
+
+String _formatFrenchDate(DateTime value) =>
+    '${value.day.toString().padLeft(2, '0')}/'
+    '${value.month.toString().padLeft(2, '0')}/'
+    '${value.year.toString().padLeft(4, '0')}';
 
 String _membershipRoleLabel(String role) => switch (role) {
       HouseholdMembershipRoles.permanentMember => 'Permanent',

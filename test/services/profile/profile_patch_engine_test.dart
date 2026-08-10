@@ -18,6 +18,9 @@ void main() {
           ProfileOwnedField.planningStyle: 'Souple',
           ProfileOwnedField.wantsNotifications: false,
           ProfileOwnedField.workDays: ['lundi', 'mardi'],
+          ProfileOwnedField.partnerNotes: 'Disponible pour la garde le jeudi',
+          ProfileOwnedField.partnerWorkSchedule:
+              'Du lundi au vendredi, 8 h à 17 h',
         },
       ),
     );
@@ -26,6 +29,14 @@ void main() {
     expect(result.profile.planningStyle, 'Souple');
     expect(result.profile.wantsNotifications, isFalse);
     expect(result.profile.workDays, ['lundi', 'mardi']);
+    expect(
+      result.profile.partnerNotes,
+      'Disponible pour la garde le jeudi',
+    );
+    expect(
+      result.profile.partnerWorkSchedule,
+      'Du lundi au vendredi, 8 h à 17 h',
+    );
   });
 
   test('preserves Human-owned identity and family fields exactly', () {

@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../models/user_profile.dart';
+import '../models/human/human_model.dart';
 import '../services/school_schedule_metadata_service.dart';
 import '../services/storage_service.dart';
 import '../services/auth_service.dart';
@@ -42,10 +43,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   late TextEditingController birthDateController;
   late TextEditingController partnerNameController;
   late TextEditingController partnerBirthDateController;
+  late TextEditingController partnerNotesController;
+  late TextEditingController partnerWorkScheduleController;
   late TextEditingController marriageDateController;
   late TextEditingController engagementDateController;
 
   late TextEditingController variableWorkDetailsController;
+  late TextEditingController workTravelMinutesController;
   late TextEditingController personalNotesController;
   late TextEditingController allergiesController;
   late TextEditingController medicalNotesController;
@@ -73,6 +77,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   late List<ChildProfile> children;
   late List<TimeRangeModel> workTimeRanges;
   late List<ActivityModel> personalActivities;
+  List<_AdditionalProfile> additionalProfiles = const [];
 
   String relationshipStatus = "";
   String workScheduleType = "";
@@ -92,15 +97,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final Color textSoft = const Color(0xFF8B6F67);
 
   final List<String> familyStatuses = [
-    "Je vis seule ",
-    "Je vis avec mon partenaire ",
+    "Je vis seule",
+    "Je vis en couple",
     "Nous sommes une famille avec enfants ",
-    "Famille monoparentale ",
-    "C'est un peu compliqué ",
+    "Nous sommes une famille monoparentale",
+    "Autre situation",
   ];
 
   final List<String> workStatuses = [
-    "Je suis maman au foyer ",
+    "Je ne travaille pas actuellement",
     "Je suis salariée ",
     "Je suis entrepreneuse ",
     "Je suis étudiante ",
@@ -167,6 +172,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     partnerNameController = TextEditingController(text: profile.partnerName);
     partnerBirthDateController = TextEditingController(
         text: normalizeFrenchDate(profile.partnerBirthDate));
+    partnerNotesController = TextEditingController(text: profile.partnerNotes);
+    partnerWorkScheduleController =
+        TextEditingController(text: profile.partnerWorkSchedule);
     marriageDateController =
         TextEditingController(text: normalizeFrenchDate(profile.marriageDate));
     engagementDateController = TextEditingController(
@@ -174,6 +182,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     variableWorkDetailsController =
         TextEditingController(text: profile.variableWorkDetails);
+    workTravelMinutesController =
+        TextEditingController(text: profile.workTravelMinutes);
     personalNotesController = TextEditingController(
       text: profile.personalNotes.isNotEmpty
           ? profile.personalNotes
@@ -239,6 +249,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         profile.spokenLanguage.isNotEmpty ? profile.spokenLanguage : "Français";
     country = profile.country.isNotEmpty ? profile.country : "France";
     timeZone = profile.timeZone.isNotEmpty ? profile.timeZone : "Europe/Paris";
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadAdditionalProfiles();
+    });
   }
 
   @override
@@ -264,10 +277,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     partnerNameController.text = newProfile.partnerName;
     partnerBirthDateController.text =
         normalizeFrenchDate(newProfile.partnerBirthDate);
+    partnerNotesController.text = newProfile.partnerNotes;
+    partnerWorkScheduleController.text = newProfile.partnerWorkSchedule;
     marriageDateController.text = normalizeFrenchDate(newProfile.marriageDate);
     engagementDateController.text =
         normalizeFrenchDate(newProfile.engagementDate);
     variableWorkDetailsController.text = newProfile.variableWorkDetails;
+    workTravelMinutesController.text = newProfile.workTravelMinutes;
     personalNotesController.text = newProfile.personalNotes.isNotEmpty
         ? newProfile.personalNotes
         : newProfile.habits;
@@ -326,9 +342,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     birthDateController.dispose();
     partnerNameController.dispose();
     partnerBirthDateController.dispose();
+    partnerNotesController.dispose();
+    partnerWorkScheduleController.dispose();
     marriageDateController.dispose();
     engagementDateController.dispose();
     variableWorkDetailsController.dispose();
+    workTravelMinutesController.dispose();
     personalNotesController.dispose();
     allergiesController.dispose();
     medicalNotesController.dispose();
@@ -353,6 +372,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String mapFamilyStatus(String status) {
     final s = status.toLowerCase();
 
+    if (s.contains("monoparent") || s.contains("maman")) {
+      return familyStatuses[3];
+    }
+
     if (s.contains("couple") || s.contains("partenaire")) {
       return familyStatuses[1];
     }
@@ -361,11 +384,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       return familyStatuses[2];
     }
 
-    if (s.contains("maman") || s.contains("monoparent")) {
-      return familyStatuses[3];
-    }
-
-    if (s.contains("compli")) {
+    if (s.contains("compli") || s.contains("autre")) {
       return familyStatuses[4];
     }
 
@@ -384,6 +403,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         s.contains("famille avec enfants");
   }
 
+  bool isLivingAlone() =>
+      selectedFamilyStatus.toLowerCase().contains('vis seule');
+
   bool showChildrenSection() {
     final s = selectedFamilyStatus.toLowerCase();
 
@@ -397,6 +419,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final s = selectedWorkStatus.toLowerCase();
 
     if (s.contains("foyer") ||
+        s.contains("ne travaille pas") ||
         s.contains("étudiante") ||
         s.contains("etudiante") ||
         s.contains("recherche")) {
@@ -455,6 +478,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
 
     final cleaned = cleanLabel(current.workStatus).toLowerCase();
+
+    if (cleaned.contains('maman au foyer') ||
+        cleaned.contains('père au foyer') ||
+        cleaned.contains('pere au foyer')) {
+      return workStatuses.first;
+    }
 
     for (final status in workStatuses) {
       final statusClean = cleanLabel(status).toLowerCase();
@@ -597,6 +626,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   String timeRangeLabel(TimeRangeModel range) {
+    final days = schoolDaysFromRange(range);
+    final daysLabel =
+        days.isEmpty ? '' : days.map((day) => day.substring(0, 3)).join(', ');
     final label = range.label.trim();
 
     final time = range.startTime.isEmpty && range.endTime.isEmpty
@@ -607,32 +639,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ? ""
         : " • trajet ${range.travelMinutes} min";
 
-    if (label.isNotEmpty && time.isNotEmpty) {
-      return "$label • $time$travel";
-    }
-
-    if (time.isNotEmpty) {
-      return "$time$travel";
-    }
-
-    return label.isEmpty ? "Plage horaire" : label;
+    final base = label.isNotEmpty && time.isNotEmpty
+        ? "$label • $time$travel"
+        : time.isNotEmpty
+            ? "$time$travel"
+            : label.isEmpty
+                ? "Plage horaire"
+                : label;
+    return daysLabel.isEmpty ? base : '$daysLabel • $base';
   }
 
   String activitySummary(ActivityModel activity) {
-    final days = activity.days.isEmpty ? "" : activity.days.join(", ");
     final firstRange = activity.timeRanges.isEmpty
         ? ""
         : timeRangeLabel(activity.timeRanges.first);
-
-    if (days.isEmpty && firstRange.isEmpty) {
-      return "Aucun détail";
-    }
-
-    if (days.isNotEmpty && firstRange.isNotEmpty) {
-      return "$days • $firstRange";
-    }
-
-    return days.isNotEmpty ? days : firstRange;
+    if (firstRange.isNotEmpty) return firstRange;
+    return activity.days.isEmpty ? 'Aucun horaire' : activity.days.join(', ');
   }
 
   List<String> schoolDaysFromRange(TimeRangeModel range) {
@@ -654,17 +676,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   String schoolTimeRangeLabel(TimeRangeModel range) {
-    final days = schoolDaysFromRange(range);
-    final base =
-        timeRangeLabel(range.copyWith(notes: cleanSchoolRangeNotes(range)));
-
-    if (days.isEmpty) {
-      return base;
-    }
-
-    final daysLabel = days.map((day) => day.substring(0, 3)).join(", ");
-
-    return "$daysLabel • $base";
+    return timeRangeLabel(range);
   }
 
   String workScheduleSummary() {
@@ -856,9 +868,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       firstName: firstNameController.text.trim(),
       familyStatus: selectedFamilyStatus,
       workStatus: selectedWorkStatus,
-      partnerName: showPartnerField() ? partnerNameController.text.trim() : "",
+      partnerName: partnerNameController.text.trim(),
       wantsNotifications: wantsNotifications,
-      children: showChildrenSection() ? children : [],
+      children: children,
       age: calculateAgeFromBirthDate(
         birthDateController.text.trim(),
       ),
@@ -866,17 +878,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
       profilePhotoPath: profile.profilePhotoPath,
       partnerBirthDate: partnerBirthDateController.text.trim(),
       partnerPhotoPath: profile.partnerPhotoPath,
-      relationshipStatus: showPartnerField() ? relationshipStatus : "",
-      marriageDate:
-          showPartnerField() ? marriageDateController.text.trim() : "",
-      engagementDate:
-          showPartnerField() ? engagementDateController.text.trim() : "",
+      partnerNotes: partnerNotesController.text.trim(),
+      partnerWorkSchedule: partnerWorkScheduleController.text.trim(),
+      relationshipStatus: relationshipStatus,
+      marriageDate: marriageDateController.text.trim(),
+      engagementDate: engagementDateController.text.trim(),
       workScheduleType: hasStructuredSchedule() ? workScheduleType : "",
       workDays: hasStructuredSchedule() ? selectedWorkDays : [],
       variableWorkDetails: hasStructuredSchedule()
           ? variableWorkDetailsController.text.trim()
           : "",
       workTimeRanges: hasStructuredSchedule() ? workTimeRanges : [],
+      workTravelMinutes: workTravelMinutesController.text.trim(),
       habits: personalNotesController.text.trim(),
       personalNotes: personalNotesController.text.trim(),
       allergies: allergiesController.text.trim(),
@@ -976,66 +989,115 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final labelController = TextEditingController(text: range?.label ?? "");
     final startController = TextEditingController(text: range?.startTime ?? "");
     final endController = TextEditingController(text: range?.endTime ?? "");
-    final travelController =
-        TextEditingController(text: range?.travelMinutes ?? "");
-    final notesController = TextEditingController(text: range?.notes ?? "");
+    var selectedDays = List<String>.from(
+      range == null ? const <String>[] : schoolDaysFromRange(range),
+    );
 
     TimeRangeModel? result;
-
-    await showPremiumSheet(
-      title: range == null ? "Ajouter une plage" : "Modifier la plage",
-      icon: Icons.schedule_outlined,
-      saveLabel: "Valider",
-      onSave: () async {
-        result = TimeRangeModel(
-          label: labelController.text.trim(),
-          startTime: startController.text.trim(),
-          endTime: endController.text.trim(),
-          travelMinutes: travelController.text.trim(),
-          notes: notesController.text.trim(),
-        );
-
-        Navigator.pop(context);
-      },
-      children: [
-        buildTextField(
-          controller: labelController,
-          label: "Nom de la plage",
-          hint: "Ex : matin, école, entraînement...",
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: buildTimeField(
-                controller: startController,
-                label: "Début",
-              ),
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setModalState) => Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+          ),
+          child: buildSheetContainer(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                buildSheetHandle(),
+                const SizedBox(height: 18),
+                buildSheetTitle(
+                  title: range == null
+                      ? 'Ajouter un jour et un horaire'
+                      : 'Modifier le jour et l’horaire',
+                  icon: Icons.schedule_outlined,
+                ),
+                const SizedBox(height: 18),
+                buildTextField(
+                  controller: labelController,
+                  label: 'Nom',
+                  hint: 'Ex : matin, école, entraînement...',
+                ),
+                const SizedBox(height: 14),
+                Text('Jour(s)', style: sectionLabelStyle()),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: weekDays.map((day) {
+                    final selected = selectedDays.contains(day);
+                    return GestureDetector(
+                      onTap: () => setModalState(() {
+                        if (selected) {
+                          selectedDays.remove(day);
+                        } else {
+                          selectedDays.add(day);
+                        }
+                      }),
+                      child: buildChoiceChip(
+                        label: day.substring(0, 3),
+                        selected: selected,
+                      ),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: buildTimeField(
+                        controller: startController,
+                        label: 'Début',
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: buildTimeField(
+                        controller: endController,
+                        label: 'Fin',
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 22),
+                buildSheetActions(
+                  saveLabel: 'Valider',
+                  onSave: () async {
+                    if (selectedDays.isEmpty ||
+                        startController.text.trim().isEmpty ||
+                        endController.text.trim().isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Choisis au moins un jour, une heure de début et une heure de fin.',
+                          ),
+                        ),
+                      );
+                      return;
+                    }
+                    result = TimeRangeModel(
+                      label: labelController.text.trim(),
+                      startTime: startController.text.trim(),
+                      endTime: endController.text.trim(),
+                      travelMinutes: range?.travelMinutes ?? '',
+                      notes: encodeSchoolRangeNotes(
+                        days: selectedDays,
+                        notes:
+                            range == null ? '' : cleanSchoolRangeNotes(range),
+                      ),
+                    );
+                    Navigator.pop(sheetContext);
+                  },
+                ),
+              ],
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: buildTimeField(
-                controller: endController,
-                label: "Fin",
-              ),
-            ),
-          ],
+          ),
         ),
-        const SizedBox(height: 12),
-        buildTextField(
-          controller: travelController,
-          label: "Temps de trajet",
-          hint: "Ex : 20",
-          keyboardType: TextInputType.number,
-        ),
-        const SizedBox(height: 12),
-        buildTextField(
-          controller: notesController,
-          label: "Détails",
-          hint: "Optionnel",
-          maxLines: 3,
-        ),
-      ],
+      ),
     );
 
     return result;
@@ -1047,12 +1109,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final labelController = TextEditingController(text: range?.label ?? "");
     final startController = TextEditingController(text: range?.startTime ?? "");
     final endController = TextEditingController(text: range?.endTime ?? "");
-    final travelController =
-        TextEditingController(text: range?.travelMinutes ?? "");
-    final notesController = TextEditingController(
-      text: range == null ? "" : cleanSchoolRangeNotes(range),
-    );
-
     var selectedDays = List<String>.from(
       range == null ? <String>[] : schoolDaysFromRange(range),
     );
@@ -1133,32 +1189,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
-                    buildTextField(
-                      controller: travelController,
-                      label: "Temps de trajet",
-                      hint: "Ex : 20",
-                      keyboardType: TextInputType.number,
-                    ),
-                    const SizedBox(height: 12),
-                    buildTextField(
-                      controller: notesController,
-                      label: "Détails",
-                      hint: "Optionnel",
-                      maxLines: 3,
-                    ),
                     const SizedBox(height: 22),
                     buildSheetActions(
                       saveLabel: "Valider",
                       onSave: () async {
+                        if (selectedDays.isEmpty ||
+                            startController.text.trim().isEmpty ||
+                            endController.text.trim().isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Choisis au moins un jour, une heure de début et une heure de fin.',
+                              ),
+                            ),
+                          );
+                          return;
+                        }
                         result = TimeRangeModel(
                           label: labelController.text.trim(),
                           startTime: startController.text.trim(),
                           endTime: endController.text.trim(),
-                          travelMinutes: travelController.text.trim(),
+                          travelMinutes: range?.travelMinutes ?? '',
                           notes: encodeSchoolRangeNotes(
                             days: selectedDays,
-                            notes: notesController.text.trim(),
+                            notes: range == null
+                                ? ''
+                                : cleanSchoolRangeNotes(range),
                           ),
                         );
 
@@ -1177,6 +1233,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return result;
   }
 
+  Future<void> _deleteChildProfile(int index, ChildProfile child) async {
+    final personId = child.humanPersonId.trim();
+    if (personId.isNotEmpty) {
+      final scope = AuthService.currentUserId;
+      if (scope != null && scope.trim().isNotEmpty) {
+        final service = await HumanModelEditService.createProduction();
+        await service.commit(
+          accountScopeId: scope,
+          transform: (model) => model.copyWith(
+            persons: model.persons
+                .map(
+                  (person) => person.id == personId
+                      ? person.copyWith(status: HumanPersonStatus.historical)
+                      : person,
+                )
+                .toList(),
+            relationships: model.relationships
+                .map(
+                  (relation) => relation.targetPersonId == personId
+                      ? relation.copyWith(status: HumanRecordStatus.historical)
+                      : relation,
+                )
+                .toList(),
+          ),
+        );
+      }
+    }
+    if (!mounted || index < 0 || index >= children.length) return;
+    setState(() => children.removeAt(index));
+    await saveProfile(showSnack: false);
+  }
+
   Future<ActivityModel?> showActivityEditor({
     ActivityModel? activity,
   }) async {
@@ -1185,10 +1273,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
         TextEditingController(text: activity?.location ?? "");
     final travelController =
         TextEditingController(text: activity?.travelMinutes ?? "");
-    final notesController = TextEditingController(text: activity?.notes ?? "");
 
-    var selectedDays = List<String>.from(activity?.days ?? []);
-    var ranges = List<TimeRangeModel>.from(activity?.timeRanges ?? []);
+    var ranges = List<TimeRangeModel>.from(activity?.timeRanges ?? []).map(
+      (range) {
+        if (schoolDaysFromRange(range).isNotEmpty ||
+            (activity?.days.isEmpty ?? true)) {
+          return range;
+        }
+        return range.copyWith(
+          notes: encodeSchoolRangeNotes(
+            days: activity!.days,
+            notes: cleanSchoolRangeNotes(range),
+          ),
+        );
+      },
+    ).toList();
 
     ActivityModel? result;
 
@@ -1225,34 +1324,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     const SizedBox(height: 12),
                     buildTextField(
                       controller: locationController,
-                      label: "Lieu",
-                      hint: "Optionnel",
-                    ),
-                    const SizedBox(height: 12),
-                    Text("Jours", style: sectionLabelStyle()),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: weekDays.map((day) {
-                        final selected = selectedDays.contains(day);
-
-                        return GestureDetector(
-                          onTap: () {
-                            setModalState(() {
-                              if (selected) {
-                                selectedDays.remove(day);
-                              } else {
-                                selectedDays.add(day);
-                              }
-                            });
-                          },
-                          child: buildChoiceChip(
-                            label: day.substring(0, 3),
-                            selected: selected,
-                          ),
-                        );
-                      }).toList(),
+                      label: "Lieu ou adresse",
+                      hint: "Ex : nom du club, rue et ville",
                     ),
                     const SizedBox(height: 16),
                     Row(
@@ -1292,7 +1365,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                       return buildMiniCard(
                         title: timeRangeLabel(item),
-                        subtitle: item.notes,
+                        subtitle: cleanSchoolRangeNotes(item),
                         icon: Icons.schedule_outlined,
                         onTap: () async {
                           final updated =
@@ -1320,13 +1393,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       hint: "Ex : 20",
                       keyboardType: TextInputType.number,
                     ),
-                    const SizedBox(height: 12),
-                    buildTextField(
-                      controller: notesController,
-                      label: "Détails de l'activité",
-                      hint: "Informations utiles",
-                      maxLines: 4,
-                    ),
                     const SizedBox(height: 22),
                     buildSheetActions(
                       onSave: () async {
@@ -1337,10 +1403,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         result = ActivityModel(
                           title: titleController.text.trim(),
                           location: locationController.text.trim(),
-                          days: selectedDays,
+                          days: {
+                            for (final range in ranges)
+                              ...schoolDaysFromRange(range),
+                          }.toList(),
                           timeRanges: ranges,
                           travelMinutes: travelController.text.trim(),
-                          notes: notesController.text.trim(),
+                          notes: activity?.notes ?? "",
                         );
 
                         Navigator.pop(context);
@@ -1545,40 +1614,68 @@ class _ProfileScreenState extends State<ProfileScreen> {
           hint: "JJ/MM/AAAA",
         ),
         const SizedBox(height: 14),
-        buildDropdown(
+        buildSelectionField(
           label: "Situation familiale",
           value: selectedFamilyStatus,
-          items: familyStatuses,
-          onChanged: (value) {
-            setState(() {
-              selectedFamilyStatus = value;
-            });
-          },
+          onTap: showFamilyStatusSheet,
         ),
         const SizedBox(height: 14),
-        buildDropdown(
+        buildSelectionField(
           label: "Statut professionnel",
           value: selectedWorkStatus,
-          items: workStatuses,
-          onChanged: (value) {
-            setState(() {
-              selectedWorkStatus = value;
-            });
-          },
+          onTap: showWorkStatusSheet,
         ),
       ],
     );
   }
 
   Future<void> showPartnerSheet() async {
-    await showModalBottomSheet(
+    await _showAdultProfileSheet(
+      title: 'Conjoint',
+      nameController: partnerNameController,
+      birthController: partnerBirthDateController,
+      workController: partnerWorkScheduleController,
+      notesController: partnerNotesController,
+      engagementController: engagementDateController,
+      marriageController: marriageDateController,
+      initialStatus: relationshipStatus,
+      initialPhotoPath: profile.partnerPhotoPath,
+      showCoupleStatus: true,
+      onSave: (status, photoPath) async {
+        setState(() {
+          relationshipStatus = status;
+          profile = profile.copyWith(partnerPhotoPath: photoPath);
+        });
+        await saveProfile();
+      },
+      onDelete: _deleteLegacyPartner,
+    );
+  }
+
+  Future<void> _showAdultProfileSheet({
+    required String title,
+    required TextEditingController nameController,
+    required TextEditingController birthController,
+    required TextEditingController workController,
+    required TextEditingController notesController,
+    required TextEditingController engagementController,
+    required TextEditingController marriageController,
+    required String initialStatus,
+    required String initialPhotoPath,
+    required bool showCoupleStatus,
+    required Future<void> Function(String status, String photoPath) onSave,
+    required Future<void> Function() onDelete,
+  }) async {
+    var status = initialStatus.isEmpty ? 'En couple' : initialStatus;
+    var photoPath = initialPhotoPath;
+    await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) {
+      builder: (sheetContext) {
         return StatefulBuilder(
-          builder: (context, setModalState) {
-            final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+          builder: (sheetContext, setModalState) {
+            final bottomInset = MediaQuery.of(sheetContext).viewInsets.bottom;
 
             return Padding(
               padding: EdgeInsets.only(bottom: bottomInset),
@@ -1590,69 +1687,102 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     buildSheetHandle(),
                     const SizedBox(height: 18),
                     buildSheetTitle(
-                      title: "Conjoint",
+                      title: title,
                       icon: Icons.groups_2_outlined,
                     ),
                     const SizedBox(height: 18),
                     Center(
                       child: buildSmallAvatar(
-                        name: partnerNameController.text,
+                        name: nameController.text,
                         size: 72,
-                        imagePath: profile.partnerPhotoPath,
-                        onTap: updatePartnerPhoto,
+                        imagePath: photoPath,
+                        onTap: () async {
+                          final selected = await pickImagePath();
+                          if (selected.isNotEmpty) {
+                            setModalState(() => photoPath = selected);
+                          }
+                        },
                       ),
                     ),
                     const SizedBox(height: 16),
                     buildTextField(
-                      controller: partnerNameController,
-                      label: "Prénom du conjoint",
+                      controller: nameController,
+                      label: 'Prénom',
                       hint: "Ex : Willy",
                     ),
                     const SizedBox(height: 14),
                     buildDateField(
-                      controller: partnerBirthDateController,
+                      controller: birthController,
                       label: "Date de naissance",
                       hint: "JJ/MM/AAAA",
                     ),
-                    const SizedBox(height: 14),
-                    buildDropdown(
-                      label: "Statut du couple",
-                      value: relationshipStatus,
-                      items: relationshipStatuses,
-                      onChanged: (value) {
-                        setModalState(() {
-                          relationshipStatus = value;
-                        });
-
-                        setState(() {
-                          relationshipStatus = value;
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 14),
-                    if (relationshipStatus == "Mariée")
+                    if (showCoupleStatus) ...[
+                      const SizedBox(height: 14),
+                      buildDropdown(
+                        label: 'Statut du couple',
+                        value: status,
+                        items: relationshipStatuses,
+                        onChanged: (value) {
+                          setModalState(() => status = value);
+                        },
+                      ),
+                      const SizedBox(height: 14),
+                    ],
+                    if (showCoupleStatus && status == "Mariée")
                       buildDateField(
-                        controller: marriageDateController,
+                        controller: marriageController,
                         label: "Date de mariage",
                         hint: "JJ/MM/AAAA",
                       ),
-                    if (relationshipStatus == "Fiancée")
+                    if (showCoupleStatus && status == "Fiancée")
                       buildDateField(
-                        controller: engagementDateController,
+                        controller: engagementController,
                         label: "Date de fiançailles",
                         hint: "JJ/MM/AAAA",
                       ),
+                    const SizedBox(height: 14),
+                    buildTextField(
+                      controller: workController,
+                      label: "Horaires ou planning de travail",
+                      hint: "Ex : du lundi au vendredi, 8 h à 17 h...",
+                      maxLines: 3,
+                    ),
+                    const SizedBox(height: 14),
+                    buildTextField(
+                      controller: notesController,
+                      label: "Ce que Zelia doit savoir",
+                      hint:
+                          "Disponibilités, garde des enfants, habitudes ou informations utiles...",
+                      maxLines: 5,
+                    ),
                     const SizedBox(height: 22),
                     buildSheetActions(
                       onSave: () async {
-                        await saveProfile();
-
-                        if (!context.mounted) return;
-
-                        if (Navigator.canPop(context)) {
-                          Navigator.pop(context);
+                        await onSave(status, photoPath);
+                        if (sheetContext.mounted &&
+                            Navigator.canPop(sheetContext)) {
+                          Navigator.pop(sheetContext);
                         }
                       },
+                    ),
+                    const SizedBox(height: 8),
+                    Center(
+                      child: TextButton.icon(
+                        onPressed: () async {
+                          final confirmed = await _confirmProfileDeletion(
+                            message:
+                                'Cette personne ne sera plus affichée dans ton profil.',
+                          );
+                          if (!confirmed) return;
+                          await onDelete();
+                          if (sheetContext.mounted &&
+                              Navigator.canPop(sheetContext)) {
+                            Navigator.pop(sheetContext);
+                          }
+                        },
+                        icon: const Icon(Icons.delete_outline),
+                        label: const Text('Supprimer ce profil'),
+                      ),
                     ),
                   ],
                 ),
@@ -1664,9 +1794,62 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  Future<void> _deleteLegacyPartner() async {
+    final personId = profile.partnerHumanPersonId.trim();
+    if (personId.isNotEmpty) {
+      final service = await HumanModelEditService.createProduction();
+      final scope = AuthService.currentUserId;
+      if (scope != null && scope.trim().isNotEmpty) {
+        await service.commit(
+          accountScopeId: scope,
+          transform: (model) => model.copyWith(
+            persons: model.persons
+                .map(
+                  (person) => person.id == personId
+                      ? person.copyWith(status: HumanPersonStatus.historical)
+                      : person,
+                )
+                .toList(),
+            relationships: model.relationships
+                .map(
+                  (relation) => relation.targetPersonId == personId
+                      ? relation.copyWith(status: HumanRecordStatus.historical)
+                      : relation,
+                )
+                .toList(),
+          ),
+        );
+      }
+    }
+    setState(() {
+      partnerNameController.clear();
+      partnerBirthDateController.clear();
+      partnerWorkScheduleController.clear();
+      partnerNotesController.clear();
+      engagementDateController.clear();
+      marriageDateController.clear();
+      relationshipStatus = relationshipStatuses.first;
+      profile = profile.copyWith(
+        partnerHumanPersonId: '',
+        partnerPhotoPath: '',
+      );
+    });
+    await saveProfile(showSnack: false);
+  }
+
   Future<void> showWorkScheduleSheet() async {
     var tempDays = List<String>.from(selectedWorkDays);
-    var tempRanges = List<TimeRangeModel>.from(workTimeRanges);
+    var tempRanges = List<TimeRangeModel>.from(workTimeRanges).map((range) {
+      if (schoolDaysFromRange(range).isNotEmpty || tempDays.isEmpty) {
+        return range;
+      }
+      return range.copyWith(
+        notes: encodeSchoolRangeNotes(
+          days: tempDays,
+          notes: cleanSchoolRangeNotes(range),
+        ),
+      );
+    }).toList();
 
     await showModalBottomSheet(
       context: context,
@@ -1723,35 +1906,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     const SizedBox(height: 18),
                     if (workScheduleType == "Horaires réguliers") ...[
-                      Text(
-                        "Jours travaillés",
-                        style: sectionLabelStyle(),
-                      ),
-                      const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: weekDays.map((day) {
-                          final selected = tempDays.contains(day);
-
-                          return GestureDetector(
-                            onTap: () {
-                              setModalState(() {
-                                if (selected) {
-                                  tempDays.remove(day);
-                                } else {
-                                  tempDays.add(day);
-                                }
-                              });
-                            },
-                            child: buildChoiceChip(
-                              label: day.substring(0, 3),
-                              selected: selected,
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                      const SizedBox(height: 16),
                       Row(
                         children: [
                           Expanded(
@@ -1789,7 +1943,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                         return buildMiniCard(
                           title: timeRangeLabel(range),
-                          subtitle: range.notes,
+                          subtitle: cleanSchoolRangeNotes(range),
                           icon: Icons.schedule_outlined,
                           onTap: () async {
                             final updated = await showTimeRangeEditor(
@@ -1824,11 +1978,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         maxLines: 5,
                       ),
                     ],
+                    const SizedBox(height: 16),
+                    buildTextField(
+                      controller: workTravelMinutesController,
+                      label: "Temps de trajet habituel",
+                      hint: "Ex : 20 minutes",
+                      keyboardType: TextInputType.number,
+                    ),
                     const SizedBox(height: 22),
                     buildSheetActions(
                       onSave: () async {
                         setState(() {
-                          selectedWorkDays = tempDays;
+                          selectedWorkDays = {
+                            for (final range in tempRanges)
+                              ...schoolDaysFromRange(range),
+                          }.toList();
                           workTimeRanges = tempRanges;
                         });
 
@@ -2715,6 +2879,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         Navigator.pop(context);
                       },
                     ),
+                    if (child != null && index != null) ...[
+                      const SizedBox(height: 8),
+                      Center(
+                        child: TextButton.icon(
+                          onPressed: () async {
+                            final confirmed = await _confirmProfileDeletion(
+                              message:
+                                  'Le profil de ${child.firstName} ne sera plus affiché.',
+                            );
+                            if (!confirmed) return;
+                            await _deleteChildProfile(index, child);
+                            if (context.mounted && Navigator.canPop(context)) {
+                              Navigator.pop(context);
+                            }
+                          },
+                          icon: const Icon(Icons.delete_outline),
+                          label: const Text('Supprimer ce profil'),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -2767,6 +2951,66 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
       },
     );
+  }
+
+  Future<bool> _confirmProfileDeletion({required String message}) async {
+    return await showModalBottomSheet<bool>(
+          context: context,
+          backgroundColor: Colors.transparent,
+          builder: (sheetContext) => Padding(
+            padding: const EdgeInsets.only(bottom: 18),
+            child: buildSheetContainer(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  buildSheetHandle(),
+                  const SizedBox(height: 20),
+                  buildSheetTitle(
+                    title: 'Supprimer ce profil ?',
+                    icon: Icons.delete_outline,
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    message,
+                    style: TextStyle(
+                      color: textSoft,
+                      fontSize: 16,
+                      height: 1.45,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(sheetContext, false),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(22),
+                            ),
+                          ),
+                          child: const Text('Annuler'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () => Navigator.pop(sheetContext, true),
+                          style: premiumButtonStyle(),
+                          child: const Text('Supprimer'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ) ??
+        false;
   }
 
   Widget buildSheetContainer({
@@ -3072,6 +3316,48 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  Widget buildSelectionField({
+    required String label,
+    required String value,
+    required Future<void> Function() onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(22),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.9),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: accent.withValues(alpha: 0.10)),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label, style: TextStyle(color: textSoft, fontSize: 13)),
+                  const SizedBox(height: 5),
+                  Text(
+                    cleanLabel(value),
+                    style: TextStyle(
+                      color: textDark,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, color: accent),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget buildChoiceChip({
     required String label,
     required bool selected,
@@ -3254,41 +3540,578 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget buildHeader() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(28, 30, 28, 6),
-      child: Row(
+    return SizedBox(
+      height: 255,
+      child: Stack(
         children: [
-          const SizedBox(width: 44),
-          Expanded(
-            child: Center(
-              child: Text(
-                "Mon profil",
-                style: TextStyle(
-                  color: textDark,
-                  fontSize: 30,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: -0.6,
-                ),
+          Positioned(
+            right: -24,
+            top: 4,
+            child: IgnorePointer(
+              child: Image.asset(
+                'assets/images/zelia_robot.png',
+                width: 230,
+                height: 250,
+                fit: BoxFit.contain,
               ),
             ),
           ),
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.82),
-              shape: BoxShape.circle,
-            ),
-            child: IconButton(
-              onPressed: showMainInfoSheet,
-              icon: Icon(
-                Icons.settings_outlined,
-                color: accent,
-              ),
+          Positioned(
+            left: 28,
+            top: 44,
+            right: 150,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Profil',
+                  style: TextStyle(
+                    color: textDark,
+                    fontFamily: 'PlayfairDisplay',
+                    fontSize: 46,
+                    height: 1,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  'Gère tes informations, tes préférences et ton compte.',
+                  style: TextStyle(
+                    color: textSoft,
+                    fontSize: 16,
+                    height: 1.4,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget buildIdentityCard() {
+    final family =
+        <({String name, String detail, String imagePath, VoidCallback tap})>[
+      if (showPartnerField() && partnerNameController.text.trim().isNotEmpty)
+        (
+          name: partnerNameController.text.trim(),
+          detail: 'Partenaire',
+          imagePath: profile.partnerPhotoPath,
+          tap: showPartnerSheet,
+        ),
+      for (var index = 0; index < children.length; index++)
+        (
+          name: children[index].firstName.trim().isEmpty
+              ? 'Enfant'
+              : children[index].firstName.trim(),
+          detail: children[index].age.trim().isEmpty
+              ? 'Profil enfant'
+              : '${children[index].age.trim()} ans',
+          imagePath: children[index].photoPath,
+          tap: () => _openChildProfile(index),
+        ),
+      for (final person in additionalProfiles)
+        (
+          name: person.name,
+          detail: person.relation,
+          imagePath: person.photoPath,
+          tap: () => _openAdditionalProfile(person.id),
+        ),
+    ];
+    return Container(
+      key: const ValueKey('profile-identity-card'),
+      margin: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.86),
+        borderRadius: BorderRadius.circular(32),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.8)),
+        boxShadow: [
+          BoxShadow(
+            color: accent.withValues(alpha: 0.08),
+            blurRadius: 28,
+            offset: const Offset(0, 14),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(24),
+            onTap: showPersonalProfileHub,
+            child: Row(
+              children: [
+                buildSmallAvatar(
+                  name: firstNameController.text,
+                  size: 76,
+                  imagePath: profile.profilePhotoPath,
+                  onTap: updateUserPhoto,
+                ),
+                const SizedBox(width: 18),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        firstNameController.text.trim().isEmpty
+                            ? 'Mon profil'
+                            : firstNameController.text.trim(),
+                        style: TextStyle(
+                          color: textDark,
+                          fontFamily: 'PlayfairDisplay',
+                          fontSize: 28,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        country.trim().isEmpty
+                            ? 'Pays à compléter'
+                            : country.trim(),
+                        style: TextStyle(
+                          color: textSoft,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: 0.08),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.chevron_right, color: accent),
+                ),
+              ],
+            ),
+          ),
+          if (!isLivingAlone()) ...[
+            const SizedBox(height: 18),
+            Divider(color: accent.withValues(alpha: 0.10)),
+            const SizedBox(height: 12),
+            Text(
+              'MA FAMILLE',
+              style: TextStyle(
+                color: textSoft,
+                fontSize: 12,
+                letterSpacing: 1.2,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 14),
+            SizedBox(
+              height: 88,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                children: [
+                  for (final person in family) ...[
+                    _familyProfile(person),
+                    const SizedBox(width: 18),
+                  ],
+                  _addFamilyProfile(),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _familyProfile(
+    ({String name, String detail, String imagePath, VoidCallback tap}) person,
+  ) {
+    return InkWell(
+      onTap: person.tap,
+      borderRadius: BorderRadius.circular(18),
+      child: SizedBox(
+        width: 82,
+        child: Column(
+          children: [
+            buildSmallAvatar(
+              name: person.name,
+              size: 52,
+              imagePath: person.imagePath,
+              onTap: person.tap,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              person.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: textDark, fontWeight: FontWeight.w700),
+            ),
+            Text(
+              person.detail,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: textSoft, fontSize: 11),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openChildProfile(int index) async {
+    final updated = await showChildEditor(
+      child: children[index],
+      index: index,
+    );
+    if (updated == null || !mounted) return;
+    setState(() => children[index] = updated);
+    await saveProfile(showSnack: false);
+  }
+
+  Widget _addFamilyProfile() {
+    return InkWell(
+      onTap: _openAddPerson,
+      borderRadius: BorderRadius.circular(18),
+      child: SizedBox(
+        width: 82,
+        child: Column(
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.10),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.add, color: accent),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Ajouter',
+              style: TextStyle(color: textDark, fontWeight: FontWeight.w700),
+            ),
+            Text('un profil', style: TextStyle(color: textSoft, fontSize: 11)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openAddPerson() async {
+    final alreadyHasPartner = profile.partnerHumanPersonId.trim().isNotEmpty ||
+        partnerNameController.text.trim().isNotEmpty;
+    var addedAsLegacyPartner = false;
+    final added = await Navigator.of(context).push<HumanProfileAddition>(
+      MaterialPageRoute<HumanProfileAddition>(
+        builder: (_) => HumanProfileScreen(
+          legacyProfile: profile,
+          startAddingPerson: true,
+        ),
+      ),
+    );
+    if (added != null && mounted) {
+      if (added.relationshipType == HumanRelationshipTypes.partner ||
+          added.relationshipType == HumanRelationshipTypes.spouse) {
+        if (!alreadyHasPartner) {
+          addedAsLegacyPartner = true;
+          setState(() {
+            profile = profile.copyWith(
+              partnerHumanPersonId: added.personId,
+              partnerPhotoPath: added.photoPath,
+            );
+            partnerNameController.text = added.name;
+            partnerBirthDateController.text = added.birthDate;
+            relationshipStatus = added.relationshipStatus;
+            engagementDateController.text =
+                added.relationshipStatus == 'Fiancée'
+                    ? added.engagementDate
+                    : '';
+            marriageDateController.text =
+                added.relationshipStatus == 'Mariée' ? added.marriageDate : '';
+            selectedFamilyStatus = familyStatuses[1];
+          });
+          await saveProfile(showSnack: false);
+        }
+      } else if (added.relationshipType == HumanRelationshipTypes.child) {
+        setState(() {
+          children.add(
+            ChildProfile(
+              humanPersonId: added.personId,
+              firstName: added.name,
+              age: '',
+              birthDate: added.birthDate,
+              gender: '',
+              school: '',
+              notes: '',
+            ),
+          );
+          selectedFamilyStatus = familyStatuses[2];
+        });
+        await saveProfile(showSnack: false);
+      }
+    }
+    await _loadAdditionalProfiles();
+    if (added == null || !mounted) return;
+    if (added.relationshipType == HumanRelationshipTypes.partner ||
+        added.relationshipType == HumanRelationshipTypes.spouse) {
+      if (addedAsLegacyPartner) {
+        await showPartnerSheet();
+      } else {
+        await _openAdditionalProfile(added.personId);
+      }
+    } else if (added.relationshipType == HumanRelationshipTypes.child) {
+      final childIndex = children.indexWhere(
+        (child) => child.humanPersonId == added.personId,
+      );
+      if (childIndex >= 0) await _openChildProfile(childIndex);
+    } else {
+      await _openAdditionalProfile(added.personId);
+    }
+  }
+
+  Future<void> _loadAdditionalProfiles() async {
+    String? scope;
+    try {
+      scope = AuthService.currentUserId;
+    } on Object {
+      return;
+    }
+    if (scope == null || scope.trim().isEmpty) return;
+    final service = await HumanModelEditService.createProduction();
+    final state = await service.load(scope);
+    if (!mounted || state == null) return;
+    final representedIds = <String>{
+      profile.partnerHumanPersonId,
+      ...children.map((child) => child.humanPersonId),
+    }..removeWhere((id) => id.trim().isEmpty);
+    final profiles = <_AdditionalProfile>[];
+    for (final relation in state.model.relationships) {
+      if (relation.sourcePersonId != state.model.primaryPersonId ||
+          relation.status != HumanRecordStatus.active ||
+          representedIds.contains(relation.targetPersonId)) {
+        continue;
+      }
+      final person = state.model.personById(relation.targetPersonId);
+      if (person == null || person.status != HumanPersonStatus.active) continue;
+      profiles.add(
+        _AdditionalProfile(
+          id: person.id,
+          name: person.displayName?.trim().isNotEmpty == true
+              ? person.displayName!.trim()
+              : 'Personne',
+          relation: _simpleRelationshipLabel(relation),
+          photoPath: person.customFields['photoPath']?.toString() ?? '',
+        ),
+      );
+    }
+    setState(() => additionalProfiles = profiles);
+  }
+
+  Future<void> _openAdditionalProfile(String personId) async {
+    final scope = AuthService.currentUserId;
+    if (scope == null || scope.trim().isEmpty) return;
+    final service = await HumanModelEditService.createProduction();
+    final state = await service.load(scope);
+    if (!mounted || state == null) return;
+    final person = state.model.personById(personId);
+    final relations = state.model.relationships.where(
+      (relation) =>
+          relation.sourcePersonId == state.model.primaryPersonId &&
+          relation.targetPersonId == personId &&
+          relation.status == HumanRecordStatus.active,
+    );
+    if (person == null || relations.isEmpty) return;
+    final relation = relations.first;
+    final rawBirth = person.customFields['birthDate']?.toString() ?? '';
+    final parsedBirth = DateTime.tryParse(rawBirth);
+    final name = TextEditingController(text: person.displayName ?? '');
+    final birth = TextEditingController(
+      text: parsedBirth == null
+          ? normalizeFrenchDate(rawBirth)
+          : formatFrenchDate(parsedBirth),
+    );
+    final work = TextEditingController(
+      text: person.customFields['workSchedule']?.toString() ?? '',
+    );
+    final notes = TextEditingController(
+      text: person.customFields['usefulNotes']?.toString() ?? '',
+    );
+    final engagement = TextEditingController(
+      text: person.customFields['engagementDate']?.toString() ?? '',
+    );
+    final marriage = TextEditingController(
+      text: person.customFields['marriageDate']?.toString() ?? '',
+    );
+    final isPartner = relation.type == HumanRelationshipTypes.partner ||
+        relation.type == HumanRelationshipTypes.spouse;
+    await _showAdultProfileSheet(
+      title: isPartner ? 'Conjoint' : _simpleRelationshipLabel(relation),
+      nameController: name,
+      birthController: birth,
+      workController: work,
+      notesController: notes,
+      engagementController: engagement,
+      marriageController: marriage,
+      initialStatus:
+          person.customFields['relationshipStatus']?.toString() ?? 'En couple',
+      initialPhotoPath: person.customFields['photoPath']?.toString() ?? '',
+      showCoupleStatus: isPartner,
+      onSave: (status, photoPath) async {
+        final birthday = parseFrenchDate(birth.text);
+        await service.commit(
+          accountScopeId: scope,
+          transform: (model) => model.copyWith(
+            persons: model.persons
+                .map(
+                  (item) => item.id != personId
+                      ? item
+                      : item.copyWith(
+                          displayName: name.text.trim(),
+                          evidence: const HumanEvidence(
+                            source: HumanInformationSource.explicitUserInput,
+                            confirmation: HumanConfirmationStatus.confirmed,
+                          ),
+                          customFields: {
+                            ...item.customFields,
+                            if (birthday != null)
+                              'birthDate': birthday.toUtc().toIso8601String(),
+                            'photoPath': photoPath,
+                            'workSchedule': work.text.trim(),
+                            'usefulNotes': notes.text.trim(),
+                            if (isPartner) 'relationshipStatus': status,
+                            if (isPartner && status == 'Fiancée')
+                              'engagementDate': engagement.text.trim(),
+                            if (isPartner && status == 'Mariée')
+                              'marriageDate': marriage.text.trim(),
+                          }..removeWhere(
+                              (key, _) =>
+                                  (key == 'engagementDate' &&
+                                      status != 'Fiancée') ||
+                                  (key == 'marriageDate' && status != 'Mariée'),
+                            ),
+                        ),
+                )
+                .toList(),
+          ),
+        );
+      },
+      onDelete: () async {
+        await service.commit(
+          accountScopeId: scope,
+          transform: (model) => model.copyWith(
+            persons: model.persons
+                .map(
+                  (item) => item.id == personId
+                      ? item.copyWith(status: HumanPersonStatus.historical)
+                      : item,
+                )
+                .toList(),
+            relationships: model.relationships
+                .map(
+                  (item) => item.targetPersonId == personId
+                      ? item.copyWith(status: HumanRecordStatus.historical)
+                      : item,
+                )
+                .toList(),
+          ),
+        );
+      },
+    );
+    await _loadAdditionalProfiles();
+  }
+
+  Future<void> showPersonalProfileHub() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => buildSheetContainer(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            buildSheetHandle(),
+            const SizedBox(height: 18),
+            buildSheetTitle(
+              title: 'Tout sur moi',
+              icon: Icons.person_outline,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Les informations personnelles qui aident Zelia à mieux t’accompagner.',
+              style: TextStyle(color: textSoft, height: 1.4),
+            ),
+            const SizedBox(height: 14),
+            _personalHubRow(
+              sheetContext,
+              icon: Icons.badge_outlined,
+              title: 'Mes informations principales',
+              subtitle: 'Prénom, naissance, famille et travail',
+              open: showMainInfoSheet,
+            ),
+            _personalHubRow(
+              sheetContext,
+              icon: Icons.access_time,
+              title: scheduleTitle(),
+              subtitle: workScheduleSummary(),
+              open: showWorkScheduleSheet,
+            ),
+            _personalHubRow(
+              sheetContext,
+              icon: Icons.self_improvement_outlined,
+              title: 'Mes activités',
+              subtitle: personalActivities.isEmpty
+                  ? 'À compléter'
+                  : '${personalActivities.length} activité(s)',
+              open: showPersonalActivitiesSheet,
+            ),
+            _personalHubRow(
+              sheetContext,
+              icon: Icons.auto_awesome_outlined,
+              title: 'Ce que Zelia doit savoir sur moi',
+              subtitle: personalNotesController.text.trim().isEmpty
+                  ? 'À compléter'
+                  : 'Voir mes informations',
+              open: showPersonalNotesSheet,
+            ),
+            _personalHubRow(
+              sheetContext,
+              icon: Icons.health_and_safety_outlined,
+              title: 'Ma santé',
+              subtitle: allergiesController.text.trim().isEmpty &&
+                      medicalNotesController.text.trim().isEmpty
+                  ? 'À compléter'
+                  : 'Voir mes informations',
+              open: showHealthSheet,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _personalHubRow(
+    BuildContext sheetContext, {
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Future<void> Function() open,
+  }) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(icon, color: accent),
+      title: Text(title, style: TextStyle(color: textDark)),
+      subtitle: Text(subtitle, style: TextStyle(color: textSoft)),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () {
+        Navigator.pop(sheetContext);
+        Future<void>(() async {
+          await open();
+          if (mounted) await showPersonalProfileHub();
+        });
+      },
     );
   }
 
@@ -3435,94 +4258,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget buildPremiumSectionsCard() {
     return buildPremiumCard(
       children: [
-        buildProfileRow(
-          icon: Icons.hub_outlined,
-          label: "Mon organisation",
-          value: "Personnes, foyers et responsabilités",
-          iconColor: textSoft,
-          onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => HumanProfileScreen(
-                  legacyProfile: profile,
-                  onLegacyProfileUpdated: (updated) {
-                    if (!mounted) return;
-                    setState(() => syncProfile(updated));
-                    widget.onSave?.call(updated);
-                  },
-                ),
-              ),
-            );
-          },
-          showChevron: true,
-        ),
-        buildDivider(),
         buildAccountRow(),
-        buildDivider(),
-        if (hasStructuredSchedule()) ...[
-          buildProfileRow(
-            icon: Icons.access_time,
-            label: scheduleTitle(),
-            value: workScheduleSummary(),
-            iconColor: textSoft,
-            onTap: showWorkScheduleSheet,
-            showChevron: true,
-          ),
-          buildDivider(),
-        ],
-        buildProfileRow(
-          icon: Icons.self_improvement_outlined,
-          label: "Mes activités",
-          value: personalActivities.isEmpty
-              ? "À compléter"
-              : "${personalActivities.length} activité(s)",
-          iconColor: textSoft,
-          onTap: showPersonalActivitiesSheet,
-          showChevron: true,
-        ),
-        buildDivider(),
-        buildProfileRow(
-          icon: Icons.auto_awesome_outlined,
-          label: "Ce que Zelia devrait savoir",
-          value: personalNotesController.text.trim().isEmpty
-              ? "À compléter"
-              : "Voir",
-          iconColor: textSoft,
-          onTap: showPersonalNotesSheet,
-          showChevron: true,
-        ),
-        buildDivider(),
-        buildProfileRow(
-          icon: Icons.health_and_safety_outlined,
-          label: "Santé",
-          value: allergiesController.text.trim().isEmpty &&
-                  medicalNotesController.text.trim().isEmpty
-              ? "À compléter"
-              : "Voir",
-          iconColor: textSoft,
-          onTap: showHealthSheet,
-          showChevron: true,
-        ),
         buildDivider(),
         buildProfileRow(
           icon: Icons.psychology_alt_outlined,
-          label: "Préférences IA",
+          label: "Façon de parler de Zelia",
           value: aiTone,
           iconColor: textSoft,
           onTap: showAiPreferencesSheet,
-          showChevron: true,
-        ),
-        buildDivider(),
-        buildProfileRow(
-          icon: Icons.dashboard_customize_outlined,
-          label: "Vie quotidienne",
-          value: vehicleInfoController.text.trim().isEmpty &&
-                  petsInfoController.text.trim().isEmpty &&
-                  transportInfoController.text.trim().isEmpty
-              ? "À compléter"
-              : "Voir",
-          iconColor: textSoft,
-          onTap: showDailyLifeSheet,
           showChevron: true,
         ),
         buildDivider(),
@@ -3825,8 +4568,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: Column(
             children: [
               buildHeader(),
-              buildAvatar(),
-              buildInfoCard(),
+              buildIdentityCard(),
               buildPremiumSectionsCard(),
               const SizedBox(height: 110),
             ],
@@ -3836,6 +4578,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 }
+
+final class _AdditionalProfile {
+  const _AdditionalProfile({
+    required this.id,
+    required this.name,
+    required this.relation,
+    required this.photoPath,
+  });
+
+  final String id;
+  final String name;
+  final String relation;
+  final String photoPath;
+}
+
+String _simpleRelationshipLabel(HumanRelationship relationship) =>
+    switch (relationship.type) {
+      HumanRelationshipTypes.partner => 'Partenaire',
+      HumanRelationshipTypes.spouse => 'Conjoint',
+      HumanRelationshipTypes.child => 'Enfant',
+      HumanRelationshipTypes.custom =>
+        relationship.customType?.trim().isNotEmpty == true
+            ? relationship.customType!.trim()
+            : 'Autre',
+      _ => 'Proche',
+    };
 
 class ChoiceSection {
   final String label;

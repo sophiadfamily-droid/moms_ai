@@ -14,6 +14,7 @@ enum ProfileOwnedField {
   afternoonEnd,
   variableWorkDetails,
   workTimeRanges,
+  workTravelMinutes,
   habits,
   personalNotes,
   preferences,
@@ -37,6 +38,8 @@ enum ProfileOwnedField {
   budgetNotes,
   importantPlaces,
   personalActivities,
+  partnerNotes,
+  partnerWorkSchedule,
 }
 
 final class ProfilePatchException implements Exception {

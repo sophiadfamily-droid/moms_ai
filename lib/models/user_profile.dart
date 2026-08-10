@@ -289,6 +289,8 @@ class UserProfile {
     "profilePhotoPath",
     "partnerBirthDate",
     "partnerPhotoPath",
+    "partnerNotes",
+    "partnerWorkSchedule",
     "relationshipStatus",
     "marriageDate",
     "engagementDate",
@@ -301,6 +303,7 @@ class UserProfile {
     "afternoonEnd",
     "variableWorkDetails",
     "workTimeRanges",
+    "workTravelMinutes",
     "habits",
     "personalNotes",
     "preferences",
@@ -348,6 +351,8 @@ class UserProfile {
 
   final String partnerBirthDate;
   final String partnerPhotoPath;
+  final String partnerNotes;
+  final String partnerWorkSchedule;
   final String relationshipStatus;
   final String marriageDate;
   final String engagementDate;
@@ -361,6 +366,7 @@ class UserProfile {
   final String afternoonEnd;
   final String variableWorkDetails;
   final List<TimeRangeModel> workTimeRanges;
+  final String workTravelMinutes;
 
   final String habits;
   final String personalNotes;
@@ -412,6 +418,8 @@ class UserProfile {
     this.profilePhotoPath = "",
     this.partnerBirthDate = "",
     this.partnerPhotoPath = "",
+    this.partnerNotes = "",
+    this.partnerWorkSchedule = "",
     this.relationshipStatus = "",
     this.marriageDate = "",
     this.engagementDate = "",
@@ -424,6 +432,7 @@ class UserProfile {
     this.afternoonEnd = "",
     this.variableWorkDetails = "",
     this.workTimeRanges = const [],
+    this.workTravelMinutes = "",
     this.habits = "",
     this.personalNotes = "",
     this.preferences = "",
@@ -470,6 +479,8 @@ class UserProfile {
     String? profilePhotoPath,
     String? partnerBirthDate,
     String? partnerPhotoPath,
+    String? partnerNotes,
+    String? partnerWorkSchedule,
     String? relationshipStatus,
     String? marriageDate,
     String? engagementDate,
@@ -482,6 +493,7 @@ class UserProfile {
     String? afternoonEnd,
     String? variableWorkDetails,
     List<TimeRangeModel>? workTimeRanges,
+    String? workTravelMinutes,
     String? habits,
     String? personalNotes,
     String? preferences,
@@ -527,6 +539,8 @@ class UserProfile {
       profilePhotoPath: profilePhotoPath ?? this.profilePhotoPath,
       partnerBirthDate: partnerBirthDate ?? this.partnerBirthDate,
       partnerPhotoPath: partnerPhotoPath ?? this.partnerPhotoPath,
+      partnerNotes: partnerNotes ?? this.partnerNotes,
+      partnerWorkSchedule: partnerWorkSchedule ?? this.partnerWorkSchedule,
       relationshipStatus: relationshipStatus ?? this.relationshipStatus,
       marriageDate: marriageDate ?? this.marriageDate,
       engagementDate: engagementDate ?? this.engagementDate,
@@ -539,6 +553,7 @@ class UserProfile {
       afternoonEnd: afternoonEnd ?? this.afternoonEnd,
       variableWorkDetails: variableWorkDetails ?? this.variableWorkDetails,
       workTimeRanges: workTimeRanges ?? this.workTimeRanges,
+      workTravelMinutes: workTravelMinutes ?? this.workTravelMinutes,
       habits: habits ?? this.habits,
       personalNotes: personalNotes ?? this.personalNotes,
       preferences: preferences ?? this.preferences,
@@ -588,6 +603,8 @@ class UserProfile {
       "profilePhotoPath": profilePhotoPath,
       "partnerBirthDate": partnerBirthDate,
       "partnerPhotoPath": partnerPhotoPath,
+      "partnerNotes": partnerNotes,
+      "partnerWorkSchedule": partnerWorkSchedule,
       "relationshipStatus": relationshipStatus,
       "marriageDate": marriageDate,
       "engagementDate": engagementDate,
@@ -600,6 +617,7 @@ class UserProfile {
       "afternoonEnd": afternoonEnd,
       "variableWorkDetails": variableWorkDetails,
       "workTimeRanges": workTimeRanges.map((range) => range.toJson()).toList(),
+      "workTravelMinutes": workTravelMinutes,
       "habits": habits,
       "personalNotes": personalNotes,
       "preferences": preferences,
@@ -654,6 +672,8 @@ class UserProfile {
       profilePhotoPath: json["profilePhotoPath"] ?? "",
       partnerBirthDate: json["partnerBirthDate"] ?? "",
       partnerPhotoPath: json["partnerPhotoPath"] ?? "",
+      partnerNotes: json["partnerNotes"] ?? "",
+      partnerWorkSchedule: json["partnerWorkSchedule"] ?? "",
       relationshipStatus: json["relationshipStatus"] ?? "",
       marriageDate: json["marriageDate"] ?? "",
       engagementDate: json["engagementDate"] ?? "",
@@ -671,6 +691,7 @@ class UserProfile {
           .map((range) =>
               TimeRangeModel.fromJson(Map<String, dynamic>.from(range)))
           .toList(),
+      workTravelMinutes: json["workTravelMinutes"] ?? "",
       habits: json["habits"] ?? "",
       personalNotes: json["personalNotes"] ?? "",
       preferences: json["preferences"] ?? "",

@@ -74,10 +74,129 @@ void main() {
     expect(find.text('Aucune autre personne ajoutée'), findsWidgets);
     await tester.tap(find.text('Ajouter une personne'));
     await tester.pumpAndSettle();
-    expect(find.text('Nom d’affichage (facultatif)'), findsOneWidget);
+    expect(find.text('Nom d’affichage'), findsOneWidget);
     await tester.tap(find.text('Annuler'));
     await tester.pumpAndSettle();
     expect(find.text('Mon organisation'), findsOneWidget);
+  });
+
+  testWidgets('autre relation vide enregistre le profil sous Autre',
+      (tester) async {
+    final editor = await _editor();
+    var legacyPartnerWasOverwritten = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HumanProfileScreen(
+          legacyProfile: _profile(),
+          editService: editor,
+          accountScopeId: 'account-a',
+          startAddingPerson: true,
+          onLegacyProfileUpdated: (_) => legacyPartnerWasOverwritten = true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Ajouter une personne'), findsOneWidget);
+    expect(find.text('Prénom'), findsOneWidget);
+    expect(find.text('Date de naissance'), findsOneWidget);
+    expect(find.text('Quel est son lien avec toi ?'), findsOneWidget);
+    expect(find.text('Votre relation'), findsNothing);
+    expect(find.text('Horaires ou planning de travail'), findsNothing);
+    expect(find.text('Ce que Zelia doit savoir'), findsNothing);
+    await tester.enterText(find.byType(TextField).first, 'Samira');
+    await tester.tap(find.text('Partenaire'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Autre relation').last);
+    await tester.pumpAndSettle();
+    final addButton = find.widgetWithText(FilledButton, 'Ajouter');
+    await tester.ensureVisible(addButton);
+    await tester.pumpAndSettle();
+    await tester.tap(addButton);
+    await tester.pumpAndSettle();
+
+    final state = await editor.load('account-a');
+    expect(state!.model.persons, hasLength(2));
+    expect(
+      state.model.persons.any((person) => person.displayName == 'Samira'),
+      isTrue,
+    );
+    expect(state.model.relationships, hasLength(1));
+    expect(
+        state.model.relationships.single.type, HumanRelationshipTypes.custom);
+    expect(
+      state.model.relationships.single.customType,
+      'Autre',
+    );
+    expect(legacyPartnerWasOverwritten, isFalse);
+  });
+
+  testWidgets('un profil partenaire ouvre et conserve sa fiche complète',
+      (tester) async {
+    final editor = await _editor(
+      extraPerson: HumanPerson(
+        id: 'person-partner',
+        accountScopeId: 'account-a',
+        displayName: 'Alex',
+        evidence: _confirmedEvidence,
+      ),
+      relationship: HumanRelationship(
+        id: 'relationship-partner',
+        accountScopeId: 'account-a',
+        sourcePersonId: 'person-main',
+        targetPersonId: 'person-partner',
+        type: HumanRelationshipTypes.partner,
+        evidence: _confirmedEvidence,
+      ),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HumanProfileScreen(
+          legacyProfile: _profile(),
+          editService: editor,
+          accountScopeId: 'account-a',
+          personIdToEdit: 'person-partner',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Votre relation'), findsOneWidget);
+    expect(find.text('Date de fiançailles'), findsNothing);
+    expect(find.text('Date de mariage'), findsNothing);
+    await tester.tap(find.text('En couple').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Fiancée').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Date de fiançailles'), findsOneWidget);
+    expect(find.text('Date de mariage'), findsNothing);
+    expect(find.text('Horaires ou planning de travail'), findsOneWidget);
+    expect(find.text('Ce que Zelia doit savoir'), findsOneWidget);
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Horaires ou planning de travail'),
+      'Lundi au vendredi, 8 h à 17 h',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Ce que Zelia doit savoir'),
+      'Peut récupérer les enfants le mardi.',
+    );
+    final saveButton = find.widgetWithText(FilledButton, 'Enregistrer');
+    await tester.ensureVisible(saveButton);
+    await tester.pumpAndSettle();
+    await tester.tap(saveButton);
+    await tester.pumpAndSettle();
+
+    final state = await editor.load('account-a');
+    final partner = state!.model.personById('person-partner')!;
+    expect(
+      partner.customFields['workSchedule'],
+      'Lundi au vendredi, 8 h à 17 h',
+    );
+    expect(
+      partner.customFields['usefulNotes'],
+      'Peut récupérer les enfants le mardi.',
+    );
   });
 
   for (final size in _sizes) {
@@ -131,7 +250,15 @@ void main() {
   });
 }
 
-Future<HumanModelEditService> _editor() async {
+const _confirmedEvidence = HumanEvidence(
+  source: HumanInformationSource.explicitUserInput,
+  confirmation: HumanConfirmationStatus.confirmed,
+);
+
+Future<HumanModelEditService> _editor({
+  HumanPerson? extraPerson,
+  HumanRelationship? relationship,
+}) async {
   final model = HumanModel(
     accountScopeId: 'account-a',
     primaryPersonId: 'person-main',
@@ -139,12 +266,11 @@ Future<HumanModelEditService> _editor() async {
       HumanPerson(
         id: 'person-main',
         accountScopeId: 'account-a',
-        evidence: const HumanEvidence(
-          source: HumanInformationSource.explicitUserInput,
-          confirmation: HumanConfirmationStatus.confirmed,
-        ),
+        evidence: _confirmedEvidence,
       ),
+      if (extraPerson != null) extraPerson,
     ],
+    relationships: [if (relationship != null) relationship],
   );
   final local = HumanModelLocalRepository.withStore(_MemoryStore());
   await local.saveState(

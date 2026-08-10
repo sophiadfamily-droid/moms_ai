@@ -227,6 +227,7 @@ abstract final class ProfileFieldOwnership {
     'afternoonEnd',
     'variableWorkDetails',
     'workTimeRanges',
+    'workTravelMinutes',
     'habits',
     'personalNotes',
     'preferences',
@@ -250,6 +251,8 @@ abstract final class ProfileFieldOwnership {
     'budgetNotes',
     'importantPlaces',
     'personalActivities',
+    'partnerNotes',
+    'partnerWorkSchedule',
   };
 
   static void validatePatch(Iterable<String> fields) {
