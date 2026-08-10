@@ -4672,7 +4672,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  "Compte Zélia",
+                  "Compte Zelia",
                   style: TextStyle(
                     color: textDark,
                     fontSize: 24,
