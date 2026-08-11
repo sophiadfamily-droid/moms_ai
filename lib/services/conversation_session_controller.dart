@@ -155,6 +155,8 @@ final class ConversationSessionController extends ChangeNotifier {
     ConversationSessionActionExecutor? executeAction,
     EventStartConflictChecker? eventStartConflictChecker,
     EventConflictChecker? eventConflictChecker,
+    EventStartAlternativeSuggester? eventStartAlternativeSuggester,
+    EventAlternativeSuggester? eventAlternativeSuggester,
     EventConversationMutationService? eventConversationMutationService,
     ConversationReferenceHistoryStore? referenceHistoryStore,
     ConversationMessageStore messageStore =
@@ -232,6 +234,10 @@ final class ConversationSessionController extends ChangeNotifier {
                   )),
       eventConflictChecker:
           eventConflictChecker ?? planningConflictService!.findConflict,
+      eventStartAlternativeSuggester: eventStartAlternativeSuggester ??
+          planningConflictService?.suggestAlternativeAtStart,
+      eventAlternativeSuggester: eventAlternativeSuggester ??
+          planningConflictService?.suggestAlternative,
       clock: clock,
     );
     final controller = ConversationSessionController(

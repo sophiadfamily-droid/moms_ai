@@ -845,6 +845,123 @@ void main() {
       expect(coordinator.state.pendingAction?.event.durationMinutes, 60);
     });
 
+    test('Event conflict proposes a free start and yes keeps the same draft',
+        () async {
+      final coordinator = _coordinator();
+      final conflict = EventModel(
+        id: 'pilates',
+        title: 'Pilates',
+        date: '2026-08-12',
+        time: '09:00',
+        notes: '',
+        createdAt: DateTime(2026, 8, 1),
+        startDateTimeIso: '2026-08-12T09:00:00',
+        endTime: '10:00',
+        endDateTimeIso: '2026-08-12T10:00:00',
+        durationMinutes: 60,
+      );
+      final executor = ConversationLegacyActionExecutor(
+        coordinator: coordinator,
+        clock: () => DateTime(2026, 8, 11, 17),
+        eventStartConflictChecker: ({required startDateTimeIso}) async =>
+            startDateTimeIso.contains('09:30') ? conflict : null,
+        eventConflictChecker: ({required candidate}) async => null,
+        eventStartAlternativeSuggester: ({
+          required startDateTimeIso,
+          required conflict,
+        }) async =>
+            DateTime(2026, 8, 12, 10),
+      );
+      final draft = ConversationClarificationDraft(
+        schemaVersion: 1,
+        draftType: ConversationClarificationDraftType.eventCreation,
+        logicalRequestId: 'logical-dentist',
+        draftId: 'draft-dentist',
+        title: 'Dentiste',
+        date: '2026-08-12',
+        startTime: '09:30',
+        durationMinutes: null,
+        travelGoMinutes: null,
+        travelBackMinutes: null,
+        marginMinutes: null,
+        expectedField: ConversationEventDraftExpectedField.duration,
+        createdAt: DateTime(2026, 8, 11, 17),
+        expiresAt: DateTime(2026, 8, 11, 17, 15),
+        sessionGeneration: 0,
+      );
+
+      final reply = await executor.prepareClarificationDraftFromMessage(
+        draft,
+        0,
+        'Dentiste demain à 9h30',
+      );
+
+      expect(reply, contains('Pilates'));
+      expect(reply, contains('10 h'));
+      expect(reply, contains('Est-ce que ça te va'));
+      expect(executor.pendingEventDraftId, 'draft-dentist');
+      final accepted = await executor.resolvePending('oui', 0);
+      expect(accepted?.reply, contains('Combien de temps'));
+      expect(executor.pendingEventDraftId, 'draft-dentist');
+      expect(executor.pendingEventExpectedFieldCode, 'duration');
+    });
+
+    test('refusing a suggested time keeps the Event draft open', () async {
+      final coordinator = _coordinator();
+      final conflict = EventModel(
+        id: 'work',
+        title: 'Tes horaires de travail',
+        date: '2026-08-17',
+        time: '09:00',
+        notes: '',
+        createdAt: DateTime(2026, 8, 1),
+        startDateTimeIso: '2026-08-17T09:00:00',
+        endTime: '10:00',
+        endDateTimeIso: '2026-08-17T10:00:00',
+        durationMinutes: 60,
+      );
+      final executor = ConversationLegacyActionExecutor(
+        coordinator: coordinator,
+        clock: () => DateTime(2026, 8, 16, 10),
+        eventStartConflictChecker: ({required startDateTimeIso}) async =>
+            conflict,
+        eventConflictChecker: ({required candidate}) async => null,
+        eventStartAlternativeSuggester: ({
+          required startDateTimeIso,
+          required conflict,
+        }) async =>
+            DateTime(2026, 8, 17, 10),
+      );
+      final draft = ConversationClarificationDraft(
+        schemaVersion: 1,
+        draftType: ConversationClarificationDraftType.eventCreation,
+        logicalRequestId: 'logical-refusal',
+        draftId: 'draft-refusal',
+        title: 'Dentiste',
+        date: '2026-08-17',
+        startTime: '09:30',
+        durationMinutes: null,
+        travelGoMinutes: null,
+        travelBackMinutes: null,
+        marginMinutes: null,
+        expectedField: ConversationEventDraftExpectedField.duration,
+        createdAt: DateTime(2026, 8, 16, 10),
+        expiresAt: DateTime(2026, 8, 16, 10, 15),
+        sessionGeneration: 0,
+      );
+      await executor.prepareClarificationDraftFromMessage(
+        draft,
+        0,
+        'Dentiste demain à 9h30',
+      );
+
+      final refused = await executor.resolvePending('non', 0);
+
+      expect(refused?.reply, contains('Quel autre horaire'));
+      expect(executor.pendingEventDraftId, 'draft-refusal');
+      expect(executor.pendingEventExpectedFieldCode, 'conflictAlternativeTime');
+    });
+
     test('Event continuation keeps travel return and margin structured',
         () async {
       final coordinator = _coordinator();

@@ -406,6 +406,11 @@ void main() {
           return null;
         },
         eventConflictChecker: ({required candidate}) async => null,
+        eventStartAlternativeSuggester: ({
+          required startDateTimeIso,
+          required conflict,
+        }) async =>
+            DateTime.utc(2026, 7, 30, 16),
         clock: () => DateTime.utc(2026, 7, 29, 12),
         idGenerator: () => 'production-event-occupied-start',
       );
@@ -413,11 +418,13 @@ void main() {
       await controller.submitText('medecin demain 15h');
 
       expect(controller.state.messages.last.text, contains('ton Pilates'));
+      expect(controller.state.messages.last.text, contains('16 h'));
+      expect(controller.state.messages.last.text, contains('ça te va'));
       expect(controller.state.messages.last.text, isNot(contains('durée')));
       expect(controller.state.phase,
           ConversationSessionPhase.awaitingClarification);
 
-      await controller.submitText('17h');
+      await controller.submitText('oui');
 
       expect(controller.state.messages.last.text, contains('Combien de temps'));
       expect(checkedStarts, hasLength(2));
@@ -556,13 +563,14 @@ void main() {
 
       await controller.submitText('medecin demain 15h');
 
-      expect(controller.state.messages.last.text, contains('autre horaire'));
+      expect(controller.state.messages.last.text, contains('16 h'));
+      expect(controller.state.messages.last.text, contains('ça te va'));
       expect(controller.state.messages.last.text, isNot(contains('durée')));
       expect(controller.state.hasPendingAction, isTrue);
       expect(controller.state.phase,
           ConversationSessionPhase.awaitingClarification);
 
-      await controller.submitText('19h');
+      await controller.submitText('oui');
 
       expect(controller.state.messages.last.text, contains('Combien de temps'));
 
@@ -574,6 +582,12 @@ void main() {
       await controller.submitText('vingt minutes');
       await controller.submitText('aucun trajet');
       await controller.submitText('aucune');
+      expect(controller.state.messages.last.text, contains('16 h 20'));
+      expect(controller.state.messages.last.text, contains('ça te va'));
+      expect(controller.state.phase,
+          ConversationSessionPhase.awaitingClarification);
+
+      await controller.submitText('oui');
       expect(controller.state.phase,
           ConversationSessionPhase.awaitingConfirmation);
 
@@ -587,7 +601,7 @@ void main() {
       expect(stored, hasLength(2));
       final created =
           stored.singleWhere((event) => event.id != 'existing-event');
-      expect(created.time, '19:00');
+      expect(created.time, '16:20');
       expect(created.durationMinutes, 60);
       expect(created.travelGoMinutes, 20);
       expect(created.travelBackMinutes, 0);

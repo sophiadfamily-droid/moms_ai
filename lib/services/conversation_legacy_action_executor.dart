@@ -1,5 +1,6 @@
 import '../models/conversation_models.dart';
 import '../models/conversation_epistemic_models.dart';
+import '../models/event_model.dart';
 import '../models/smart_planning_continuation.dart';
 import '../models/task_model.dart';
 import '../models/action_autonomy_policy.dart';
@@ -7,6 +8,7 @@ import 'action_handler_service.dart';
 import 'chat_planning_helper_service.dart';
 import 'conversation_coordinator.dart';
 import 'event_confirmation_service.dart';
+import 'event_planning_conflict_service.dart';
 import 'event_service.dart';
 import 'event_title_service.dart';
 import 'notification_service.dart';
@@ -25,11 +27,15 @@ final class ConversationLegacyActionExecutor {
     this.loadAutonomyPolicy,
     EventStartConflictChecker? eventStartConflictChecker,
     EventConflictChecker? eventConflictChecker,
+    EventStartAlternativeSuggester? eventStartAlternativeSuggester,
+    EventAlternativeSuggester? eventAlternativeSuggester,
     DateTime Function()? clock,
   })  : _eventStartConflictChecker =
             eventStartConflictChecker ?? EventService.getConflictEvent,
         _eventConflictChecker =
             eventConflictChecker ?? EventService.getOverlapConflict,
+        _eventStartAlternativeSuggester = eventStartAlternativeSuggester,
+        _eventAlternativeSuggester = eventAlternativeSuggester,
         _clock = clock ?? DateTime.now;
 
   final ConversationCoordinator coordinator;
@@ -37,6 +43,8 @@ final class ConversationLegacyActionExecutor {
   final Future<ActionAutonomyPolicy> Function()? loadAutonomyPolicy;
   final EventStartConflictChecker _eventStartConflictChecker;
   final EventConflictChecker _eventConflictChecker;
+  final EventStartAlternativeSuggester? _eventStartAlternativeSuggester;
+  final EventAlternativeSuggester? _eventAlternativeSuggester;
   final DateTime Function() _clock;
   _PendingEventDraft? _pendingEventDraft;
 
@@ -107,6 +115,15 @@ final class ConversationLegacyActionExecutor {
         ),
       );
       if (conflict != null) {
+        final conflictingStartDateTimeIso =
+            ChatPlanningHelperService.buildStartDateTimeIso(
+          date: date,
+          time: time,
+        );
+        final suggestion = await _eventStartAlternativeSuggester?.call(
+          startDateTimeIso: conflictingStartDateTimeIso,
+          conflict: conflict,
+        );
         _pendingEventDraft = _PendingEventDraft(
           draftId: enriched.draftId,
           logicalRequestId: enriched.logicalRequestId,
@@ -123,9 +140,9 @@ final class ConversationLegacyActionExecutor {
             'marginMinutes': enriched.marginMinutes ?? 0,
           },
           expiresAt: enriched.expiresAt,
+          suggestedAlternativeStart: suggestion,
         );
-        return 'À cette heure-là, tu as déjà ${conflict.title}. '
-            'Propose-moi un autre horaire et je continue avec ton rendez-vous.';
+        return _conflictReply(conflict, suggestion);
       }
     }
     registerClarificationDraft(enriched, sessionGeneration);
@@ -265,6 +282,13 @@ final class ConversationLegacyActionExecutor {
       );
     }
     if (PlannerEngineService.isNegativeAnswer(answer)) {
+      if (pending.expectedField == _PendingEventField.conflictAlternativeTime &&
+          pending.suggestedAlternativeStart != null) {
+        _pendingEventDraft = pending.copyWith(clearSuggestedAlternative: true);
+        return const ConversationOutcome(
+          reply: 'D’accord. Quel autre horaire te conviendrait ?',
+        );
+      }
       _pendingEventDraft = null;
       return const ConversationOutcome(
         reply: 'D’accord, je ferme cette préparation de rendez-vous.',
@@ -357,6 +381,13 @@ final class ConversationLegacyActionExecutor {
         action['usesSeparateTravelTimes'] = true;
         break;
       case _PendingEventField.conflictAlternativeTime:
+        final suggested = pending.suggestedAlternativeStart;
+        if (suggested != null &&
+            PlannerEngineService.isPositiveAnswer(answer)) {
+          action['date'] = EventService.formatIsoDate(suggested);
+          action['time'] = EventService.formatIsoTime(suggested);
+          break;
+        }
         final revisedDate = NaturalDateService.resolveDateFromText(
           answer,
           now: _clock(),
@@ -502,6 +533,25 @@ final class ConversationLegacyActionExecutor {
       eventStartConflictChecker: _eventStartConflictChecker,
       eventConflictChecker: _eventConflictChecker,
     );
+    DateTime? conflictSuggestion;
+    final conflictEvent = result.conflictEvent;
+    if (conflictEvent != null) {
+      final candidate = result.conflictingCandidateEvent;
+      if (candidate != null && _eventAlternativeSuggester != null) {
+        conflictSuggestion = await _eventAlternativeSuggester(
+          candidate: candidate,
+          conflict: conflictEvent,
+        );
+      } else if (result.conflictingStartDateTimeIso != null) {
+        conflictSuggestion = await _eventStartAlternativeSuggester?.call(
+          startDateTimeIso: result.conflictingStartDateTimeIso!,
+          conflict: conflictEvent,
+        );
+      }
+    }
+    final resultMessage = result.conflictEvent == null
+        ? result.message
+        : _conflictReply(result.conflictEvent!, conflictSuggestion);
     final event = result.pendingConfirmationEvent;
     if (event != null) {
       _pendingEventDraft = null;
@@ -550,6 +600,7 @@ final class ConversationLegacyActionExecutor {
         expiresAt: preservesCurrentDraft
             ? current.expiresAt
             : _clock().toUtc().add(const Duration(minutes: 15)),
+        suggestedAlternativeStart: conflictSuggestion,
       );
     } else if (action['type'] == 'event' && event == null) {
       _pendingEventDraft = null;
@@ -567,10 +618,10 @@ final class ConversationLegacyActionExecutor {
       );
     }
     final creationMessage =
-        result.message.trim().isEmpty ? 'C’est fait.' : result.message.trim();
+        resultMessage.trim().isEmpty ? 'C’est fait.' : resultMessage.trim();
     return ConversationActionOutcome(
       message: planningProposal == null
-          ? result.message
+          ? resultMessage
           : '$creationMessage ${planningProposal.message}',
       planningTitle: planningTitle,
     );
@@ -643,6 +694,23 @@ final class ConversationLegacyActionExecutor {
       'appel',
     ].any(value.contains);
   }
+
+  static String _conflictReply(
+    EventModel conflict,
+    DateTime? suggestedStart,
+  ) {
+    if (suggestedStart == null) {
+      return 'À cette heure-là, tu as déjà ${conflict.title}. '
+          'Quel autre horaire te conviendrait ?';
+    }
+    return 'À cette heure-là, tu as déjà ${conflict.title}. '
+        'Je peux te proposer ${_formatFrenchTime(suggestedStart)}. '
+        'Est-ce que ça te va ?';
+  }
+
+  static String _formatFrenchTime(DateTime value) => value.minute == 0
+      ? '${value.hour} h'
+      : '${value.hour} h ${value.minute.toString().padLeft(2, '0')}';
 }
 
 enum _PendingEventField {
@@ -666,6 +734,7 @@ final class _PendingEventDraft {
     required this.expectedField,
     required Map<String, dynamic> action,
     required this.expiresAt,
+    this.suggestedAlternativeStart,
   }) : action = Map.unmodifiable(action);
 
   final int sessionGeneration;
@@ -674,10 +743,13 @@ final class _PendingEventDraft {
   final _PendingEventField expectedField;
   final Map<String, dynamic> action;
   final DateTime expiresAt;
+  final DateTime? suggestedAlternativeStart;
 
   _PendingEventDraft copyWith({
     _PendingEventField? expectedField,
     Map<String, dynamic>? action,
+    DateTime? suggestedAlternativeStart,
+    bool clearSuggestedAlternative = false,
   }) =>
       _PendingEventDraft(
         draftId: draftId,
@@ -686,5 +758,8 @@ final class _PendingEventDraft {
         expectedField: expectedField ?? this.expectedField,
         action: action ?? this.action,
         expiresAt: expiresAt,
+        suggestedAlternativeStart: clearSuggestedAlternative
+            ? null
+            : suggestedAlternativeStart ?? this.suggestedAlternativeStart,
       );
 }

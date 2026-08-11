@@ -38,6 +38,59 @@ void main() {
     expect(conflict!.title, 'Tes horaires de travail');
   });
 
+  test('suggests the first free quarter-hour after the blocking item',
+      () async {
+    final service = EventPlanningConflictService(
+      loadEventConflict: ({required candidate}) async => null,
+      routinePlanningBlockers: _profileBlockers(),
+      currentAccountScopeId: () => 'account-a',
+    );
+    final conflict = await service.findConflictAtStart(
+      startDateTimeIso: '2026-08-17T09:30:00',
+    );
+
+    final suggestion = await service.suggestAlternativeAtStart(
+      startDateTimeIso: '2026-08-17T09:30:00',
+      conflict: conflict!,
+    );
+
+    expect(suggestion, DateTime(2026, 8, 17, 10));
+  });
+
+  test('moves the full protected range after a conflict', () async {
+    final service = EventPlanningConflictService(
+      loadEventConflict: ({required candidate}) async => null,
+      routinePlanningBlockers: _profileBlockers(),
+      currentAccountScopeId: () => 'account-a',
+    );
+    final conflict = await service.findConflictAtStart(
+      startDateTimeIso: '2026-08-17T09:30:00',
+    );
+    final candidate = EventModel(
+      title: 'Dentiste',
+      date: '2026-08-17',
+      time: '09:30',
+      notes: '',
+      category: 'Personnel',
+      createdAt: DateTime(2026, 8, 17),
+      startDateTimeIso: '2026-08-17T09:30:00',
+      endTime: '10:30',
+      endDateTimeIso: '2026-08-17T10:30:00',
+      durationMinutes: 60,
+      travelGoMinutes: 20,
+      travelBackMinutes: 10,
+      usesSeparateTravelTimes: true,
+      marginMinutes: 5,
+    );
+
+    final suggestion = await service.suggestAlternative(
+      candidate: candidate,
+      conflict: conflict!,
+    );
+
+    expect(suggestion, DateTime(2026, 8, 17, 10, 20));
+  });
+
   test('profile conflict survives a failing canonical planning source',
       () async {
     final profile = UserProfile(
@@ -204,6 +257,8 @@ void main() {
 
     expect(result.pendingConflictResolutionEvent, isNotNull);
     expect(result.pendingDurationEvent, isNull);
+    expect(result.conflictEvent?.title, 'Tes horaires de travail');
+    expect(result.conflictingStartDateTimeIso, '2026-08-17T09:30:00');
     expect(result.message, contains('Tes horaires de travail'));
   });
 }

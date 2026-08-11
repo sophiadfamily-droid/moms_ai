@@ -7,6 +7,16 @@ typedef ExistingEventConflictLoader = Future<EventModel?> Function({
   required EventModel candidate,
 });
 
+typedef EventStartAlternativeSuggester = Future<DateTime?> Function({
+  required String startDateTimeIso,
+  required EventModel conflict,
+});
+
+typedef EventAlternativeSuggester = Future<DateTime?> Function({
+  required EventModel candidate,
+  required EventModel conflict,
+});
+
 /// Checks a proposed Event against both persisted Events and the recurring
 /// constraints projected from the canonical Life Context.
 final class EventPlanningConflictService {
@@ -52,6 +62,92 @@ final class EventPlanningConflictService {
     final candidate = _candidateAtStart(startDateTimeIso);
     if (candidate == null) return null;
     return findConflict(candidate: candidate);
+  }
+
+  /// Suggests the first free start after the blocking item, on the same day.
+  ///
+  /// The Event duration is deliberately not guessed here. The conversation
+  /// revalidates the complete protected range once duration and travel are
+  /// known.
+  Future<DateTime?> suggestAlternativeAtStart({
+    required String startDateTimeIso,
+    required EventModel conflict,
+  }) async {
+    final requestedStart = DateTime.tryParse(startDateTimeIso);
+    final conflictEnd = EventService.parseProtectedEnd(conflict);
+    if (requestedStart == null || conflictEnd == null) return null;
+
+    var cursor = conflictEnd.isAfter(requestedStart)
+        ? conflictEnd
+        : requestedStart.add(const Duration(minutes: 15));
+    cursor = _ceilToQuarterHour(cursor);
+    final requestedDay = DateTime(
+      requestedStart.year,
+      requestedStart.month,
+      requestedStart.day,
+    );
+
+    for (var attempt = 0; attempt < 96; attempt++) {
+      final cursorDay = DateTime(cursor.year, cursor.month, cursor.day);
+      if (cursorDay != requestedDay) return null;
+      final nextConflict = await findConflictAtStart(
+        startDateTimeIso: cursor.toIso8601String(),
+      );
+      if (nextConflict == null) return cursor;
+      final nextEnd = EventService.parseProtectedEnd(nextConflict);
+      final fallback = cursor.add(const Duration(minutes: 15));
+      cursor = _ceilToQuarterHour(
+        nextEnd != null && nextEnd.isAfter(fallback) ? nextEnd : fallback,
+      );
+    }
+    return null;
+  }
+
+  /// Suggests a start whose complete protected range is free.
+  Future<DateTime?> suggestAlternative({
+    required EventModel candidate,
+    required EventModel conflict,
+  }) async {
+    final appointmentStart = EventService.parseStart(candidate);
+    final protectedStart = EventService.parseProtectedStart(candidate);
+    final protectedEnd = EventService.parseProtectedEnd(candidate);
+    final conflictEnd = EventService.parseProtectedEnd(conflict);
+    if (appointmentStart == null ||
+        protectedStart == null ||
+        protectedEnd == null ||
+        conflictEnd == null ||
+        !protectedEnd.isAfter(protectedStart)) {
+      return null;
+    }
+
+    final travelBefore = appointmentStart.difference(protectedStart);
+    var nextProtectedStart = _ceilToQuarterHour(conflictEnd);
+    final requestedDay = DateTime(
+      appointmentStart.year,
+      appointmentStart.month,
+      appointmentStart.day,
+    );
+
+    for (var attempt = 0; attempt < 96; attempt++) {
+      final nextAppointmentStart = nextProtectedStart.add(travelBefore);
+      final nextDay = DateTime(
+        nextAppointmentStart.year,
+        nextAppointmentStart.month,
+        nextAppointmentStart.day,
+      );
+      if (nextDay != requestedDay) return null;
+      final shifted = _moveCandidate(candidate, nextAppointmentStart);
+      final nextConflict = await findConflict(candidate: shifted);
+      if (nextConflict == null) return nextAppointmentStart;
+      final nextConflictEnd = EventService.parseProtectedEnd(nextConflict);
+      final fallback = nextProtectedStart.add(const Duration(minutes: 15));
+      nextProtectedStart = _ceilToQuarterHour(
+        nextConflictEnd != null && nextConflictEnd.isAfter(fallback)
+            ? nextConflictEnd
+            : fallback,
+      );
+    }
+    return null;
   }
 
   Future<EventModel?> findConflict({required EventModel candidate}) async {
@@ -123,5 +219,36 @@ final class EventPlanningConflictService {
       endDateTimeIso: end.toIso8601String(),
       durationMinutes: 1,
     );
+  }
+
+  static EventModel _moveCandidate(
+    EventModel candidate,
+    DateTime appointmentStart,
+  ) {
+    final appointmentEnd = appointmentStart.add(
+      Duration(minutes: candidate.durationMinutes),
+    );
+    return candidate.copyWith(
+      date: EventService.formatIsoDate(appointmentStart),
+      time: EventService.formatIsoTime(appointmentStart),
+      startDateTimeIso: appointmentStart.toIso8601String(),
+      endTime: EventService.formatIsoTime(appointmentEnd),
+      endDateTimeIso: appointmentEnd.toIso8601String(),
+    );
+  }
+
+  static DateTime _ceilToQuarterHour(DateTime value) {
+    final remainder = value.minute % 15;
+    if (remainder == 0 && value.second == 0 && value.millisecond == 0) {
+      return value;
+    }
+    final minutesToAdd = remainder == 0 ? 15 : 15 - remainder;
+    return DateTime(
+      value.year,
+      value.month,
+      value.day,
+      value.hour,
+      value.minute,
+    ).add(Duration(minutes: minutesToAdd));
   }
 }

@@ -29,6 +29,9 @@ class ActionHandlerResult {
   final Map<String, dynamic>? pendingDurationEvent;
   final Map<String, dynamic>? pendingTravelEvent;
   final Map<String, dynamic>? pendingConflictResolutionEvent;
+  final EventModel? conflictEvent;
+  final EventModel? conflictingCandidateEvent;
+  final String? conflictingStartDateTimeIso;
   final EventModel? pendingConfirmationEvent;
   final EventParticipant? eventParticipant;
   final Map<String, dynamic>? pendingSmartPlanningTask;
@@ -41,6 +44,9 @@ class ActionHandlerResult {
     this.pendingDurationEvent,
     this.pendingTravelEvent,
     this.pendingConflictResolutionEvent,
+    this.conflictEvent,
+    this.conflictingCandidateEvent,
+    this.conflictingStartDateTimeIso,
     this.pendingConfirmationEvent,
     this.eventParticipant,
     this.pendingSmartPlanningTask,
@@ -266,6 +272,8 @@ class ActionHandlerService {
 
         return ActionHandlerResult(
           pendingConflictResolutionEvent: pendingAction,
+          conflictEvent: earlyConflictEvent,
+          conflictingStartDateTimeIso: earlyStartDateTimeIso,
           message:
               "Attention 💕 Tu as déjà quelque chose de prévu à cette heure-là : "
               "${earlyConflictEvent.title}.\n\n"
@@ -319,6 +327,9 @@ class ActionHandlerService {
 
         return ActionHandlerResult(
           pendingConflictResolutionEvent: pendingAction,
+          conflictEvent: earlyOverlapConflictEvent,
+          conflictingCandidateEvent: earlyCandidateEvent,
+          conflictingStartDateTimeIso: earlyStartDateTimeIso,
           message:
               "Attention 💕 Ce créneau semble chevaucher un rendez-vous déjà prévu : "
               "${earlyOverlapConflictEvent.title}.\n\n"
@@ -404,6 +415,9 @@ class ActionHandlerService {
         pendingAction["time"] = "";
         return ActionHandlerResult(
           pendingConflictResolutionEvent: pendingAction,
+          conflictEvent: conflictEvent,
+          conflictingCandidateEvent: event,
+          conflictingStartDateTimeIso: startDateTimeIso,
           message:
               "Attention 💕 Tu as déjà quelque chose prévu sur ce créneau : "
               "${conflictEvent.title}. L’événement n’a pas été créé pour éviter un doublon. "
