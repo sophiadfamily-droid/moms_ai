@@ -20,6 +20,7 @@ enum MemorySemanticAttribute {
   currentResidence,
   dietaryPreference,
   recurringActivitySchedule,
+  birthday,
   generalFact,
   generalPreference,
   generalConstraint,
@@ -286,6 +287,7 @@ extension MemorySemanticAttributeWire on MemorySemanticAttribute {
         MemorySemanticAttribute.dietaryPreference => 'dietary_preference',
         MemorySemanticAttribute.recurringActivitySchedule =>
           'recurring_activity_schedule',
+        MemorySemanticAttribute.birthday => 'birthday',
         MemorySemanticAttribute.generalFact => 'general_fact',
         MemorySemanticAttribute.generalPreference => 'general_preference',
         MemorySemanticAttribute.generalConstraint => 'general_constraint',
@@ -324,6 +326,9 @@ extension MemorySemanticAttributeWire on MemorySemanticAttribute {
               contextType == MemorySemanticContextType.general,
         MemorySemanticAttribute.recurringActivitySchedule =>
           domain == MemorySemanticDomain.routine,
+        MemorySemanticAttribute.birthday =>
+          domain == MemorySemanticDomain.relationship &&
+              contextType == MemorySemanticContextType.household,
         _ => false,
       };
 }

@@ -232,6 +232,9 @@ final class MemoryEvidenceClassifier {
     final resolvedId = resolvedSubjectEntityId?.trim();
     final hasResolvedSubject = resolvedId?.isNotEmpty == true;
     final reportedClaim = _hasReportedClaim(value);
+    if (_isDurableRelationshipFact(value)) {
+      return const _EvidenceSubject(MemoryEvidenceSubjectType.user, null);
+    }
     final thirdParty = _hasThirdPartySubject(value);
     if (hasResolvedSubject && thirdParty && !reportedClaim) {
       return _EvidenceSubject(
@@ -259,6 +262,15 @@ final class MemoryEvidenceClassifier {
       _hasReportedClaim(value);
 
   String? _extractCorrectionStatement(String raw) {
+    final explicitCorrection = RegExp(
+      r'^\s*(?:correction|corrige|modification)\b[\s,:;-]*(.+)$',
+      caseSensitive: false,
+      unicode: true,
+    ).firstMatch(raw);
+    if (explicitCorrection != null) {
+      return _nonEmpty(explicitCorrection.group(1));
+    }
+
     final transition = RegExp(
       r"\b(?:mais\s+(?:maintenant|désormais|desormais|aujourd’hui|aujourd'hui)|maintenant|désormais|desormais)\b[\s,:;-]*(.+)$",
       caseSensitive: false,
@@ -374,6 +386,7 @@ final class MemoryEvidenceClassifier {
       ]);
 
   bool _isRecognizedDirectStatement(String value) {
+    if (_isDurableRelationshipFact(value)) return true;
     if (RegExp(r'\b(?:je|nous)\s+(?:prefere|aimons?|veux|voulons)\s+\S+')
         .hasMatch(value)) {
       return true;
@@ -463,6 +476,14 @@ final class MemoryEvidenceClassifier {
   bool _hasFirstPersonSubject(String value) =>
       RegExp(r'(?:^| )(?:je|j|mon|ma|mes|nous|notre|nos)(?: |$)')
           .hasMatch(value);
+
+  bool _isDurableRelationshipFact(String value) => RegExp(
+        r'\b(?:anniversaire|date de naissance)\s+de\s+(?:ma|mon)\s+'
+        r'(?:mere|pere|soeur|frere|fille|fils|conjointe?|partenaire|'
+        r'grand mere|grand pere)\s+est\s+(?:le\s+)?\d{1,2}\s+'
+        r'(?:janvier|fevrier|mars|avril|mai|juin|juillet|aout|septembre|'
+        r'octobre|novembre|decembre)\b',
+      ).hasMatch(value);
 
   bool _hasThirdPartySubject(String value) =>
       RegExp(r'^(?:il|elle|ils|elles)\b').hasMatch(value) &&

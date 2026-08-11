@@ -8,6 +8,7 @@ import '../models/memory_evidence.dart';
 import '../models/memory_lifecycle.dart';
 import '../models/memory_semantic_identity.dart';
 import 'memory_consumption_policy.dart';
+import 'memory_semantic_identity_service.dart';
 
 final class MemoryContradictionDetector {
   const MemoryContradictionDetector();
@@ -21,10 +22,15 @@ final class MemoryContradictionDetector {
     final proposedIdentity = proposal.semanticIdentity;
     final existingRead = existing.semanticIdentityRead;
     final existingIdentity = existingRead.identity;
+    final birthdayCompatibility = _legacyBirthdayCompatibility(
+      proposal: proposal,
+      existing: existing,
+    );
     if (accountScopeId.trim().isEmpty ||
         proposedIdentity == null ||
-        existingRead.status != MemorySemanticIdentityReadStatus.valid ||
-        existingIdentity == null ||
+        ((existingRead.status != MemorySemanticIdentityReadStatus.valid ||
+                existingIdentity == null) &&
+            birthdayCompatibility == null) ||
         existing.accountScopeId != accountScopeId ||
         existing.consumptionTrust != MemoryConsumptionTrust.modernValid ||
         !MemoryConsumptionPolicy.isConsumable(
@@ -34,26 +40,31 @@ final class MemoryContradictionDetector {
         !_eligibleProposal(proposal) ||
         proposedIdentity.schemaVersion !=
             MemorySemanticIdentity.currentSchemaVersion ||
-        existingIdentity.schemaVersion != proposedIdentity.schemaVersion ||
+        (existingIdentity != null &&
+            existingIdentity.schemaVersion != proposedIdentity.schemaVersion) ||
         !proposedIdentity.eligibleForAutomaticContradiction ||
-        !existingIdentity.eligibleForAutomaticContradiction ||
-        proposedIdentity.canonicalKey != existingIdentity.canonicalKey ||
-        proposedIdentity.subjectScope != existingIdentity.subjectScope ||
-        proposedIdentity.subjectFingerprint !=
-            existingIdentity.subjectFingerprint ||
-        proposedIdentity.contextType != existingIdentity.contextType ||
-        proposedIdentity.contextFingerprint !=
-            existingIdentity.contextFingerprint ||
-        proposedIdentity.attribute != existingIdentity.attribute ||
+        (birthdayCompatibility == null &&
+            (!existingIdentity!.eligibleForAutomaticContradiction ||
+                proposedIdentity.canonicalKey !=
+                    existingIdentity.canonicalKey ||
+                proposedIdentity.subjectScope !=
+                    existingIdentity.subjectScope ||
+                proposedIdentity.subjectFingerprint !=
+                    existingIdentity.subjectFingerprint ||
+                proposedIdentity.contextType != existingIdentity.contextType ||
+                proposedIdentity.contextFingerprint !=
+                    existingIdentity.contextFingerprint ||
+                proposedIdentity.attribute != existingIdentity.attribute)) ||
         existing.memoryRevision == null ||
         existing.memoryRevision! < 1) {
       return null;
     }
-    final comparison = _compare(
-      proposedIdentity.attribute,
-      existing.semanticValue,
-      proposal.semanticValue,
-    );
+    final comparison = birthdayCompatibility ??
+        _compare(
+          proposedIdentity.attribute,
+          existing.semanticValue,
+          proposal.semanticValue,
+        );
     if (comparison == null || !comparison.incompatible) return null;
     return MemoryContradictionMatch(
       existingMemoryId: existing.id,
@@ -92,6 +103,12 @@ final class MemoryContradictionDetector {
     String? existing,
     String? proposed,
   ) {
+    if (attribute == MemorySemanticAttribute.birthday) {
+      final left = _birthday(existing);
+      final right = _birthday(proposed);
+      if (left == null || right == null) return null;
+      return _ValueComparison(left, right, left != right);
+    }
     if (attribute != MemorySemanticAttribute.preferredAppointmentPeriod) {
       return null;
     }
@@ -99,6 +116,47 @@ final class MemoryContradictionDetector {
     final right = _appointmentPeriod(proposed);
     if (left == null || right == null) return null;
     return _ValueComparison(left, right, left != right);
+  }
+
+  _ValueComparison? _legacyBirthdayCompatibility({
+    required MemoryProposal proposal,
+    required LifeMemoryFact existing,
+  }) {
+    if (proposal.semanticIdentity?.attribute !=
+        MemorySemanticAttribute.birthday) {
+      return null;
+    }
+    final existingMeaning = const MemorySemanticIdentityService().resolve(
+      proposalId: existing.id,
+      text: existing.text,
+      semanticType: existing.semanticType,
+      evidence: MemoryEvidenceQualification(
+        classification: MemoryEvidenceClassification.directExplicit,
+        subjectType: MemoryEvidenceSubjectType.user,
+        canConfirmImmediately: true,
+        isCorrection: false,
+      ),
+    );
+    if (existingMeaning.identity.attribute !=
+            MemorySemanticAttribute.birthday ||
+        existingMeaning.identity.canonicalKey !=
+            proposal.semanticIdentity!.canonicalKey) {
+      return null;
+    }
+    final left = _birthday(existingMeaning.value);
+    final right = _birthday(proposal.semanticValue);
+    if (left == null || right == null) return null;
+    return _ValueComparison(left, right, left != right);
+  }
+
+  String? _birthday(String? value) {
+    final normalized = value?.trim();
+    if (normalized == null ||
+        !RegExp(r'^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$')
+            .hasMatch(normalized)) {
+      return null;
+    }
+    return normalized;
   }
 
   String? _appointmentPeriod(String? value) {

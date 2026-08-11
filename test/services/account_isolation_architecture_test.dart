@@ -49,6 +49,12 @@ void main() {
     );
     expect(rules, contains('match /conversations/{conversationId}'));
     expect(rules, contains('match /memoryReplacementActions/{actionId}'));
+    expect(rules, contains("'contradictionId', 'replacementActionId'"));
+    expect(rules, contains("'supersededByMemoryId', 'supersedesMemoryId'"));
+    expect(
+      rules,
+      contains("data.logicalRequestFingerprint.size() == 64"),
+    );
     expect(
       rules,
       contains('match /{document=**} {\n        allow read, write: if false;'),

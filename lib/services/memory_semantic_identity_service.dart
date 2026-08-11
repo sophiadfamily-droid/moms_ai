@@ -33,6 +33,7 @@ final class MemorySemanticIdentityService {
     final meaning = _meaning(normalized, semanticType);
     var subject = _subject(
       evidence,
+      normalizedText: normalized,
       explicitSubjectScope: explicitSubjectScope,
       explicitSubjectEntityId: explicitSubjectEntityId,
     );
@@ -105,6 +106,15 @@ final class MemorySemanticIdentityService {
     String text,
     LifeMemorySemanticType semanticType,
   ) {
+    final birthday = _birthdayValue(text);
+    if (birthday != null && _relationshipKey(text) != null) {
+      return _MemoryMeaning(
+        MemorySemanticDomain.relationship,
+        MemorySemanticAttribute.birthday,
+        MemorySemanticContextType.household,
+        birthday,
+      );
+    }
     if (text.contains('rendez vous') && text.contains('prefere')) {
       return _MemoryMeaning(
         MemorySemanticDomain.planning,
@@ -199,11 +209,23 @@ final class MemorySemanticIdentityService {
 
   _MemorySubject _subject(
     MemoryEvidenceQualification? evidence, {
+    required String normalizedText,
     required MemorySemanticSubjectScope? explicitSubjectScope,
     required String? explicitSubjectEntityId,
   }) {
     if (explicitSubjectScope != null) {
       return _MemorySubject(explicitSubjectScope, explicitSubjectEntityId);
+    }
+    final relationship = _relationshipKey(normalizedText);
+    if (relationship != null && _birthdayValue(normalizedText) != null) {
+      return _MemorySubject(
+        MemorySemanticSubjectScope.household,
+        fingerprint(
+          namespace: 'zelia-memory-household-relation-v1',
+          scope: 'relationship',
+          exactId: relationship,
+        ),
+      );
     }
     return switch (evidence?.subjectType) {
       MemoryEvidenceSubjectType.user => const _MemorySubject(
@@ -221,6 +243,57 @@ final class MemorySemanticIdentityService {
     if (text.contains('matin')) return 'morning';
     if (text.contains('soir')) return 'evening';
     return 'unspecified';
+  }
+
+  String? _relationshipKey(String text) {
+    const aliases = <String, String>{
+      'ma mere': 'mother',
+      'mon pere': 'father',
+      'ma soeur': 'sister',
+      'mon frere': 'brother',
+      'ma fille': 'daughter',
+      'mon fils': 'son',
+      'ma conjointe': 'partner',
+      'mon conjoint': 'partner',
+      'mon partenaire': 'partner',
+      'ma partenaire': 'partner',
+      'ma grand mere': 'grandmother',
+      'mon grand pere': 'grandfather',
+    };
+    for (final entry in aliases.entries) {
+      if (text.contains(entry.key)) return entry.value;
+    }
+    return null;
+  }
+
+  String? _birthdayValue(String text) {
+    final match = RegExp(
+      r'\b(?:anniversaire|date de naissance)\s+de\s+(?:ma|mon)\s+'
+      r'(?:mere|pere|soeur|frere|fille|fils|conjointe?|partenaire|'
+      r'grand mere|grand pere)\s+est\s+(?:le\s+)?(\d{1,2})\s+'
+      r'(janvier|fevrier|mars|avril|mai|juin|juillet|aout|septembre|'
+      r'octobre|novembre|decembre)\b',
+    ).firstMatch(text);
+    if (match == null) return null;
+    final day = int.tryParse(match.group(1)!);
+    const months = <String, int>{
+      'janvier': 1,
+      'fevrier': 2,
+      'mars': 3,
+      'avril': 4,
+      'mai': 5,
+      'juin': 6,
+      'juillet': 7,
+      'aout': 8,
+      'septembre': 9,
+      'octobre': 10,
+      'novembre': 11,
+      'decembre': 12,
+    };
+    final month = months[match.group(2)];
+    if (day == null || day < 1 || day > 31 || month == null) return null;
+    return '${month.toString().padLeft(2, '0')}-'
+        '${day.toString().padLeft(2, '0')}';
   }
 
   bool _containsAny(String value, Iterable<String> markers) =>

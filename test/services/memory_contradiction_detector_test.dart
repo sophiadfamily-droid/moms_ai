@@ -106,6 +106,70 @@ void main() {
     );
   });
 
+  test('birthday corrections replace the same relative for any valid date', () {
+    final birthdayProposal =
+        const MemoryProposalFactory().fromHistoricalPayload(
+      id: 'birthday-new',
+      payload: const {
+        'text': 'L’anniversaire de ma mère est le 12 mars.',
+        'category': 'important_date',
+        'importance': 3,
+      },
+      source: 'explicit_user_message',
+      proposedAt: now,
+      evidenceQualification: MemoryEvidenceQualification(
+        classification: MemoryEvidenceClassification.directExplicit,
+        subjectType: MemoryEvidenceSubjectType.user,
+        canConfirmImmediately: true,
+        isCorrection: false,
+      ),
+    )!;
+    final oldBirthday = LifeMemoryFact(
+      id: 'birthday-old',
+      text: 'Souviens-toi que l’anniversaire de ma mère est le 17 mars.',
+      normalizedText:
+          'souviens toi que l anniversaire de ma mere est le 17 mars',
+      semanticType: LifeMemorySemanticType.unknown,
+      category: 'important_date',
+      importance: 3,
+      sourceType: LifeContextSourceType.memory,
+      confirmationStatus: MemoryConfirmationStatus.confirmed,
+      sensitivity: LifeContextSensitivity.standard,
+      evidenceType: LifeContextEvidenceType.explicit,
+      lifecycleState: MemoryLifecycleState.active,
+      lifecycleStateIsExplicit: true,
+      consumptionTrust: MemoryConsumptionTrust.modernValid,
+      schemaVersion: 1,
+      semanticIdentityRead: MemorySemanticIdentityReadResult.valid(
+        MemorySemanticIdentity(
+          domain: MemorySemanticDomain.general,
+          attribute: MemorySemanticAttribute.generalFact,
+          subjectScope: MemorySemanticSubjectScope.unknown,
+          subjectFingerprint: 'a' * 64,
+          contextType: MemorySemanticContextType.general,
+          contextFingerprint: null,
+          canonicalKey:
+              'v1|general|general_fact|unknown|${'a' * 64}|general|none',
+          eligibleForAutomaticContradiction: false,
+        ),
+      ),
+      semanticValue:
+          'souviens toi que l anniversaire de ma mere est le 17 mars',
+      memoryRevision: 2,
+      accountScopeId: 'account-a',
+    );
+
+    final result = detector.detect(
+      accountScopeId: 'account-a',
+      proposal: birthdayProposal,
+      existing: oldBirthday,
+      detectedAt: now,
+    );
+
+    expect(result, isNotNull);
+    expect(result!.existingMemoryId, 'birthday-old');
+  });
+
   test('identity, lifecycle, evidence and revisions fail closed', () {
     final invalidCases = <({MemoryProposal proposal, LifeMemoryFact existing})>[
       (

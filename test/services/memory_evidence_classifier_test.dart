@@ -175,6 +175,7 @@ void main() {
       'Finalement, je préfère l’après-midi.',
       'En fait, mon bureau actuel est à Lyon.',
       'Je me suis trompée, ce n’est plus mon adresse.',
+      'Correction : l’anniversaire de ma mère est le 12 mars.',
     ]) {
       test(message, () {
         final result = classifier.classify(message);
@@ -218,6 +219,16 @@ void main() {
       expect(result.isCorrection, isTrue);
       expect(result.canConfirmImmediately, isFalse);
     });
+  });
+
+  test('a family birthday is an attributable durable fact', () {
+    final result = classifier.classify(
+      'L’anniversaire de ma mère est le 12 mars.',
+    );
+
+    expect(result.classification, MemoryEvidenceClassification.directExplicit);
+    expect(result.subjectType, MemoryEvidenceSubjectType.user);
+    expect(result.canConfirmImmediately, isTrue);
   });
 
   group('fail-closed fallback', () {

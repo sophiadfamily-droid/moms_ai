@@ -64,6 +64,11 @@ abstract interface class MemoryConversationContextProvider {
   Future<MemoryConfirmationRequest?> proposeResponseMemory(dynamic memory);
 }
 
+abstract interface class MemoryConversationAttemptStatusProvider {
+  bool get lastMemoryProposalWasAttempted;
+  bool get lastMemoryProposalWasPersistedOrPending;
+}
+
 abstract interface class PriorityConversationContextProvider {
   Future<LifeContextProjection> loadPriorityProjection();
 }
@@ -72,6 +77,7 @@ class DefaultConversationContextProvider
     implements
         ConversationContextProvider,
         MemoryConversationContextProvider,
+        MemoryConversationAttemptStatusProvider,
         PriorityConversationContextProvider {
   final ConversationProjectionLoader? _loadProjection;
   final ConversationAccountScopeLoader _loadAccountScope;
@@ -82,7 +88,7 @@ class DefaultConversationContextProvider
   final MemoryEvidenceClassifier _memoryEvidenceClassifier;
   final ConversationMemoryPolicyLoader? _loadMemoryPolicy;
 
-  const DefaultConversationContextProvider({
+  DefaultConversationContextProvider({
     ConversationProjectionLoader? loadProjection,
     ConversationAccountScopeLoader loadAccountScope =
         AuthService.ensureAuthenticatedUid,
@@ -103,6 +109,16 @@ class DefaultConversationContextProvider
         _memoryPolicyEngine = memoryPolicyEngine,
         _memoryEvidenceClassifier = memoryEvidenceClassifier,
         _loadMemoryPolicy = loadMemoryPolicy;
+
+  bool _lastMemoryProposalWasAttempted = false;
+  bool _lastMemoryProposalWasPersistedOrPending = false;
+
+  @override
+  bool get lastMemoryProposalWasAttempted => _lastMemoryProposalWasAttempted;
+
+  @override
+  bool get lastMemoryProposalWasPersistedOrPending =>
+      _lastMemoryProposalWasPersistedOrPending;
 
   @override
   Future<ChatBackendRequest> buildRequest({
@@ -229,7 +245,10 @@ class DefaultConversationContextProvider
     MemorySemanticContextType? semanticContextType,
     String? semanticContextEntityId,
   }) async {
-    if (!MemoryPipelineService.shouldProcessMemory(message)) return null;
+    _lastMemoryProposalWasAttempted =
+        MemoryPipelineService.shouldProcessMemory(message);
+    _lastMemoryProposalWasPersistedOrPending = false;
+    if (!_lastMemoryProposalWasAttempted) return null;
     final evidenceQualification = _memoryEvidenceClassifier.classify(
       message,
       resolvedSubjectEntityId: resolvedSubjectEntityId,
@@ -393,6 +412,7 @@ class DefaultConversationContextProvider
       );
       if (decision.type ==
           MemoryLifecycleDecisionType.confirmExistingProposal) {
+        _lastMemoryProposalWasPersistedOrPending = true;
         return decision.confirmationRequest;
       }
       if ((decision.type != MemoryLifecycleDecisionType.createProposal &&
@@ -422,6 +442,7 @@ class DefaultConversationContextProvider
             persisted.action.state != MemoryReplacementActionState.pending) {
           return null;
         }
+        _lastMemoryProposalWasPersistedOrPending = true;
         final request = decision.confirmationRequest;
         if (request == null) return null;
         return MemoryConfirmationRequest(
@@ -438,6 +459,7 @@ class DefaultConversationContextProvider
       }
       persistenceStep = 'proposal_write';
       await repository.createProposal(effectiveProposal, proposalMutation);
+      _lastMemoryProposalWasPersistedOrPending = true;
       if (policyDecision.type == MemoryPolicyDecisionType.saveAutomatically) {
         if (explicitMemoryRequest) {
           return decision.confirmationRequest;

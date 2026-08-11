@@ -173,16 +173,7 @@ final class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
         .where((memory) =>
             _query.isEmpty || memory.text.toLowerCase().contains(_query))
         .toList();
-    final memories = selected
-        .where((memory) =>
-            _active(memory) ||
-            memory.lifecycleStatus == MemoryLifecycleState.proposed)
-        .toList();
-    final proposed = memories
-        .where(
-            (memory) => memory.lifecycleStatus == MemoryLifecycleState.proposed)
-        .toList();
-    final retained = memories.where(_active).toList();
+    final retained = selected.where(_active).toList();
     final activeCount = snapshot.memories.where(_active).length;
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 36),
@@ -222,13 +213,9 @@ final class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
           style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: 12),
-        if (proposed.isNotEmpty) ...[
-          _memorySection('À vérifier', proposed, snapshot),
-          const SizedBox(height: 12),
-        ],
         if (retained.isNotEmpty)
           _memorySection(null, retained, snapshot)
-        else if (proposed.isEmpty)
+        else
           const _EmptyState()
       ],
     );

@@ -526,11 +526,13 @@ service cloud.firestore {
           'structuredDomain', 'structuredReferenceId', 'lastMutationId',
           'tombstone', 'semanticType', 'importance', 'lifecycleState',
           'confirmedAt', 'rejectedAt', 'deletedAt', 'replacedByMemoryId',
-          'supersedesMemoryId', 'lifecycleHistory', 'history',
+          'supersededByMemoryId', 'supersedesMemoryId', 'lifecycleHistory',
+          'history',
           'evidenceClassification', 'evidenceSubjectType', 'evidenceRisks',
           'isCorrection', 'subjectEntityId', 'semanticIdentity',
           'canonicalKey', 'semanticValue',
-          'eligibleForAutomaticContradiction'
+          'eligibleForAutomaticContradiction', 'logicalRequestFingerprint',
+          'contradictionId', 'replacementActionId'
         ])
         && data.keys().hasAll([
           'schemaVersion', 'memoryId', 'accountScopeId', 'memoryRevision',
@@ -625,6 +627,15 @@ service cloud.firestore {
             && data.semanticValue.size() <= 4000))
         && (!data.keys().hasAny(['eligibleForAutomaticContradiction'])
           || data.eligibleForAutomaticContradiction is bool)
+        && (!data.keys().hasAny(['logicalRequestFingerprint'])
+          || (data.logicalRequestFingerprint is string
+            && data.logicalRequestFingerprint.size() == 64))
+        && (!data.keys().hasAny(['contradictionId'])
+          || (data.contradictionId is string
+            && data.contradictionId.size() == 64))
+        && (!data.keys().hasAny(['replacementActionId'])
+          || (data.replacementActionId is string
+            && data.replacementActionId.size() == 64))
         && data.lastMutationId is string
         && data.lastMutationId.size() > 0
         && data.lastMutationId.size() <= 128

@@ -57,7 +57,65 @@ void main() {
     expect(distinct?.proposalId, isNot(first?.proposalId));
     expect(repository.created, hasLength(2));
   });
+
+  test('a direct family birthday update proposes one replacement', () async {
+    final repository = _Repository(_legacyBirthday(now));
+    final provider = DefaultConversationContextProvider(
+      loadAccountScope: () async => 'account-a',
+      memoryLifecycleRepository: repository,
+      loadMemoryPolicy: () async => MemoryPolicy.restrictiveDefault(
+        accountScopeId: 'account-a',
+        changedAt: now,
+      ),
+    );
+
+    final request = await provider.proposeUserMemory(
+      'L’anniversaire de ma mère est le 12 mars.',
+      logicalRequestId: 'birthday-correction',
+    );
+
+    expect(request?.action, MemoryLifecycleAction.replace);
+    expect(request?.contradictionCandidate?.existingMemoryId, 'birthday-old');
+    expect(repository.created, hasLength(1));
+    expect(repository.appliedMutations, isEmpty);
+  });
 }
+
+LifeMemoryFact _legacyBirthday(DateTime now) => LifeMemoryFact(
+      id: 'birthday-old',
+      text: 'Souviens-toi que l’anniversaire de ma mère est le 17 mars.',
+      normalizedText:
+          'souviens toi que l anniversaire de ma mere est le 17 mars',
+      semanticType: LifeMemorySemanticType.unknown,
+      category: 'important_date',
+      importance: 3,
+      sourceType: LifeContextSourceType.memory,
+      confirmationStatus: MemoryConfirmationStatus.confirmed,
+      sensitivity: LifeContextSensitivity.standard,
+      evidenceType: LifeContextEvidenceType.explicit,
+      lifecycleState: MemoryLifecycleState.active,
+      lifecycleStateIsExplicit: true,
+      consumptionTrust: MemoryConsumptionTrust.modernValid,
+      schemaVersion: 1,
+      semanticIdentityRead: MemorySemanticIdentityReadResult.valid(
+        MemorySemanticIdentity(
+          domain: MemorySemanticDomain.general,
+          attribute: MemorySemanticAttribute.generalFact,
+          subjectScope: MemorySemanticSubjectScope.unknown,
+          subjectFingerprint: 'a' * 64,
+          contextType: MemorySemanticContextType.general,
+          contextFingerprint: null,
+          canonicalKey:
+              'v1|general|general_fact|unknown|${'a' * 64}|general|none',
+          eligibleForAutomaticContradiction: false,
+        ),
+      ),
+      semanticValue:
+          'souviens toi que l anniversaire de ma mere est le 17 mars',
+      memoryRevision: 2,
+      accountScopeId: 'account-a',
+      createdAt: now,
+    );
 
 LifeMemoryFact _confirmedMorning(DateTime now) {
   final proposal = const MemoryProposalFactory().fromHistoricalPayload(

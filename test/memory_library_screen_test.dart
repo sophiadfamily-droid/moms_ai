@@ -41,17 +41,8 @@ void main() {
             .first,
       );
       expect(find.text('Ce que Zelia sait de moi'), findsOneWidget);
-      await tester.scrollUntilVisible(
-        find.text('À vérifier'),
-        180,
-        scrollable: find
-            .descendant(
-              of: find.byType(ListView).first,
-              matching: find.byType(Scrollable),
-            )
-            .first,
-      );
-      expect(find.text('À vérifier'), findsOneWidget);
+      expect(find.text('À vérifier'), findsNothing);
+      expect(find.text('Mémoire proposal'), findsNothing);
       expect(find.text('Explorer ma mémoire'), findsNothing);
       expect(find.text('Souvenirs actifs'), findsNothing);
       expect(find.text('Archives'), findsNothing);

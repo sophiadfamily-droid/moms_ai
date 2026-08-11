@@ -7,10 +7,12 @@ import '../models/memory_lifecycle_state.dart';
 import '../models/life_context/memory_context.dart';
 import '../models/life_context/life_context_provenance.dart';
 import '../models/memory_contradiction.dart';
+import '../models/memory_evidence.dart';
 import '../models/memory_semantic_identity.dart';
 import 'auth_service.dart';
 import 'life_context/life_context_memory_projection.dart';
 import 'memory_service.dart';
+import 'memory_semantic_identity_service.dart';
 
 final class MemoryLifecycleTechnicalReceipt {
   const MemoryLifecycleTechnicalReceipt({
@@ -158,6 +160,18 @@ final class FirestoreMemoryLifecycleRepository
           .limit(limit)
           .get();
       for (final document in sameCategory.docs) {
+        documents[document.id] = {...document.data(), 'id': document.id};
+      }
+    }
+    if (proposal.semanticIdentity?.attribute ==
+            MemorySemanticAttribute.birthday &&
+        proposal.category != 'important_date' &&
+        documents.length < limit) {
+      final legacyBirthdays = await ref
+          .where('category', isEqualTo: 'important_date')
+          .limit(limit)
+          .get();
+      for (final document in legacyBirthdays.docs) {
         documents[document.id] = {...document.data(), 'id': document.id};
       }
     }
@@ -645,8 +659,8 @@ final class FirestoreMemoryLifecycleRepository
         MemorySemanticIdentity.read(existing['semanticIdentity']);
     final proposedIdentity =
         MemorySemanticIdentity.read(proposed['semanticIdentity']);
-    final identitiesMatch =
-        existingIdentity.status == MemorySemanticIdentityReadStatus.valid &&
+    final identitiesMatch = existingIdentity.status ==
+                MemorySemanticIdentityReadStatus.valid &&
             proposedIdentity.status == MemorySemanticIdentityReadStatus.valid &&
             existingIdentity.identity!.canonicalKey == current.canonicalKey &&
             proposedIdentity.identity!.canonicalKey == current.canonicalKey &&
@@ -661,7 +675,12 @@ final class FirestoreMemoryLifecycleRepository
             existing['canonicalKey'] == current.canonicalKey &&
             proposed['canonicalKey'] == current.canonicalKey &&
             existing['eligibleForAutomaticContradiction'] == true &&
-            proposed['eligibleForAutomaticContradiction'] == true;
+            proposed['eligibleForAutomaticContradiction'] == true ||
+        _legacyBirthdayIdentitiesMatch(
+          existing: existing,
+          proposedIdentity: proposedIdentity,
+          canonicalKey: current.canonicalKey,
+        );
     if (!identitiesMatch) {
       return MemoryReplacementExecutionCode.identityMismatch;
     }
@@ -697,6 +716,39 @@ final class FirestoreMemoryLifecycleRepository
       }
     }
     return null;
+  }
+
+  static bool _legacyBirthdayIdentitiesMatch({
+    required Map<String, dynamic> existing,
+    required MemorySemanticIdentityReadResult proposedIdentity,
+    required String canonicalKey,
+  }) {
+    final proposed = proposedIdentity.identity;
+    if (proposedIdentity.status != MemorySemanticIdentityReadStatus.valid ||
+        proposed == null ||
+        proposed.attribute != MemorySemanticAttribute.birthday ||
+        proposed.canonicalKey != canonicalKey ||
+        proposed.eligibleForAutomaticContradiction != true) {
+      return false;
+    }
+    final facts = const HistoricalMemoryContextProjection().project([
+      {...existing, 'id': existing['memoryId']},
+    ]).memories;
+    if (facts.length != 1) return false;
+    final fact = facts.single;
+    final resolved = const MemorySemanticIdentityService().resolve(
+      proposalId: fact.id,
+      text: fact.text,
+      semanticType: fact.semanticType,
+      evidence: MemoryEvidenceQualification(
+        classification: MemoryEvidenceClassification.directExplicit,
+        subjectType: MemoryEvidenceSubjectType.user,
+        canConfirmImmediately: true,
+        isCorrection: false,
+      ),
+    );
+    return resolved.identity.attribute == MemorySemanticAttribute.birthday &&
+        resolved.identity.canonicalKey == canonicalKey;
   }
 
   static DateTime? _firestoreDate(Object? value) => switch (value) {

@@ -188,8 +188,7 @@ final class ConversationSessionController extends ChangeNotifier {
         );
     final coordinator = ConversationCoordinator(
       backend: backend,
-      contextProvider:
-          contextProvider ?? const DefaultConversationContextProvider(),
+      contextProvider: contextProvider ?? DefaultConversationContextProvider(),
       identityApplicationService: identityServices?.applicationService,
       identityCreationService: identityServices?.creationService,
       identityAccountScope: identityServices?.scope,

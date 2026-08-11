@@ -2613,8 +2613,16 @@ class ConversationCoordinator {
           request: request,
         );
       }
+      final memoryAttemptStatus =
+          contextProvider is MemoryConversationAttemptStatusProvider
+              ? contextProvider as MemoryConversationAttemptStatusProvider
+              : null;
       if (memoryContext != null &&
-          MemoryPipelineService.hasExplicitMemoryRequest(input.message)) {
+          (MemoryPipelineService.hasExplicitMemoryRequest(input.message) ||
+              (memoryAttemptStatus?.lastMemoryProposalWasAttempted == true &&
+                  memoryAttemptStatus
+                          ?.lastMemoryProposalWasPersistedOrPending !=
+                      true))) {
         return ConversationOutcome(
           reply: 'Je n’ai pas pu ajouter cette information à ma mémoire. '
               'Tu peux réessayer dans un instant.',
