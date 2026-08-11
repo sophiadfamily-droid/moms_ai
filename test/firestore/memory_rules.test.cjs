@@ -84,6 +84,36 @@ test("owner can create a semantic memory proposal", async () => {
   );
 });
 
+test("owner can remember a preference from a general life category", async () => {
+  const generalId = "general-memory-proposal";
+  const canonicalKey =
+    "v1|preference|general_preference|authenticated_user|scope|general|none";
+  const semanticIdentity = {
+    schemaVersion: 1,
+    domain: "preference",
+    attribute: "general_preference",
+    subjectScope: "authenticated_user",
+    contextType: "general",
+    canonicalKey,
+    eligibleForAutomaticContradiction: false,
+  };
+  const db = environment.authenticatedContext(ownerId).firestore();
+  await assertSucceeds(
+    setDoc(
+      doc(db, "users", ownerId, "memories", generalId),
+      memory({
+        memoryId: generalId,
+        category: "shopping",
+        semanticType: "unknown",
+        semanticIdentity,
+        canonicalKey,
+        semanticValue: "souviens toi que je prefere faire mes courses le matin",
+        eligibleForAutomaticContradiction: false,
+      }),
+    ),
+  );
+});
+
 test("another account cannot create the memory proposal", async () => {
   const db = environment.authenticatedContext("memory-other").firestore();
   await assertFails(

@@ -2,7 +2,7 @@
   "name": "zelia-firestore-rules-tests",
   "private": true,
   "scripts": {
-    "test": "node --test *_rules.test.cjs"
+    "test": "node --test --test-concurrency=1 *_rules.test.cjs"
   },
   "dependencies": {
     "@firebase/rules-unit-testing": "^4.0.1",

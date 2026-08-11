@@ -173,13 +173,11 @@ final class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
         .where((memory) =>
             _query.isEmpty || memory.text.toLowerCase().contains(_query))
         .toList();
-    final memories = _filter == MemoryLibraryFilter.historical
-        ? selected
-        : selected
-            .where((memory) =>
-                _active(memory) ||
-                memory.lifecycleStatus == MemoryLifecycleState.proposed)
-            .toList();
+    final memories = selected
+        .where((memory) =>
+            _active(memory) ||
+            memory.lifecycleStatus == MemoryLifecycleState.proposed)
+        .toList();
     final proposed = memories
         .where(
             (memory) => memory.lifecycleStatus == MemoryLifecycleState.proposed)
@@ -219,20 +217,16 @@ final class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
         const SizedBox(height: 18),
         _filters(snapshot),
         const SizedBox(height: 22),
-        Text(
-          _filter == MemoryLibraryFilter.historical
-              ? 'Archives'
-              : 'Ce que Zelia sait de moi',
-          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+        const Text(
+          'Ce que Zelia sait de moi',
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: 12),
         if (proposed.isNotEmpty) ...[
           _memorySection('À vérifier', proposed, snapshot),
           const SizedBox(height: 12),
         ],
-        if (_filter == MemoryLibraryFilter.historical && memories.isNotEmpty)
-          _memorySection(null, memories, snapshot)
-        else if (retained.isNotEmpty)
+        if (retained.isNotEmpty)
           _memorySection(null, retained, snapshot)
         else if (proposed.isEmpty)
           const _EmptyState()
@@ -432,6 +426,10 @@ final class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
+      backgroundColor: const Color(0xFFFFFAF7),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+      ),
       builder: (sheetContext) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
@@ -456,16 +454,10 @@ final class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.history),
-                title: const Text('Archives'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () {
-                  Navigator.pop(sheetContext);
-                  setState(() => _filter = MemoryLibraryFilter.historical);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.delete_outline),
+                leading: const Icon(
+                  Icons.delete_outline,
+                  color: Color(0xFF7450B8),
+                ),
                 title: const Text('Supprimer toute ma mémoire'),
                 onTap: () {
                   Navigator.pop(sheetContext);
@@ -489,6 +481,11 @@ final class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: const Color(0xFFFFFAF7),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+      ),
       builder: (sheetContext) => SafeArea(
         child: Padding(
           padding: EdgeInsets.fromLTRB(
@@ -586,28 +583,19 @@ final class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
                         child: const Text('Décider plus tard'),
                       ),
                     ] else ...[
-                      OutlinedButton(
-                        onPressed: () => _edit(memory, sheetContext),
-                        child: const Text('Corriger'),
-                      ),
-                      if (memory.lifecycleStatus ==
-                          MemoryLifecycleState.archived)
-                        OutlinedButton(
-                          onPressed: () => _run(
-                            () => service.restore(memory.memoryId),
-                            sheetContext,
-                          ),
-                          child: const Text('Restaurer'),
-                        )
-                      else
-                        OutlinedButton(
-                          onPressed: () => _run(
-                            () => service.archive(memory.memoryId),
-                            sheetContext,
-                          ),
-                          child: const Text('Archiver'),
+                      FilledButton(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFFE76A5E),
+                          foregroundColor: Colors.white,
                         ),
-                      TextButton(
+                        onPressed: () => _edit(memory, sheetContext),
+                        child: const Text('Modifier'),
+                      ),
+                      OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF7450B8),
+                          side: const BorderSide(color: Color(0xFF7450B8)),
+                        ),
                         onPressed: () => _confirmDelete(memory, sheetContext),
                         child: const Text('Supprimer'),
                       ),
@@ -630,13 +618,29 @@ final class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
     final accepted = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Corriger ce souvenir'),
+        backgroundColor: const Color(0xFFFFFAF7),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        title: const Text(
+          'Modifier ce souvenir',
+          style: TextStyle(
+            color: Color(0xFF4A342F),
+            fontWeight: FontWeight.w800,
+          ),
+        ),
         content: TextField(
           controller: controller,
           maxLength: 4000,
           minLines: 2,
           maxLines: 6,
-          decoration: const InputDecoration(labelText: 'Information'),
+          decoration: InputDecoration(
+            labelText: 'Information',
+            filled: true,
+            fillColor: Colors.white,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(20),
+              borderSide: const BorderSide(color: Color(0xFFF1D8D1)),
+            ),
+          ),
         ),
         actions: [
           TextButton(
@@ -644,6 +648,9 @@ final class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
             child: const Text('Annuler'),
           ),
           FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFE76A5E),
+            ),
             onPressed: () => Navigator.pop(dialogContext, true),
             child: const Text('Enregistrer'),
           ),
@@ -669,6 +676,8 @@ final class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
     final accepted = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFFFFFAF7),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
         title: const Text('Supprimer ce souvenir ?'),
         content: const Text(
           'Il ne sera plus utilisé. Les événements, tâches, routines, profils et personnes ne seront pas supprimés.',
@@ -679,6 +688,9 @@ final class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
             child: const Text('Annuler'),
           ),
           FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF7450B8),
+            ),
             onPressed: () => Navigator.pop(dialogContext, true),
             child: const Text('Supprimer'),
           ),
@@ -695,6 +707,8 @@ final class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
     final accepted = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFFFFFAF7),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
         title: const Text('Supprimer toute ma mémoire'),
         content: SingleChildScrollView(
           child: Column(
@@ -719,6 +733,9 @@ final class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
             child: const Text('Annuler'),
           ),
           FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF7450B8),
+            ),
             onPressed: () => Navigator.pop(dialogContext, true),
             child: const Text('Confirmer la suppression'),
           ),

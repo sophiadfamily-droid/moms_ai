@@ -54,6 +54,9 @@ void main() {
       expect(find.text('À vérifier'), findsOneWidget);
       expect(find.text('Explorer ma mémoire'), findsNothing);
       expect(find.text('Souvenirs actifs'), findsNothing);
+      expect(find.text('Archives'), findsNothing);
+      expect(find.text('Archiver'), findsNothing);
+      expect(find.text('Restaurer'), findsNothing);
       expect(tester.takeException(), isNull);
     });
   }

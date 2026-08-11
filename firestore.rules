@@ -573,8 +573,8 @@ service cloud.firestore {
         && (!data.keys().hasAny(['deletedAt']) || data.deletedAt is timestamp)
         && (!data.keys().hasAny(['semanticType'])
           || data.semanticType in [
-            'preference', 'goal', 'identity', 'obligation',
-            'timeConstraint', 'routine', 'health', 'context'
+            'fact', 'preference', 'routine', 'constraint', 'goal',
+            'decision', 'temporary', 'relationship', 'unknown'
           ])
         && (!data.keys().hasAny(['importance'])
           || (data.importance is int
