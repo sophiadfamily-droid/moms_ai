@@ -823,6 +823,16 @@ final class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
         'personal_fact' =>
           'Information personnelle',
         'health' => 'Santé',
+        'family' || 'children' || 'partner' => 'Famille',
+        'important_date' => 'Date importante',
+        'routine' => 'Habitude',
+        'work' || 'business' => 'Travail',
+        'shopping' => 'Courses',
+        'sport' => 'Loisirs',
+        'education' => 'Études',
+        'travel' => 'Voyages',
+        'finance' => 'Finances',
+        'housing' => 'Maison',
         _ => 'Autre information',
       };
 

@@ -33,6 +33,31 @@ class MemoryEngineService {
   static String categorizeMemory(String text) {
     final lower = text.trim().toLowerCase();
 
+    // Meaning takes precedence over topic: a shopping preference is still a
+    // preference, and a family birthday is still an important date.
+    if (_hasConstraintTrigger(lower)) {
+      return "constraint";
+    }
+
+    if (_hasRoutineTrigger(lower)) {
+      return "routine";
+    }
+
+    if (_hasPreferenceTrigger(lower)) {
+      return "preference";
+    }
+
+    if (_containsAny(lower, [
+      "anniversaire",
+      "date importante",
+      "rappel important",
+      "échéance",
+      "echeance",
+      "deadline",
+    ])) {
+      return "important_date";
+    }
+
     if (_containsAny(lower, [
       "bébé",
       "bebe",
@@ -225,29 +250,6 @@ class MemoryEngineService {
       "travaux",
     ])) {
       return "housing";
-    }
-
-    if (_hasRoutineTrigger(lower)) {
-      return "routine";
-    }
-
-    if (_hasConstraintTrigger(lower)) {
-      return "constraint";
-    }
-
-    if (_hasPreferenceTrigger(lower)) {
-      return "preference";
-    }
-
-    if (_containsAny(lower, [
-      "anniversaire",
-      "date importante",
-      "rappel important",
-      "échéance",
-      "echeance",
-      "deadline",
-    ])) {
-      return "important_date";
     }
 
     return "personal";

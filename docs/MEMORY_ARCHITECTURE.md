@@ -12,9 +12,11 @@ Potential replacement detection is read-only for the existing memory. It
 requires a valid modern semantic identity, an exact `canonicalKey`, matching
 subject and context, supported revisions, direct or explicitly corrective
 user evidence, and a deterministic closed-attribute value comparator. The
-only automatic comparator currently supported is
-`preferred_appointment_period` with the structured values `morning`,
-`afternoon`, and `evening`. Other attributes fail closed.
+automatic comparators currently supported are `preferred_appointment_period`,
+with the structured values `morning`, `afternoon`, and `evening`, and a
+relative's `birthday`, normalized as a month-day value under a deterministic
+household subject. Legacy birthday records are re-read through the same
+semantic parser without being rewritten. Other attributes fail closed.
 
 The Firestore repository performs a bounded single-field `canonicalKey` query
 inside the authenticated `users/{uid}/memories` collection and applies
@@ -26,9 +28,11 @@ nor deployed in Phase 4A.
 Detection creates the new `proposed` document and a separately addressable,
 deterministically identified pending replacement action in one transaction.
 That transaction reads and writes only these two new workflow documents; it
-never reads for update or changes the existing memory. Replacement execution
-and any atomic transaction involving the existing memory remain deferred to
-Phase 4B.
+never changes the existing memory. The implemented replacement execution then
+requires explicit acceptance and atomically marks the previous memory as
+superseded, confirms the proposed memory, and closes the durable action.
+Pending replacement proposals are not shown as additional retained memories
+in the consumer library.
 
 ## Ownership
 

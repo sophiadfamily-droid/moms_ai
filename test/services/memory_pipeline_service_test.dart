@@ -51,6 +51,32 @@ void main() {
       expect(payload.importance, 2);
     });
 
+    test('classifies preferences by meaning rather than by their topic', () {
+      const formulations = [
+        'Je préfère faire mes courses le matin.',
+        'Je préfère faire du sport le soir.',
+        'Je préfère mes rendez-vous médicaux l’après-midi.',
+        'Je préfère voir ma famille le dimanche.',
+      ];
+
+      for (final text in formulations) {
+        expect(
+          MemoryPipelineService.buildMemory(text)['category'],
+          'preference',
+          reason: text,
+        );
+      }
+    });
+
+    test('classifies family birthdays as important dates', () {
+      expect(
+        MemoryPipelineService.buildMemory(
+          "L'anniversaire de ma mère est le 12 mars.",
+        )['category'],
+        'important_date',
+      );
+    });
+
     test('uses safe fallbacks for incomplete memory data', () {
       final payload = MemoryPipelineService.buildSavePayload(
         {
