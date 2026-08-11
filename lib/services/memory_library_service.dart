@@ -79,8 +79,8 @@ final class MemoryLibrarySnapshot {
     final visible = memories.where((memory) => !memory.tombstone);
     return switch (filter) {
       MemoryLibraryFilter.all => visible,
-      MemoryLibraryFilter.preference =>
-        visible.where((memory) => memory.category == 'preference'),
+      MemoryLibraryFilter.preference => visible.where((memory) =>
+          const {'preference', 'preferences'}.contains(memory.category)),
       MemoryLibraryFilter.habit =>
         visible.where((memory) => memory.category == 'habit'),
       MemoryLibraryFilter.goal =>
@@ -89,8 +89,11 @@ final class MemoryLibrarySnapshot {
         visible.where((memory) => memory.category == 'constraint'),
       MemoryLibraryFilter.instruction =>
         visible.where((memory) => memory.category == 'instruction'),
-      MemoryLibraryFilter.personalFact =>
-        visible.where((memory) => memory.category == 'personalFact'),
+      MemoryLibraryFilter.personalFact => visible.where((memory) => const {
+            'personalFact',
+            'personal',
+            'personal_fact',
+          }.contains(memory.category)),
       MemoryLibraryFilter.health => visible.where((memory) => memory.isHealth),
       MemoryLibraryFilter.historical => visible.where(
           (memory) =>

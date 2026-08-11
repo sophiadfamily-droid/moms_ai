@@ -13,6 +13,7 @@ import 'notification_service.dart';
 import 'natural_date_service.dart';
 import 'natural_duration_service.dart';
 import 'natural_time_service.dart';
+import 'memory_engine_service.dart';
 import 'planner_engine_service.dart';
 import 'smart_planning_continuation_coordinator.dart';
 import 'smart_planning_service.dart';
@@ -207,6 +208,10 @@ final class ConversationLegacyActionExecutor {
       return const ConversationOutcome(
         reply: 'D’accord, je ferme cette préparation de rendez-vous.',
       );
+    }
+    if (MemoryEngineService.hasExplicitMemoryRequest(answer)) {
+      _pendingEventDraft = null;
+      return null;
     }
 
     final action = Map<String, dynamic>.from(pending.action);

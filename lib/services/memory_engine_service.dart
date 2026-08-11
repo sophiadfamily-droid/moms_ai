@@ -11,6 +11,10 @@ class MemoryEngineService {
     return importanceScore(text) >= 2;
   }
 
+  static bool hasExplicitMemoryRequest(String text) {
+    return _hasExplicitMemoryTrigger(text.trim().toLowerCase());
+  }
+
   static int importanceScore(String text) {
     final lower = text.trim().toLowerCase();
 
@@ -228,7 +232,7 @@ class MemoryEngineService {
     }
 
     if (_hasPreferenceTrigger(lower)) {
-      return "preferences";
+      return "preference";
     }
 
     if (_containsAny(lower, [
@@ -278,11 +282,24 @@ class MemoryEngineService {
   static bool _hasExplicitMemoryTrigger(String lower) {
     return _containsAny(lower, [
       "souviens-toi",
+      "souviens toi",
       "rappelle-toi",
+      "rappelle toi",
+      "retiens que",
+      "retiens bien",
+      "retiens ceci",
+      "retiens cette information",
       "mémorise",
       "memorise",
+      "mémorises",
+      "memorises",
       "garde en mémoire",
       "garde en memoire",
+      "garde ça en mémoire",
+      "garde ca en memoire",
+      "note bien que",
+      "n’oublie pas que",
+      "n'oublie pas que",
       "à partir de maintenant",
       "a partir de maintenant",
       "dorénavant",

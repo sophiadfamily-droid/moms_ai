@@ -17,6 +17,27 @@ void main() {
       expect(payload.importance, 3);
     });
 
+    test('recognizes natural French memory requests before their subject', () {
+      const formulations = [
+        'Souviens toi que je préfère les rdv le matin',
+        'Souviens-toi que je préfère les rendez-vous le matin',
+        'Rappelle toi que je préfère les rendez-vous le matin',
+        'Retiens que je préfère les rendez-vous le matin',
+        'Mémorise que je préfère les rendez-vous le matin',
+        'Garde ça en mémoire : je préfère les rendez-vous le matin',
+        'Note bien que je préfère les rendez-vous le matin',
+        'N’oublie pas que je préfère les rendez-vous le matin',
+      ];
+
+      for (final text in formulations) {
+        expect(
+          MemoryPipelineService.shouldProcessMemory(text),
+          isTrue,
+          reason: text,
+        );
+      }
+    });
+
     test('preserves a preference importance score', () {
       const text = 'Je préfère les rendez-vous l’après-midi.';
 
@@ -26,7 +47,7 @@ void main() {
         fallbackText: text,
       );
 
-      expect(payload.category, 'preferences');
+      expect(payload.category, 'preference');
       expect(payload.importance, 2);
     });
 

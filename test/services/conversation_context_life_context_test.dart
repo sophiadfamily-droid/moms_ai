@@ -122,7 +122,8 @@ void main() {
     expect(repository.proposals, isEmpty);
   });
 
-  test('automatic active une préférence explicite ordinaire', () async {
+  test('automatic garde une commande mémoire explicite dans la conversation',
+      () async {
     final repository = _FakeLifecycleRepository();
     final provider = DefaultConversationContextProvider(
       memoryLifecycleRepository: repository,
@@ -130,9 +131,34 @@ void main() {
         MemoryGeneralMode.automatic,
       ),
     );
+    final request = await provider.proposeUserMemory(
+      'Souviens-toi que je préfère les rendez-vous le matin',
+    );
+    expect(request, isNotNull);
+    expect(repository.proposals, hasLength(1));
+    expect(repository.applied, isEmpty);
+    expect(repository.proposals.single.evidenceClassification,
+        MemoryEvidenceClassification.directExplicit);
+    expect(repository.proposals.single.semanticIdentity?.domain,
+        MemorySemanticDomain.planning);
+    expect(repository.proposals.single.semanticIdentity?.attribute,
+        MemorySemanticAttribute.preferredAppointmentPeriod);
+    expect(repository.proposals.single.semanticValue, 'morning');
+  });
+
+  test('automatic active une préférence ordinaire sans commande mémoire',
+      () async {
+    final repository = _FakeLifecycleRepository();
+    final provider = DefaultConversationContextProvider(
+      memoryLifecycleRepository: repository,
+      loadMemoryPolicy: () async => _policyWith(
+        MemoryGeneralMode.automatic,
+      ),
+    );
+
     expect(
       await provider.proposeUserMemory(
-        'Souviens-toi que je préfère les rendez-vous le matin',
+        'Je préfère les rendez-vous le matin',
       ),
       isNull,
     );
@@ -141,13 +167,6 @@ void main() {
       repository.applied.map((mutation) => mutation.newState.name),
       ['confirmed', 'active'],
     );
-    expect(repository.proposals.single.evidenceClassification,
-        MemoryEvidenceClassification.directExplicit);
-    expect(repository.proposals.single.semanticIdentity?.domain,
-        MemorySemanticDomain.planning);
-    expect(repository.proposals.single.semanticIdentity?.attribute,
-        MemorySemanticAttribute.preferredAppointmentPeriod);
-    expect(repository.proposals.single.semanticValue, 'morning');
   });
 
   test('automatic accepte une contrainte négative claire et durable', () async {
@@ -327,15 +346,16 @@ void main() {
       ),
     );
 
-    await provider.proposeUserMemory(
+    final request = await provider.proposeUserMemory(
       'Souviens-toi que ma sœur préfère les rendez-vous le matin',
       resolvedSubjectEntityId: 'person-42',
     );
 
+    expect(request, isNotNull);
     expect(repository.proposals.single.subjectEntityId, 'person-42');
     expect(repository.proposals.single.evidenceSubjectType,
         MemoryEvidenceSubjectType.structuredEntity);
-    expect(repository.applied, hasLength(2));
+    expect(repository.applied, isEmpty);
   });
 
   test('un foyer explicite conserve son scope sans foyer par défaut', () async {

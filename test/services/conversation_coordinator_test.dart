@@ -733,6 +733,41 @@ void main() {
       expect(executor.pendingEventExpectedFieldCode, 'duration');
     });
 
+    test('explicit memory request closes a pending generic Event draft',
+        () async {
+      final coordinator = _coordinator();
+      final executor = ConversationLegacyActionExecutor(
+        coordinator: coordinator,
+        clock: () => DateTime.utc(2026, 7, 29, 10),
+      );
+      final draft = ConversationClarificationDraft(
+        schemaVersion: 1,
+        draftType: ConversationClarificationDraftType.eventCreation,
+        logicalRequestId: 'logical-generic-event-memory-switch',
+        draftId: 'generic-event-memory-switch',
+        title: 'Rendez-vous',
+        date: '2026-07-30',
+        startTime: '15:00',
+        durationMinutes: null,
+        travelGoMinutes: null,
+        travelBackMinutes: null,
+        marginMinutes: null,
+        expectedField: ConversationEventDraftExpectedField.duration,
+        createdAt: DateTime.utc(2026, 7, 29, 10),
+        expiresAt: DateTime.utc(2026, 7, 29, 10, 15),
+        sessionGeneration: 0,
+      );
+      expect(executor.registerClarificationDraft(draft, 0), isTrue);
+
+      final result = await executor.resolvePending(
+        'Souviens toi que je préfère les rendez-vous le matin',
+        0,
+      );
+
+      expect(result, isNull);
+      expect(executor.hasPendingEventDraft, isFalse);
+    });
+
     test('Event conflict keeps draft identity and consumes a replacement time',
         () async {
       addTearDown(() => SharedPreferences.setMockInitialValues({}));

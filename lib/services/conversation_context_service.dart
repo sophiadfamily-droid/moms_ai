@@ -249,6 +249,8 @@ class DefaultConversationContextProvider
       'importance': payload.importance,
     },
         source: 'explicit_user_message',
+        explicitMemoryRequest:
+            MemoryPipelineService.hasExplicitMemoryRequest(message),
         evidenceQualification: evidenceQualification,
         semanticSubjectScope: semanticSubjectScope,
         semanticSubjectEntityId: resolvedSubjectEntityId,
@@ -278,12 +280,14 @@ class DefaultConversationContextProvider
       'importance': payload.importance,
     },
         source: 'assistant_memory_candidate',
+        explicitMemoryRequest: false,
         evidenceQualification: _memoryEvidenceClassifier.assistantCandidate());
   }
 
   Future<MemoryConfirmationRequest?> _proposeMemory(
     Map<String, dynamic> payload, {
     required String source,
+    required bool explicitMemoryRequest,
     required MemoryEvidenceQualification evidenceQualification,
     MemorySemanticSubjectScope? semanticSubjectScope,
     String? semanticSubjectEntityId,
@@ -291,10 +295,13 @@ class DefaultConversationContextProvider
     String? semanticContextEntityId,
     String? logicalRequestId,
   }) async {
+    var persistenceStep = 'initialization';
     try {
       final repository = memoryLifecycleRepository;
+      persistenceStep = 'policy_load';
       final policy = await _policy();
       final accountScopeId = policy.accountScopeId;
+      persistenceStep = 'proposal_id_allocation';
       final proposalId = await repository.allocateProposalId();
       if (proposalId == null || proposalId.isEmpty) return null;
       final proposedAt = DateTime.now();
@@ -349,6 +356,7 @@ class DefaultConversationContextProvider
         if (proposal == null) return null;
       }
       final effectiveProposal = proposal;
+      persistenceStep = 'candidate_lookup';
       final existing = await repository.findCandidates(effectiveProposal);
       final isHealth = _isExplicitHealthCategory(effectiveProposal.category);
       final policyDecision = _memoryPolicyEngine.evaluate(
@@ -399,6 +407,7 @@ class DefaultConversationContextProvider
         if (replacementRepository is! MemoryReplacementPendingRepository) {
           return null;
         }
+        persistenceStep = 'replacement_proposal_write';
         final persisted =
             await (replacementRepository as MemoryReplacementPendingRepository)
                 .persistReplacementProposal(
@@ -427,17 +436,24 @@ class DefaultConversationContextProvider
           replacementPendingAction: persisted.action,
         );
       }
+      persistenceStep = 'proposal_write';
       await repository.createProposal(effectiveProposal, proposalMutation);
       if (policyDecision.type == MemoryPolicyDecisionType.saveAutomatically) {
+        if (explicitMemoryRequest) {
+          return decision.confirmationRequest;
+        }
         await _activateAutomatically(repository, effectiveProposal, proposedAt);
         return null;
       }
       return decision.confirmationRequest;
-    } catch (_) {
+    } catch (error) {
       AppDiagnostics.record(
         component: 'conversation_memory',
-        step: 'proposal_persistence',
+        step: persistenceStep,
         code: AppErrorCode.storageFailure,
+        sourceExceptionType: error.runtimeType.toString(),
+        technicalStatus:
+            error is FormatException ? error.message.toString() : null,
       );
       return null;
     }

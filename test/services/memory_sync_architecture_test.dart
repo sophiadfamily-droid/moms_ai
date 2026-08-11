@@ -64,4 +64,25 @@ void main() {
       isTrue,
     );
   });
+
+  test('rules accept the semantic evidence written with memory proposals', () {
+    final rules = read('firestore.rules');
+    final serializer = read('lib/services/memory_lifecycle_repository.dart');
+    const proposalFields = <String>[
+      'evidenceClassification',
+      'evidenceSubjectType',
+      'evidenceRisks',
+      'isCorrection',
+      'subjectEntityId',
+      'semanticIdentity',
+      'canonicalKey',
+      'semanticValue',
+      'eligibleForAutomaticContradiction',
+    ];
+
+    for (final field in proposalFields) {
+      expect(serializer, contains("'$field'"), reason: field);
+      expect(rules, contains("'$field'"), reason: field);
+    }
+  });
 }

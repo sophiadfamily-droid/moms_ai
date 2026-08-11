@@ -26,6 +26,7 @@ import 'action_confirmation_coordinator.dart';
 import 'memory_confirmation_copy.dart';
 import 'memory_lifecycle_engine.dart';
 import 'memory_lifecycle_repository.dart';
+import 'memory_pipeline_service.dart';
 import 'routine_conversation_service.dart';
 import 'identity/identity_application_models.dart';
 import 'identity/identity_application_service.dart';
@@ -2609,6 +2610,14 @@ class ConversationCoordinator {
         );
         return ConversationOutcome(
           reply: memoryCopy.proposal(userProposal),
+          request: request,
+        );
+      }
+      if (memoryContext != null &&
+          MemoryPipelineService.hasExplicitMemoryRequest(input.message)) {
+        return ConversationOutcome(
+          reply: 'Je n’ai pas pu ajouter cette information à ma mémoire. '
+              'Tu peux réessayer dans un instant.',
           request: request,
         );
       }

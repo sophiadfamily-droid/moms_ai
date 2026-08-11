@@ -2,7 +2,7 @@
   "name": "zelia-firestore-rules-tests",
   "private": true,
   "scripts": {
-    "test": "node --test routine_rules.test.cjs"
+    "test": "node --test *_rules.test.cjs"
   },
   "dependencies": {
     "@firebase/rules-unit-testing": "^4.0.1",

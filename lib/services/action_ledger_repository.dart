@@ -239,6 +239,8 @@ final class LocalActionLedgerRepository implements ActionLedgerRepository {
         ActionLedgerStatus.conflict,
         ActionLedgerStatus.cancelled,
         ActionLedgerStatus.expired,
+        ActionLedgerStatus.blockedByPolicy,
+        ActionLedgerStatus.undoAvailable,
         ActionLedgerStatus.undone,
         ActionLedgerStatus.undoConflict,
         ActionLedgerStatus.undoFailed,

@@ -96,63 +96,95 @@ final class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
     );
   }
 
-  Widget _header() => Padding(
-        padding: const EdgeInsets.fromLTRB(20, 10, 20, 8),
-        child: Row(
+  Widget _header() => SizedBox(
+        height: 232,
+        child: Stack(
           children: [
-            IconButton.filledTonal(
-              tooltip: 'Retour',
-              onPressed: () => Navigator.maybePop(context),
-              icon: const Icon(Icons.arrow_back_ios_new),
+            Positioned(
+              right: -20,
+              top: 8,
+              child: IgnorePointer(
+                child: Opacity(
+                  opacity: 0.96,
+                  child: Image.asset(
+                    'assets/images/zelia_robot.png',
+                    width: 205,
+                    height: 220,
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              ),
             ),
-            const SizedBox(width: 14),
-            const Expanded(
+            Positioned(
+              left: 18,
+              top: 8,
+              child: IconButton.filledTonal(
+                tooltip: 'Retour',
+                onPressed: () => Navigator.maybePop(context),
+                icon: const Icon(Icons.arrow_back_ios_new),
+              ),
+            ),
+            Positioned(
+              right: 18,
+              top: 8,
+              child: IconButton.filledTonal(
+                tooltip: 'Gérer ma mémoire',
+                onPressed: _openMemoryManagement,
+                icon: const Icon(Icons.more_horiz),
+              ),
+            ),
+            const Positioned(
+              left: 28,
+              top: 88,
+              right: 155,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     'Mémoire',
                     style: TextStyle(
+                      color: Color(0xFF11181C),
                       fontFamily: 'PlayfairDisplay',
-                      fontSize: 38,
+                      fontSize: 44,
+                      height: 1,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
+                  SizedBox(height: 14),
                   Text(
-                    'Ce que Zelia connaît pour mieux t’accompagner.',
+                    'Ce que Zelia retient pour mieux t’accompagner.',
                     style: TextStyle(
                       color: Color(0xFF8B6F67),
+                      fontSize: 15,
+                      height: 1.35,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                 ],
               ),
             ),
-            IconButton.filledTonal(
-              tooltip: 'Réglages de la mémoire',
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const MemorySettingsScreen(),
-                ),
-              ),
-              icon: const Icon(Icons.tune),
-            ),
-            const SizedBox(width: 8),
-            IconButton.filledTonal(
-              tooltip: 'Actualiser',
-              onPressed: _loading ? null : _refresh,
-              icon: const Icon(Icons.refresh),
-            ),
           ],
         ),
       );
 
   Widget _content(MemoryLibrarySnapshot snapshot) {
-    final memories = snapshot
+    final selected = snapshot
         .filtered(_filter)
         .where((memory) =>
             _query.isEmpty || memory.text.toLowerCase().contains(_query))
         .toList();
+    final memories = _filter == MemoryLibraryFilter.historical
+        ? selected
+        : selected
+            .where((memory) =>
+                _active(memory) ||
+                memory.lifecycleStatus == MemoryLifecycleState.proposed)
+            .toList();
+    final proposed = memories
+        .where(
+            (memory) => memory.lifecycleStatus == MemoryLifecycleState.proposed)
+        .toList();
+    final retained = memories.where(_active).toList();
     final activeCount = snapshot.memories.where(_active).length;
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 36),
@@ -183,94 +215,27 @@ final class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
                 ? 'Certaines informations ont changé sur un autre appareil.'
                 : 'Certains changements seront synchronisés lorsque la connexion reviendra.',
           ),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: _memoryCardDecoration(),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Semantics(
-                label: 'Filtres de la bibliothèque de mémoire',
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: MemoryLibraryFilter.values
-                        .where((filter) =>
-                            filter != MemoryLibraryFilter.health ||
-                            snapshot.policy.healthConsentGranted)
-                        .map(
-                          (filter) => Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: FilterChip(
-                              label: Text(_filterLabel(filter)),
-                              selected: _filter == filter,
-                              selectedColor: const Color(0xFFE9957E),
-                              onSelected: (_) =>
-                                  setState(() => _filter = filter),
-                            ),
-                          ),
-                        )
-                        .toList(),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 18),
-              Row(
-                children: [
-                  const CircleAvatar(
-                    radius: 25,
-                    backgroundColor: Color(0xFFF8DDD5),
-                    child: Icon(Icons.auto_awesome, color: Color(0xFFE76A5E)),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Ce que je retiens pour toi',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        Text(
-                          '$activeCount information(s) active(s)',
-                          style: const TextStyle(color: Color(0xFF8B6F67)),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
+        _overviewCard(snapshot, activeCount),
         const SizedBox(height: 18),
-        const Text(
-          'Explorer ma mémoire',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+        _filters(snapshot),
+        const SizedBox(height: 22),
+        Text(
+          _filter == MemoryLibraryFilter.historical
+              ? 'Archives'
+              : 'Ce que Zelia sait de moi',
+          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: 12),
-        _categoryGrid(snapshot),
-        const SizedBox(height: 20),
-        Text(
-          _filter == MemoryLibraryFilter.all
-              ? 'Toutes les informations'
-              : _filterLabel(_filter),
-          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-        ),
-        const SizedBox(height: 10),
-        if (memories.isEmpty)
+        if (proposed.isNotEmpty) ...[
+          _memorySection('À vérifier', proposed, snapshot),
+          const SizedBox(height: 12),
+        ],
+        if (_filter == MemoryLibraryFilter.historical && memories.isNotEmpty)
+          _memorySection(null, memories, snapshot)
+        else if (retained.isNotEmpty)
+          _memorySection(null, retained, snapshot)
+        else if (proposed.isEmpty)
           const _EmptyState()
-        else
-          ..._sections(memories, snapshot),
-        const SizedBox(height: 24),
-        OutlinedButton.icon(
-          onPressed: () => _confirmDeleteAll(snapshot),
-          icon: const Icon(Icons.delete_sweep_outlined),
-          label: const Text('Supprimer toute ma mémoire'),
-        ),
       ],
     );
   }
@@ -288,138 +253,231 @@ final class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
         ],
       );
 
-  Widget _categoryGrid(MemoryLibrarySnapshot snapshot) {
-    final textScale = MediaQuery.textScalerOf(context).scale(1);
-    const categories = [
-      (MemoryLibraryFilter.preference, Icons.favorite_border, 'Préférences'),
-      (MemoryLibraryFilter.personalFact, Icons.person_outline, 'Personnel'),
-      (MemoryLibraryFilter.habit, Icons.repeat, 'Habitudes'),
-      (MemoryLibraryFilter.goal, Icons.flag_outlined, 'Objectifs'),
-      (
-        MemoryLibraryFilter.constraint,
-        Icons.event_busy_outlined,
-        'Contraintes'
-      ),
-      (MemoryLibraryFilter.historical, Icons.history, 'Archives'),
-    ];
-    return GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: 12,
-      crossAxisSpacing: 12,
-      mainAxisExtent: 88 + ((textScale - 1).clamp(0, 1) * 125),
-      children: categories.map((item) {
-        final count = snapshot.filtered(item.$1).length;
-        return InkWell(
-          onTap: () => setState(() => _filter = item.$1),
-          borderRadius: BorderRadius.circular(26),
-          child: Container(
-            padding: const EdgeInsets.all(14),
-            decoration: _memoryCardDecoration(),
-            child: Row(
-              children: [
-                CircleAvatar(
-                  backgroundColor: const Color(0xFFF8DDD5),
-                  child: Icon(item.$2, color: const Color(0xFFE76A5E)),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        item.$3,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontWeight: FontWeight.w800),
-                      ),
-                      Text(
-                        '$count élément(s)',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Color(0xFF8B6F67),
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+  Widget _overviewCard(MemoryLibrarySnapshot snapshot, int activeCount) {
+    final preferences =
+        snapshot.filtered(MemoryLibraryFilter.preference).where(_active).length;
+    final habits =
+        snapshot.filtered(MemoryLibraryFilter.habit).where(_active).length;
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFFFFFCFA), Color(0xFFF8E8E1)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: Colors.white, width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFB77C6C).withValues(alpha: 0.12),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
           ),
-        );
-      }).toList(),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              CircleAvatar(
+                backgroundColor: Color(0xFFF6D7CD),
+                child: Icon(Icons.auto_awesome, color: Color(0xFFE76A5E)),
+              ),
+              SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Ma mémoire avec Zelia',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    Text(
+                      'Des informations utiles pour mieux organiser mon quotidien.',
+                      style: TextStyle(
+                        color: Color(0xFF8B6F67),
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              _memoryStat(Icons.psychology_outlined, activeCount, 'retenues'),
+              _memoryStat(Icons.favorite_border, preferences, 'préférences'),
+              _memoryStat(Icons.repeat, habits, 'habitudes'),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
-  List<Widget> _sections(
-    List<RevisionedMemory> memories,
-    MemoryLibrarySnapshot snapshot,
-  ) {
-    final proposed = memories
-        .where(
-            (memory) => memory.lifecycleStatus == MemoryLifecycleState.proposed)
-        .toList();
-    final active = memories.where(_active).toList();
-    final historical = memories
-        .where((memory) => !_active(memory) && !proposed.contains(memory))
-        .toList();
-    return [
-      _section(
-          'À confirmer', proposed, snapshot, 'Aucune information à confirmer.'),
-      _section('Souvenirs actifs', active, snapshot,
-          'Zélia n’a encore rien mémorisé ici.'),
-      _section('Expirés ou archivés', historical, snapshot,
-          'Aucun souvenir historique.'),
-      if (snapshot.conflictIds.isNotEmpty)
-        const _StatusBanner(
-          text:
-              'Cette information a changé sur un autre appareil. Vérifie la version actuelle avant de continuer.',
+  Widget _memoryStat(IconData icon, int count, String label) => Expanded(
+        child: Column(
+          children: [
+            Icon(icon, color: const Color(0xFFD47C67), size: 22),
+            const SizedBox(height: 5),
+            Text(
+              '$count',
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+            ),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: Color(0xFF8B6F67), fontSize: 11),
+            ),
+          ],
         ),
+      );
+
+  Widget _filters(MemoryLibrarySnapshot snapshot) {
+    final filters = <MemoryLibraryFilter>[
+      MemoryLibraryFilter.all,
+      ...MemoryLibraryFilter.values.where(
+        (filter) =>
+            filter != MemoryLibraryFilter.all &&
+            filter != MemoryLibraryFilter.historical &&
+            (filter != MemoryLibraryFilter.health ||
+                snapshot.policy.healthConsentGranted) &&
+            snapshot.filtered(filter).any(_active),
+      ),
     ];
+    return Semantics(
+      label: 'Filtrer les informations',
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: filters
+              .map(
+                (filter) => Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: FilterChip(
+                    label: Text(_filterLabel(filter)),
+                    selected: _filter == filter,
+                    selectedColor: const Color(0xFFE9957E),
+                    onSelected: (_) => setState(() => _filter = filter),
+                  ),
+                ),
+              )
+              .toList(),
+        ),
+      ),
+    );
   }
 
-  Widget _section(
-    String title,
+  Widget _memorySection(
+    String? title,
     List<RevisionedMemory> memories,
     MemoryLibrarySnapshot snapshot,
-    String empty,
   ) =>
-      Card(
+      Container(
+        decoration: _memoryCardDecoration(),
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 8),
-              if (memories.isEmpty)
-                Text(empty)
-              else
-                ...memories.map(
-                  (memory) => ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(
-                      memory.text,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    subtitle: Text(
-                      snapshot.pendingIds.contains(memory.memoryId)
-                          ? 'En attente de synchronisation'
-                          : _categoryLabel(memory.category),
-                    ),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => _showDetail(memory, snapshot),
+              if (title != null) ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 8, 4, 4),
+                  child: Text(
+                    title,
+                    style: Theme.of(context).textTheme.titleMedium,
                   ),
                 ),
+              ],
+              ...memories.map(
+                (memory) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: CircleAvatar(
+                    backgroundColor: const Color(0xFFF8DDD5),
+                    child: Icon(
+                      _categoryIcon(memory.category),
+                      color: const Color(0xFFE76A5E),
+                    ),
+                  ),
+                  title: Text(
+                    _displayText(memory.text),
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Text(
+                    snapshot.pendingIds.contains(memory.memoryId)
+                        ? 'En attente de synchronisation'
+                        : _categoryLabel(memory.category),
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _showDetail(memory, snapshot),
+                ),
+              ),
             ],
           ),
         ),
       );
+
+  Future<void> _openMemoryManagement() async {
+    final snapshot = _snapshot;
+    if (snapshot == null) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Gérer ma mémoire',
+                  style: Theme.of(context).textTheme.headlineSmall),
+              const SizedBox(height: 12),
+              ListTile(
+                leading: const Icon(Icons.settings_outlined),
+                title: const Text('Réglages de la mémoire'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const MemorySettingsScreen(),
+                    ),
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.history),
+                title: const Text('Archives'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  setState(() => _filter = MemoryLibraryFilter.historical);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete_outline),
+                title: const Text('Supprimer toute ma mémoire'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _confirmDeleteAll(snapshot);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   Future<void> _showDetail(
     RevisionedMemory memory,
@@ -725,6 +783,19 @@ final class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
       memory.lifecycleStatus == MemoryLifecycleState.active ||
       memory.lifecycleStatus == MemoryLifecycleState.confirmed;
 
+  String _displayText(String text) {
+    var value = text.trim().replaceFirst(
+          RegExp(
+            r'^(souviens[- ]toi|rappelle[- ]toi|retiens(?: bien)?|mémorise|memorise|note bien)\s+(?:que\s+)?',
+            caseSensitive: false,
+          ),
+          '',
+        );
+    if (value.isEmpty) return text.trim();
+    value = value[0].toUpperCase() + value.substring(1);
+    return value.endsWith('.') ? value : '$value.';
+  }
+
   String _filterLabel(MemoryLibraryFilter filter) => switch (filter) {
         MemoryLibraryFilter.all => 'Tout',
         MemoryLibraryFilter.preference => 'Préférences',
@@ -738,14 +809,28 @@ final class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
       };
 
   String _categoryLabel(String category) => switch (category) {
-        'preference' => 'Préférence',
+        'preference' || 'preferences' => 'Préférence',
         'habit' => 'Habitude',
         'goal' => 'Objectif',
         'constraint' => 'Contrainte',
         'instruction' => 'Instruction',
-        'personalFact' => 'Information personnelle',
+        'personalFact' ||
+        'personal' ||
+        'personal_fact' =>
+          'Information personnelle',
         'health' => 'Santé',
         _ => 'Autre information',
+      };
+
+  IconData _categoryIcon(String category) => switch (category) {
+        'preference' || 'preferences' => Icons.favorite_border,
+        'habit' || 'routine' => Icons.repeat,
+        'goal' => Icons.flag_outlined,
+        'constraint' => Icons.event_busy_outlined,
+        'health' => Icons.health_and_safety_outlined,
+        'work' || 'business' => Icons.work_outline,
+        'family' || 'children' || 'partner' => Icons.people_outline,
+        _ => Icons.person_outline,
       };
 
   String _historyLabel(MemoryHistoryAction action) => switch (action) {

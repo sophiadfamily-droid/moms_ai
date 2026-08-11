@@ -277,6 +277,29 @@ void main() {
       );
     });
 
+    test('an explicit memory failure never falls through to the backend',
+        () async {
+      final repository = _FakeRepository(_memory());
+      final backend = _FakeBackend();
+      final context = _MemoryContext(repository, returnsProposal: false);
+      final coordinator = ConversationCoordinator(
+        backend: backend,
+        contextProvider: context,
+      );
+
+      final outcome = await coordinator.send(
+        input: ConversationInput(
+          message: 'Souviens toi que je préfère les rendez-vous le matin',
+          profile: _profile(),
+        ),
+        executeAction: (_) async => const ConversationActionOutcome(),
+      );
+
+      expect(outcome?.reply, contains('pas pu ajouter'));
+      expect(backend.calls, 0);
+      expect(coordinator.state.pendingAction, isNull);
+    });
+
     test('confirms then activates a proposal as the user', () async {
       final repository = _FakeRepository(_memory());
       final coordinator = _coordinator(repository);
@@ -704,7 +727,12 @@ final class _MemoryContext extends _FakeContext
   @override
   final MemoryLifecycleRepository memoryLifecycleRepository;
 
-  _MemoryContext(this.memoryLifecycleRepository);
+  _MemoryContext(
+    this.memoryLifecycleRepository, {
+    this.returnsProposal = true,
+  });
+
+  final bool returnsProposal;
 
   @override
   Future<MemoryConfirmationRequest?> proposeResponseMemory(dynamic memory) {
@@ -720,6 +748,7 @@ final class _MemoryContext extends _FakeContext
     MemorySemanticContextType? semanticContextType,
     String? semanticContextEntityId,
   }) async {
+    if (!returnsProposal) return null;
     return const MemoryConfirmationRequest(
       action: MemoryLifecycleAction.confirm,
       proposalId: 'proposal-1',

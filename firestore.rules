@@ -526,7 +526,11 @@ service cloud.firestore {
           'structuredDomain', 'structuredReferenceId', 'lastMutationId',
           'tombstone', 'semanticType', 'importance', 'lifecycleState',
           'confirmedAt', 'rejectedAt', 'deletedAt', 'replacedByMemoryId',
-          'supersedesMemoryId', 'lifecycleHistory', 'history'
+          'supersedesMemoryId', 'lifecycleHistory', 'history',
+          'evidenceClassification', 'evidenceSubjectType', 'evidenceRisks',
+          'isCorrection', 'subjectEntityId', 'semanticIdentity',
+          'canonicalKey', 'semanticValue',
+          'eligibleForAutomaticContradiction'
         ])
         && data.keys().hasAll([
           'schemaVersion', 'memoryId', 'accountScopeId', 'memoryRevision',
@@ -581,6 +585,46 @@ service cloud.firestore {
             && data.lifecycleHistory.size() <= 100))
         && (!data.keys().hasAny(['history'])
           || (data.history is list && data.history.size() <= 50))
+        && (!data.keys().hasAny(['evidenceClassification'])
+          || data.evidenceClassification in [
+            'directExplicit', 'ambiguous', 'hypothetical', 'conditional',
+            'quoted', 'thirdParty', 'pastState', 'temporary', 'correction',
+            'question', 'negated', 'unknown'
+          ])
+        && (!data.keys().hasAny(['evidenceSubjectType'])
+          || data.evidenceSubjectType in [
+            'user', 'structuredEntity', 'unresolvedThirdParty', 'unknown'
+          ])
+        && (!data.keys().hasAny(['evidenceRisks'])
+          || (data.evidenceRisks is list
+            && data.evidenceRisks.size() <= 10))
+        && (!data.keys().hasAny(['isCorrection'])
+          || data.isCorrection is bool)
+        && (!data.keys().hasAny(['subjectEntityId'])
+          || (data.subjectEntityId is string
+            && data.subjectEntityId.size() > 0
+            && data.subjectEntityId.size() <= 200))
+        && (!data.keys().hasAny(['semanticIdentity'])
+          || (data.semanticIdentity is map
+            && data.semanticIdentity.schemaVersion == 1
+            && data.semanticIdentity.domain is string
+            && data.semanticIdentity.attribute is string
+            && data.semanticIdentity.subjectScope is string
+            && data.semanticIdentity.contextType is string
+            && data.semanticIdentity.canonicalKey is string
+            && data.semanticIdentity.canonicalKey.size() > 0
+            && data.semanticIdentity.canonicalKey.size() <= 240
+            && data.semanticIdentity.eligibleForAutomaticContradiction is bool))
+        && (!data.keys().hasAny(['canonicalKey'])
+          || (data.canonicalKey is string
+            && data.canonicalKey.size() > 0
+            && data.canonicalKey.size() <= 240))
+        && (!data.keys().hasAny(['semanticValue'])
+          || data.semanticValue == null
+          || (data.semanticValue is string
+            && data.semanticValue.size() <= 4000))
+        && (!data.keys().hasAny(['eligibleForAutomaticContradiction'])
+          || data.eligibleForAutomaticContradiction is bool)
         && data.lastMutationId is string
         && data.lastMutationId.size() > 0
         && data.lastMutationId.size() <= 128

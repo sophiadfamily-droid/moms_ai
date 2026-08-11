@@ -203,6 +203,38 @@ void main() {
       );
     });
 
+    test('completed undoable history never blocks a new action', () async {
+      const repository = LocalActionLedgerRepository();
+      final historical = List.generate(
+        LocalActionLedgerRepository.maxActiveEntries,
+        (index) => _succeededEntry(
+          instant.add(Duration(seconds: index)),
+          mutationId: 'historical-$index',
+          entityId: 'task-$index',
+        ),
+      );
+      SharedPreferences.setMockInitialValues({
+        'action_ledger_v1:$scope': jsonEncode({
+          'schemaVersion': LocalActionLedgerRepository.currentSchemaVersion,
+          'accountScopeId': scope,
+          'entries': historical.map((entry) => entry.toJson()).toList(),
+        }),
+      });
+
+      await repository.create(
+        _entry(
+          instant.add(const Duration(minutes: 5)),
+          mutationId: 'new-action',
+          entityId: 'new-task',
+        ),
+      );
+
+      expect(
+        await repository.findByMutationId(scope, 'new-action'),
+        isNotNull,
+      );
+    });
+
     test('service records dispatch and only then a real success', () async {
       const repository = LocalActionLedgerRepository();
       final service = ActionLedgerService(
@@ -456,8 +488,13 @@ ActionLedgerEntry _entry(
       lastMutationId: mutationId,
     );
 
-ActionLedgerEntry _succeededEntry(DateTime instant) => ActionLedgerEntry(
-      ledgerEntryId: 'ledger-mutation-1',
+ActionLedgerEntry _succeededEntry(
+  DateTime instant, {
+  String mutationId = 'mutation-1',
+  String entityId = 'task-1',
+}) =>
+    ActionLedgerEntry(
+      ledgerEntryId: 'ledger-$mutationId',
       accountScopeId: 'account-a',
       actionType: ActionType.createTask,
       actionDomain: ActionLedgerDomain.task,
@@ -465,8 +502,8 @@ ActionLedgerEntry _succeededEntry(DateTime instant) => ActionLedgerEntry(
       riskLevel: ActionRiskLevel.reversibleLowRisk,
       policyModeObserved: ActionAutonomyMode.normal,
       policyVersionObserved: 1,
-      mutationId: 'mutation-1',
-      targetReference: _target(),
+      mutationId: mutationId,
+      targetReference: _target(entityId: entityId),
       expectedRevision: 0,
       resultRevision: 1,
       status: ActionLedgerStatus.undoAvailable,
@@ -477,7 +514,7 @@ ActionLedgerEntry _succeededEntry(DateTime instant) => ActionLedgerEntry(
       completedAt: instant,
       updatedAt: instant,
       undoCapability: _capability(),
-      correlationId: 'correlation-1',
+      correlationId: 'correlation-$mutationId',
       provenance: 'test',
       ledgerRevision: 4,
       lastMutationId: 'ledger-undo-capability',

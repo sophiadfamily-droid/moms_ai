@@ -17,6 +17,10 @@ class MemoryPipelineService {
     return MemoryEngineService.shouldSaveMemory(text);
   }
 
+  static bool hasExplicitMemoryRequest(String text) {
+    return MemoryEngineService.hasExplicitMemoryRequest(text);
+  }
+
   static Map<String, dynamic> buildMemory(String text) {
     return MemoryEngineService.buildMemory(text);
   }

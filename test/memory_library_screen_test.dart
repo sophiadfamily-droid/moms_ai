@@ -31,7 +31,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Mémoire'), findsOneWidget);
       await tester.scrollUntilVisible(
-        find.text('Souvenirs actifs'),
+        find.text('Ce que Zelia sait de moi'),
         250,
         scrollable: find
             .descendant(
@@ -40,8 +40,20 @@ void main() {
             )
             .first,
       );
-      expect(find.text('Souvenirs actifs'), findsOneWidget);
-      expect(find.text('À confirmer'), findsOneWidget);
+      expect(find.text('Ce que Zelia sait de moi'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('À vérifier'),
+        180,
+        scrollable: find
+            .descendant(
+              of: find.byType(ListView).first,
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      expect(find.text('À vérifier'), findsOneWidget);
+      expect(find.text('Explorer ma mémoire'), findsNothing);
+      expect(find.text('Souvenirs actifs'), findsNothing);
       expect(tester.takeException(), isNull);
     });
   }
@@ -102,6 +114,46 @@ void main() {
           .first,
     );
     expect(find.text('Zélia n’a encore rien mémorisé ici.'), findsOneWidget);
+  });
+
+  testWidgets('commande mémoire affichée comme une information naturelle',
+      (tester) async {
+    final snapshot = _snapshot(now);
+    final memory = RevisionedMemory(
+      memoryId: 'natural',
+      accountScopeId: 'test-scope',
+      memoryRevision: 1,
+      lifecycleStatus: MemoryLifecycleState.active,
+      confirmationStatus: MemoryConfirmationStatus.confirmed,
+      provenance: LifeContextSourceType.memory,
+      sensitivity: LifeContextSensitivity.standard,
+      category: 'preferences',
+      isHealth: false,
+      text: 'Souviens-toi que je préfère les rendez-vous le matin',
+      normalizedText: 'souviens toi que je prefere les rendez vous le matin',
+      createdAt: now,
+      updatedAt: now,
+      lastMutationId: 'natural',
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MemoryLibraryScreen(
+          initialSnapshot: MemoryLibrarySnapshot(
+            memories: [memory],
+            pendingIds: const {},
+            conflictIds: const {},
+            conflicts: const [],
+            syncStatus: MemorySyncStatus.synced,
+            policy: snapshot.policy,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Je préfère les rendez-vous le matin.'), findsOneWidget);
+    expect(find.text('Préférence'), findsOneWidget);
+    expect(find.text('Habitudes'), findsNothing);
   });
 }
 
