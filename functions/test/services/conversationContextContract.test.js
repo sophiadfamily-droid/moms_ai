@@ -262,12 +262,35 @@ test("accepts bounded Human and explicit Relation projection", () => {
       .facts.relationRole, "child");
 });
 
+test("accepts bounded relationship status and couple dates", () => {
+  const value = payload();
+  value.conversationContext.sections[0].items = [{
+    type: "relationshipDetails",
+    confirmation: "confirmed",
+    freshness: "current",
+    facts: {
+      kind: "spouse",
+      relationshipStatus: "Mariée",
+      marriageDate: "2020-08-12",
+      engagementDate: "2019-05-04",
+    },
+  }];
+
+  const result = validateConversationRequest(value);
+  const facts = result.conversationContext.sections[0].items[0].facts;
+  assert.equal(facts.relationshipStatus, "Mariée");
+  assert.equal(facts.marriageDate, "2020-08-12");
+  assert.equal(facts.engagementDate, "2019-05-04");
+});
+
 test("refuses invalid Human dates, node IDs and relation roles", () => {
   for (const facts of [
     {birthDate: "05/06/2018"},
     {birthDate: "2026-02-30"},
     {nodeId: "private user id"},
     {relationRole: "unknownRelation"},
+    {marriageDate: "12/08/2020"},
+    {engagementDate: "2026-02-30"},
   ]) {
     const value = payload();
     value.conversationContext.sections[0].items = [{

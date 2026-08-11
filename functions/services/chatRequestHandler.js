@@ -19,6 +19,9 @@ const {sanitizeEventParticipants} = require("./eventParticipantContract");
 const {sanitizeEventMutations} = require("./eventMutationContract");
 const {writeDiagnostic} = require("./diagnostics");
 const {buildEventClarification} = require("./eventClarificationDraft");
+const {
+  canonicalProfileFactAnswer,
+} = require("./canonicalProfileFactAnswer");
 const {validateConversationRequest} =
   require("./conversationContextContract");
 const {validateConversationResponse} =
@@ -157,6 +160,17 @@ async function handleChatRequest(
   });
   const planningComplexity = detectPlanningComplexity(message);
   const taskCreation = extractTaskCreation(message, now());
+
+  const profileFactAnswer = canonicalProfileFactAnswer(source);
+  if (profileFactAnswer !== null) {
+    const validated = validateConversationResponse(profileFactAnswer, source);
+    return {
+      reply: validated.visibleText,
+      actions: validated.actions,
+      memories: validated.memories,
+      epistemic: validated.epistemic,
+    };
+  }
 
   if (detectedIntent.understandingLevel === "ambiguous") {
     const ambiguityType = detectedIntent.ambiguityType || "multiple_meanings";

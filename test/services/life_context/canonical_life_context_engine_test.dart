@@ -146,6 +146,9 @@ void main() {
       expect(section.responsibilities.single.kind, 'temporary');
       expect(section.relationships.single.status, 'historical');
       expect(section.relationships.single.validUntil, isNotNull);
+      expect(section.relationships.single.relationshipStatus, 'Mariée');
+      expect(section.relationships.single.marriageDate, '2020-08-12');
+      expect(section.relationships.single.engagementDate, '2019-03-17');
       expect(section.persons.last.confirmation, 'needsConfirmation');
       expect(section.persons.first.birthDate, '1990-02-01');
       expect(section.metadata.revision, 3);
@@ -525,6 +528,11 @@ HumanModelLocalState _humanState({
         accountScopeId: scope,
         displayName: 'Homonyme',
         evidence: pending,
+        customFields: const {
+          'relationshipStatus': 'Mariée',
+          'marriageDate': '12/08/2020',
+          'engagementDate': '17/03/2019',
+        },
       ),
       HumanPerson(
         id: 'person-a',

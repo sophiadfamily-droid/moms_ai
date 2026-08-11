@@ -307,6 +307,7 @@ final class HumanRelationship {
     HumanRecordStatus? status,
     HumanValidityPeriod? validity,
     HumanEvidence? evidence,
+    Map<String, Object?>? structuredNotes,
   }) =>
       HumanRelationship(
         id: id,
@@ -319,7 +320,7 @@ final class HumanRelationship {
         status: status ?? this.status,
         validity: validity ?? this.validity,
         evidence: evidence ?? this.evidence,
-        structuredNotes: structuredNotes,
+        structuredNotes: structuredNotes ?? this.structuredNotes,
       );
 
   Map<String, Object?> toJson() => {

@@ -198,6 +198,8 @@ void main() {
         partnerHumanPersonId: 'person-alex',
         partnerName: 'Alex',
         partnerBirthDate: '03/04/1991',
+        relationshipStatus: 'Mariée',
+        marriageDate: '12/08/2020',
         children: [
           _child('Sam', birthDate: '05/06/2018')
               .copyWith(humanPersonId: 'person-sam'),
@@ -223,6 +225,17 @@ void main() {
           HumanRelationshipTypes.partner,
           HumanRelationshipTypes.child,
         ]),
+      );
+      final partnerRelationship = updated.relationships.singleWhere(
+        (relation) => relation.targetPersonId == 'person-alex',
+      );
+      expect(
+        partnerRelationship.structuredNotes,
+        containsPair('relationshipStatus', 'Mariée'),
+      );
+      expect(
+        partnerRelationship.structuredNotes,
+        containsPair('marriageDate', '12/08/2020'),
       );
       expect(
         updated.relationships.every(
@@ -254,6 +267,43 @@ void main() {
       expect(restored.children.single.firstName, 'Sam');
       expect(restored.children.single.birthDate, '05/06/2018');
       expect(restored.children.single.humanPersonId, 'person-sam');
+    });
+
+    test('récupère les détails du couple déjà présents dans un ancien profil',
+        () {
+      final profile = _profile(
+        partnerName: 'Alex',
+        relationshipStatus: 'Fiancée',
+      ).copyWith(
+        humanPersonId: 'person-main',
+        partnerHumanPersonId: 'person-alex',
+        engagementDate: '04/05/2024',
+      );
+      final migrated = const LegacyUserProfileHumanAdapter().migrate(
+        profile: profile,
+        legacyProfile: profile.toJson(),
+        accountScopeId: 'account-a',
+        idGenerator: FakeEntityIdGenerator(['relation-alex']),
+      );
+      final oldModel = migrated.copyWith(
+        relationships: [
+          migrated.relationships.single.copyWith(structuredNotes: const {}),
+        ],
+      );
+
+      final result = const LegacyUserProfileReconciliationService().reconcile(
+        current: oldModel,
+        legacyProfile: profile,
+      );
+
+      expect(
+        result.proposed.relationships.single.structuredNotes,
+        containsPair('relationshipStatus', 'Fiancée'),
+      );
+      expect(
+        result.proposed.relationships.single.structuredNotes,
+        containsPair('engagementDate', '04/05/2024'),
+      );
     });
   });
 

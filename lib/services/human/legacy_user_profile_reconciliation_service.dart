@@ -85,7 +85,11 @@ final class LegacyUserProfileReconciliationService {
       }
     }
 
-    void ensureRelationship(String targetId, String type) {
+    void ensureRelationship(
+      String targetId,
+      String type, {
+      Map<String, Object?> structuredNotes = const {},
+    }) {
       retainedRelatedIds.add(targetId);
       final index = relationships.indexWhere(
         (relation) =>
@@ -96,6 +100,7 @@ final class LegacyUserProfileReconciliationService {
       if (index >= 0) {
         relationships[index] = relationships[index].copyWith(
           evidence: _explicitEvidence,
+          structuredNotes: structuredNotes,
         );
         return;
       }
@@ -107,6 +112,7 @@ final class LegacyUserProfileReconciliationService {
           targetPersonId: targetId,
           type: type,
           evidence: _explicitEvidence,
+          structuredNotes: structuredNotes,
         ),
       );
     }
@@ -115,7 +121,11 @@ final class LegacyUserProfileReconciliationService {
     final partnerId = profile.partnerHumanPersonId.trim();
     if (partnerId.isNotEmpty && profile.partnerName.trim().isNotEmpty) {
       upsertPerson(partnerId, profile.partnerName, profile.partnerBirthDate);
-      ensureRelationship(partnerId, HumanRelationshipTypes.partner);
+      ensureRelationship(
+        partnerId,
+        HumanRelationshipTypes.partner,
+        structuredNotes: _coupleDetails(profile),
+      );
     }
     for (final child in profile.children) {
       final childId = child.humanPersonId.trim();
@@ -151,6 +161,15 @@ final class LegacyUserProfileReconciliationService {
       legacyProfile: legacy,
     );
   }
+
+  Map<String, Object?> _coupleDetails(UserProfile profile) => {
+        if (profile.relationshipStatus.trim().isNotEmpty)
+          'relationshipStatus': profile.relationshipStatus.trim(),
+        if (profile.marriageDate.trim().isNotEmpty)
+          'marriageDate': profile.marriageDate.trim(),
+        if (profile.engagementDate.trim().isNotEmpty)
+          'engagementDate': profile.engagementDate.trim(),
+      };
 
   LegacyHumanReconciliationResult reconcile({
     required HumanModel current,
@@ -222,6 +241,25 @@ final class LegacyUserProfileReconciliationService {
             _optional(legacyProfile.partnerName) &&
         previousPartnerId != null) {
       ambiguities.add('partner');
+    }
+
+    final effectivePartnerId = previousPartnerId ??
+        (suppliedPartnerId.isEmpty ? null : suppliedPartnerId);
+    if (effectivePartnerId != null) {
+      final relationshipIndex = nextRelationships.indexWhere(
+        (relation) =>
+            relation.sourcePersonId == current.primaryPersonId &&
+            relation.targetPersonId == effectivePartnerId &&
+            relation.status == HumanRecordStatus.active &&
+            (relation.type == HumanRelationshipTypes.partner ||
+                relation.type == HumanRelationshipTypes.spouse),
+      );
+      if (relationshipIndex >= 0) {
+        nextRelationships[relationshipIndex] =
+            nextRelationships[relationshipIndex].copyWith(
+          structuredNotes: _coupleDetails(legacyProfile),
+        );
+      }
     }
 
     final previousChildren = _childMaps(previous['children']);

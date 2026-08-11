@@ -155,6 +155,9 @@ final class HumanContextRecord {
     this.placeEntityId,
     this.evidenceSource,
     this.reciprocal = false,
+    this.relationshipStatus,
+    this.marriageDate,
+    this.engagementDate,
   });
 
   final String id;
@@ -172,6 +175,9 @@ final class HumanContextRecord {
   final String? placeEntityId;
   final String? evidenceSource;
   final bool reciprocal;
+  final String? relationshipStatus;
+  final String? marriageDate;
+  final String? engagementDate;
 
   Map<String, Object?> toJson() => {
         'id': id,
@@ -191,6 +197,10 @@ final class HumanContextRecord {
         if (placeEntityId != null) 'placeEntityId': placeEntityId,
         if (evidenceSource != null) 'evidenceSource': evidenceSource,
         if (reciprocal) 'reciprocal': true,
+        if (relationshipStatus != null)
+          'relationshipStatus': relationshipStatus,
+        if (marriageDate != null) 'marriageDate': marriageDate,
+        if (engagementDate != null) 'engagementDate': engagementDate,
       };
 }
 

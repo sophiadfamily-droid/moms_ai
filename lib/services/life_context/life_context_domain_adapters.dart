@@ -145,6 +145,18 @@ final class HumanModelLifeContextAdapter implements LifeContextDomainAdapter {
                 targetReferenceId: record.targetPersonId,
                 evidenceSource: record.evidence.source.name,
                 reciprocal: record.reciprocal,
+                relationshipStatus:
+                    _relationshipDetail(model, record, 'relationshipStatus'),
+                marriageDate: _relationshipDate(
+                  model,
+                  record,
+                  'marriageDate',
+                ),
+                engagementDate: _relationshipDate(
+                  model,
+                  record,
+                  'engagementDate',
+                ),
               ),
             )
             .toList(),
@@ -257,6 +269,9 @@ final class HumanModelLifeContextAdapter implements LifeContextDomainAdapter {
     String? placeEntityId,
     String? evidenceSource,
     bool reciprocal = false,
+    String? relationshipStatus,
+    String? marriageDate,
+    String? engagementDate,
   }) =>
       HumanContextRecord(
         id: id,
@@ -274,7 +289,56 @@ final class HumanModelLifeContextAdapter implements LifeContextDomainAdapter {
         placeEntityId: placeEntityId,
         evidenceSource: evidenceSource,
         reciprocal: reciprocal,
+        relationshipStatus: relationshipStatus,
+        marriageDate: marriageDate,
+        engagementDate: engagementDate,
       );
+}
+
+String? _structuredString(Map<String, Object?> values, String key) {
+  final value = values[key];
+  if (value is! String || value.trim().isEmpty) return null;
+  return value.trim();
+}
+
+String? _structuredDate(Map<String, Object?> values, String key) {
+  final source = _structuredString(values, key);
+  if (source == null) return null;
+  final iso = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$').firstMatch(source);
+  final french = RegExp(r'^(\d{2})/(\d{2})/(\d{4})$').firstMatch(source);
+  final year = int.tryParse(iso?.group(1) ?? french?.group(3) ?? '');
+  final month = int.tryParse(iso?.group(2) ?? french?.group(2) ?? '');
+  final day = int.tryParse(iso?.group(3) ?? french?.group(1) ?? '');
+  if (year == null || month == null || day == null) return null;
+  final parsed = DateTime.utc(year, month, day);
+  if (parsed.year != year || parsed.month != month || parsed.day != day) {
+    return null;
+  }
+  String twoDigits(int input) => input.toString().padLeft(2, '0');
+  return '${parsed.year.toString().padLeft(4, '0')}-'
+      '${twoDigits(parsed.month)}-${twoDigits(parsed.day)}';
+}
+
+String? _relationshipDetail(
+  HumanModel model,
+  HumanRelationship relationship,
+  String key,
+) {
+  final canonical = _structuredString(relationship.structuredNotes, key);
+  if (canonical != null) return canonical;
+  final person = model.personById(relationship.targetPersonId);
+  return person == null ? null : _structuredString(person.customFields, key);
+}
+
+String? _relationshipDate(
+  HumanModel model,
+  HumanRelationship relationship,
+  String key,
+) {
+  final canonical = _structuredDate(relationship.structuredNotes, key);
+  if (canonical != null) return canonical;
+  final person = model.personById(relationship.targetPersonId);
+  return person == null ? null : _structuredDate(person.customFields, key);
 }
 
 String? _humanBirthDate(HumanPerson person) {

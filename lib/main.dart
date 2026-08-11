@@ -292,15 +292,11 @@ class _ZeliaAppState extends State<ZeliaApp> with WidgetsBindingObserver {
     if (accountScopeId != null && accountScopeId.trim().isNotEmpty) {
       try {
         final humanModelService = await HumanModelService.createProduction();
-        var humanResult = await humanModelService.bootstrap(
+        final humanResult = await humanModelService.bootstrap(
           accountScopeId: accountScopeId,
+          legacyProfile: loadedProfile,
+          legacyProfileJson: loadedProfile?.toJson(),
         );
-        if (humanResult.state == null && loadedProfile != null) {
-          humanResult = await humanModelService.bootstrap(
-            accountScopeId: accountScopeId,
-            legacyProfile: loadedProfile,
-          );
-        }
         if (loadedProfile != null && humanResult.state != null) {
           loadedProfile =
               const HumanModelUserProfileProjectionService().project(

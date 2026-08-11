@@ -65,6 +65,7 @@ const FACT_KEYS = new Set([
   "recurringType", "syncStatus", "revision", "days", "startTime", "endTime",
   "travelMinutes", "title", "category", "sourceNodeId", "targetNodeId",
   "actionRequired", "importance", "urgency", "flexibility",
+  "relationshipStatus", "marriageDate", "engagementDate",
 ]);
 const RELATION_ROLES = new Set([
   "partner", "spouse", "formerPartner", "parent", "child", "sibling",
@@ -125,6 +126,10 @@ function validateFacts(facts) {
     }
     if (key === "birthDate" && !validIsoDate(value)) {
       fail("context_birth_date_invalid");
+    }
+    if (["marriageDate", "engagementDate"].includes(key) &&
+        !validIsoDate(value)) {
+      fail("context_relationship_date_invalid");
     }
     if (key === "nodeId" &&
         !/^[a-z]+:[A-Za-z]+:[A-Za-z0-9._:-]{1,60}$/.test(value)) {

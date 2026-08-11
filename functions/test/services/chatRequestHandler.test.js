@@ -93,6 +93,80 @@ test("uses a 45 second total OpenAI deadline", () => {
   assert.equal(OPENAI_TIMEOUT_MS, 45000);
 });
 
+// eslint-disable-next-line max-len
+test("answers a confirmed marriage date directly from canonical Human", async () => {
+  const value = request("Quelle est ma date de mariage");
+  value.conversationContext.sections = [{
+    type: "human",
+    availability: "available",
+    freshness: "current",
+    items: [{
+      type: "spouse",
+      confirmation: "confirmed",
+      freshness: "current",
+      facts: {
+        kind: "partner",
+        marriageDate: "2020-08-12",
+      },
+    }],
+    budgetLimit: 40,
+    budgetUsed: 2,
+    omittedCount: 0,
+    truncated: false,
+  }];
+  value.conversationContext.budgetUsed = 2;
+  let generations = 0;
+
+  const result = await handleChatRequest(value, {uid: "test-uid"}, {
+    generateResponse: async () => {
+      generations++;
+      return response("unexpected");
+    },
+  });
+
+  assert.equal(generations, 0);
+  assert.equal(result.reply, "Ta date de mariage est le 12 août 2020.");
+  assert.equal(result.epistemic.responseKind, "answer");
+  assert.equal(
+      result.epistemic.groundingReferences[0].factKey,
+      "marriageDate",
+  );
+});
+
+// eslint-disable-next-line max-len
+test("recognizes natural variants without intercepting a statement", async () => {
+  const known = request("Quand est-ce que je me suis mariée ?");
+  known.conversationContext.sections = [{
+    type: "human",
+    availability: "available",
+    freshness: "current",
+    items: [{
+      type: "spouse",
+      confirmation: "confirmed",
+      freshness: "current",
+      facts: {marriageDate: "2021-05-04"},
+    }],
+    budgetLimit: 40,
+    budgetUsed: 1,
+    omittedCount: 0,
+    truncated: false,
+  }];
+  known.conversationContext.budgetUsed = 1;
+  const direct = await handleChatRequest(known, {uid: "test-uid"});
+  assert.equal(direct.reply, "Ta date de mariage est le 4 mai 2021.");
+
+  let generations = 0;
+  const statement = request("Ma date de mariage est le 4 mai 2021");
+  const generated = await handleChatRequest(statement, {uid: "test-uid"}, {
+    generateResponse: async () => {
+      generations++;
+      return response("Je peux retenir cette information.");
+    },
+  });
+  assert.equal(generations, 1);
+  assert.equal(generated.reply, "Je peux retenir cette information.");
+});
+
 test("returns task clarification before model generation", async () => {
   let generations = 0;
   const result = await handleChatRequest(

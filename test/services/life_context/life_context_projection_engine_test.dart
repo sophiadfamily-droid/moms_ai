@@ -217,10 +217,9 @@ void main() {
         contains('Enfant secret'),
       );
       final childFacts = {
-        for (final fact
-            in people
-                .singleWhere((item) => item.id == 'human:person:person-child')
-                .facts)
+        for (final fact in people
+            .singleWhere((item) => item.id == 'human:person:person-child')
+            .facts)
           fact.key: fact.value,
       };
       expect(
@@ -274,6 +273,77 @@ void main() {
         ),
         isEmpty,
       );
+    });
+
+    test('transporte les détails confirmés du couple vers la conversation', () {
+      final snapshot = _snapshot(now);
+      final confirmedPartner = HumanContextRecord(
+        id: 'relationship-couple',
+        kind: 'spouse',
+        references: const ['person-main', 'person-partner'],
+        status: 'active',
+        confirmation: 'confirmed',
+        sourceReferenceId: 'person-main',
+        targetReferenceId: 'person-partner',
+        relationshipStatus: 'Mariée',
+        marriageDate: '12/08/2020',
+      );
+      final enriched = LifeContextSnapshot(
+        generatedAt: snapshot.generatedAt,
+        identity: snapshot.identity,
+        household: snapshot.household,
+        places: snapshot.places,
+        mobility: snapshot.mobility,
+        work: snapshot.work,
+        agenda: snapshot.agenda,
+        routines: snapshot.routines,
+        goals: snapshot.goals,
+        preferences: snapshot.preferences,
+        constraints: snapshot.constraints,
+        notes: snapshot.notes,
+        memory: snapshot.memory,
+        accountScopeId: snapshot.accountScopeId,
+        snapshotId: snapshot.snapshotId,
+        globalState: snapshot.globalState,
+        human: HumanContextSection(
+          metadata: snapshot.human!.metadata,
+          primaryPersonId: snapshot.human!.primaryPersonId,
+          persons: [
+            ...snapshot.human!.persons,
+            const HumanContextPerson(
+              id: 'person-partner',
+              displayName: 'Partenaire',
+              status: 'active',
+              confirmation: 'confirmed',
+            ),
+          ],
+          relationships: [
+            ...snapshot.human!.relationships,
+            confirmedPartner,
+          ],
+          households: snapshot.human!.households,
+          residences: snapshot.human!.residences,
+          memberships: snapshot.human!.memberships,
+          responsibilities: snapshot.human!.responsibilities,
+        ),
+        identityDomain: snapshot.identityDomain,
+        eventDomain: snapshot.eventDomain,
+        taskDomain: snapshot.taskDomain,
+        routineDomain: snapshot.routineDomain,
+        memoryDomain: snapshot.memoryDomain,
+      );
+
+      final projection =
+          _build(enriched, LifeContextConsumerPurpose.conversation);
+      final relationship = _section(
+        projection,
+        LifeContextProjectionSectionType.human,
+      ).items.singleWhere((item) => item.id.contains('relationship-couple'));
+      final facts = {
+        for (final fact in relationship.facts) fact.key: fact.value,
+      };
+      expect(facts[LifeContextProjectionFactKeys.relationshipStatus], 'Mariée');
+      expect(facts[LifeContextProjectionFactKeys.marriageDate], '2020-08-12');
     });
 
     test('filtre Events hors fenêtre et Tasks terminées', () {

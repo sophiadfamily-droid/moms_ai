@@ -55,6 +55,7 @@ final class LegacyUserProfileHumanAdapter {
           targetPersonId: partnerId,
           type: HumanRelationshipTypes.partner,
           evidence: evidence,
+          structuredNotes: _coupleDetails(profile),
         ),
       );
     }
@@ -108,6 +109,15 @@ final class LegacyUserProfileHumanAdapter {
     final normalized = value.trim();
     return normalized.isEmpty ? null : normalized;
   }
+
+  Map<String, Object?> _coupleDetails(UserProfile profile) => {
+        if (profile.relationshipStatus.trim().isNotEmpty)
+          'relationshipStatus': profile.relationshipStatus.trim(),
+        if (profile.marriageDate.trim().isNotEmpty)
+          'marriageDate': profile.marriageDate.trim(),
+        if (profile.engagementDate.trim().isNotEmpty)
+          'engagementDate': profile.engagementDate.trim(),
+      };
 
   String _idOrGenerate(
     String existing,

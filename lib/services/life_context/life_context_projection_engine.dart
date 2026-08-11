@@ -324,6 +324,25 @@ final class LifeContextProjectionEngine {
           contract,
         );
       }
+      for (final relationship in section.relationships) {
+        if (relationship.relationshipStatus == null &&
+            relationship.marriageDate == null &&
+            relationship.engagementDate == null) {
+          continue;
+        }
+        _addAllowed(
+          result,
+          _recordItem(
+            snapshot,
+            section.metadata,
+            relationship,
+            'relationshipDetails',
+            LifeContextSensitivityLevel.privatePersonal,
+            contract,
+          ),
+          contract,
+        );
+      }
     }
     for (final responsibility in section.responsibilities) {
       _addAllowed(
@@ -740,6 +759,8 @@ final class LifeContextProjectionEngine {
     LifeContextSensitivityLevel sensitivity,
     LifeContextConsumerContract contract,
   ) {
+    final marriageDate = _normalizedDate(record.marriageDate);
+    final engagementDate = _normalizedDate(record.engagementDate);
     final facts = <LifeContextProjectionFact>[
       _fact(LifeContextProjectionFactKeys.kind, record.kind, sensitivity),
       if (record.label != null &&
@@ -761,6 +782,30 @@ final class LifeContextProjectionEngine {
           LifeContextProjectionFactKeys.end,
           record.validUntil!.toUtc().toIso8601String(),
           LifeContextSensitivityLevel.publicTechnical,
+        ),
+      if (contract.purpose == LifeContextConsumerPurpose.conversation &&
+          record.relationshipStatus != null)
+        _fact(
+          LifeContextProjectionFactKeys.relationshipStatus,
+          record.relationshipStatus!,
+          LifeContextSensitivityLevel.privatePersonal,
+          contract: contract,
+        ),
+      if (contract.purpose == LifeContextConsumerPurpose.conversation &&
+          marriageDate != null)
+        _fact(
+          LifeContextProjectionFactKeys.marriageDate,
+          marriageDate,
+          LifeContextSensitivityLevel.privatePersonal,
+          contract: contract,
+        ),
+      if (contract.purpose == LifeContextConsumerPurpose.conversation &&
+          engagementDate != null)
+        _fact(
+          LifeContextProjectionFactKeys.engagementDate,
+          engagementDate,
+          LifeContextSensitivityLevel.privatePersonal,
+          contract: contract,
         ),
     ];
     return _item(
@@ -926,6 +971,24 @@ final class LifeContextProjectionEngine {
       _ => null,
     };
   }
+}
+
+String? _normalizedDate(String? value) {
+  final source = value?.trim();
+  if (source == null || source.isEmpty) return null;
+  final iso = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$').firstMatch(source);
+  final french = RegExp(r'^(\d{2})/(\d{2})/(\d{4})$').firstMatch(source);
+  final year = int.tryParse(iso?.group(1) ?? french?.group(3) ?? '');
+  final month = int.tryParse(iso?.group(2) ?? french?.group(2) ?? '');
+  final day = int.tryParse(iso?.group(3) ?? french?.group(1) ?? '');
+  if (year == null || month == null || day == null) return null;
+  final parsed = DateTime.utc(year, month, day);
+  if (parsed.year != year || parsed.month != month || parsed.day != day) {
+    return null;
+  }
+  String twoDigits(int input) => input.toString().padLeft(2, '0');
+  return '${year.toString().padLeft(4, '0')}-'
+      '${twoDigits(month)}-${twoDigits(day)}';
 }
 
 String _closedConversationRelationRole(String value) => const {
