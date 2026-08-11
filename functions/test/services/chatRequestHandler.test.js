@@ -177,6 +177,119 @@ function personalProfileRequest(message) {
   return value;
 }
 
+/**
+ * Builds profile context with day-specific work and family schedules.
+ * @param {string} message Visible user question.
+ * @return {object} Canonical request with typed routine items.
+ */
+function scheduledProfileRequest(message) {
+  const value = personalProfileRequest(message);
+  value.conversationContext.sections.push({
+    type: "routine",
+    availability: "available",
+    freshness: "current",
+    items: [
+      {
+        type: "routine",
+        confirmation: "confirmed",
+        freshness: "current",
+        facts: {
+          routineKind: "workSchedule",
+          subjectNodeId: "human:person:person-main",
+          title: "Travail matin",
+          days: "Lundi",
+          startTime: "09:00",
+          endTime: "12:00",
+        },
+      },
+      {
+        type: "routine",
+        confirmation: "confirmed",
+        freshness: "current",
+        facts: {
+          routineKind: "workSchedule",
+          subjectNodeId: "human:person:person-main",
+          title: "Travail après-midi",
+          days: "Mercredi",
+          startTime: "14:00",
+          endTime: "17:00",
+        },
+      },
+      {
+        type: "routine",
+        confirmation: "confirmed",
+        freshness: "current",
+        facts: {
+          routineKind: "workSchedule",
+          subjectNodeId: "human:person:person-willy",
+          title: "Travail",
+          days: "Mardi",
+          startTime: "08:00",
+          endTime: "16:00",
+        },
+      },
+      {
+        type: "routine",
+        confirmation: "confirmed",
+        freshness: "current",
+        facts: {
+          routineKind: "personalActivity",
+          subjectNodeId: "human:person:person-main",
+          title: "Pilate",
+          days: "Lundi",
+          startTime: "18:00",
+          endTime: "19:00",
+        },
+      },
+      {
+        type: "routine",
+        confirmation: "confirmed",
+        freshness: "current",
+        facts: {
+          routineKind: "personalActivity",
+          subjectNodeId: "human:person:person-main",
+          title: "Natation",
+          days: "Mercredi",
+          startTime: "10:00",
+          endTime: "11:00",
+        },
+      },
+      {
+        type: "routine",
+        confirmation: "confirmed",
+        freshness: "current",
+        facts: {
+          routineKind: "schoolSchedule",
+          subjectNodeId: "human:person:person-kassim",
+          title: "École",
+          days: "Mardi,Lundi",
+          startTime: "08:30",
+          endTime: "16:30",
+        },
+      },
+      {
+        type: "routine",
+        confirmation: "confirmed",
+        freshness: "current",
+        facts: {
+          routineKind: "childActivity",
+          subjectNodeId: "human:person:person-kassim",
+          title: "Football",
+          days: "Mercredi",
+          startTime: "17:00",
+          endTime: "18:00",
+        },
+      },
+    ],
+    budgetLimit: 55,
+    budgetUsed: 49,
+    omittedCount: 0,
+    truncated: false,
+  });
+  value.conversationContext.budgetUsed = 67;
+  return value;
+}
+
 test("uses a 45 second total OpenAI deadline", () => {
   assert.equal(OPENAI_TIMEOUT_MS, 45000);
 });
@@ -346,6 +459,140 @@ test("does not choose between several children without a name", async () => {
   assert.equal(generations, 1);
   assert.equal(result.reply, "De quel enfant parles-tu ?");
 });
+
+test("answers grounded profile schedules", async () => {
+  for (const [message, expected] of [
+    [
+      "Quels sont mes horaires de travail ?",
+      "Tu travailles le lundi de 9 h à 12 h et le mercredi de 14 h à 17 h.",
+    ],
+    [
+      "À quelle heure je commence le travail ?",
+      "Tu travailles le lundi de 9 h à 12 h et le mercredi de 14 h à 17 h.",
+    ],
+    [
+      "Quels sont les horaires de travail de Willy ?",
+      "Willy travaille le mardi de 8 h à 16 h.",
+    ],
+    [
+      "Quand travaille Willy ?",
+      "Willy travaille le mardi de 8 h à 16 h.",
+    ],
+    [
+      "Quelles sont mes activités ?",
+      "Tes activités sont : Pilate le lundi de 18 h à 19 h et Natation " +
+        "le mercredi de 10 h à 11 h.",
+    ],
+    [
+      "Quand est mon Pilates ?",
+      "Tu as Pilate le lundi de 18 h à 19 h.",
+    ],
+    [
+      "Quels sont les horaires d’école de Kassim ?",
+      "Kassim va à l’école le lundi et le mardi de 8 h 30 à 16 h 30.",
+    ],
+    [
+      "Quelles sont les activités de Kassim ?",
+      "Les activités de Kassim sont : Football le mercredi de 17 h à 18 h.",
+    ],
+  ]) {
+    let generations = 0;
+    const result = await handleChatRequest(
+        scheduledProfileRequest(message),
+        {uid: "test-uid"},
+        {generateResponse: async () => {
+          generations++;
+          return response("unexpected");
+        }},
+    );
+
+    assert.equal(generations, 0, message);
+    assert.equal(result.reply, expected, message);
+    assert.equal(result.epistemic.responseKind, "answer", message);
+    assert.ok(
+        result.epistemic.usedSourceTypes.includes("lifeContextRoutine"),
+        message,
+    );
+  }
+});
+
+test("does not guess ambiguous child schedules", async () => {
+  const value = scheduledProfileRequest(
+      "Quels sont les horaires d’école de mon enfant ?");
+  value.conversationContext.sections[0].items.push({
+    type: "person",
+    confirmation: "confirmed",
+    freshness: "current",
+    facts: {
+      nodeId: "human:person:person-emma",
+      personRole: "related",
+      displayName: "Emma",
+      birthDate: "2018-06-05",
+    },
+  });
+  value.conversationContext.sections[1].items.push({
+    type: "relation",
+    confirmation: "confirmed",
+    freshness: "current",
+    facts: {
+      relationRole: "child",
+      sourceNodeId: "human:person:person-main",
+      targetNodeId: "human:person:person-emma",
+    },
+  });
+  let generations = 0;
+  const result = await handleChatRequest(value, {uid: "test-uid"}, {
+    generateResponse: async () => {
+      generations++;
+      return response("De quel enfant parles-tu ?");
+    },
+  });
+
+  assert.equal(generations, 1);
+  assert.equal(result.reply, "De quel enfant parles-tu ?");
+});
+
+test("does not intercept a profile schedule statement", async () => {
+  let generations = 0;
+  const value = scheduledProfileRequest(
+      "Je travaille le lundi de 9 heures à 12 heures");
+  const result = await handleChatRequest(value, {uid: "test-uid"}, {
+    generateResponse: async () => {
+      generations++;
+      return response("C’est bien noté.");
+    },
+  });
+
+  assert.equal(generations, 1);
+  assert.equal(result.reply, "C’est bien noté.");
+});
+
+test(
+    "does not present a truncated schedule as the complete profile",
+    async () => {
+      const value = scheduledProfileRequest("Quelles sont mes activités ?");
+      const routineSection = value.conversationContext.sections[2];
+      routineSection.truncated = true;
+      routineSection.omittedCount = 2;
+      value.conversationContext.omittedCount = 2;
+      value.conversationContext.truncatedSections = ["routine"];
+      let generations = 0;
+      const result = await handleChatRequest(value, {uid: "test-uid"}, {
+        generateResponse: async () => {
+          generations++;
+          return response(
+              "Je n’ai pas encore toute la liste de tes activités.",
+          );
+        },
+      });
+
+      assert.equal(generations, 1);
+      assert.equal(
+          result.reply,
+          "Je n’ai pas encore toute la liste de tes activités.",
+      );
+    },
+);
 
 test("answers family/work status from canonical Human", async () => {
   for (const [message, factKey, value, expected] of [

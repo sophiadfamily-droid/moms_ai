@@ -754,6 +754,7 @@ final class RoutineLifeContextAdapter implements LifeContextDomainAdapter {
               startTime: null,
               endTime: null,
               travelMinutes: int.tryParse(activity.travelMinutes),
+              humanPersonId: state!.model.primaryPersonId,
             ),
           );
         } else {
@@ -761,15 +762,20 @@ final class RoutineLifeContextAdapter implements LifeContextDomainAdapter {
               rangeIndex < activity.timeRanges.length;
               rangeIndex++) {
             final range = activity.timeRanges[rangeIndex];
+            final rangeDays =
+                SchoolScheduleMetadataService.daysFromRange(range);
             routines.add(
               RoutineContextItem(
                 id: 'personalActivity:$index:$rangeIndex',
                 source: 'legacyProfile.personalActivities',
                 label: _optional(activity.title),
-                days: List<String>.of(activity.days)..sort(),
+                days: List<String>.of(
+                  rangeDays.isEmpty ? activity.days : rangeDays,
+                )..sort(),
                 startTime: _optional(range.startTime),
                 endTime: _optional(range.endTime),
                 travelMinutes: int.tryParse(activity.travelMinutes),
+                humanPersonId: state!.model.primaryPersonId,
               ),
             );
           }
@@ -782,15 +788,23 @@ final class RoutineLifeContextAdapter implements LifeContextDomainAdapter {
         if (range.startTime.trim().isEmpty || range.endTime.trim().isEmpty) {
           continue;
         }
+        final rangeDays = SchoolScheduleMetadataService.daysFromRange(range);
         routines.add(
           RoutineContextItem(
             id: 'workSchedule:$rangeIndex',
             source: 'legacyProfile.workTimeRanges',
             label: _optional(range.label),
-            days: List<String>.of(profile.workDays)..sort(),
+            days: List<String>.of(
+              rangeDays.isEmpty ? profile.workDays : rangeDays,
+            )..sort(),
             startTime: range.startTime.trim(),
             endTime: range.endTime.trim(),
-            travelMinutes: int.tryParse(range.travelMinutes),
+            travelMinutes: int.tryParse(
+              range.travelMinutes.trim().isNotEmpty
+                  ? range.travelMinutes
+                  : profile.workTravelMinutes,
+            ),
+            humanPersonId: state!.model.primaryPersonId,
           ),
         );
       }
@@ -818,7 +832,8 @@ final class RoutineLifeContextAdapter implements LifeContextDomainAdapter {
             days: List<String>.of(profile?.workDays ?? const [])..sort(),
             startTime: range.start.trim(),
             endTime: range.end.trim(),
-            travelMinutes: int.tryParse(profile?.transportInfo ?? ''),
+            travelMinutes: int.tryParse(profile?.workTravelMinutes ?? ''),
+            humanPersonId: state!.model.primaryPersonId,
           ),
         );
       }
@@ -855,12 +870,16 @@ final class RoutineLifeContextAdapter implements LifeContextDomainAdapter {
                 range.endTime.trim().isEmpty) {
               continue;
             }
+            final rangeDays =
+                SchoolScheduleMetadataService.daysFromRange(range);
             routines.add(
               RoutineContextItem(
                 id: 'childActivity:$childIndex:$activityIndex:$rangeIndex',
                 source: 'legacyProfile.childActivities',
                 label: _optional(activity.title),
-                days: List<String>.of(activity.days)..sort(),
+                days: List<String>.of(
+                  rangeDays.isEmpty ? activity.days : rangeDays,
+                )..sort(),
                 startTime: range.startTime.trim(),
                 endTime: range.endTime.trim(),
                 travelMinutes: int.tryParse(

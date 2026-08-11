@@ -39,7 +39,7 @@ function requestedRelationshipDate(message) {
 }
 
 function asksQuestion(text) {
-  return /\b(quel(?:le)?|quand|comment|connais|sais|rappelle|dis moi)\b/
+  return /\b(quel(?:le)?s?|quand|comment|connais|sais|rappelle|dis moi)\b/
       .test(text) ||
     text.includes("c est quoi");
 }
@@ -122,6 +122,24 @@ function namedInMessage(name, normalizedMessage) {
   if (normalizedName.length === 0) return false;
   const searchable = ` ${normalizedMessage.replace(/[^a-z0-9]+/g, " ")} `;
   return searchable.includes(` ${normalizedName} `);
+}
+
+function routineWordKey(value) {
+  if (value.length > 3 && /[sx]$/.test(value)) return value.slice(0, -1);
+  return value;
+}
+
+function routineTitleInMessage(title, message) {
+  const words = (value) => normalizedText(value)
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim()
+      .split(/\s+/)
+      .filter((word) => word.length > 0)
+      .map(routineWordKey);
+  const titleWords = words(title);
+  if (titleWords.length === 0) return false;
+  const searchable = ` ${words(message).join(" ")} `;
+  return searchable.includes(` ${titleWords.join(" ")} `);
 }
 
 function personFactSentence(requested, selected) {
@@ -261,6 +279,282 @@ function canonicalPersonFactAnswer(request) {
       warningCodes: [],
       responseId: `profile-person-${requested.factKey}-` +
         `${context.projectionVersion}`,
+    },
+  };
+}
+
+const DAY_NAMES = new Map([
+  ["1", "lundi"], ["lundi", "lundi"], ["monday", "lundi"],
+  ["2", "mardi"], ["mardi", "mardi"], ["tuesday", "mardi"],
+  ["3", "mercredi"], ["mercredi", "mercredi"],
+  ["wednesday", "mercredi"],
+  ["4", "jeudi"], ["jeudi", "jeudi"], ["thursday", "jeudi"],
+  ["5", "vendredi"], ["vendredi", "vendredi"],
+  ["friday", "vendredi"],
+  ["6", "samedi"], ["samedi", "samedi"], ["saturday", "samedi"],
+  ["7", "dimanche"], ["dimanche", "dimanche"],
+  ["sunday", "dimanche"],
+]);
+const DAY_POSITIONS = new Map([
+  ["lundi", 1], ["mardi", 2], ["mercredi", 3], ["jeudi", 4],
+  ["vendredi", 5], ["samedi", 6], ["dimanche", 7],
+]);
+
+function currentRoutineItems(context) {
+  const items = [];
+  let stale = false;
+  let truncated = false;
+  for (const section of context.sections) {
+    if (section.type !== "routine" ||
+        !["available", "availableStale"].includes(section.availability)) {
+      continue;
+    }
+    stale = stale || section.freshness === "stale" ||
+      section.availability === "availableStale";
+    truncated = truncated || section.truncated;
+    for (const item of section.items) {
+      if (item.type !== "routine" || item.confirmation !== "confirmed" ||
+          !["current", "stale"].includes(item.freshness)) {
+        continue;
+      }
+      stale = stale || item.freshness === "stale";
+      items.push(item);
+    }
+  }
+  return {items, stale, truncated};
+}
+
+function requestedRoutineProfileFact(message, routines = []) {
+  const text = normalizedText(message);
+  if (!asksQuestion(text)) return null;
+  const scheduleWords = new RegExp(
+      "\\b(horaire|horaires|planning|jour|jours|heure|heures|quand|" +
+      "commence|commencer|termine|terminer|finis|finir)\\b",
+  );
+  let kind = null;
+  if (scheduleWords.test(text) &&
+      /\b(travail\w*|boulot|professionnel|professionnelle)\b/.test(text)) {
+    kind = "work";
+  } else if (scheduleWords.test(text) &&
+      /\b(ecole|creche|scolaire)\b/.test(text)) {
+    kind = "school";
+  } else if (/\b(activite|activites|sport|sports|loisir|loisirs)\b/
+      .test(text)) {
+    kind = "activity";
+  }
+
+  const namedTitles = routines.filter((item) =>
+    typeof item.facts.title === "string" &&
+    routineTitleInMessage(item.facts.title, text));
+  if (kind === null && namedTitles.length === 0) return null;
+
+  return {
+    kind: kind || "named",
+    text,
+    namedTitles: new Set(namedTitles.map((item) => item.facts.title)),
+    broadActivity: kind === "activity" &&
+      /\b(quelles|quels|toutes|tous|liste)\b/.test(text),
+  };
+}
+
+function relatedPeopleForRoutine(primary, people, relations, role) {
+  const ids = relatedNodeIds(primary.facts.nodeId, relations, role);
+  return people.filter((person) => ids.has(person.facts.nodeId));
+}
+
+function routineSubject(requested, people, relations) {
+  const primary = people.find((item) => item.facts.personRole === "primary");
+  if (primary === undefined || typeof primary.facts.nodeId !== "string") {
+    return null;
+  }
+  const related = [
+    ...relatedPeopleForRoutine(primary, people, relations, "partner"),
+    ...relatedPeopleForRoutine(primary, people, relations, "child"),
+  ];
+  const named = related.filter((person) =>
+    typeof person.facts.displayName === "string" &&
+    namedInMessage(person.facts.displayName, requested.text));
+  if (named.length === 1) return named[0];
+  if (named.length > 1) return null;
+
+  const asksChild = requested.kind === "school" ||
+    /\b(fils|fille|enfant|enfants)\b/.test(requested.text);
+  if (!asksChild) return primary;
+  const children = relatedPeopleForRoutine(
+      primary, people, relations, "child");
+  return children.length === 1 ? children[0] : null;
+}
+
+function frenchClock(value) {
+  if (typeof value !== "string") return null;
+  const match = /^(\d{1,2})(?::|h)(\d{2})?$/.exec(value.trim());
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2] || "0");
+  if (hour > 23 || minute > 59) return null;
+  return minute === 0 ? `${hour} h` : `${hour} h ${match[2]}`;
+}
+
+function frenchDays(value) {
+  if (typeof value !== "string") return null;
+  const days = [];
+  for (const raw of value.split(",")) {
+    const day = DAY_NAMES.get(normalizedText(raw).trim());
+    if (day !== undefined && !days.includes(day)) days.push(day);
+  }
+  if (days.length === 0) return null;
+  days.sort((a, b) => DAY_POSITIONS.get(a) - DAY_POSITIONS.get(b));
+  return joinedNames(days.map((day) => `le ${day}`));
+}
+
+function scheduleSuffix(item) {
+  const days = frenchDays(item.facts.days);
+  const start = frenchClock(item.facts.startTime);
+  const end = frenchClock(item.facts.endTime);
+  const parts = [];
+  if (days !== null) parts.push(days);
+  if (start !== null && end !== null) parts.push(`de ${start} à ${end}`);
+  else if (start !== null) parts.push(`à partir de ${start}`);
+  return parts.join(" ");
+}
+
+function joinedSchedules(values) {
+  const clean = values.filter((value) => value.length > 0);
+  return joinedNames(clean);
+}
+
+function naturalRoutineSentence(requested, routines, subject) {
+  const subjectName = subject.facts.displayName;
+  const isPrimary = subject.facts.personRole === "primary";
+  if (requested.kind === "work") {
+    const schedules = joinedSchedules(routines.map(scheduleSuffix));
+    if (schedules.length === 0) return null;
+    return isPrimary ? `Tu travailles ${schedules}` :
+      `${subjectName} travaille ${schedules}`;
+  }
+  if (requested.kind === "school") {
+    if (typeof subjectName !== "string" || subjectName.trim().length === 0) {
+      return null;
+    }
+    const schedules = joinedSchedules(routines.map(scheduleSuffix));
+    return schedules.length === 0 ? null :
+      `${subjectName.trim()} va à l’école ${schedules}`;
+  }
+
+  const descriptions = routines.map((item) => {
+    const title = item.facts.title;
+    if (typeof title !== "string" || title.trim().length === 0) return "";
+    const suffix = scheduleSuffix(item);
+    return suffix.length === 0 ? title.trim() : `${title.trim()} ${suffix}`;
+  });
+  const schedules = joinedSchedules(descriptions);
+  if (schedules.length === 0) return null;
+  if (requested.kind === "named" && routines.length === 1) {
+    return isPrimary ? `Tu as ${schedules}` :
+      `${subjectName} a ${schedules}`;
+  }
+  return isPrimary ? `Tes activités sont : ${schedules}` :
+    `Les activités de ${subjectName} sont : ${schedules}`;
+}
+
+function routineKindsFor(requested, subject) {
+  if (requested.kind === "work") return new Set(["workSchedule"]);
+  if (requested.kind === "school") return new Set(["schoolSchedule"]);
+  if (requested.kind === "activity") {
+    return subject.facts.personRole === "primary" ?
+      new Set(["personalActivity"]) : new Set(["childActivity"]);
+  }
+  return null;
+}
+
+function canonicalRoutineProfileAnswer(request) {
+  const context = request.conversationContext;
+  const routineContext = currentRoutineItems(context);
+  const requested = requestedRoutineProfileFact(
+      request.message, routineContext.items);
+  if (requested === null || routineContext.truncated) return null;
+  const {people, relations} = currentPeopleAndRelations(context);
+  const subject = routineSubject(requested, people, relations);
+  if (subject === null) return null;
+  const kinds = routineKindsFor(requested, subject);
+  let selected = routineContext.items.filter((item) =>
+    item.facts.subjectNodeId === subject.facts.nodeId &&
+    (kinds === null || kinds.has(item.facts.routineKind)));
+  if (requested.namedTitles.size > 0 &&
+      (requested.kind === "named" ||
+       requested.kind === "activity" && !requested.broadActivity)) {
+    selected = selected.filter((item) =>
+      requested.namedTitles.has(item.facts.title));
+  }
+  if (selected.length === 0) return null;
+  const sentence = naturalRoutineSentence(requested, selected, subject);
+  if (sentence === null) return null;
+
+  const routineFactKeys = ["title", "days", "startTime", "endTime"]
+      .filter((key) => selected.some((item) =>
+        typeof item.facts[key] === "string"));
+  const groundingReferences = routineFactKeys.map((factKey) => ({
+    schemaVersion: 1,
+    sourceType: "lifeContextRoutine",
+    section: "routine",
+    factKey,
+    freshness: routineContext.stale ? "stale" : "current",
+    confirmation: "confirmed",
+    projectionVersion: context.projectionVersion,
+  }));
+  const usedSourceTypes = ["lifeContextRoutine"];
+  if (subject.facts.personRole !== "primary") {
+    groundingReferences.push({
+      schemaVersion: 1,
+      sourceType: "lifeContextHuman",
+      section: "human",
+      factKey: "displayName",
+      freshness: "current",
+      confirmation: "confirmed",
+      projectionVersion: context.projectionVersion,
+    });
+    usedSourceTypes.push("lifeContextHuman");
+  }
+  const routineReferenceIndexes = routineFactKeys
+      .map((_, index) => index)
+      .slice(0, 3);
+  const personalClaims = [{
+    claimId: "profile-routine-schedule",
+    category: "routineFact",
+    sourceReferenceIndexes: routineReferenceIndexes,
+    certainty: routineContext.stale ? "stale" : "grounded",
+  }];
+  if (subject.facts.personRole !== "primary") {
+    personalClaims.push({
+      claimId: "profile-routine-person",
+      category: "humanFact",
+      sourceReferenceIndexes: [groundingReferences.length - 1],
+      certainty: "grounded",
+    });
+  }
+  const visibleText = routineContext.stale ?
+    `D’après les dernières informations de ton profil, ` +
+      `${sentence.charAt(0).toLowerCase()}${sentence.slice(1)}.` :
+    `${sentence}.`;
+  return {
+    visibleText,
+    actions: [],
+    memories: [],
+    epistemic: {
+      schemaVersion: 1,
+      responseKind: routineContext.stale ? "answerWithCaveat" : "answer",
+      epistemicState: routineContext.stale ? "stale" : "grounded",
+      confidenceLevel: routineContext.stale ? "medium" : "high",
+      usedSourceTypes,
+      groundingReferences,
+      personalClaims,
+      missingInformation: [],
+      contradictions: [],
+      clarification: null,
+      uncertaintyCodes: routineContext.stale ? ["staleSource"] : [],
+      contextStateObserved: context.state,
+      warningCodes: [],
+      responseId: `profile-routine-${context.projectionVersion}`,
     },
   };
 }
@@ -422,6 +716,8 @@ function frenchDate(value) {
 function canonicalProfileFactAnswer(request) {
   const personFactAnswer = canonicalPersonFactAnswer(request);
   if (personFactAnswer !== null) return personFactAnswer;
+  const routineFactAnswer = canonicalRoutineProfileAnswer(request);
+  if (routineFactAnswer !== null) return routineFactAnswer;
   const requested = requestedRelationshipDate(request.message) ||
     requestedPersonalProfileFact(request.message);
   if (requested === null) return null;
@@ -525,6 +821,7 @@ function canonicalProfileFactAnswer(request) {
 
 module.exports = {
   canonicalProfileFactAnswer,
+  requestedRoutineProfileFact,
   requestedPersonFact,
   requestedPersonalProfileFact,
   requestedRelationshipDate,

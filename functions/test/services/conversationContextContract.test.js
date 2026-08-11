@@ -294,6 +294,38 @@ test("accepts bounded relationship status and couple dates", () => {
   assert.equal(facts.engagementDate, "2019-05-04");
 });
 
+test("accepts typed routine schedules linked to a Human person", () => {
+  const value = payload();
+  value.conversationContext.sections[0] = {
+    type: "routine",
+    availability: "available",
+    freshness: "current",
+    items: [{
+      type: "routine",
+      confirmation: "confirmed",
+      freshness: "current",
+      facts: {
+        routineKind: "schoolSchedule",
+        subjectNodeId: "human:person:person-sam",
+        title: "École",
+        days: "Lundi,Mardi",
+        startTime: "08:30",
+        endTime: "16:30",
+      },
+    }],
+    budgetLimit: 20,
+    budgetUsed: 7,
+    omittedCount: 0,
+    truncated: false,
+  };
+  value.conversationContext.budgetUsed = 7;
+
+  const result = validateConversationRequest(value);
+  const facts = result.conversationContext.sections[0].items[0].facts;
+  assert.equal(facts.routineKind, "schoolSchedule");
+  assert.equal(facts.subjectNodeId, "human:person:person-sam");
+});
+
 test("refuses invalid Human dates, node IDs and relation roles", () => {
   for (const facts of [
     {birthDate: "05/06/2018"},
@@ -301,6 +333,8 @@ test("refuses invalid Human dates, node IDs and relation roles", () => {
     {nodeId: "private user id"},
     {relationRole: "unknownRelation"},
     {personRole: "unknownPersonRole"},
+    {subjectNodeId: "private person"},
+    {routineKind: "unknownSchedule"},
     {marriageDate: "12/08/2020"},
     {engagementDate: "2026-02-30"},
   ]) {

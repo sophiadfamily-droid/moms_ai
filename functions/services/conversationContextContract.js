@@ -63,7 +63,8 @@ const FACT_KEYS = new Set([
   "status", "kind", "start", "end", "dueDate",
   "durationMinutes", "travelGoMinutes", "travelBackMinutes", "marginMinutes",
   "recurringType", "syncStatus", "revision", "days", "startTime", "endTime",
-  "travelMinutes", "title", "category", "sourceNodeId", "targetNodeId",
+  "travelMinutes", "routineKind", "subjectNodeId", "title", "category",
+  "sourceNodeId", "targetNodeId",
   "actionRequired", "importance", "urgency", "flexibility",
   "relationshipStatus", "marriageDate", "engagementDate",
   "familyStatus", "workStatus",
@@ -75,6 +76,10 @@ const RELATION_ROLES = new Set([
   "fosterFamily", "fosterChild", "closePerson", "custom",
 ]);
 const PERSON_ROLES = new Set(["primary", "related"]);
+const ROUTINE_KINDS = new Set([
+  "routine", "workSchedule", "personalActivity", "schoolSchedule",
+  "childActivity",
+]);
 const FORBIDDEN_KEYS = new Set([
   "uid", "accountScopeId", "token", "secret", "password", "cookie",
   "allergies", "medicalNotes", "bloodType", "doctorName",
@@ -133,7 +138,7 @@ function validateFacts(facts) {
         !validIsoDate(value)) {
       fail("context_relationship_date_invalid");
     }
-    if (key === "nodeId" &&
+    if (["nodeId", "subjectNodeId"].includes(key) &&
         !/^[a-z]+:[A-Za-z]+:[A-Za-z0-9._:-]{1,60}$/.test(value)) {
       fail("context_node_id_invalid");
     }
@@ -142,6 +147,9 @@ function validateFacts(facts) {
     }
     if (key === "personRole" && !PERSON_ROLES.has(value)) {
       fail("context_person_role_invalid");
+    }
+    if (key === "routineKind" && !ROUTINE_KINDS.has(value)) {
+      fail("context_routine_kind_invalid");
     }
   }
   return {...facts};

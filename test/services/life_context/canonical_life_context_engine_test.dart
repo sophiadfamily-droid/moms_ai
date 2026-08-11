@@ -305,11 +305,24 @@ void main() {
       ).load(
           LifeContextAdapterRequest(accountScopeId: 'account-a', readAt: now));
       expect(section.routines, hasLength(4));
+      final work =
+          section.routines.singleWhere((item) => item.id == 'workSchedule:0');
+      expect(work.days, ['Mardi']);
+      expect(work.humanPersonId, 'person-a');
+      expect(work.travelMinutes, 25);
+      final personalActivity = section.routines
+          .singleWhere((item) => item.id == 'personalActivity:0:0');
+      expect(personalActivity.days, ['Mercredi']);
+      expect(personalActivity.humanPersonId, 'person-a');
+      final childActivity = section.routines
+          .singleWhere((item) => item.id == 'childActivity:0:0:0');
+      expect(childActivity.days, ['Samedi']);
+      expect(childActivity.humanPersonId, 'person-b');
       expect(
         section.routines
             .singleWhere((item) => item.id == 'schoolSchedule:0:0')
             .days,
-        isNot(contains('Samedi')),
+        ['Lundi'],
       );
       expect(
         section.routines.map((item) => item.source),
@@ -639,9 +652,10 @@ HumanModelLocalState _humanState({
           label: 'Travail',
           startTime: '09:00',
           endTime: '17:00',
-          travelMinutes: '20',
+          notes: '__DAYS__:Mardi__',
         ),
       ],
+      workTravelMinutes: '25',
       children: [
         ChildProfile(
           humanPersonId: 'person-b',
@@ -657,6 +671,7 @@ HumanModelLocalState _humanState({
               startTime: '08:30',
               endTime: '16:30',
               travelMinutes: '10',
+              notes: '__DAYS__:Lundi__',
             ),
           ],
           activities: [
@@ -665,7 +680,11 @@ HumanModelLocalState _humanState({
               days: const ['Mercredi'],
               travelMinutes: '15',
               timeRanges: [
-                TimeRangeModel(startTime: '17:00', endTime: '18:00'),
+                TimeRangeModel(
+                  startTime: '17:00',
+                  endTime: '18:00',
+                  notes: '__DAYS__:Samedi__',
+                ),
               ],
             ),
           ],
@@ -676,7 +695,11 @@ HumanModelLocalState _humanState({
           title: 'Activité',
           days: const ['Mardi', 'Lundi'],
           timeRanges: [
-            TimeRangeModel(startTime: '18:00', endTime: '19:00'),
+            TimeRangeModel(
+              startTime: '18:00',
+              endTime: '19:00',
+              notes: '__DAYS__:Mercredi__',
+            ),
           ],
         ),
       ],

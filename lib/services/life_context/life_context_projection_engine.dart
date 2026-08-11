@@ -557,6 +557,21 @@ final class LifeContextProjectionEngine {
     final result = <LifeContextProjectionItem>[];
     for (final routine in section.routines) {
       final facts = <LifeContextProjectionFact>[
+        _fact(
+          LifeContextProjectionFactKeys.routineKind,
+          _routineKind(routine.source),
+          LifeContextSensitivityLevel.publicTechnical,
+        ),
+        if (routine.humanPersonId != null)
+          _fact(
+            LifeContextProjectionFactKeys.subjectNodeId,
+            LifeContextGraphNode.deterministicId(
+              LifeContextDomain.human,
+              LifeContextNodeType.person,
+              routine.humanPersonId!,
+            ),
+            LifeContextSensitivityLevel.publicTechnical,
+          ),
         if (routine.days.isNotEmpty)
           _fact(
             LifeContextProjectionFactKeys.days,
@@ -575,7 +590,7 @@ final class LifeContextProjectionEngine {
             routine.endTime!,
             LifeContextSensitivityLevel.publicTechnical,
           ),
-        if (routine.travelMinutes != null)
+        if (routine.travelMinutes != null && routine.source != 'routine.v1')
           _fact(
             LifeContextProjectionFactKeys.travelMinutes,
             '${routine.travelMinutes}',
@@ -587,21 +602,23 @@ final class LifeContextProjectionEngine {
             routine.recurrenceType!,
             LifeContextSensitivityLevel.publicTechnical,
           ),
-        _fact(
-          LifeContextProjectionFactKeys.travelGoMinutes,
-          '${routine.travelGoMinutes}',
-          LifeContextSensitivityLevel.publicTechnical,
-        ),
-        _fact(
-          LifeContextProjectionFactKeys.travelBackMinutes,
-          '${routine.travelBackMinutes}',
-          LifeContextSensitivityLevel.publicTechnical,
-        ),
-        _fact(
-          LifeContextProjectionFactKeys.marginMinutes,
-          '${routine.marginMinutes}',
-          LifeContextSensitivityLevel.publicTechnical,
-        ),
+        if (routine.source == 'routine.v1') ...[
+          _fact(
+            LifeContextProjectionFactKeys.travelGoMinutes,
+            '${routine.travelGoMinutes}',
+            LifeContextSensitivityLevel.publicTechnical,
+          ),
+          _fact(
+            LifeContextProjectionFactKeys.travelBackMinutes,
+            '${routine.travelBackMinutes}',
+            LifeContextSensitivityLevel.publicTechnical,
+          ),
+          _fact(
+            LifeContextProjectionFactKeys.marginMinutes,
+            '${routine.marginMinutes}',
+            LifeContextSensitivityLevel.publicTechnical,
+          ),
+        ],
         if (routine.anchorDateIso != null)
           _fact(
             LifeContextProjectionFactKeys.anchorDateIso,
@@ -639,6 +656,17 @@ final class LifeContextProjectionEngine {
     }
     return result;
   }
+
+  String _routineKind(String source) => switch (source) {
+        'legacyProfile.workTimeRanges' ||
+        'legacyProfile.workSchedule' =>
+          'workSchedule',
+        'legacyProfile.personalActivities' => 'personalActivity',
+        'legacyProfile.schoolTimeRanges' => 'schoolSchedule',
+        'legacyProfile.childActivities' => 'childActivity',
+        'routine.v1' => 'routine',
+        _ => 'routine',
+      };
 
   List<LifeContextProjectionItem> _relationCandidates(
     LifeContextSnapshot snapshot,

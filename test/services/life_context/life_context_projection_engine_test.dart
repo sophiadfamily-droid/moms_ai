@@ -368,6 +368,47 @@ void main() {
       expect(facts[LifeContextProjectionFactKeys.marriageDate], '2020-08-12');
     });
 
+    test('identifie le type et la personne de chaque horaire du profil', () {
+      final projection = _build(
+        _snapshot(now),
+        LifeContextConsumerPurpose.conversation,
+      );
+      final routine = _section(
+        projection,
+        LifeContextProjectionSectionType.routine,
+      ).items.single;
+      final facts = {
+        for (final fact in routine.facts) fact.key: fact.value,
+      };
+      expect(
+        facts[LifeContextProjectionFactKeys.routineKind],
+        'schoolSchedule',
+      );
+      expect(
+        facts[LifeContextProjectionFactKeys.subjectNodeId],
+        'human:person:person-child',
+      );
+      expect(
+        facts.containsKey(LifeContextProjectionFactKeys.travelGoMinutes),
+        isFalse,
+      );
+      expect(routine.facts.length, lessThanOrEqualTo(12));
+    });
+
+    test('transporte un profil complet avec plusieurs horaires', () {
+      final projection = _build(
+        _snapshot(now, routineCount: 8),
+        LifeContextConsumerPurpose.conversation,
+      );
+      final routines = _section(
+        projection,
+        LifeContextProjectionSectionType.routine,
+      );
+      expect(routines.items, hasLength(8));
+      expect(routines.omittedCount, 0);
+      expect(routines.truncated, isFalse);
+    });
+
     test('filtre Events hors fenêtre et Tasks terminées', () {
       final projection = _build(
         _snapshot(now, includeOutsideEvent: true),
@@ -611,6 +652,7 @@ LifeContextSnapshot _snapshot(
   bool allTasksActive = false,
   bool routineStale = false,
   bool expiredResponsibility = false,
+  int routineCount = 1,
 }) {
   final events = <EventContextItem>[
     for (var index = 0; index < eventCount; index++)
@@ -850,20 +892,23 @@ LifeContextSnapshot _snapshot(
             ? LifeContextFreshness.stale
             : LifeContextFreshness.current,
         isLocal: true,
-        itemCount: 1,
+        itemCount: routineCount,
         revision: 1,
       ),
-      routines: const [
-        RoutineContextItem(
-          id: 'routine-a',
-          source: 'legacyProfile.schoolTimeRanges',
-          label: 'Routine visible',
-          days: ['monday'],
-          startTime: '08:00',
-          endTime: '09:00',
-          travelMinutes: 5,
-          humanPersonId: 'person-child',
-        ),
+      routines: [
+        for (var index = 0; index < routineCount; index++)
+          RoutineContextItem(
+            id: index == 0 ? 'routine-a' : 'routine-$index',
+            source: index.isEven
+                ? 'legacyProfile.schoolTimeRanges'
+                : 'legacyProfile.personalActivities',
+            label: 'Routine visible $index',
+            days: const ['monday'],
+            startTime: '08:00',
+            endTime: '09:00',
+            travelMinutes: 5,
+            humanPersonId: index.isEven ? 'person-child' : 'person-main',
+          ),
       ],
     ),
   );

@@ -56,6 +56,8 @@ abstract final class LifeContextProjectionFactKeys {
   static const startTime = 'startTime';
   static const endTime = 'endTime';
   static const travelMinutes = 'travelMinutes';
+  static const routineKind = 'routineKind';
+  static const subjectNodeId = 'subjectNodeId';
   static const anchorDateIso = 'anchorDateIso';
   static const weekOfMonth = 'weekOfMonth';
   static const title = 'title';
@@ -98,6 +100,8 @@ abstract final class LifeContextProjectionFactKeys {
     startTime,
     endTime,
     travelMinutes,
+    routineKind,
+    subjectNodeId,
     anchorDateIso,
     weekOfMonth,
     title,
@@ -178,13 +182,13 @@ final class LifeContextConsumerContract {
             LifeContextSensitivityLevel.ordinaryPersonal,
             LifeContextSensitivityLevel.privatePersonal,
           },
-          globalBudget: 245,
+          globalBudget: 305,
           sectionBudgets: const {
             LifeContextProjectionSectionType.human: 55,
             LifeContextProjectionSectionType.identity: 10,
             LifeContextProjectionSectionType.event: 50,
             LifeContextProjectionSectionType.task: 30,
-            LifeContextProjectionSectionType.routine: 20,
+            LifeContextProjectionSectionType.routine: 80,
             LifeContextProjectionSectionType.memory: 30,
             LifeContextProjectionSectionType.relation: 50,
           },
