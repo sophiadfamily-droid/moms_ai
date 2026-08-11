@@ -59,7 +59,7 @@ const CONFIRMATIONS = new Set([
   "rejected", "historical",
 ]);
 const FACT_KEYS = new Set([
-  "displayName", "birthDate", "nodeId", "relationRole",
+  "displayName", "birthDate", "personRole", "nodeId", "relationRole",
   "status", "kind", "start", "end", "dueDate",
   "durationMinutes", "travelGoMinutes", "travelBackMinutes", "marginMinutes",
   "recurringType", "syncStatus", "revision", "days", "startTime", "endTime",
@@ -74,6 +74,7 @@ const RELATION_ROLES = new Set([
   "guardian", "responsiblePerson", "caregiver", "caredForPerson",
   "fosterFamily", "fosterChild", "closePerson", "custom",
 ]);
+const PERSON_ROLES = new Set(["primary", "related"]);
 const FORBIDDEN_KEYS = new Set([
   "uid", "accountScopeId", "token", "secret", "password", "cookie",
   "allergies", "medicalNotes", "bloodType", "doctorName",
@@ -138,6 +139,9 @@ function validateFacts(facts) {
     }
     if (key === "relationRole" && !RELATION_ROLES.has(value)) {
       fail("context_relation_role_invalid");
+    }
+    if (key === "personRole" && !PERSON_ROLES.has(value)) {
+      fail("context_person_role_invalid");
     }
   }
   return {...facts};

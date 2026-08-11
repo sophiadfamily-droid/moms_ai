@@ -89,6 +89,94 @@ function response(visibleText, actions = []) {
   };
 }
 
+/**
+ * Builds confirmed primary, partner, and child profile context.
+ * @param {string} message Visible user question.
+ * @return {object} Canonical request with Human and Relation sections.
+ */
+function personalProfileRequest(message) {
+  const value = request(message);
+  value.conversationContext.sections = [
+    {
+      type: "human",
+      availability: "available",
+      freshness: "current",
+      items: [
+        {
+          type: "person",
+          confirmation: "confirmed",
+          freshness: "current",
+          facts: {
+            nodeId: "human:person:person-main",
+            personRole: "primary",
+            displayName: "Sophia",
+            birthDate: "1990-02-02",
+          },
+        },
+        {
+          type: "person",
+          confirmation: "confirmed",
+          freshness: "current",
+          facts: {
+            nodeId: "human:person:person-willy",
+            personRole: "related",
+            displayName: "Willy",
+            birthDate: "1991-10-22",
+          },
+        },
+        {
+          type: "person",
+          confirmation: "confirmed",
+          freshness: "current",
+          facts: {
+            nodeId: "human:person:person-kassim",
+            personRole: "related",
+            displayName: "Kassim",
+            birthDate: "2022-04-10",
+          },
+        },
+      ],
+      budgetLimit: 55,
+      budgetUsed: 12,
+      omittedCount: 0,
+      truncated: false,
+    },
+    {
+      type: "relation",
+      availability: "available",
+      freshness: "current",
+      items: [
+        {
+          type: "relation",
+          confirmation: "confirmed",
+          freshness: "current",
+          facts: {
+            relationRole: "spouse",
+            sourceNodeId: "human:person:person-main",
+            targetNodeId: "human:person:person-willy",
+          },
+        },
+        {
+          type: "relation",
+          confirmation: "confirmed",
+          freshness: "current",
+          facts: {
+            relationRole: "child",
+            sourceNodeId: "human:person:person-main",
+            targetNodeId: "human:person:person-kassim",
+          },
+        },
+      ],
+      budgetLimit: 50,
+      budgetUsed: 6,
+      omittedCount: 0,
+      truncated: false,
+    },
+  ];
+  value.conversationContext.budgetUsed = 18;
+  return value;
+}
+
 test("uses a 45 second total OpenAI deadline", () => {
   assert.equal(OPENAI_TIMEOUT_MS, 45000);
 });
@@ -165,6 +253,98 @@ test("recognizes natural variants without intercepting a statement", async () =>
   });
   assert.equal(generations, 1);
   assert.equal(generated.reply, "Je peux retenir cette information.");
+});
+
+test("answers confirmed personal and family profile facts", async () => {
+  for (const [message, expected] of [
+    ["Comment je m’appelle ?", "Tu t’appelles Sophia."],
+    ["C’est quoi mon prénom ?", "Tu t’appelles Sophia."],
+    ["Quelle est ma date de naissance ?", "Tu es née le 2 février 1990."],
+    ["Rappelle-moi ma date de naissance", "Tu es née le 2 février 1990."],
+    ["Quand est mon anniversaire ?", "Tu es née le 2 février 1990."],
+    ["Comment s’appelle mon mari ?", "Ton mari s’appelle Willy."],
+    [
+      "Comment s’appelle mon conjoint ?",
+      "La personne qui partage ta vie s’appelle Willy.",
+    ],
+    [
+      "Quelle est la date de naissance de mon fils ?",
+      "Pour Kassim, c’est le 10 avril 2022.",
+    ],
+    ["Quand est né Kassim ?", "Pour Kassim, c’est le 10 avril 2022."],
+    [
+      "Quand est l’anniversaire de Kassim ?",
+      "Pour Kassim, c’est le 10 avril 2022.",
+    ],
+  ]) {
+    let generations = 0;
+    const result = await handleChatRequest(
+        personalProfileRequest(message),
+        {uid: "test-uid"},
+        {generateResponse: async () => {
+          generations++;
+          return response("unexpected");
+        }},
+    );
+
+    assert.equal(generations, 0, message);
+    assert.equal(result.reply, expected, message);
+  }
+});
+
+test("does not treat a personal statement as a profile question", async () => {
+  let generations = 0;
+  const value = personalProfileRequest("Je m’appelle Sophia");
+  const result = await handleChatRequest(value, {uid: "test-uid"}, {
+    generateResponse: async () => {
+      generations++;
+      return response("Je le sais maintenant.");
+    },
+  });
+
+  assert.equal(generations, 1);
+  assert.equal(result.reply, "Je le sais maintenant.");
+});
+
+test("does not choose between several children without a name", async () => {
+  const value = personalProfileRequest(
+      "Quelle est la date de naissance de mon enfant ?",
+  );
+  value.conversationContext.sections[0].items.push({
+    type: "person",
+    confirmation: "confirmed",
+    freshness: "current",
+    facts: {
+      nodeId: "human:person:person-emma",
+      personRole: "related",
+      displayName: "Emma",
+      birthDate: "2018-06-05",
+    },
+  });
+  value.conversationContext.sections[1].items.push({
+    type: "relation",
+    confirmation: "confirmed",
+    freshness: "current",
+    facts: {
+      relationRole: "child",
+      sourceNodeId: "human:person:person-main",
+      targetNodeId: "human:person:person-emma",
+    },
+  });
+  value.conversationContext.sections[0].budgetUsed = 16;
+  value.conversationContext.sections[1].budgetUsed = 9;
+  value.conversationContext.budgetUsed = 25;
+  let generations = 0;
+
+  const result = await handleChatRequest(value, {uid: "test-uid"}, {
+    generateResponse: async () => {
+      generations++;
+      return response("De quel enfant parles-tu ?");
+    },
+  });
+
+  assert.equal(generations, 1);
+  assert.equal(result.reply, "De quel enfant parles-tu ?");
 });
 
 test("answers family/work status from canonical Human", async () => {

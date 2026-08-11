@@ -35,6 +35,7 @@ enum LifeContextProjectionSectionType {
 abstract final class LifeContextProjectionFactKeys {
   static const displayName = 'displayName';
   static const birthDate = 'birthDate';
+  static const personRole = 'personRole';
   static const familyStatus = 'familyStatus';
   static const workStatus = 'workStatus';
   static const nodeId = 'nodeId';
@@ -76,6 +77,7 @@ abstract final class LifeContextProjectionFactKeys {
   static const all = {
     displayName,
     birthDate,
+    personRole,
     familyStatus,
     workStatus,
     nodeId,

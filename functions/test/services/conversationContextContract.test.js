@@ -184,6 +184,7 @@ test("accepts bounded Human and explicit Relation projection", () => {
           freshness: "current",
           facts: {
             nodeId: "human:person:person-main",
+            personRole: "primary",
             displayName: "Personne Test",
             birthDate: "1990-02-01",
             familyStatus: "Je vis en couple",
@@ -197,6 +198,7 @@ test("accepts bounded Human and explicit Relation projection", () => {
           freshness: "current",
           facts: {
             nodeId: "human:person:person-alex",
+            personRole: "related",
             displayName: "Alex",
             birthDate: "1989-04-03",
             status: "active",
@@ -208,6 +210,7 @@ test("accepts bounded Human and explicit Relation projection", () => {
           freshness: "current",
           facts: {
             nodeId: "human:person:person-sam",
+            personRole: "related",
             displayName: "Sam",
             birthDate: "2018-06-05",
             status: "active",
@@ -261,6 +264,8 @@ test("accepts bounded Human and explicit Relation projection", () => {
   assert.equal(result.conversationContext.sections[0].items[0]
       .facts.familyStatus, "Je vis en couple");
   assert.equal(result.conversationContext.sections[0].items[0]
+      .facts.personRole, "primary");
+  assert.equal(result.conversationContext.sections[0].items[0]
       .facts.workStatus, "Je suis salariée");
   assert.equal(result.conversationContext.sections[1].items[0]
       .facts.relationRole, "partner");
@@ -295,6 +300,7 @@ test("refuses invalid Human dates, node IDs and relation roles", () => {
     {birthDate: "2026-02-30"},
     {nodeId: "private user id"},
     {relationRole: "unknownRelation"},
+    {personRole: "unknownPersonRole"},
     {marriageDate: "12/08/2020"},
     {engagementDate: "2026-02-30"},
   ]) {

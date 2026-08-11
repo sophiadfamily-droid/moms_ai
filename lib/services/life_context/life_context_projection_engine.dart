@@ -267,6 +267,11 @@ final class LifeContextProjectionEngine {
             person.status,
             LifeContextSensitivityLevel.publicTechnical,
           ),
+          _fact(
+            LifeContextProjectionFactKeys.personRole,
+            person.id == section.primaryPersonId ? 'primary' : 'related',
+            LifeContextSensitivityLevel.publicTechnical,
+          ),
           if (person.displayName != null)
             _fact(
               LifeContextProjectionFactKeys.displayName,

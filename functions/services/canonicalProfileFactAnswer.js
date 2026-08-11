@@ -39,8 +39,230 @@ function requestedRelationshipDate(message) {
 }
 
 function asksQuestion(text) {
-  return /\b(quel(?:le)?|quand|connais|sais|rappelle|dis moi)\b/.test(text) ||
+  return /\b(quel(?:le)?|quand|comment|connais|sais|rappelle|dis moi)\b/
+      .test(text) ||
     text.includes("c est quoi");
+}
+
+function requestedPersonFact(message) {
+  const text = normalizedText(message);
+  if (!asksQuestion(text)) return null;
+
+  let factKey = null;
+  if (text.includes("date de naissance") || text.includes("anniversaire") ||
+      /\bquand\b.*\bnaissance\b/.test(text) ||
+      /\bquand\b.*\b(?:nee?|ne)\b/.test(text)) {
+    factKey = "birthDate";
+  } else if (/\bcomment\b.*\bappelle\b/.test(text) ||
+      /\b(?:quel|quelle)\b.*\bprenom\b/.test(text) ||
+      text.includes("c est quoi mon prenom")) {
+    factKey = "displayName";
+  }
+  if (factKey === null) return null;
+
+  let subject = "named";
+  if (/\b(mon prenom|ma date de naissance|mon anniversaire|je m appelle)\b/
+      .test(text) || /\bje suis nee?\b/.test(text)) {
+    subject = "primary";
+  } else if (/\b(mari|epoux|conjoint|partenaire|compagnon|femme|epouse)\b/
+      .test(text) || /\b(conjointe|compagne)\b/.test(text)) {
+    subject = "partner";
+  } else if (/\b(fils|fille|enfant|enfants)\b/.test(text)) {
+    subject = "child";
+  }
+
+  return {factKey, subject, text};
+}
+
+function currentPeopleAndRelations(context) {
+  const people = [];
+  const relations = [];
+  for (const section of context.sections) {
+    if (section.availability !== "available" ||
+        section.freshness !== "current") {
+      continue;
+    }
+    for (const item of section.items) {
+      if (item.confirmation !== "confirmed" ||
+          item.freshness !== "current") {
+        continue;
+      }
+      if (section.type === "human" && item.type === "person") {
+        people.push(item);
+      }
+      if (section.type === "relation" && item.type === "relation") {
+        relations.push(item);
+      }
+    }
+  }
+  return {people, relations};
+}
+
+function relatedNodeIds(primaryNodeId, relations, role) {
+  const result = new Set();
+  for (const relation of relations) {
+    const facts = relation.facts;
+    if (role === "partner" &&
+        ["partner", "spouse"].includes(facts.relationRole)) {
+      if (facts.sourceNodeId === primaryNodeId) result.add(facts.targetNodeId);
+      if (facts.targetNodeId === primaryNodeId) result.add(facts.sourceNodeId);
+    }
+    if (role === "child" && facts.relationRole === "child" &&
+        facts.sourceNodeId === primaryNodeId) {
+      result.add(facts.targetNodeId);
+    }
+  }
+  return result;
+}
+
+function namedInMessage(name, normalizedMessage) {
+  const normalizedName = normalizedText(name)
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+  if (normalizedName.length === 0) return false;
+  const searchable = ` ${normalizedMessage.replace(/[^a-z0-9]+/g, " ")} `;
+  return searchable.includes(` ${normalizedName} `);
+}
+
+function personFactSentence(requested, selected) {
+  if (requested.factKey === "displayName") {
+    const names = selected.map((person) => person.facts.displayName.trim());
+    if (requested.subject === "primary") return `Tu t’appelles ${names[0]}`;
+    if (requested.subject === "child" && names.length > 1) {
+      return `Tes enfants s’appellent ${joinedNames(names)}`;
+    }
+    if (requested.subject === "child") {
+      if (requested.text.includes("fils")) {
+        return `Ton fils s’appelle ${names[0]}`;
+      }
+      if (requested.text.includes("fille")) {
+        return `Ta fille s’appelle ${names[0]}`;
+      }
+      return `Ton enfant s’appelle ${names[0]}`;
+    }
+    if (requested.subject === "partner") {
+      if (/\b(mari|epoux)\b/.test(requested.text)) {
+        return `Ton mari s’appelle ${names[0]}`;
+      }
+      if (/\b(femme|epouse)\b/.test(requested.text)) {
+        return `Ta femme s’appelle ${names[0]}`;
+      }
+      return `La personne qui partage ta vie s’appelle ${names[0]}`;
+    }
+    return null;
+  }
+
+  const value = frenchDate(selected[0].facts.birthDate);
+  if (value === null) return null;
+  if (requested.subject === "primary") return `Tu es née le ${value}`;
+  const name = selected[0].facts.displayName;
+  if (typeof name !== "string" || name.trim().length === 0) return null;
+  return `Pour ${name.trim()}, c’est le ${value}`;
+}
+
+function canonicalPersonFactAnswer(request) {
+  const requested = requestedPersonFact(request.message);
+  if (requested === null) return null;
+  const context = request.conversationContext;
+  const {people, relations} = currentPeopleAndRelations(context);
+  const primary = people.find((item) => item.facts.personRole === "primary");
+  if (primary === undefined || typeof primary.facts.nodeId !== "string") {
+    return null;
+  }
+
+  let selected = [];
+  if (requested.subject === "primary") {
+    selected = [primary];
+  } else if (["partner", "child"].includes(requested.subject)) {
+    const nodeIds = relatedNodeIds(
+        primary.facts.nodeId,
+        relations,
+        requested.subject,
+    );
+    selected = people.filter((item) => nodeIds.has(item.facts.nodeId));
+  } else {
+    const connected = new Set([
+      ...relatedNodeIds(primary.facts.nodeId, relations, "partner"),
+      ...relatedNodeIds(primary.facts.nodeId, relations, "child"),
+    ]);
+    selected = people.filter((item) =>
+      connected.has(item.facts.nodeId) &&
+      typeof item.facts.displayName === "string" &&
+      namedInMessage(item.facts.displayName, requested.text));
+  }
+
+  selected = selected.filter((item) => {
+    const value = item.facts[requested.factKey];
+    return typeof value === "string" && value.trim().length > 0 &&
+      (requested.factKey !== "birthDate" || frenchDate(value) !== null);
+  });
+  if (selected.length === 0 ||
+      requested.factKey === "birthDate" && selected.length !== 1) {
+    return null;
+  }
+
+  const sentence = personFactSentence(requested, selected);
+  if (sentence === null) return null;
+  const related = requested.subject !== "primary";
+  const groundingReferences = [
+    {
+      schemaVersion: 1,
+      sourceType: "lifeContextHuman",
+      section: "human",
+      factKey: requested.factKey,
+      freshness: "current",
+      confirmation: "confirmed",
+      projectionVersion: context.projectionVersion,
+    },
+    {
+      schemaVersion: 1,
+      sourceType: "lifeContextHuman",
+      section: "human",
+      factKey: "personRole",
+      freshness: "current",
+      confirmation: "confirmed",
+      projectionVersion: context.projectionVersion,
+    },
+  ];
+  if (related) {
+    groundingReferences.push({
+      schemaVersion: 1,
+      sourceType: "lifeContextRelation",
+      section: "relation",
+      factKey: "relationRole",
+      freshness: "current",
+      confirmation: "confirmed",
+      projectionVersion: context.projectionVersion,
+    });
+  }
+  return {
+    visibleText: `${sentence}.`,
+    actions: [],
+    memories: [],
+    epistemic: {
+      schemaVersion: 1,
+      responseKind: "answer",
+      epistemicState: "grounded",
+      confidenceLevel: "high",
+      usedSourceTypes: related ?
+        ["lifeContextHuman", "lifeContextRelation"] : ["lifeContextHuman"],
+      groundingReferences,
+      personalClaims: [{
+        claimId: `profile-person-${requested.factKey}`,
+        category: "humanFact",
+        sourceReferenceIndexes: groundingReferences.map((_, index) => index),
+        certainty: "grounded",
+      }],
+      missingInformation: [],
+      contradictions: [],
+      clarification: null,
+      uncertaintyCodes: [],
+      contextStateObserved: context.state,
+      warningCodes: [],
+      responseId: `profile-person-${requested.factKey}-` +
+        `${context.projectionVersion}`,
+    },
+  };
 }
 
 function requestedPersonalProfileFact(message) {
@@ -198,6 +420,8 @@ function frenchDate(value) {
 }
 
 function canonicalProfileFactAnswer(request) {
+  const personFactAnswer = canonicalPersonFactAnswer(request);
+  if (personFactAnswer !== null) return personFactAnswer;
   const requested = requestedRelationshipDate(request.message) ||
     requestedPersonalProfileFact(request.message);
   if (requested === null) return null;
@@ -301,6 +525,7 @@ function canonicalProfileFactAnswer(request) {
 
 module.exports = {
   canonicalProfileFactAnswer,
+  requestedPersonFact,
   requestedPersonalProfileFact,
   requestedRelationshipDate,
 };

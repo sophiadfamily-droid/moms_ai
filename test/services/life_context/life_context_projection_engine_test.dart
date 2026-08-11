@@ -230,6 +230,10 @@ void main() {
         childFacts[LifeContextProjectionFactKeys.birthDate],
         '2018-06-05',
       );
+      expect(
+        childFacts[LifeContextProjectionFactKeys.personRole],
+        'related',
+      );
       final primaryFacts = {
         for (final fact in people
             .singleWhere((item) => item.id == 'human:person:person-main')
@@ -243,6 +247,10 @@ void main() {
       expect(
         primaryFacts[LifeContextProjectionFactKeys.workStatus],
         'Je suis salariée',
+      );
+      expect(
+        primaryFacts[LifeContextProjectionFactKeys.personRole],
+        'primary',
       );
     });
   });
