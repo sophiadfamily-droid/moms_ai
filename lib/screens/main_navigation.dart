@@ -65,6 +65,7 @@ class _MainNavigationState extends State<MainNavigation> {
       _conversationSessionController = ConversationSessionController.production(
         profile: currentProfile,
         identityServices: widget.identityServices,
+        accountScopeId: widget.accountScopeId,
         proactiveInteractionRegistry: _proactiveInteractionRegistry,
       );
     }

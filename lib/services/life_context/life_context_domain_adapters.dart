@@ -708,8 +708,15 @@ final class RoutineLifeContextAdapter implements LifeContextDomainAdapter {
               Map<String, dynamic>.from(state.model.legacyProfile),
             );
       final routines = <RoutineContextItem>[];
-      final canonical = await _loadCanonical?.call(request.accountScopeId) ??
-          const <RoutineModel>[];
+      var canonicalUnavailable = false;
+      List<RoutineModel> canonical;
+      try {
+        canonical = await _loadCanonical?.call(request.accountScopeId) ??
+            const <RoutineModel>[];
+      } on Object {
+        canonicalUnavailable = true;
+        canonical = const [];
+      }
       for (final routine in canonical) {
         if (routine.accountScopeId != request.accountScopeId ||
             routine.status != RoutineStatus.active) {
@@ -899,16 +906,22 @@ final class RoutineLifeContextAdapter implements LifeContextDomainAdapter {
       final legacySourceFresh = legacyRoutineCount == 0 ||
           state?.syncStatus == HumanModelSyncStatus.synced;
       final availability = routines.isEmpty
-          ? LifeContextAvailability.empty
-          : legacySourceFresh
+          ? canonicalUnavailable
+              ? LifeContextAvailability.unavailable
+              : LifeContextAvailability.empty
+          : legacySourceFresh && !canonicalUnavailable
               ? LifeContextAvailability.available
               : LifeContextAvailability.availableStale;
       final freshness = routines.isEmpty
           ? LifeContextFreshness.unknown
-          : legacySourceFresh
+          : legacySourceFresh && !canonicalUnavailable
               ? LifeContextFreshness.current
               : LifeContextFreshness.stale;
       final truncated = sourceCount > LifeContextSourceBudgets.routines;
+      final warningCodes = [
+        if (canonicalUnavailable) 'canonical_routines_unavailable',
+        if (truncated) 'routine_source_truncated',
+      ];
       final boundedRoutines = routines
           .take(LifeContextSourceBudgets.routines)
           .toList(growable: false);
@@ -924,11 +937,13 @@ final class RoutineLifeContextAdapter implements LifeContextDomainAdapter {
           revision: state?.knownCloudRevision,
           syncStatus:
               canonical.isNotEmpty ? 'canonical' : 'legacyCompatibility',
+          errorCode: routines.isEmpty && canonicalUnavailable
+              ? 'routine_domain_unavailable'
+              : null,
           truncationState: truncated
               ? LifeContextTruncationState.truncated
               : LifeContextTruncationState.complete,
-          warningCodes:
-              truncated ? const ['routine_source_truncated'] : const [],
+          warningCodes: warningCodes,
         ),
         routines: boundedRoutines,
       );

@@ -13,6 +13,7 @@ import '../models/priority/proactive_priority_models.dart';
 import '../models/user_profile.dart';
 import 'app_diagnostics.dart';
 import 'app_error_classifier.dart';
+import 'action_handler_service.dart';
 import 'action_autonomy_policy_service.dart';
 import 'chat_backend_client.dart';
 import 'chat_backend_client_factory.dart';
@@ -23,7 +24,9 @@ import 'conversation_grounding_policy.dart';
 import 'conversation_legacy_action_executor.dart';
 import 'conversation_reference_history_store.dart';
 import 'conversation_reference_resolver.dart';
+import 'event_confirmation_service.dart';
 import 'event_conversation_mutation_service.dart';
+import 'event_planning_conflict_service.dart';
 import 'event_title_service.dart';
 import 'routine_conversation_service.dart';
 import 'identity/identity_production_services.dart';
@@ -40,7 +43,7 @@ typedef ConversationPendingResolver = Future<ConversationOutcome?> Function(
   String answer,
   int sessionGeneration,
 );
-typedef ConversationClarificationDraftRegistrar = bool Function(
+typedef ConversationClarificationDraftPreparer = Future<String?> Function(
   ConversationClarificationDraft draft,
   int sessionGeneration,
   String userMessage,
@@ -97,7 +100,7 @@ final class ConversationSessionController extends ChangeNotifier {
     required ConversationCoordinator coordinator,
     ConversationSessionActionExecutor? executeAction,
     ConversationPendingResolver? resolvePending,
-    ConversationClarificationDraftRegistrar? registerClarificationDraft,
+    ConversationClarificationDraftPreparer? prepareClarificationDraft,
     ConversationSessionInvalidator? invalidateSession,
     ConversationApplicationPendingPhase? applicationPendingPhase,
     ConversationApplicationInteractionSources? applicationInteractionSources,
@@ -118,7 +121,7 @@ final class ConversationSessionController extends ChangeNotifier {
         _executeAction = executeAction ??
             ConversationLegacyActionExecutor(coordinator: coordinator).execute,
         _resolvePending = resolvePending,
-        _registerClarificationDraft = registerClarificationDraft,
+        _prepareClarificationDraft = prepareClarificationDraft,
         _invalidateSession = invalidateSession,
         _applicationPendingPhase = applicationPendingPhase,
         _applicationInteractionSources = applicationInteractionSources,
@@ -150,6 +153,8 @@ final class ConversationSessionController extends ChangeNotifier {
     ConversationContextProvider? contextProvider,
     IdentityProductionServices? identityServices,
     ConversationSessionActionExecutor? executeAction,
+    EventStartConflictChecker? eventStartConflictChecker,
+    EventConflictChecker? eventConflictChecker,
     EventConversationMutationService? eventConversationMutationService,
     ConversationReferenceHistoryStore? referenceHistoryStore,
     ConversationMessageStore messageStore =
@@ -160,6 +165,7 @@ final class ConversationSessionController extends ChangeNotifier {
     ProactiveInteractionRegistry? proactiveInteractionRegistry,
     String? initialAssistantMessage,
   }) {
+    var activeProfile = profile;
     final backend = backendClient ?? createDefaultChatBackendClient();
     final resolvedAccountScopeId = accountScopeId?.trim().isNotEmpty == true
         ? accountScopeId!.trim()
@@ -205,10 +211,27 @@ final class ConversationSessionController extends ChangeNotifier {
       gateway: smartPlanningGateway,
       loadAutonomyPolicy: loadAutonomyPolicy,
     );
+    final planningConflictService =
+        eventStartConflictChecker == null || eventConflictChecker == null
+            ? EventPlanningConflictService.production(
+                currentAccountScopeId: () => resolvedAccountScopeId,
+                currentProfile: () => activeProfile,
+              )
+            : null;
     final legacyExecutor = ConversationLegacyActionExecutor(
       coordinator: coordinator,
       smartPlanning: smartPlanning,
       loadAutonomyPolicy: loadAutonomyPolicy,
+      eventStartConflictChecker: eventStartConflictChecker ??
+          (eventConflictChecker == null
+              ? planningConflictService!.findConflictAtStart
+              : ({required startDateTimeIso}) =>
+                  EventPlanningConflictService.findExistingConflictAtStart(
+                    startDateTimeIso: startDateTimeIso,
+                    loadEventConflict: eventConflictChecker,
+                  )),
+      eventConflictChecker:
+          eventConflictChecker ?? planningConflictService!.findConflict,
       clock: clock,
     );
     final controller = ConversationSessionController(
@@ -216,9 +239,10 @@ final class ConversationSessionController extends ChangeNotifier {
       coordinator: coordinator,
       executeAction: executeAction ?? legacyExecutor.execute,
       resolvePending: legacyExecutor.resolvePending,
-      registerClarificationDraft:
-          legacyExecutor.registerClarificationDraftFromMessage,
+      prepareClarificationDraft:
+          legacyExecutor.prepareClarificationDraftFromMessage,
       invalidateSession: (nextProfile, _) {
+        activeProfile = nextProfile;
         coordinator.invalidateSession();
         smartPlanning.invalidate();
         legacyExecutor.invalidate();
@@ -295,7 +319,7 @@ final class ConversationSessionController extends ChangeNotifier {
       _coordinator.activeConfirmation;
   final ConversationSessionActionExecutor _executeAction;
   final ConversationPendingResolver? _resolvePending;
-  final ConversationClarificationDraftRegistrar? _registerClarificationDraft;
+  final ConversationClarificationDraftPreparer? _prepareClarificationDraft;
   final ConversationSessionInvalidator? _invalidateSession;
   final ConversationApplicationPendingPhase? _applicationPendingPhase;
   final ConversationApplicationInteractionSources?
@@ -473,8 +497,9 @@ final class ConversationSessionController extends ChangeNotifier {
         _proactiveEventMoveAwaitingConfirmation = false;
       }
       final clarificationDraft = outcome.epistemicClarification?.draft;
+      String? clarificationReplyOverride;
       if (pendingOutcome == null && clarificationDraft != null) {
-        _registerClarificationDraft?.call(
+        clarificationReplyOverride = await _prepareClarificationDraft?.call(
           clarificationDraft,
           generation,
           text,
@@ -488,7 +513,7 @@ final class ConversationSessionController extends ChangeNotifier {
         throw ChatBackendMalformedResponseException();
       }
       var responseKind = outcome.responseKind;
-      var visibleReply = outcome.reply;
+      var visibleReply = clarificationReplyOverride ?? outcome.reply;
       final clarification = outcome.epistemicClarification;
       if (pendingOutcome == null &&
           clarificationDraft != null &&

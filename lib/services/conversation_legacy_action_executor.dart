@@ -23,12 +23,20 @@ final class ConversationLegacyActionExecutor {
     required this.coordinator,
     this.smartPlanning,
     this.loadAutonomyPolicy,
+    EventStartConflictChecker? eventStartConflictChecker,
+    EventConflictChecker? eventConflictChecker,
     DateTime Function()? clock,
-  }) : _clock = clock ?? DateTime.now;
+  })  : _eventStartConflictChecker =
+            eventStartConflictChecker ?? EventService.getConflictEvent,
+        _eventConflictChecker =
+            eventConflictChecker ?? EventService.getOverlapConflict,
+        _clock = clock ?? DateTime.now;
 
   final ConversationCoordinator coordinator;
   final SmartPlanningContinuationCoordinator? smartPlanning;
   final Future<ActionAutonomyPolicy> Function()? loadAutonomyPolicy;
+  final EventStartConflictChecker _eventStartConflictChecker;
+  final EventConflictChecker _eventConflictChecker;
   final DateTime Function() _clock;
   _PendingEventDraft? _pendingEventDraft;
 
@@ -75,6 +83,59 @@ final class ConversationLegacyActionExecutor {
     int sessionGeneration,
     String userMessage,
   ) {
+    return registerClarificationDraft(
+      _enrichClarificationDraft(draft, userMessage),
+      sessionGeneration,
+    );
+  }
+
+  Future<String?> prepareClarificationDraftFromMessage(
+    ConversationClarificationDraft draft,
+    int sessionGeneration,
+    String userMessage,
+  ) async {
+    final enriched = _enrichClarificationDraft(draft, userMessage);
+    final date = enriched.date;
+    final time = enriched.startTime;
+    if (date != null &&
+        time != null &&
+        !EventTitleService.isGeneric(enriched.title)) {
+      final conflict = await _eventStartConflictChecker(
+        startDateTimeIso: ChatPlanningHelperService.buildStartDateTimeIso(
+          date: date,
+          time: time,
+        ),
+      );
+      if (conflict != null) {
+        _pendingEventDraft = _PendingEventDraft(
+          draftId: enriched.draftId,
+          logicalRequestId: enriched.logicalRequestId,
+          sessionGeneration: sessionGeneration,
+          expectedField: _PendingEventField.conflictAlternativeTime,
+          action: {
+            'type': 'event',
+            'title': enriched.title,
+            'date': date,
+            'time': '',
+            'durationMinutes': enriched.durationMinutes ?? 0,
+            'travelGoMinutes': enriched.travelGoMinutes ?? 0,
+            'travelBackMinutes': enriched.travelBackMinutes ?? 0,
+            'marginMinutes': enriched.marginMinutes ?? 0,
+          },
+          expiresAt: enriched.expiresAt,
+        );
+        return 'À cette heure-là, tu as déjà ${conflict.title}. '
+            'Propose-moi un autre horaire et je continue avec ton rendez-vous.';
+      }
+    }
+    registerClarificationDraft(enriched, sessionGeneration);
+    return null;
+  }
+
+  ConversationClarificationDraft _enrichClarificationDraft(
+    ConversationClarificationDraft draft,
+    String userMessage,
+  ) {
     final parsedDate = draft.date?.trim().isNotEmpty == true
         ? draft.date
         : NaturalDateService.resolveDateFromText(
@@ -101,7 +162,7 @@ final class ConversationLegacyActionExecutor {
       expiresAt: draft.expiresAt,
       sessionGeneration: draft.sessionGeneration,
     );
-    return registerClarificationDraft(enriched, sessionGeneration);
+    return enriched;
   }
 
   void invalidate() {
@@ -169,7 +230,7 @@ final class ConversationLegacyActionExecutor {
       execute: (event) async {
         final result = await EventConfirmationService.confirm(
           event: event,
-          conflictChecker: EventService.getOverlapConflict,
+          conflictChecker: _eventConflictChecker,
           addEvent: EventService.addEvent,
           addEvents: EventService.addEvents,
           showNotification: NotificationService.showNotification,
@@ -438,6 +499,8 @@ final class ConversationLegacyActionExecutor {
       buildStartDateTimeIso: ChatPlanningHelperService.buildStartDateTimeIso,
       buildEndDateTimeIso: ChatPlanningHelperService.buildEndDateTimeIso,
       endTimeFromDuration: ChatPlanningHelperService.endTimeFromDuration,
+      eventStartConflictChecker: _eventStartConflictChecker,
+      eventConflictChecker: _eventConflictChecker,
     );
     final event = result.pendingConfirmationEvent;
     if (event != null) {

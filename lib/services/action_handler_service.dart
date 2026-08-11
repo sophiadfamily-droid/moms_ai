@@ -17,6 +17,10 @@ typedef ShoppingItemWriter = Future<ShoppingPersistenceResult> Function(
   String? mutationId,
 });
 
+typedef EventStartConflictChecker = Future<EventModel?> Function({
+  required String startDateTimeIso,
+});
+
 class ActionHandlerResult {
   final String message;
   final Map<String, dynamic>? pendingTitleEvent;
@@ -68,6 +72,9 @@ class ActionHandlerService {
       required int durationMinutes,
     }) endTimeFromDuration,
     ShoppingItemWriter shoppingItemWriter = ShoppingService.addItem,
+    EventStartConflictChecker eventStartConflictChecker =
+        EventService.getConflictEvent,
+    EventConflictChecker eventConflictChecker = EventService.getOverlapConflict,
   }) async {
     if (action is! Map) return const ActionHandlerResult();
 
@@ -244,23 +251,12 @@ class ActionHandlerService {
         );
       }
 
-      if (durationMinutes <= 0) {
-        pendingAction["date"] = date;
-        pendingAction["time"] = time;
-
-        return ActionHandlerResult(
-          pendingDurationEvent: pendingAction,
-          message:
-              "Parfait 💕\n\nCombien de temps veux-tu prévoir pour « $title » ?",
-        );
-      }
-
       final earlyStartDateTimeIso = buildStartDateTimeIso(
         date: date,
         time: time,
       );
 
-      final earlyConflictEvent = await EventService.getConflictEvent(
+      final earlyConflictEvent = await eventStartConflictChecker(
         startDateTimeIso: earlyStartDateTimeIso,
       );
 
@@ -274,6 +270,17 @@ class ActionHandlerService {
               "Attention 💕 Tu as déjà quelque chose de prévu à cette heure-là : "
               "${earlyConflictEvent.title}.\n\n"
               "Peux-tu me proposer un autre horaire ? ✨",
+        );
+      }
+
+      if (durationMinutes <= 0) {
+        pendingAction["date"] = date;
+        pendingAction["time"] = time;
+
+        return ActionHandlerResult(
+          pendingDurationEvent: pendingAction,
+          message:
+              "Parfait 💕\n\nCombien de temps veux-tu prévoir pour « $title » ?",
         );
       }
 
@@ -302,7 +309,7 @@ class ActionHandlerService {
         recurringWeekday: recurringWeekday,
       );
 
-      final earlyOverlapConflictEvent = await EventService.getOverlapConflict(
+      final earlyOverlapConflictEvent = await eventConflictChecker(
         candidate: earlyCandidateEvent,
       );
 
@@ -388,7 +395,7 @@ class ActionHandlerService {
         recurringWeekday: recurringWeekday,
       );
 
-      final conflictEvent = await EventService.getOverlapConflict(
+      final conflictEvent = await eventConflictChecker(
         candidate: event,
       );
 

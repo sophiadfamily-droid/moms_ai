@@ -9,14 +9,19 @@ final class AgendaConflictSuggestionService {
   AgendaConflictSuggestionService({
     Future<List<EventModel>> Function()? loadEvents,
     RoutineAgendaService? routineAgendaService,
+    RoutinePlanningBlockerService? routinePlanningBlockerService,
     DateTime Function()? clock,
   })  : _loadEvents = loadEvents ?? EventService.getEvents,
-        _routineAgendaService =
-            routineAgendaService ?? RoutineAgendaService.production(),
+        _routinePlanningBlockerService = routinePlanningBlockerService ??
+            (routineAgendaService == null
+                ? RoutinePlanningBlockerService.production()
+                : RoutinePlanningBlockerService(
+                    routineAgendaService: routineAgendaService,
+                  )),
         _clock = clock ?? DateTime.now;
 
   final Future<List<EventModel>> Function() _loadEvents;
-  final RoutineAgendaService _routineAgendaService;
+  final RoutinePlanningBlockerService _routinePlanningBlockerService;
   final DateTime Function() _clock;
 
   Future<AgendaConflictMoveSuggestion?> suggest({
@@ -32,9 +37,7 @@ final class AgendaConflictSuggestionService {
       return null;
     }
     final blocked = events.where((event) => event.id != eventId).toList();
-    final routineBlockers = await RoutinePlanningBlockerService(
-      routineAgendaService: _routineAgendaService,
-    ).load(
+    final routineBlockers = await _routinePlanningBlockerService.load(
       accountScopeId: accountScopeId,
       startDay: now,
       days: 7,

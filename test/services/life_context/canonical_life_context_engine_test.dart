@@ -362,6 +362,30 @@ void main() {
       expect(empty.routines, isEmpty);
     });
 
+    test('Routine keeps profile schedules when canonical loading fails',
+        () async {
+      final section = await RoutineLifeContextAdapter(
+        loadHuman: (_) async => _humanState(),
+        loadCanonical: (_) async => throw StateError('offline'),
+      ).load(
+        LifeContextAdapterRequest(accountScopeId: 'account-a', readAt: now),
+      );
+
+      expect(section.routines, hasLength(4));
+      expect(
+        section.routines.map((item) => item.id),
+        contains('personalActivity:0:0'),
+      );
+      expect(
+        section.metadata.availability,
+        LifeContextAvailability.availableStale,
+      );
+      expect(
+        section.metadata.warningCodes,
+        contains('canonical_routines_unavailable'),
+      );
+    });
+
     test('empty is distinct from unavailable', () async {
       final empty = await TaskLifeContextAdapter(
         load: (_) async => [],

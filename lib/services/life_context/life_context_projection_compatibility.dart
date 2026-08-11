@@ -90,6 +90,8 @@ final class PlanningProjectionRoutine {
     required this.startTime,
     required this.endTime,
     required this.travelMinutes,
+    this.routineKind = 'routine',
+    this.label,
     this.recurrenceType,
     this.anchorDateIso,
     this.weekOfMonth,
@@ -99,6 +101,8 @@ final class PlanningProjectionRoutine {
   });
 
   final String id;
+  final String routineKind;
+  final String? label;
   final List<String> days;
   final String? startTime;
   final String? endTime;
@@ -194,6 +198,9 @@ abstract final class LifeContextPlanningProjectionAdapter {
           routines.add(
             PlanningProjectionRoutine(
               id: item.id,
+              routineKind:
+                  facts[LifeContextProjectionFactKeys.routineKind] ?? 'routine',
+              label: facts[LifeContextProjectionFactKeys.title],
               days: (facts[LifeContextProjectionFactKeys.days] ?? '')
                   .split(',')
                   .where((day) => day.isNotEmpty)

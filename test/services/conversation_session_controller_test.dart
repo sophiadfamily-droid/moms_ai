@@ -357,6 +357,7 @@ void main() {
         contextProvider: _Context(),
         messageStore: _Store(),
         accountScopeId: 'account',
+        eventConflictChecker: EventService.getOverlapConflict,
         clock: () => DateTime.utc(2026, 7, 29, 12),
         idGenerator: () => 'production-event-diagnosis',
       );
@@ -379,6 +380,51 @@ void main() {
       controller.dispose();
     });
 
+    test('an occupied start replaces the backend duration question', () async {
+      final backend = _JsonCallableBackend(_eventDraftCallableJson());
+      final checkedStarts = <String>[];
+      final controller = ConversationSessionController.production(
+        profile: _profile(),
+        backendClient: backend,
+        contextProvider: _Context(),
+        messageStore: _Store(),
+        accountScopeId: 'account',
+        eventStartConflictChecker: ({required startDateTimeIso}) async {
+          checkedStarts.add(startDateTimeIso);
+          if (startDateTimeIso.contains('T15:00')) {
+            return EventModel(
+              title: 'ton Pilates',
+              date: '2026-07-30',
+              time: '14:00',
+              notes: '',
+              createdAt: DateTime.utc(2026, 7, 29),
+              startDateTimeIso: '2026-07-30T14:00:00.000Z',
+              endDateTimeIso: '2026-07-30T16:00:00.000Z',
+              durationMinutes: 120,
+            );
+          }
+          return null;
+        },
+        eventConflictChecker: ({required candidate}) async => null,
+        clock: () => DateTime.utc(2026, 7, 29, 12),
+        idGenerator: () => 'production-event-occupied-start',
+      );
+
+      await controller.submitText('medecin demain 15h');
+
+      expect(controller.state.messages.last.text, contains('ton Pilates'));
+      expect(controller.state.messages.last.text, isNot(contains('durée')));
+      expect(controller.state.phase,
+          ConversationSessionPhase.awaitingClarification);
+
+      await controller.submitText('17h');
+
+      expect(controller.state.messages.last.text, contains('Combien de temps'));
+      expect(checkedStarts, hasLength(2));
+      expect(backend.invocations, 1);
+      controller.dispose();
+    });
+
     test('callable Event draft follows every local field to confirmation',
         () async {
       SharedPreferences.setMockInitialValues({});
@@ -389,6 +435,7 @@ void main() {
         contextProvider: _Context(),
         messageStore: _Store(),
         accountScopeId: 'account',
+        eventConflictChecker: EventService.getOverlapConflict,
         clock: () => DateTime.utc(2026, 7, 29, 12),
         idGenerator: () => 'production-event-full-path',
       );
@@ -438,6 +485,7 @@ void main() {
         contextProvider: _Context(),
         messageStore: _Store(),
         accountScopeId: 'account',
+        eventConflictChecker: EventService.getOverlapConflict,
         clock: () => DateTime.utc(2026, 7, 29, 12),
         idGenerator: () => 'production-generic-event',
       );
@@ -501,19 +549,24 @@ void main() {
         contextProvider: _Context(),
         messageStore: _Store(),
         accountScopeId: 'account',
+        eventConflictChecker: EventService.getOverlapConflict,
         clock: () => DateTime.utc(2026, 7, 29, 12),
         idGenerator: () => 'production-event-conflict',
       );
 
       await controller.submitText('medecin demain 15h');
-      await controller.submitText('1h');
 
       expect(controller.state.messages.last.text, contains('autre horaire'));
+      expect(controller.state.messages.last.text, isNot(contains('durée')));
       expect(controller.state.hasPendingAction, isTrue);
       expect(controller.state.phase,
           ConversationSessionPhase.awaitingClarification);
 
       await controller.submitText('19h');
+
+      expect(controller.state.messages.last.text, contains('Combien de temps'));
+
+      await controller.submitText('1h');
 
       expect(backend.invocations, 1);
       expect(controller.state.messages.last.text, contains('trajet aller'));
@@ -560,6 +613,7 @@ void main() {
         contextProvider: _Context(),
         messageStore: _Store(),
         accountScopeId: 'account',
+        eventStartConflictChecker: ({required startDateTimeIso}) async => null,
         clock: () => DateTime.utc(2026, 7, 29, 12),
         idGenerator: () => 'production-conflict-missing-duration',
       );
@@ -584,6 +638,7 @@ void main() {
         contextProvider: _Context(),
         messageStore: _Store(),
         accountScopeId: 'account-a',
+        eventStartConflictChecker: ({required startDateTimeIso}) async => null,
         clock: () => now,
         idGenerator: () => 'production-event-expiry',
       );
@@ -601,6 +656,7 @@ void main() {
         contextProvider: _Context(),
         messageStore: _Store(),
         accountScopeId: 'account-a',
+        eventStartConflictChecker: ({required startDateTimeIso}) async => null,
         clock: () => DateTime.utc(2026, 7, 29, 12),
         idGenerator: () => 'production-event-account',
       );

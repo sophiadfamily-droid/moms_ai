@@ -112,6 +112,7 @@ void main() {
           required durationMinutes,
         }) =>
             time,
+        eventStartConflictChecker: ({required startDateTimeIso}) async => null,
       );
     }
 
