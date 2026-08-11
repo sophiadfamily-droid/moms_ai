@@ -51,17 +51,33 @@ final class LegacyUserProfileReconciliationService {
     final relationships = [...current.relationships];
     final retainedRelatedIds = <String>{};
 
-    void upsertPerson(String id, String name, String birthDate) {
+    void upsertPerson(
+      String id,
+      String name,
+      String birthDate, {
+      String? familyStatus,
+      String? workStatus,
+    }) {
       if (id.trim().isEmpty) return;
       final index = persons.indexWhere((person) => person.id == id);
       final existing = index < 0 ? null : persons[index];
       final fields = <String, Object?>{
         ...?existing?.customFields,
         if (birthDate.trim().isNotEmpty) 'birthDate': birthDate.trim(),
+        if (familyStatus?.trim().isNotEmpty == true)
+          'familyStatus': familyStatus!.trim(),
+        if (workStatus?.trim().isNotEmpty == true)
+          'workStatus': workStatus!.trim(),
       };
       if (birthDate.trim().isEmpty) {
         fields.remove('birthDate');
         fields.remove('legacyBirthDate');
+      }
+      if (familyStatus != null && familyStatus.trim().isEmpty) {
+        fields.remove('familyStatus');
+      }
+      if (workStatus != null && workStatus.trim().isEmpty) {
+        fields.remove('workStatus');
       }
       final person = existing == null
           ? HumanPerson(
@@ -117,7 +133,13 @@ final class LegacyUserProfileReconciliationService {
       );
     }
 
-    upsertPerson(current.primaryPersonId, profile.firstName, profile.birthDate);
+    upsertPerson(
+      current.primaryPersonId,
+      profile.firstName,
+      profile.birthDate,
+      familyStatus: profile.familyStatus,
+      workStatus: profile.workStatus,
+    );
     final partnerId = profile.partnerHumanPersonId.trim();
     if (partnerId.isNotEmpty && profile.partnerName.trim().isNotEmpty) {
       upsertPerson(partnerId, profile.partnerName, profile.partnerBirthDate);
@@ -188,7 +210,35 @@ final class LegacyUserProfileReconciliationService {
     final nextPersons = [...current.persons];
     final nextRelationships = [...current.relationships];
 
+    void syncProfileFields(
+      String personId,
+      Map<String, String> managedFields,
+    ) {
+      final index = nextPersons.indexWhere((person) => person.id == personId);
+      if (index < 0) return;
+      final person = nextPersons[index];
+      final fields = <String, Object?>{...person.customFields};
+      for (final entry in managedFields.entries) {
+        final value = entry.value.trim();
+        if (value.isEmpty) {
+          fields.remove(entry.key);
+          if (entry.key == 'birthDate') fields.remove('legacyBirthDate');
+        } else {
+          fields[entry.key] = value;
+        }
+      }
+      nextPersons[index] = person.copyWith(customFields: fields);
+    }
+
     next['humanPersonId'] = current.primaryPersonId;
+    syncProfileFields(
+      primary.id,
+      {
+        'birthDate': legacyProfile.birthDate,
+        'familyStatus': legacyProfile.familyStatus,
+        'workStatus': legacyProfile.workStatus,
+      },
+    );
     final nextFirstName = legacyProfile.firstName.trim();
     if (nextFirstName.isNotEmpty &&
         nextFirstName != primary.displayName &&
@@ -222,6 +272,10 @@ final class LegacyUserProfileReconciliationService {
             source: HumanInformationSource.legacyProfile,
             confirmation: HumanConfirmationStatus.needsConfirmation,
           ),
+          customFields: {
+            if (legacyProfile.partnerBirthDate.trim().isNotEmpty)
+              'birthDate': legacyProfile.partnerBirthDate.trim(),
+          },
         ),
       );
       nextRelationships.add(
@@ -246,6 +300,10 @@ final class LegacyUserProfileReconciliationService {
     final effectivePartnerId = previousPartnerId ??
         (suppliedPartnerId.isEmpty ? null : suppliedPartnerId);
     if (effectivePartnerId != null) {
+      syncProfileFields(
+        effectivePartnerId,
+        {'birthDate': legacyProfile.partnerBirthDate},
+      );
       final relationshipIndex = nextRelationships.indexWhere(
         (relation) =>
             relation.sourcePersonId == current.primaryPersonId &&
@@ -286,6 +344,10 @@ final class LegacyUserProfileReconciliationService {
                 source: HumanInformationSource.legacyProfile,
                 confirmation: HumanConfirmationStatus.needsConfirmation,
               ),
+              customFields: {
+                if (_string(child['birthDate']) case final birthDate?)
+                  'birthDate': birthDate,
+              },
             ),
           );
           nextRelationships.add(
@@ -314,6 +376,10 @@ final class LegacyUserProfileReconciliationService {
         enrichedChildren.add(child);
         continue;
       }
+      syncProfileFields(
+        id,
+        {'birthDate': _string(child['birthDate']) ?? ''},
+      );
       enrichedChildren.add({...matched, ...child, 'humanPersonId': id});
     }
     if (previousChildren.length > enrichedChildren.length) {

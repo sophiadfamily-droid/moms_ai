@@ -167,6 +167,189 @@ test("recognizes natural variants without intercepting a statement", async () =>
   assert.equal(generated.reply, "Je peux retenir cette information.");
 });
 
+test("answers family/work status from canonical Human", async () => {
+  for (const [message, factKey, value, expected] of [
+    [
+      "Quelle est ma situation familiale ?",
+      "familyStatus",
+      "Nous sommes une famille avec enfants",
+      "Tu vis en famille avec tes enfants.",
+    ],
+    [
+      "Quel est mon statut professionnel ?",
+      "workStatus",
+      "Je suis à la maison",
+      "Tu es actuellement au foyer.",
+    ],
+    [
+      "Quelle est ma profession ?",
+      "workStatus",
+      "Je suis salariée",
+      "Tu es salariée.",
+    ],
+    [
+      "Quelle est ma situation familiale ?",
+      "familyStatus",
+      "Je vis seule",
+      "Tu vis seule.",
+    ],
+    [
+      "Quelle est ma situation familiale ?",
+      "familyStatus",
+      "Nous sommes une famille monoparentale",
+      "Tu vis seule avec tes enfants.",
+    ],
+    [
+      "Quelle est ma situation familiale ?",
+      "familyStatus",
+      "Je vis en couple",
+      "Tu vis en couple.",
+    ],
+    [
+      "Quelle est ma situation professionnelle ?",
+      "workStatus",
+      "Je ne travaille pas actuellement",
+      "Tu ne travailles pas actuellement.",
+    ],
+    [
+      "Quelle est ma situation professionnelle ?",
+      "workStatus",
+      "Je suis entrepreneuse",
+      "Tu es entrepreneuse.",
+    ],
+    [
+      "Quelle est ma situation professionnelle ?",
+      "workStatus",
+      "Je suis étudiante",
+      "Tu es étudiante.",
+    ],
+  ]) {
+    const valueRequest = request(message);
+    valueRequest.conversationContext.sections = [{
+      type: "human",
+      availability: "available",
+      freshness: "current",
+      items: [{
+        type: "person",
+        confirmation: "confirmed",
+        freshness: "current",
+        facts: {[factKey]: value},
+      }],
+      budgetLimit: 55,
+      budgetUsed: 1,
+      omittedCount: 0,
+      truncated: false,
+    }];
+    valueRequest.conversationContext.budgetUsed = 1;
+    let generations = 0;
+
+    const result = await handleChatRequest(
+        valueRequest,
+        {uid: "test-uid"},
+        {generateResponse: async () => {
+          generations++;
+          return response("unexpected");
+        }},
+    );
+
+    assert.equal(generations, 0, message);
+    assert.equal(result.reply, expected, message);
+    assert.equal(
+        result.epistemic.groundingReferences[0].factKey,
+        factKey,
+        message,
+    );
+  }
+});
+
+test("personalizes family status from confirmed relations", async () => {
+  const valueRequest = request("Quelle est ma situation familiale ?");
+  valueRequest.conversationContext.sections = [
+    {
+      type: "human",
+      availability: "available",
+      freshness: "current",
+      items: [
+        {
+          type: "person",
+          confirmation: "confirmed",
+          freshness: "current",
+          facts: {
+            nodeId: "human:person:person-main",
+            familyStatus: "Nous sommes une famille avec enfants",
+          },
+        },
+        {
+          type: "person",
+          confirmation: "confirmed",
+          freshness: "current",
+          facts: {
+            nodeId: "human:person:person-willy",
+            displayName: "Willy",
+          },
+        },
+        {
+          type: "person",
+          confirmation: "confirmed",
+          freshness: "current",
+          facts: {
+            nodeId: "human:person:person-kassim",
+            displayName: "Kassim",
+          },
+        },
+      ],
+      budgetLimit: 55,
+      budgetUsed: 7,
+      omittedCount: 0,
+      truncated: false,
+    },
+    {
+      type: "relation",
+      availability: "available",
+      freshness: "current",
+      items: [
+        {
+          type: "relation",
+          confirmation: "confirmed",
+          freshness: "current",
+          facts: {
+            relationRole: "spouse",
+            sourceNodeId: "human:person:person-main",
+            targetNodeId: "human:person:person-willy",
+          },
+        },
+        {
+          type: "relation",
+          confirmation: "confirmed",
+          freshness: "current",
+          facts: {
+            relationRole: "child",
+            sourceNodeId: "human:person:person-main",
+            targetNodeId: "human:person:person-kassim",
+          },
+        },
+      ],
+      budgetLimit: 50,
+      budgetUsed: 6,
+      omittedCount: 0,
+      truncated: false,
+    },
+  ];
+  valueRequest.conversationContext.budgetUsed = 13;
+
+  const result = await handleChatRequest(valueRequest, {uid: "test-uid"});
+
+  assert.equal(result.reply, "Tu vis en famille avec Willy et Kassim.");
+  assert.deepEqual(
+      result.epistemic.usedSourceTypes,
+      ["lifeContextHuman", "lifeContextRelation"],
+  );
+  assert.deepEqual(
+      result.epistemic.personalClaims[0].sourceReferenceIndexes,
+      [0, 1, 2],
+  );
+});
+
 test("returns task clarification before model generation", async () => {
   let generations = 0;
   const result = await handleChatRequest(

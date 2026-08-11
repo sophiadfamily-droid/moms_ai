@@ -186,6 +186,8 @@ test("accepts bounded Human and explicit Relation projection", () => {
             nodeId: "human:person:person-main",
             displayName: "Personne Test",
             birthDate: "1990-02-01",
+            familyStatus: "Je vis en couple",
+            workStatus: "Je suis salariée",
             status: "active",
           },
         },
@@ -256,6 +258,10 @@ test("accepts bounded Human and explicit Relation projection", () => {
   const result = validateConversationRequest(value);
   assert.equal(result.conversationContext.sections[0].items[2]
       .facts.displayName, "Sam");
+  assert.equal(result.conversationContext.sections[0].items[0]
+      .facts.familyStatus, "Je vis en couple");
+  assert.equal(result.conversationContext.sections[0].items[0]
+      .facts.workStatus, "Je suis salariée");
   assert.equal(result.conversationContext.sections[1].items[0]
       .facts.relationRole, "partner");
   assert.equal(result.conversationContext.sections[1].items[1]

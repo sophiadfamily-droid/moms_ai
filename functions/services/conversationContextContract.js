@@ -66,6 +66,7 @@ const FACT_KEYS = new Set([
   "travelMinutes", "title", "category", "sourceNodeId", "targetNodeId",
   "actionRequired", "importance", "urgency", "flexibility",
   "relationshipStatus", "marriageDate", "engagementDate",
+  "familyStatus", "workStatus",
 ]);
 const RELATION_ROLES = new Set([
   "partner", "spouse", "formerPartner", "parent", "child", "sibling",

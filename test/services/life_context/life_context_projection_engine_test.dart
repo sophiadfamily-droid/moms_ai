@@ -230,6 +230,20 @@ void main() {
         childFacts[LifeContextProjectionFactKeys.birthDate],
         '2018-06-05',
       );
+      final primaryFacts = {
+        for (final fact in people
+            .singleWhere((item) => item.id == 'human:person:person-main')
+            .facts)
+          fact.key: fact.value,
+      };
+      expect(
+        primaryFacts[LifeContextProjectionFactKeys.familyStatus],
+        'Je vis en couple',
+      );
+      expect(
+        primaryFacts[LifeContextProjectionFactKeys.workStatus],
+        'Je suis salariée',
+      );
     });
   });
 
@@ -664,6 +678,8 @@ LifeContextSnapshot _snapshot(
           displayName: 'Personne principale',
           status: 'active',
           confirmation: 'confirmed',
+          familyStatus: 'Je vis en couple',
+          workStatus: 'Je suis salariée',
         ),
         HumanContextPerson(
           id: 'person-child',

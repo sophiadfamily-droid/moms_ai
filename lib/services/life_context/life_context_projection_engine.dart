@@ -281,6 +281,20 @@ final class LifeContextProjectionEngine {
               LifeContextSensitivityLevel.privatePersonal,
               contract: contract,
             ),
+          if (person.familyStatus != null)
+            _fact(
+              LifeContextProjectionFactKeys.familyStatus,
+              person.familyStatus!,
+              LifeContextSensitivityLevel.ordinaryPersonal,
+              contract: contract,
+            ),
+          if (person.workStatus != null)
+            _fact(
+              LifeContextProjectionFactKeys.workStatus,
+              person.workStatus!,
+              LifeContextSensitivityLevel.ordinaryPersonal,
+              contract: contract,
+            ),
         ];
         _addAllowed(
           result,

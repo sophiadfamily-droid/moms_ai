@@ -195,6 +195,8 @@ void main() {
       final edited = initial.copyWith(
         firstName: 'Personne Test',
         birthDate: '01/02/1990',
+        familyStatus: 'Je vis en couple',
+        workStatus: 'Je suis salariée',
         partnerHumanPersonId: 'person-alex',
         partnerName: 'Alex',
         partnerBirthDate: '03/04/1991',
@@ -213,6 +215,14 @@ void main() {
       );
 
       expect(updated.personById('person-main')?.displayName, 'Personne Test');
+      expect(
+        updated.personById('person-main')?.customFields,
+        containsPair('familyStatus', 'Je vis en couple'),
+      );
+      expect(
+        updated.personById('person-main')?.customFields,
+        containsPair('workStatus', 'Je suis salariée'),
+      );
       expect(updated.personById('person-alex')?.displayName, 'Alex');
       expect(updated.personById('person-sam')?.displayName, 'Sam');
       expect(
@@ -303,6 +313,14 @@ void main() {
       expect(
         result.proposed.relationships.single.structuredNotes,
         containsPair('engagementDate', '04/05/2024'),
+      );
+      expect(
+        result.proposed.personById('person-main')?.customFields,
+        containsPair('workStatus', 'activité variable'),
+      );
+      expect(
+        result.proposed.personById('person-alex')?.customFields,
+        isNot(contains('usefulNotes')),
       );
     });
   });

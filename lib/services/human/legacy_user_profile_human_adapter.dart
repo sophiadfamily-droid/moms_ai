@@ -29,6 +29,14 @@ final class LegacyUserProfileHumanAdapter {
         accountScopeId: accountScopeId,
         displayName: _optional(profile.firstName),
         evidence: evidence,
+        customFields: {
+          if (profile.birthDate.trim().isNotEmpty)
+            'birthDate': profile.birthDate.trim(),
+          if (profile.familyStatus.trim().isNotEmpty)
+            'familyStatus': profile.familyStatus.trim(),
+          if (profile.workStatus.trim().isNotEmpty)
+            'workStatus': profile.workStatus.trim(),
+        },
       ),
     ];
     final relationships = <HumanRelationship>[];
@@ -45,6 +53,10 @@ final class LegacyUserProfileHumanAdapter {
           accountScopeId: accountScopeId,
           displayName: partnerName,
           evidence: evidence,
+          customFields: {
+            if (profile.partnerBirthDate.trim().isNotEmpty)
+              'birthDate': profile.partnerBirthDate.trim(),
+          },
         ),
       );
       relationships.add(
@@ -70,7 +82,7 @@ final class LegacyUserProfileHumanAdapter {
           evidence: evidence,
           customFields: {
             if (child.birthDate.trim().isNotEmpty)
-              'legacyBirthDate': child.birthDate,
+              'birthDate': child.birthDate.trim(),
           },
         ),
       );

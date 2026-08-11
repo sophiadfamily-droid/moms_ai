@@ -129,6 +129,14 @@ final class HumanModelLifeContextAdapter implements LifeContextDomainAdapter {
                 confirmation: person.evidence.confirmation.name,
                 identityEntityId: person.identityLink?.entityId,
                 birthDate: _humanBirthDate(person),
+                familyStatus: _humanTextField(person, 'familyStatus') ??
+                    (person.id == model.primaryPersonId
+                        ? _legacyProfileText(model, 'familyStatus')
+                        : null),
+                workStatus: _humanTextField(person, 'workStatus') ??
+                    (person.id == model.primaryPersonId
+                        ? _legacyProfileText(model, 'workStatus')
+                        : null),
               ),
             )
             .toList(),
@@ -356,9 +364,24 @@ String? _humanBirthDate(HumanPerson person) {
   if (parsed.year != year || parsed.month != month || parsed.day != day) {
     return null;
   }
+
   String twoDigits(int input) => input.toString().padLeft(2, '0');
   return '${parsed.year.toString().padLeft(4, '0')}-'
       '${twoDigits(parsed.month)}-${twoDigits(parsed.day)}';
+}
+
+String? _humanTextField(HumanPerson person, String key) {
+  final value = person.customFields[key];
+  if (value is! String) return null;
+  final normalized = value.trim();
+  return normalized.isEmpty ? null : normalized;
+}
+
+String? _legacyProfileText(HumanModel model, String key) {
+  final value = model.legacyProfile[key];
+  if (value is! String) return null;
+  final normalized = value.trim();
+  return normalized.isEmpty ? null : normalized;
 }
 
 final class IdentityLifeContextAdapter implements LifeContextDomainAdapter {

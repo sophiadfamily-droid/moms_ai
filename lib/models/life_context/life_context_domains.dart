@@ -119,6 +119,8 @@ final class HumanContextPerson {
     required this.confirmation,
     this.identityEntityId,
     this.birthDate,
+    this.familyStatus,
+    this.workStatus,
   });
 
   final String id;
@@ -127,6 +129,8 @@ final class HumanContextPerson {
   final String confirmation;
   final String? identityEntityId;
   final String? birthDate;
+  final String? familyStatus;
+  final String? workStatus;
 
   Map<String, Object?> toJson() => {
         'id': id,
@@ -135,6 +139,8 @@ final class HumanContextPerson {
         'confirmation': confirmation,
         if (identityEntityId != null) 'identityEntityId': identityEntityId,
         if (birthDate != null) 'birthDate': birthDate,
+        if (familyStatus != null) 'familyStatus': familyStatus,
+        if (workStatus != null) 'workStatus': workStatus,
       };
 }
 

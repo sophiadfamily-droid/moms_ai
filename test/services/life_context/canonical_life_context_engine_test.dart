@@ -151,6 +151,8 @@ void main() {
       expect(section.relationships.single.engagementDate, '2019-03-17');
       expect(section.persons.last.confirmation, 'needsConfirmation');
       expect(section.persons.first.birthDate, '1990-02-01');
+      expect(section.persons.first.familyStatus, 'Je vis en couple');
+      expect(section.persons.first.workStatus, 'Je suis salariée');
       expect(section.metadata.revision, 3);
     });
 
@@ -543,7 +545,9 @@ HumanModelLocalState _humanState({
           entityType: EntityType.person,
         ),
         evidence: confirmed,
-        customFields: const {'birthDate': '01/02/1990'},
+        customFields: const {
+          'birthDate': '01/02/1990',
+        },
       ),
     ],
     relationships: [
@@ -624,8 +628,8 @@ HumanModelLocalState _humanState({
     ],
     legacyProfile: UserProfile(
       firstName: 'Synthetic',
-      familyStatus: '',
-      workStatus: '',
+      familyStatus: 'Je vis en couple',
+      workStatus: 'Je suis salariée',
       partnerName: '',
       wantsNotifications: false,
       allergies: 'secret medical value',
