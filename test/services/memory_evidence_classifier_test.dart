@@ -143,6 +143,22 @@ void main() {
     });
 
     for (final message in const [
+      'À quel moment de ma journée je préfère faire mes activités',
+      'Quelle activité est-ce que je préfère',
+      'Quels sont mes rendez-vous habituels',
+      'Combien de temps je préfère prévoir',
+      'Peux-tu me dire ce que je préfère',
+      'Dis-moi quand je préfère faire du sport',
+    ]) {
+      test('question française sans ponctuation: $message', () {
+        final result = classifier.classify(message);
+
+        expect(result.classification, MemoryEvidenceClassification.question);
+        expect(result.canConfirmImmediately, isFalse);
+      });
+    }
+
+    for (final message in const [
       'Je ne préfère pas le matin.',
       'Ce n’est pas vrai que je préfère le matin.',
     ]) {

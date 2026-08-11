@@ -1,4 +1,5 @@
 import '../models/memory_evidence.dart';
+import 'french_question_detector.dart';
 
 final class MemoryEvidenceClassifier {
   const MemoryEvidenceClassifier();
@@ -513,10 +514,7 @@ final class MemoryEvidenceClassifier {
       ).hasMatch(value) ||
       _hasPhrase(value, const ['selon']);
 
-  bool _isQuestion(String value) =>
-      value.contains('?') ||
-      RegExp(r'^(?:est ce que|est ce qu|pourquoi|comment|qui|quoi|ou)\b')
-          .hasMatch(value);
+  bool _isQuestion(String value) => FrenchQuestionDetector.isQuestion(value);
 
   bool _isQuotation(String raw, String normalized) =>
       RegExp(r'["“”«»]').hasMatch(raw) ||

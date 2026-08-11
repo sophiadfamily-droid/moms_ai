@@ -38,6 +38,26 @@ void main() {
       }
     });
 
+    test('never treats natural French questions as memories', () {
+      const questions = [
+        'À quel moment de ma journée je préfère faire mes activités',
+        'Quelle activité est-ce que je préfère',
+        'Quels sont mes rendez-vous habituels',
+        'Combien de temps je préfère prévoir',
+        'Quand est-ce que je fais mes courses',
+        'Peux-tu me dire ce que je préfère',
+        'Dis-moi quand je préfère faire du sport',
+      ];
+
+      for (final question in questions) {
+        expect(
+          MemoryPipelineService.shouldProcessMemory(question),
+          isFalse,
+          reason: question,
+        );
+      }
+    });
+
     test('preserves a preference importance score', () {
       const text = 'Je préfère les rendez-vous l’après-midi.';
 

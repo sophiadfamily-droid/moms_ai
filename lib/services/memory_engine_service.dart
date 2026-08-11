@@ -1,3 +1,5 @@
+import 'french_question_detector.dart';
+
 class MemoryEngineService {
   static bool looksLikePersistentMemory(String text) {
     return importanceScore(text) >= 2;
@@ -266,23 +268,7 @@ class MemoryEngineService {
   }
 
   static bool _isQuestion(String lower) {
-    return lower.endsWith("?") ||
-        lower.startsWith("quand ") ||
-        lower.startsWith("pourquoi ") ||
-        lower.startsWith("comment ") ||
-        lower.startsWith("où ") ||
-        lower.startsWith("ou ") ||
-        lower.startsWith("qui ") ||
-        lower.startsWith("quoi ") ||
-        lower.startsWith("est-ce que ") ||
-        lower.startsWith("est ce que ") ||
-        lower.startsWith("est-ce qu") ||
-        lower.startsWith("est ce qu") ||
-        lower.startsWith("peux-tu ") ||
-        lower.startsWith("peux tu ") ||
-        lower.startsWith("tu peux ") ||
-        lower.startsWith("est-ce") ||
-        lower.contains("?");
+    return FrenchQuestionDetector.isQuestion(lower);
   }
 
   static bool _hasExplicitMemoryTrigger(String lower) {
