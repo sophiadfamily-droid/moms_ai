@@ -535,6 +535,46 @@ void main() {
       );
     });
 
+    test(
+        'projette une conséquence récurrente sans bloquer le planning du tiers',
+        () {
+      final projection = _build(
+        _snapshot(
+          now,
+          planningConsequenceType: 'transport',
+          planningConsequenceWeekdays: const [
+            DateTime.monday,
+            DateTime.thursday,
+          ],
+          planningConsequenceStartTime: '08:20',
+          planningConsequenceEndTime: '08:40',
+          blocksResponsiblePerson: true,
+        ),
+        LifeContextConsumerPurpose.planning,
+      );
+      final context =
+          LifeContextPlanningProjectionAdapter.toPlanningContext(projection);
+
+      expect(context.planningConsequences, isEmpty);
+      expect(context.recurringPlanningConsequences, hasLength(1));
+      final consequence = context.recurringPlanningConsequences.single;
+      expect(consequence.kind, 'transport');
+      expect(
+        consequence.responsiblePersonNodeId,
+        'human:person:person-main',
+      );
+      expect(
+        consequence.subjectPersonNodeId,
+        'human:person:person-child',
+      );
+      expect(
+        consequence.weekdays,
+        [DateTime.monday, DateTime.thursday],
+      );
+      expect(consequence.startTime, '08:20');
+      expect(consequence.endTime, '08:40');
+    });
+
     test('ne transforme pas la validité générale en temps bloqué', () {
       final projection = _build(
         _snapshot(now),
@@ -721,6 +761,9 @@ LifeContextSnapshot _snapshot(
   String? planningConsequenceType,
   DateTime? planningConsequenceStart,
   DateTime? planningConsequenceEnd,
+  List<int> planningConsequenceWeekdays = const [],
+  String? planningConsequenceStartTime,
+  String? planningConsequenceEndTime,
   bool blocksResponsiblePerson = false,
 }) {
   final events = <EventContextItem>[
@@ -893,6 +936,9 @@ LifeContextSnapshot _snapshot(
           planningConsequenceType: planningConsequenceType,
           planningConsequenceStart: planningConsequenceStart,
           planningConsequenceEnd: planningConsequenceEnd,
+          planningConsequenceWeekdays: planningConsequenceWeekdays,
+          planningConsequenceStartTime: planningConsequenceStartTime,
+          planningConsequenceEndTime: planningConsequenceEndTime,
           blocksResponsiblePerson: blocksResponsiblePerson,
         ),
       ],

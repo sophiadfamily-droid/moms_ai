@@ -227,11 +227,20 @@ final class HumanModelLifeContextAdapter implements LifeContextDomainAdapter {
                 sourceReferenceId: record.responsiblePersonId,
                 targetReferenceId: record.subjectPersonId,
                 evidenceSource: record.evidence.source.name,
-                planningConsequenceType: record.planningConsequence?.type,
+                planningConsequenceType: record.planningConsequence?.type ??
+                    record.recurringPlanningConsequence?.type,
                 planningConsequenceStart: record.planningConsequence?.start,
                 planningConsequenceEnd: record.planningConsequence?.end,
+                planningConsequenceWeekdays:
+                    record.recurringPlanningConsequence?.weekdays ?? const [],
+                planningConsequenceStartTime:
+                    record.recurringPlanningConsequence?.startTime,
+                planningConsequenceEndTime:
+                    record.recurringPlanningConsequence?.endTime,
                 blocksResponsiblePerson:
                     record.planningConsequence?.blocksResponsiblePerson ??
+                        record.recurringPlanningConsequence
+                            ?.blocksResponsiblePerson ??
                         false,
               ),
             )
@@ -289,6 +298,9 @@ final class HumanModelLifeContextAdapter implements LifeContextDomainAdapter {
     String? planningConsequenceType,
     DateTime? planningConsequenceStart,
     DateTime? planningConsequenceEnd,
+    List<int> planningConsequenceWeekdays = const [],
+    String? planningConsequenceStartTime,
+    String? planningConsequenceEndTime,
     bool blocksResponsiblePerson = false,
   }) =>
       HumanContextRecord(
@@ -313,6 +325,10 @@ final class HumanModelLifeContextAdapter implements LifeContextDomainAdapter {
         planningConsequenceType: planningConsequenceType,
         planningConsequenceStart: planningConsequenceStart,
         planningConsequenceEnd: planningConsequenceEnd,
+        planningConsequenceWeekdays: List<int>.of(planningConsequenceWeekdays)
+          ..sort(),
+        planningConsequenceStartTime: planningConsequenceStartTime,
+        planningConsequenceEndTime: planningConsequenceEndTime,
         blocksResponsiblePerson: blocksResponsiblePerson,
       );
 }

@@ -896,6 +896,38 @@ final class LifeContextProjectionEngine {
           LifeContextSensitivityLevel.publicTechnical,
         ),
       if (type == 'responsibility' &&
+          contract.purpose == LifeContextConsumerPurpose.planning &&
+          record.planningConsequenceWeekdays.isNotEmpty)
+        _fact(
+          LifeContextProjectionFactKeys.days,
+          record.planningConsequenceWeekdays.join(','),
+          LifeContextSensitivityLevel.publicTechnical,
+        ),
+      if (type == 'responsibility' &&
+          contract.purpose == LifeContextConsumerPurpose.planning &&
+          record.planningConsequenceStartTime != null)
+        _fact(
+          LifeContextProjectionFactKeys.startTime,
+          record.planningConsequenceStartTime!,
+          LifeContextSensitivityLevel.publicTechnical,
+        ),
+      if (type == 'responsibility' &&
+          contract.purpose == LifeContextConsumerPurpose.planning &&
+          record.planningConsequenceEndTime != null)
+        _fact(
+          LifeContextProjectionFactKeys.endTime,
+          record.planningConsequenceEndTime!,
+          LifeContextSensitivityLevel.publicTechnical,
+        ),
+      if (type == 'responsibility' &&
+          contract.purpose == LifeContextConsumerPurpose.planning &&
+          record.planningConsequenceWeekdays.isNotEmpty)
+        _fact(
+          LifeContextProjectionFactKeys.recurringConsequence,
+          'weekly',
+          LifeContextSensitivityLevel.publicTechnical,
+        ),
+      if (type == 'responsibility' &&
           contract.purpose == LifeContextConsumerPurpose.planning)
         _fact(
           LifeContextProjectionFactKeys.blocksResponsiblePerson,

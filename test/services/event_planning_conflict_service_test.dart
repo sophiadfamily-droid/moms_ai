@@ -168,6 +168,54 @@ void main() {
     expect(conflict, isNull);
   });
 
+  test('explicit recurring transport blocks only its short transition',
+      () async {
+    final service = EventPlanningConflictService(
+      loadEventConflict: ({required candidate}) async => null,
+      routinePlanningBlockers: RoutinePlanningBlockerService(
+        loadPlanningContext: (_) async => PlanningProjectionContext(
+          primaryPersonNodeId: 'human:person:primary',
+          events: const [],
+          routines: const [
+            PlanningProjectionRoutine(
+              id: 'school-schedule',
+              routineKind: 'schoolSchedule',
+              subjectNodeId: 'human:person:child',
+              days: ['lundi'],
+              startTime: '08:30',
+              endTime: '16:30',
+              travelMinutes: 0,
+            ),
+          ],
+          temporalResponsibilities: const [],
+          recurringPlanningConsequences: [
+            PlanningProjectionRecurringConsequence(
+              id: 'school-drop-off',
+              kind: 'transport',
+              responsiblePersonNodeId: 'human:person:primary',
+              subjectPersonNodeId: 'human:person:child',
+              weekdays: const [DateTime.monday],
+              startTime: '08:20',
+              endTime: '08:40',
+            ),
+          ],
+          warningCodes: const [],
+        ),
+      ),
+      currentAccountScopeId: () => 'account-a',
+    );
+
+    final duringDropOff = await service.findConflictAtStart(
+      startDateTimeIso: '2026-08-17T08:30:00',
+    );
+    final duringSchool = await service.findConflictAtStart(
+      startDateTimeIso: '2026-08-17T09:30:00',
+    );
+
+    expect(duringDropOff?.title, 'Un trajet à assurer');
+    expect(duringSchool, isNull);
+  });
+
   test('an unavailable conflict source never breaks event preparation',
       () async {
     final service = EventPlanningConflictService(

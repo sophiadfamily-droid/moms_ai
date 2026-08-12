@@ -167,6 +167,9 @@ final class HumanContextRecord {
     this.planningConsequenceType,
     this.planningConsequenceStart,
     this.planningConsequenceEnd,
+    this.planningConsequenceWeekdays = const [],
+    this.planningConsequenceStartTime,
+    this.planningConsequenceEndTime,
     this.blocksResponsiblePerson = false,
   });
 
@@ -191,6 +194,9 @@ final class HumanContextRecord {
   final String? planningConsequenceType;
   final DateTime? planningConsequenceStart;
   final DateTime? planningConsequenceEnd;
+  final List<int> planningConsequenceWeekdays;
+  final String? planningConsequenceStartTime;
+  final String? planningConsequenceEndTime;
   final bool blocksResponsiblePerson;
 
   Map<String, Object?> toJson() => {
@@ -223,6 +229,12 @@ final class HumanContextRecord {
         if (planningConsequenceEnd != null)
           'planningConsequenceEnd':
               planningConsequenceEnd!.toUtc().toIso8601String(),
+        if (planningConsequenceWeekdays.isNotEmpty)
+          'planningConsequenceWeekdays': planningConsequenceWeekdays,
+        if (planningConsequenceStartTime != null)
+          'planningConsequenceStartTime': planningConsequenceStartTime,
+        if (planningConsequenceEndTime != null)
+          'planningConsequenceEndTime': planningConsequenceEndTime,
         if (blocksResponsiblePerson) 'blocksResponsiblePerson': true,
       };
 }

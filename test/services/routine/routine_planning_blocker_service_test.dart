@@ -202,6 +202,76 @@ void main() {
     expect(blockers, isEmpty);
   });
 
+  test('blocks only matching days of an explicit recurring responsibility',
+      () async {
+    final service = RoutinePlanningBlockerService(
+      loadPlanningContext: (_) async => PlanningProjectionContext(
+        primaryPersonNodeId: 'human:person:primary',
+        events: const [],
+        routines: const [],
+        temporalResponsibilities: const [],
+        recurringPlanningConsequences: [
+          PlanningProjectionRecurringConsequence(
+            id: 'regular-drop-off',
+            kind: 'transport',
+            responsiblePersonNodeId: 'human:person:primary',
+            subjectPersonNodeId: 'human:person:housemate',
+            weekdays: const [DateTime.monday, DateTime.thursday],
+            startTime: '08:20',
+            endTime: '08:40',
+          ),
+        ],
+        warningCodes: const [],
+      ),
+    );
+
+    final monday = await service.load(
+      accountScopeId: 'account-a',
+      startDay: DateTime(2026, 8, 17),
+    );
+    final tuesday = await service.load(
+      accountScopeId: 'account-a',
+      startDay: DateTime(2026, 8, 18),
+    );
+
+    expect(monday, hasLength(1));
+    expect(monday.single.title, 'Un trajet à assurer');
+    expect(monday.single.startDateTimeIso, '2026-08-17T08:20:00.000');
+    expect(monday.single.endDateTimeIso, '2026-08-17T08:40:00.000');
+    expect(tuesday, isEmpty);
+  });
+
+  test('does not block a recurring responsibility carried by someone else',
+      () async {
+    final service = RoutinePlanningBlockerService(
+      loadPlanningContext: (_) async => PlanningProjectionContext(
+        primaryPersonNodeId: 'human:person:primary',
+        events: const [],
+        routines: const [],
+        temporalResponsibilities: const [],
+        recurringPlanningConsequences: [
+          PlanningProjectionRecurringConsequence(
+            id: 'housemate-drop-off',
+            kind: 'transport',
+            responsiblePersonNodeId: 'human:person:housemate',
+            subjectPersonNodeId: 'human:person:guest',
+            weekdays: const [DateTime.monday],
+            startTime: '08:20',
+            endTime: '08:40',
+          ),
+        ],
+        warningCodes: const [],
+      ),
+    );
+
+    final blockers = await service.load(
+      accountScopeId: 'account-a',
+      startDay: DateTime(2026, 8, 17),
+    );
+
+    expect(blockers, isEmpty);
+  });
+
   test('rejects a broad responsibility range as a planning blocker', () {
     const consequence = PlanningProjectionConsequence(
       id: 'broad-custody-period',

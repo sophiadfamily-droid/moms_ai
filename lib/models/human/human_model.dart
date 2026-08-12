@@ -675,6 +675,79 @@ final class HumanPlanningConsequence {
   }
 }
 
+/// A confirmed weekly consequence of a responsibility on the responsible
+/// person's own availability.
+///
+/// Local clock times deliberately remain timezone-free here. Planning applies
+/// them to the civil day currently being evaluated, exactly like recurring
+/// schedule ranges. A relationship or another person's schedule can never
+/// create this record by inference.
+final class HumanRecurringPlanningConsequence {
+  HumanRecurringPlanningConsequence({
+    required this.type,
+    required List<int> weekdays,
+    required this.startTime,
+    required this.endTime,
+    this.blocksResponsiblePerson = true,
+  }) : weekdays = List.unmodifiable(List<int>.of(weekdays)..sort()) {
+    if (!HumanPlanningConsequenceTypes.all.contains(type) ||
+        this.weekdays.isEmpty ||
+        this.weekdays.length > DateTime.daysPerWeek ||
+        this.weekdays.toSet().length != this.weekdays.length ||
+        this.weekdays.any(
+              (weekday) =>
+                  weekday < DateTime.monday || weekday > DateTime.sunday,
+            ) ||
+        _humanLocalTimeMinutes(startTime) == null ||
+        _humanLocalTimeMinutes(endTime) == null ||
+        startTime == endTime) {
+      throw const HumanModelException(
+        'invalid_human_recurring_planning_consequence',
+      );
+    }
+  }
+
+  final String type;
+  final List<int> weekdays;
+  final String startTime;
+  final String endTime;
+  final bool blocksResponsiblePerson;
+
+  Map<String, Object?> toJson() => {
+        'type': type,
+        'weekdays': weekdays,
+        'startTime': startTime,
+        'endTime': endTime,
+        'blocksResponsiblePerson': blocksResponsiblePerson,
+      };
+
+  factory HumanRecurringPlanningConsequence.fromJson(Object? value) {
+    final map = _stringMap(
+      value,
+      'invalid_human_recurring_planning_consequence',
+    );
+    return HumanRecurringPlanningConsequence(
+      type: _requiredString(
+        map['type'],
+        'invalid_human_recurring_planning_consequence_type',
+      ),
+      weekdays: _integerList(
+        map['weekdays'],
+        'invalid_human_recurring_planning_consequence_weekdays',
+      ),
+      startTime: _requiredString(
+        map['startTime'],
+        'invalid_human_recurring_planning_consequence_start',
+      ),
+      endTime: _requiredString(
+        map['endTime'],
+        'invalid_human_recurring_planning_consequence_end',
+      ),
+      blocksResponsiblePerson: map['blocksResponsiblePerson'] == true,
+    );
+  }
+}
+
 final class HumanResponsibility {
   HumanResponsibility({
     required this.id,
@@ -685,6 +758,7 @@ final class HumanResponsibility {
     this.customType,
     this.scope,
     this.planningConsequence,
+    this.recurringPlanningConsequence,
     this.validity = const HumanValidityPeriod(),
     this.status = HumanRecordStatus.active,
     required this.evidence,
@@ -699,6 +773,11 @@ final class HumanResponsibility {
     if (type.trim().isEmpty) {
       throw const HumanModelException('invalid_human_responsibility_type');
     }
+    if (planningConsequence != null && recurringPlanningConsequence != null) {
+      throw const HumanModelException(
+        'multiple_human_planning_consequences',
+      );
+    }
     validity.validate();
   }
 
@@ -710,6 +789,7 @@ final class HumanResponsibility {
   final String? customType;
   final String? scope;
   final HumanPlanningConsequence? planningConsequence;
+  final HumanRecurringPlanningConsequence? recurringPlanningConsequence;
   final HumanValidityPeriod validity;
   final HumanRecordStatus status;
   final HumanEvidence evidence;
@@ -725,6 +805,8 @@ final class HumanResponsibility {
     bool clearScope = false,
     HumanPlanningConsequence? planningConsequence,
     bool clearPlanningConsequence = false,
+    HumanRecurringPlanningConsequence? recurringPlanningConsequence,
+    bool clearRecurringPlanningConsequence = false,
     HumanValidityPeriod? validity,
     HumanRecordStatus? status,
     HumanEvidence? evidence,
@@ -740,6 +822,10 @@ final class HumanResponsibility {
         planningConsequence: clearPlanningConsequence
             ? null
             : (planningConsequence ?? this.planningConsequence),
+        recurringPlanningConsequence: clearRecurringPlanningConsequence
+            ? null
+            : (recurringPlanningConsequence ??
+                this.recurringPlanningConsequence),
         validity: validity ?? this.validity,
         status: status ?? this.status,
         evidence: evidence ?? this.evidence,
@@ -755,6 +841,9 @@ final class HumanResponsibility {
         'scope': scope,
         if (planningConsequence != null)
           'planningConsequence': planningConsequence!.toJson(),
+        if (recurringPlanningConsequence != null)
+          'recurringPlanningConsequence':
+              recurringPlanningConsequence!.toJson(),
         'validity': validity.toJson(),
         'status': status.name,
         'evidence': evidence.toJson(),
@@ -780,6 +869,11 @@ final class HumanResponsibility {
       planningConsequence: map['planningConsequence'] == null
           ? null
           : HumanPlanningConsequence.fromJson(map['planningConsequence']),
+      recurringPlanningConsequence: map['recurringPlanningConsequence'] == null
+          ? null
+          : HumanRecurringPlanningConsequence.fromJson(
+              map['recurringPlanningConsequence'],
+            ),
       validity: HumanValidityPeriod.fromJson(map['validity']),
       status: _enumValue(
         HumanRecordStatus.values,
@@ -1117,6 +1211,28 @@ List<String> _stringList(Object? value) {
     throw const HumanModelException('invalid_human_string_list');
   }
   return List.unmodifiable(value.cast<String>());
+}
+
+List<int> _integerList(Object? value, String code) {
+  if (value is! List || value.any((item) => item is! int)) {
+    throw HumanModelException(code);
+  }
+  return List.unmodifiable(value.cast<int>());
+}
+
+int? _humanLocalTimeMinutes(String value) {
+  final match = RegExp(r'^(\d{2}):(\d{2})$').firstMatch(value.trim());
+  final hour = int.tryParse(match?.group(1) ?? '');
+  final minute = int.tryParse(match?.group(2) ?? '');
+  if (hour == null ||
+      minute == null ||
+      hour < 0 ||
+      hour > 23 ||
+      minute < 0 ||
+      minute > 59) {
+    return null;
+  }
+  return hour * 60 + minute;
 }
 
 String _requiredString(Object? value, String code) {

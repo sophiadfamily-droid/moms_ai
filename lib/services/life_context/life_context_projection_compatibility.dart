@@ -186,6 +186,83 @@ final class PlanningProjectionConsequence {
   }
 }
 
+/// A confirmed weekly effect of a responsibility on the responsible person's
+/// own availability. It is distinct from the other person's schedule and from
+/// a one-off dated consequence.
+final class PlanningProjectionRecurringConsequence {
+  PlanningProjectionRecurringConsequence({
+    required this.id,
+    required this.kind,
+    required this.responsiblePersonNodeId,
+    required this.subjectPersonNodeId,
+    required List<int> weekdays,
+    required this.startTime,
+    required this.endTime,
+    this.validFrom,
+    this.validUntil,
+  }) : weekdays = UnmodifiableListView(List<int>.of(weekdays)..sort());
+
+  final String id;
+  final String kind;
+  final String responsiblePersonNodeId;
+  final String subjectPersonNodeId;
+  final List<int> weekdays;
+  final String startTime;
+  final String endTime;
+  final DateTime? validFrom;
+  final DateTime? validUntil;
+
+  bool get isConcreteBlockingTime {
+    final start = _localMinutes(startTime);
+    final end = _localMinutes(endTime);
+    if (!PlanningProjectionConsequence.blockingKinds.contains(kind) ||
+        responsiblePersonNodeId.isEmpty ||
+        subjectPersonNodeId.isEmpty ||
+        weekdays.isEmpty ||
+        weekdays.length > DateTime.daysPerWeek ||
+        weekdays.toSet().length != weekdays.length ||
+        weekdays.any(
+          (weekday) => weekday < DateTime.monday || weekday > DateTime.sunday,
+        ) ||
+        start == null ||
+        end == null ||
+        start == end) {
+      return false;
+    }
+    final duration = end > start ? end - start : (24 * 60) - start + end;
+    return duration > 0 && duration <= 24 * 60;
+  }
+
+  bool appliesOn(DateTime date) {
+    final day = DateTime(date.year, date.month, date.day);
+    final from = validFrom == null
+        ? null
+        : DateTime(validFrom!.year, validFrom!.month, validFrom!.day);
+    final until = validUntil == null
+        ? null
+        : DateTime(validUntil!.year, validUntil!.month, validUntil!.day);
+    return weekdays.contains(day.weekday) &&
+        (from == null || !day.isBefore(from)) &&
+        (until == null || !day.isAfter(until));
+  }
+
+  static int? _localMinutes(String value) {
+    final parts = value.trim().split(':');
+    if (parts.length != 2) return null;
+    final hour = int.tryParse(parts[0]);
+    final minute = int.tryParse(parts[1]);
+    if (hour == null ||
+        minute == null ||
+        hour < 0 ||
+        hour > 23 ||
+        minute < 0 ||
+        minute > 59) {
+      return null;
+    }
+    return hour * 60 + minute;
+  }
+}
+
 final class PlanningProjectionContext {
   PlanningProjectionContext({
     required List<PlanningProjectionEvent> events,
@@ -193,18 +270,24 @@ final class PlanningProjectionContext {
     required List<LifeContextProjectionItem> temporalResponsibilities,
     required List<String> warningCodes,
     List<PlanningProjectionConsequence> planningConsequences = const [],
+    List<PlanningProjectionRecurringConsequence> recurringPlanningConsequences =
+        const [],
     this.primaryPersonNodeId,
   })  : events = UnmodifiableListView(events),
         routines = UnmodifiableListView(routines),
         temporalResponsibilities =
             UnmodifiableListView(temporalResponsibilities),
         planningConsequences = UnmodifiableListView(planningConsequences),
+        recurringPlanningConsequences =
+            UnmodifiableListView(recurringPlanningConsequences),
         warningCodes = UnmodifiableListView(warningCodes);
 
   final List<PlanningProjectionEvent> events;
   final List<PlanningProjectionRoutine> routines;
   final List<LifeContextProjectionItem> temporalResponsibilities;
   final List<PlanningProjectionConsequence> planningConsequences;
+  final List<PlanningProjectionRecurringConsequence>
+      recurringPlanningConsequences;
   final List<String> warningCodes;
   final String? primaryPersonNodeId;
 }
@@ -224,6 +307,7 @@ abstract final class LifeContextPlanningProjectionAdapter {
     final routines = <PlanningProjectionRoutine>[];
     final responsibilities = <LifeContextProjectionItem>[];
     final consequences = <PlanningProjectionConsequence>[];
+    final recurringConsequences = <PlanningProjectionRecurringConsequence>[];
     String? primaryPersonNodeId;
     for (final section in projection.sections) {
       if (section.type == LifeContextProjectionSectionType.event) {
@@ -308,22 +392,50 @@ abstract final class LifeContextPlanningProjectionAdapter {
         for (final item
             in section.items.where((item) => item.type == 'responsibility')) {
           final facts = _facts(item);
-          final consequence = PlanningProjectionConsequence(
-            id: item.id,
-            kind: facts[LifeContextProjectionFactKeys.consequenceType] ?? '',
-            responsiblePersonNodeId:
-                facts[LifeContextProjectionFactKeys.sourceNodeId] ?? '',
-            subjectPersonNodeId:
-                facts[LifeContextProjectionFactKeys.targetNodeId] ?? '',
-            start: facts[LifeContextProjectionFactKeys.start] ?? '',
-            end: facts[LifeContextProjectionFactKeys.end] ?? '',
-          );
-          if (facts[LifeContextProjectionFactKeys.blocksResponsiblePerson] ==
-                  'true' &&
-              consequence.responsiblePersonNodeId.isNotEmpty &&
-              consequence.subjectPersonNodeId.isNotEmpty &&
-              consequence.isConcreteBlockingTime) {
-            consequences.add(consequence);
+          if (facts[LifeContextProjectionFactKeys.blocksResponsiblePerson] !=
+              'true') {
+            continue;
+          }
+          final kind =
+              facts[LifeContextProjectionFactKeys.consequenceType] ?? '';
+          final responsible =
+              facts[LifeContextProjectionFactKeys.sourceNodeId] ?? '';
+          final subject =
+              facts[LifeContextProjectionFactKeys.targetNodeId] ?? '';
+          if (facts[LifeContextProjectionFactKeys.recurringConsequence] ==
+              'weekly') {
+            final recurring = PlanningProjectionRecurringConsequence(
+              id: item.id,
+              kind: kind,
+              responsiblePersonNodeId: responsible,
+              subjectPersonNodeId: subject,
+              weekdays: (facts[LifeContextProjectionFactKeys.days] ?? '')
+                  .split(',')
+                  .map(int.tryParse)
+                  .whereType<int>()
+                  .toList(growable: false),
+              startTime: facts[LifeContextProjectionFactKeys.startTime] ?? '',
+              endTime: facts[LifeContextProjectionFactKeys.endTime] ?? '',
+              validFrom: item.validFrom,
+              validUntil: item.validUntil,
+            );
+            if (recurring.isConcreteBlockingTime) {
+              recurringConsequences.add(recurring);
+            }
+          } else {
+            final consequence = PlanningProjectionConsequence(
+              id: item.id,
+              kind: kind,
+              responsiblePersonNodeId: responsible,
+              subjectPersonNodeId: subject,
+              start: facts[LifeContextProjectionFactKeys.start] ?? '',
+              end: facts[LifeContextProjectionFactKeys.end] ?? '',
+            );
+            if (consequence.responsiblePersonNodeId.isNotEmpty &&
+                consequence.subjectPersonNodeId.isNotEmpty &&
+                consequence.isConcreteBlockingTime) {
+              consequences.add(consequence);
+            }
           }
         }
       }
@@ -333,6 +445,7 @@ abstract final class LifeContextPlanningProjectionAdapter {
       routines: routines,
       temporalResponsibilities: responsibilities,
       planningConsequences: consequences,
+      recurringPlanningConsequences: recurringConsequences,
       warningCodes: projection.warningCodes,
       primaryPersonNodeId: primaryPersonNodeId,
     );

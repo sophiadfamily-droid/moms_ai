@@ -337,6 +337,59 @@ void main() {
       );
     });
 
+    test('conséquence récurrente conserve jours et heures locales', () {
+      final responsibility = HumanResponsibility(
+        id: 'responsibility-recurring-transport',
+        accountScopeId: _scope,
+        responsiblePersonId: 'person-main',
+        subjectPersonId: 'person-close',
+        type: HumanResponsibilityTypes.transport,
+        recurringPlanningConsequence: HumanRecurringPlanningConsequence(
+          type: HumanPlanningConsequenceTypes.transport,
+          weekdays: const [DateTime.monday, DateTime.thursday],
+          startTime: '08:20',
+          endTime: '08:40',
+        ),
+        evidence: _confirmed,
+      );
+
+      final decoded = HumanResponsibility.fromJson(responsibility.toJson());
+      expect(
+        decoded.recurringPlanningConsequence?.weekdays,
+        [DateTime.monday, DateTime.thursday],
+      );
+      expect(decoded.recurringPlanningConsequence?.startTime, '08:20');
+      expect(
+        decoded.recurringPlanningConsequence?.blocksResponsiblePerson,
+        isTrue,
+      );
+    });
+
+    test('refuse une conséquence ponctuelle et récurrente simultanées', () {
+      expect(
+        () => HumanResponsibility(
+          id: 'responsibility-ambiguous-planning',
+          accountScopeId: _scope,
+          responsiblePersonId: 'person-main',
+          subjectPersonId: 'person-close',
+          type: HumanResponsibilityTypes.transport,
+          planningConsequence: HumanPlanningConsequence(
+            type: HumanPlanningConsequenceTypes.transport,
+            start: DateTime.utc(2026, 8, 17, 8, 20),
+            end: DateTime.utc(2026, 8, 17, 8, 40),
+          ),
+          recurringPlanningConsequence: HumanRecurringPlanningConsequence(
+            type: HumanPlanningConsequenceTypes.transport,
+            weekdays: const [DateTime.monday],
+            startTime: '08:20',
+            endTime: '08:40',
+          ),
+          evidence: _confirmed,
+        ),
+        throwsA(isA<HumanModelException>()),
+      );
+    });
+
     test('plusieurs domiciles et hébergement temporaire', () {
       final household = HumanHousehold(
         id: 'household-main',

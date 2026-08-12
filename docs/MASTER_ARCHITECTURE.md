@@ -1835,6 +1835,16 @@ document intake, and proactive mental-load assistance.
 - preserve deterministic planning, conflict, persistence and security ownership;
 - add general household-shape and non-household-person regression tests.
 
+The Stage 4 availability contract now preserves another person's schedules as
+visible context while excluding them from primary-person blockers. A confirmed
+responsibility may add either one explicit dated consequence or one explicit
+weekly civil-time consequence for the responsible person. Weekly consequences
+carry person references, a closed consequence kind, weekdays and local
+start/end times; they remain bounded by the responsibility validity period.
+Planning blocks only that consequence range when the primary person is the
+declared responsible person. No relationship label, school period, work period
+or household membership can manufacture transport, waiting or participation.
+
 ### Stage 5 — Handle cancellations, reports and exceptions
 
 - distinguish one occurrence from an entire recurrence;

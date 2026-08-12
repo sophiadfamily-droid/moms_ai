@@ -44,8 +44,11 @@ The first migration slice therefore preserves other-person routines in Life
 Context while excluding their full ranges from primary-person blockers. The
 second slice projects an explicitly declared, time-bounded responsibility as
 its own primary-person commitment without inferring it from the other
-person's schedule. Recurring transition consequences, such as a regular school
-drop-off, still require their own future structured recurrence contract.
+person's schedule. The third slice supports an explicitly confirmed weekly
+consequence with civil weekdays and local start/end times. It blocks only the
+short recurring participation, transport, preparation, waiting, replacement
+or care range carried by the primary person; it never turns the subject's full
+school, work or activity range into the primary person's unavailability.
 
 One dated Routine exception is not a new recurrence. Canonical
 `RoutineOccurrenceOverride` records are applied by the Routine Occurrence

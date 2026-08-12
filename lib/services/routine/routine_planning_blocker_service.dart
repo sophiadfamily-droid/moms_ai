@@ -181,6 +181,35 @@ final class RoutinePlanningBlockerService {
           ),
         );
       }
+      for (final consequence in context.recurringPlanningConsequences) {
+        if (consequence.responsiblePersonNodeId !=
+                context.primaryPersonNodeId ||
+            !consequence.isConcreteBlockingTime ||
+            !consequence.appliesOn(date)) {
+          continue;
+        }
+        final start = _onDate(date, consequence.startTime);
+        var end = _onDate(date, consequence.endTime);
+        if (start == null || end == null) continue;
+        if (!end.isAfter(start)) {
+          end = end.add(const Duration(days: 1));
+        }
+        blockers.add(
+          EventModel(
+            id: 'responsibility:${consequence.id}:${_dateIso(date)}',
+            title: _responsibilityTitle(consequence.kind),
+            date: _dateIso(start),
+            time: _time(start),
+            notes: '',
+            category: 'Responsabilité',
+            createdAt: start,
+            startDateTimeIso: start.toIso8601String(),
+            endTime: _time(end),
+            endDateTimeIso: end.toIso8601String(),
+            durationMinutes: end.difference(start).inMinutes,
+          ),
+        );
+      }
     }
     final windowEnd = firstDay.add(Duration(days: days));
     for (final consequence in context.planningConsequences) {
