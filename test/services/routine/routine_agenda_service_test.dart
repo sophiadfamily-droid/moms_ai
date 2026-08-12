@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:moms_ai/models/routine/routine_occurrence_override.dart';
 import 'package:moms_ai/models/routine_model.dart';
 import 'package:moms_ai/services/routine/routine_agenda_service.dart';
 
@@ -56,6 +57,41 @@ void main() {
     );
 
     expect(items, isEmpty);
+  });
+
+  test('shows the moved occurrence at its exceptional day and time', () async {
+    final service = RoutineAgendaService(
+      loadRoutines: (_) async => [routine(account: 'account-a')],
+      loadOverrides: (_) async => [
+        RoutineOccurrenceOverride(
+          overrideId: 'routine-1-2026-08-05',
+          accountScopeId: 'account-a',
+          routineId: 'routine-1',
+          sourceDateIso: '2026-08-05',
+          type: RoutineOccurrenceOverrideType.moved,
+          replacementDateIso: '2026-08-06',
+          replacementStartTime: '18:30',
+          overrideRevision: 1,
+          lastMutationId: 'mutation-a',
+          createdAt: DateTime.utc(2026, 8, 2),
+          updatedAt: DateTime.utc(2026, 8, 2),
+        ),
+      ],
+    );
+
+    expect(
+      await service.forDay(
+        accountScopeId: 'account-a',
+        day: DateTime(2026, 8, 5),
+      ),
+      isEmpty,
+    );
+    final moved = await service.forDay(
+      accountScopeId: 'account-a',
+      day: DateTime(2026, 8, 6),
+    );
+    expect(moved.single.startTime, '18:30');
+    expect(moved.single.endTime, '19:15');
   });
 
   test('guest agenda does not query the routine repository', () async {

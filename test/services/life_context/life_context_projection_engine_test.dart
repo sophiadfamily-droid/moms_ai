@@ -497,7 +497,64 @@ void main() {
       expect(context.events, hasLength(1));
       expect(context.events.single.travelGoMinutes, 10);
       expect(context.routines, hasLength(1));
+      expect(context.primaryPersonNodeId, 'human:person:person-main');
+      expect(
+        context.routines.single.subjectNodeId,
+        'human:person:person-child',
+      );
       expect(context.temporalResponsibilities, hasLength(1));
+      expect(context.planningConsequences, isEmpty);
+    });
+
+    test('projette seulement une conséquence temporelle explicitement bornée',
+        () {
+      final projection = _build(
+        _snapshot(
+          now,
+          planningConsequenceType: 'transport',
+          planningConsequenceStart: now.add(const Duration(hours: 2)),
+          planningConsequenceEnd:
+              now.add(const Duration(hours: 2, minutes: 20)),
+          blocksResponsiblePerson: true,
+        ),
+        LifeContextConsumerPurpose.planning,
+      );
+      final context =
+          LifeContextPlanningProjectionAdapter.toPlanningContext(projection);
+
+      expect(context.planningConsequences, hasLength(1));
+      final consequence = context.planningConsequences.single;
+      expect(consequence.kind, 'transport');
+      expect(
+        consequence.responsiblePersonNodeId,
+        'human:person:person-main',
+      );
+      expect(
+        consequence.subjectPersonNodeId,
+        'human:person:person-child',
+      );
+    });
+
+    test('ne transforme pas la validité générale en temps bloqué', () {
+      final projection = _build(
+        _snapshot(now),
+        LifeContextConsumerPurpose.planning,
+      );
+      final responsibility = _section(
+        projection,
+        LifeContextProjectionSectionType.human,
+      ).items.singleWhere((item) => item.type == 'responsibility');
+      final facts = {
+        for (final fact in responsibility.facts) fact.key: fact.value,
+      };
+
+      expect(facts, isNot(contains(LifeContextProjectionFactKeys.start)));
+      expect(facts, isNot(contains(LifeContextProjectionFactKeys.end)));
+      expect(
+        LifeContextPlanningProjectionAdapter.toPlanningContext(projection)
+            .planningConsequences,
+        isEmpty,
+      );
     });
 
     test('domaine indispensable indisponible échoue explicitement', () {
@@ -554,8 +611,16 @@ void main() {
         ).includingHistoricalData(),
       );
       expect(
-        _section(standard, LifeContextProjectionSectionType.human).items,
+        _section(standard, LifeContextProjectionSectionType.human)
+            .items
+            .where((item) => item.type == 'responsibility'),
         isEmpty,
+      );
+      expect(
+        _section(standard, LifeContextProjectionSectionType.human)
+            .items
+            .where((item) => item.type == 'person'),
+        hasLength(1),
       );
       expect(
         _section(withHistory, LifeContextProjectionSectionType.human)
@@ -653,6 +718,10 @@ LifeContextSnapshot _snapshot(
   bool routineStale = false,
   bool expiredResponsibility = false,
   int routineCount = 1,
+  String? planningConsequenceType,
+  DateTime? planningConsequenceStart,
+  DateTime? planningConsequenceEnd,
+  bool blocksResponsiblePerson = false,
 }) {
   final events = <EventContextItem>[
     for (var index = 0; index < eventCount; index++)
@@ -821,6 +890,10 @@ LifeContextSnapshot _snapshot(
               ? now.subtract(const Duration(hours: 1))
               : now.add(const Duration(days: 10)),
           evidenceSource: 'explicitUserInput',
+          planningConsequenceType: planningConsequenceType,
+          planningConsequenceStart: planningConsequenceStart,
+          planningConsequenceEnd: planningConsequenceEnd,
+          blocksResponsiblePerson: blocksResponsiblePerson,
         ),
       ],
     ),

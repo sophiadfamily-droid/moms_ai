@@ -72,6 +72,7 @@ abstract final class LifeContextProjectionFactKeys {
   static const subjectEntityId = 'subjectEntityId';
   static const consequenceType = 'consequenceType';
   static const consequenceLevel = 'consequenceLevel';
+  static const blocksResponsiblePerson = 'blocksResponsiblePerson';
   static const relationshipStatus = 'relationshipStatus';
   static const marriageDate = 'marriageDate';
   static const engagementDate = 'engagementDate';
@@ -116,6 +117,7 @@ abstract final class LifeContextProjectionFactKeys {
     subjectEntityId,
     consequenceType,
     consequenceLevel,
+    blocksResponsiblePerson,
     relationshipStatus,
     marriageDate,
     engagementDate,

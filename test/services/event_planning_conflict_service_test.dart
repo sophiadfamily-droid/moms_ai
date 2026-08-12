@@ -128,6 +128,46 @@ void main() {
     expect(conflict!.title, 'Pilates');
   });
 
+  test('another person school schedule does not create an Event conflict',
+      () async {
+    final profile = UserProfile(
+      firstName: 'Sophia',
+      familyStatus: '',
+      workStatus: '',
+      partnerName: '',
+      wantsNotifications: true,
+      children: [
+        ChildProfile(
+          firstName: 'Kassim',
+          age: '4',
+          birthDate: '',
+          gender: '',
+          school: 'École',
+          notes: '',
+          schoolTimeRanges: [
+            TimeRangeModel(
+              startTime: '08:30',
+              endTime: '11:50',
+              notes: '__DAYS__:Lundi__ Horaires scolaires',
+            ),
+          ],
+        ),
+      ],
+    );
+    final service = EventPlanningConflictService(
+      loadEventConflict: ({required candidate}) async => null,
+      routinePlanningBlockers:
+          RoutinePlanningBlockerService.fromProfile(() => profile),
+      currentAccountScopeId: () => 'account-a',
+    );
+
+    final conflict = await service.findConflictAtStart(
+      startDateTimeIso: '2026-08-17T09:30:00',
+    );
+
+    expect(conflict, isNull);
+  });
+
   test('an unavailable conflict source never breaks event preparation',
       () async {
     final service = EventPlanningConflictService(

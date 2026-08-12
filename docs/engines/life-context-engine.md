@@ -1,5 +1,9 @@
 # Life Context Engine V1
 
+This engine implements the shared context required by
+`docs/ZELIA_BRAIN_CONTRACT.md`. In particular, it must distinguish another
+person's schedule from a consequence that actually occupies the primary user.
+
 ## Ownership
 
 Life Context is the reconstructible, read-only representation of the current
@@ -19,6 +23,36 @@ authenticated account scope
 `LifeContextProduction` is the single coordinator for this chain. It keeps one
 immutable generation for the active account, serializes refreshes and rejects
 late results after an account change.
+
+## Availability semantics
+
+A routine or commitment belonging to the primary person may protect time in
+Planning. A routine belonging to another person is contextual information and
+must not become a blocker merely because it exists.
+
+Another person's commitment can affect availability only through a typed,
+evidenced consequence for the primary person, such as participation,
+preparation, transport, waiting, replacement or a temporally relevant
+responsibility. Broad relationship labels and generic responsibility links do
+not justify blocking the other person's complete schedule. A responsibility
+also remains non-blocking unless it is confirmed, names the primary person as
+responsible, has a closed planning kind (accompaniment, transport, care or
+daily assistance), and carries an explicit start and end no more than 24 hours
+apart.
+
+The first migration slice therefore preserves other-person routines in Life
+Context while excluding their full ranges from primary-person blockers. The
+second slice projects an explicitly declared, time-bounded responsibility as
+its own primary-person commitment without inferring it from the other
+person's schedule. Recurring transition consequences, such as a regular school
+drop-off, still require their own future structured recurrence contract.
+
+One dated Routine exception is not a new recurrence. Canonical
+`RoutineOccurrenceOverride` records are applied by the Routine Occurrence
+Engine before its results enter Life Context or Planning: cancellation and
+replacement suppress only the named source occurrence, while a move projects
+that same stable occurrence at its explicit destination. The recurring Routine
+and all following occurrences remain intact.
 
 ## Seven consumer sections
 

@@ -325,6 +325,7 @@ final class HumanModelEditService {
     required String type,
     String? customType,
     String? scope,
+    HumanPlanningConsequence? planningConsequence,
     HumanRecordStatus status = HumanRecordStatus.active,
     HumanValidityPeriod validity = const HumanValidityPeriod(),
   }) =>
@@ -336,6 +337,7 @@ final class HumanModelEditService {
         type: type,
         customType: _optional(customType),
         scope: _optional(scope),
+        planningConsequence: planningConsequence,
         status: status,
         validity: validity,
         evidence: _confirmedEvidence,

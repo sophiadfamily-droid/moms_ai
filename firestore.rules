@@ -649,9 +649,17 @@ service cloud.firestore {
 
     function isValidRoutineDate(value) {
       return value is string
-        && value.matches(
-          '^(19|20|21)[0-9][0-9]-(0[1-9]|1[0-2])-'
-          + '(0[1-9]|[12][0-9]|3[01])$'
+        && (
+          value.matches(
+            '^(19|20|21)[0-9][0-9]-('
+            + '(01|03|05|07|08|10|12)-(0[1-9]|[12][0-9]|3[01])'
+            + '|(04|06|09|11)-(0[1-9]|[12][0-9]|30)'
+            + '|02-(0[1-9]|1[0-9]|2[0-8]))$'
+          )
+          || value.matches(
+            '^((19|21)(0[48]|[2468][048]|[13579][26])'
+            + '|20(00|0[48]|[2468][048]|[13579][26]))-02-29$'
+          )
         );
     }
 
@@ -857,6 +865,87 @@ service cloud.firestore {
 
     function routinePath(userId, routineId) {
       return /databases/$(database)/documents/users/$(userId)/routines/$(routineId);
+    }
+
+    function hasValidRoutineOccurrenceOverrideShape(userId, overrideId) {
+      let data = request.resource.data;
+      return data.keys().hasOnly([
+          'schemaVersion', 'overrideId', 'accountScopeId', 'routineId',
+          'sourceDateIso', 'type', 'replacementDateIso',
+          'replacementStartTime', 'replacementEntityId', 'tombstone',
+          'overrideRevision', 'lastMutationId', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasAll([
+          'schemaVersion', 'overrideId', 'accountScopeId', 'routineId',
+          'sourceDateIso', 'type', 'replacementDateIso',
+          'replacementStartTime', 'replacementEntityId', 'tombstone',
+          'overrideRevision', 'lastMutationId', 'createdAt', 'updatedAt'
+        ])
+        && data.schemaVersion == 1
+        && data.overrideId == overrideId
+        && data.overrideId is string
+        && data.overrideId.size() > 0
+        && data.overrideId.size() <= 200
+        && data.accountScopeId == userId
+        && data.routineId is string
+        && data.routineId.size() > 0
+        && data.routineId.size() <= 200
+        && isValidRoutineDate(data.sourceDateIso)
+        && data.type in ['cancelled', 'moved', 'replaced']
+        && data.tombstone is bool
+        && data.overrideRevision is int
+        && data.overrideRevision > 0
+        && data.lastMutationId is string
+        && data.lastMutationId.size() > 0
+        && data.lastMutationId.size() <= 128
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && data.updatedAt >= data.createdAt
+        && data.createdAt <= request.time
+        && data.updatedAt <= request.time
+        && (
+          (data.type == 'moved'
+            && isValidRoutineDate(data.replacementDateIso)
+            && isValidRoutineTime(data.replacementStartTime)
+            && data.replacementEntityId == null)
+          || (data.type == 'cancelled'
+            && data.replacementDateIso == null
+            && data.replacementStartTime == null
+            && data.replacementEntityId == null)
+          || (data.type == 'replaced'
+            && data.replacementDateIso == null
+            && data.replacementStartTime == null
+            && (data.replacementEntityId == null
+              || (data.replacementEntityId is string
+                && data.replacementEntityId.size() > 0
+                && data.replacementEntityId.size() <= 200)))
+        );
+    }
+
+    function isValidRoutineOccurrenceOverrideCreate(userId, overrideId) {
+      let data = request.resource.data;
+      return hasValidRoutineOccurrenceOverrideShape(userId, overrideId)
+        && data.overrideRevision == 1
+        && !data.tombstone
+        && data.createdAt == data.updatedAt
+        && exists(routinePath(userId, data.routineId));
+    }
+
+    function isValidRoutineOccurrenceOverrideUpdate(userId, overrideId) {
+      let next = request.resource.data;
+      let previous = resource.data;
+      return hasValidRoutineOccurrenceOverrideShape(userId, overrideId)
+        && next.accountScopeId == previous.accountScopeId
+        && next.overrideId == previous.overrideId
+        && next.routineId == previous.routineId
+        && next.sourceDateIso == previous.sourceDateIso
+        && next.schemaVersion == previous.schemaVersion
+        && next.createdAt == previous.createdAt
+        && next.overrideRevision == previous.overrideRevision + 1
+        && next.lastMutationId != previous.lastMutationId
+        && next.updatedAt > previous.updatedAt
+        && (!previous.tombstone || next.tombstone)
+        && exists(routinePath(userId, next.routineId));
     }
 
     function canCreateRoutineFromProposal(userId, routineId, routine) {
@@ -1070,6 +1159,15 @@ service cloud.firestore {
             request.resource.data
           );
         allow update: if false;
+        allow delete: if false;
+      }
+
+      match /routineOccurrenceOverrides/{overrideId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId)
+          && isValidRoutineOccurrenceOverrideCreate(userId, overrideId);
+        allow update: if isOwner(userId)
+          && isValidRoutineOccurrenceOverrideUpdate(userId, overrideId);
         allow delete: if false;
       }
 

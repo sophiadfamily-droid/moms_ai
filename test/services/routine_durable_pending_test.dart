@@ -228,6 +228,10 @@ void main() {
     final rules = File('firestore.rules').readAsStringSync();
     expect(rules, contains('match /routines/{routineId}'));
     expect(rules, contains('match /routineProposals/{proposalId}'));
+    expect(
+      rules,
+      contains('match /routineOccurrenceOverrides/{overrideId}'),
+    );
     expect(rules, contains('data.accountScopeId == userId'));
     expect(rules, contains('allow read: if isOwner(userId);'));
     expect(

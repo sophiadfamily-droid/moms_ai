@@ -88,7 +88,7 @@ void main() {
       );
     }
 
-    test('transmits school days to planning reasoning', () {
+    test('keeps school days as other-person context', () {
       final reasoning = ProfileReasoningService.buildReasoning(
         buildProfile(),
       );
@@ -104,9 +104,11 @@ void main() {
       expect(schoolPeriod['notes'], 'Horaires scolaires');
       expect(schoolPeriod['travelBeforeMinutes'], 15);
       expect(schoolPeriod['travelAfterMinutes'], 15);
+      expect(schoolPeriod['type'], 'other_person_commitment');
+      expect(schoolPeriod['blocksPrimaryUser'], isFalse);
     });
 
-    test('blocks Monday including school travel', () {
+    test('does not block the primary user during Monday school hours', () {
       final reasoning = ProfileReasoningService.buildReasoning(
         buildProfile(),
       );
@@ -117,7 +119,7 @@ void main() {
           end: DateTime(2026, 7, 20, 8, 40),
           reasoning: reasoning,
         ),
-        true,
+        false,
       );
     });
 

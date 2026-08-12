@@ -25,12 +25,15 @@ final class RoutineOccurrence {
     required this.travelBackMinutes,
     required this.marginMinutes,
     required this.sourceUpdatedAt,
+    this.originalDateIso,
   }) {
     if (schemaVersion != currentSchemaVersion ||
         occurrenceId.trim().isEmpty ||
         routineId.trim().isEmpty ||
         accountScopeId.trim().isEmpty ||
         _parseCivilDate(dateIso) == null ||
+        (originalDateIso != null &&
+            _parseCivilDate(originalDateIso!) == null) ||
         !RegExp(r'^(?:[01]\d|2[0-3]):[0-5]\d$').hasMatch(startTime) ||
         durationMinutes < 1 ||
         travelGoMinutes < 0 ||
@@ -52,6 +55,18 @@ final class RoutineOccurrence {
   final int travelBackMinutes;
   final int marginMinutes;
   final DateTime sourceUpdatedAt;
+  final String? originalDateIso;
+
+  bool get isMoved => originalDateIso != null && originalDateIso != dateIso;
+
+  String get endTime {
+    final parts = startTime.split(':');
+    final start =
+        DateTime.utc(2000, 1, 1, int.parse(parts[0]), int.parse(parts[1]));
+    final end = start.add(Duration(minutes: durationMinutes));
+    return '${end.hour.toString().padLeft(2, '0')}:'
+        '${end.minute.toString().padLeft(2, '0')}';
+  }
 
   Map<String, Object?> toJson() => {
         'schemaVersion': schemaVersion,
@@ -65,6 +80,7 @@ final class RoutineOccurrence {
         'travelBackMinutes': travelBackMinutes,
         'marginMinutes': marginMinutes,
         'sourceUpdatedAt': sourceUpdatedAt.toIso8601String(),
+        if (originalDateIso != null) 'originalDateIso': originalDateIso,
       };
 }
 

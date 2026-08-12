@@ -227,6 +227,12 @@ final class HumanModelLifeContextAdapter implements LifeContextDomainAdapter {
                 sourceReferenceId: record.responsiblePersonId,
                 targetReferenceId: record.subjectPersonId,
                 evidenceSource: record.evidence.source.name,
+                planningConsequenceType: record.planningConsequence?.type,
+                planningConsequenceStart: record.planningConsequence?.start,
+                planningConsequenceEnd: record.planningConsequence?.end,
+                blocksResponsiblePerson:
+                    record.planningConsequence?.blocksResponsiblePerson ??
+                        false,
               ),
             )
             .toList(),
@@ -280,6 +286,10 @@ final class HumanModelLifeContextAdapter implements LifeContextDomainAdapter {
     String? relationshipStatus,
     String? marriageDate,
     String? engagementDate,
+    String? planningConsequenceType,
+    DateTime? planningConsequenceStart,
+    DateTime? planningConsequenceEnd,
+    bool blocksResponsiblePerson = false,
   }) =>
       HumanContextRecord(
         id: id,
@@ -300,6 +310,10 @@ final class HumanModelLifeContextAdapter implements LifeContextDomainAdapter {
         relationshipStatus: relationshipStatus,
         marriageDate: marriageDate,
         engagementDate: engagementDate,
+        planningConsequenceType: planningConsequenceType,
+        planningConsequenceStart: planningConsequenceStart,
+        planningConsequenceEnd: planningConsequenceEnd,
+        blocksResponsiblePerson: blocksResponsiblePerson,
       );
 }
 

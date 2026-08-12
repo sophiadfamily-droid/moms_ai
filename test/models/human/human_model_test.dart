@@ -298,6 +298,45 @@ void main() {
       expect(model.activeResponsibilities(DateTime.utc(2027)), hasLength(1));
     });
 
+    test('conséquence planning est distincte de la validité déclarative', () {
+      final responsibility = HumanResponsibility(
+        id: 'responsibility-transport',
+        accountScopeId: _scope,
+        responsiblePersonId: 'person-main',
+        subjectPersonId: 'person-close',
+        type: HumanResponsibilityTypes.transport,
+        validity: HumanValidityPeriod(
+          validFrom: DateTime.utc(2026, 1, 1),
+          validUntil: DateTime.utc(2026, 12, 31),
+        ),
+        planningConsequence: HumanPlanningConsequence(
+          type: HumanPlanningConsequenceTypes.transport,
+          start: DateTime.utc(2026, 8, 17, 8, 20),
+          end: DateTime.utc(2026, 8, 17, 8, 40),
+        ),
+        evidence: _confirmed,
+      );
+
+      final decoded = HumanResponsibility.fromJson(responsibility.toJson());
+      expect(decoded.validity.validUntil, DateTime.utc(2026, 12, 31));
+      expect(
+        decoded.planningConsequence?.start,
+        DateTime.utc(2026, 8, 17, 8, 20),
+      );
+      expect(decoded.planningConsequence?.blocksResponsiblePerson, isTrue);
+    });
+
+    test('refuse une conséquence planning sans durée positive', () {
+      expect(
+        () => HumanPlanningConsequence(
+          type: HumanPlanningConsequenceTypes.transport,
+          start: DateTime.utc(2026, 8, 17, 8, 20),
+          end: DateTime.utc(2026, 8, 17, 8, 20),
+        ),
+        throwsA(isA<HumanModelException>()),
+      );
+    });
+
     test('plusieurs domiciles et hébergement temporaire', () {
       final household = HumanHousehold(
         id: 'household-main',

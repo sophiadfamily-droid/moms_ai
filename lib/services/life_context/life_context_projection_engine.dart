@@ -236,20 +236,27 @@ final class LifeContextProjectionEngine {
   ) {
     final section = snapshot.human!;
     final result = <LifeContextProjectionItem>[];
-    if (contract.purpose == LifeContextConsumerPurpose.conversation) {
-      final relatedPersonIds = section.relationships
-          .where(
-            (relationship) =>
-                relationship.status == 'active' &&
-                relationship.sourceReferenceId == section.primaryPersonId,
-          )
-          .map((relationship) => relationship.targetReferenceId)
-          .whereType<String>()
-          .toSet();
+    final includeConversationPeople =
+        contract.purpose == LifeContextConsumerPurpose.conversation;
+    final includePlanningPrimary =
+        contract.purpose == LifeContextConsumerPurpose.planning;
+    if (includeConversationPeople || includePlanningPrimary) {
+      final relatedPersonIds = includeConversationPeople
+          ? section.relationships
+              .where(
+                (relationship) =>
+                    relationship.status == 'active' &&
+                    relationship.sourceReferenceId == section.primaryPersonId,
+              )
+              .map((relationship) => relationship.targetReferenceId)
+              .whereType<String>()
+              .toSet()
+          : const <String>{};
       for (final person in section.persons) {
         if (person.status != 'active' ||
             (person.id != section.primaryPersonId &&
-                !relatedPersonIds.contains(person.id))) {
+                (!includeConversationPeople ||
+                    !relatedPersonIds.contains(person.id)))) {
           continue;
         }
         final facts = <LifeContextProjectionFact>[
@@ -272,28 +279,28 @@ final class LifeContextProjectionEngine {
             person.id == section.primaryPersonId ? 'primary' : 'related',
             LifeContextSensitivityLevel.publicTechnical,
           ),
-          if (person.displayName != null)
+          if (includeConversationPeople && person.displayName != null)
             _fact(
               LifeContextProjectionFactKeys.displayName,
               person.displayName!,
               LifeContextSensitivityLevel.ordinaryPersonal,
               contract: contract,
             ),
-          if (person.birthDate != null)
+          if (includeConversationPeople && person.birthDate != null)
             _fact(
               LifeContextProjectionFactKeys.birthDate,
               person.birthDate!,
               LifeContextSensitivityLevel.privatePersonal,
               contract: contract,
             ),
-          if (person.familyStatus != null)
+          if (includeConversationPeople && person.familyStatus != null)
             _fact(
               LifeContextProjectionFactKeys.familyStatus,
               person.familyStatus!,
               LifeContextSensitivityLevel.ordinaryPersonal,
               contract: contract,
             ),
-          if (person.workStatus != null)
+          if (includeConversationPeople && person.workStatus != null)
             _fact(
               LifeContextProjectionFactKeys.workStatus,
               person.workStatus!,
@@ -315,7 +322,9 @@ final class LifeContextProjectionEngine {
           contract,
         );
       }
-      for (final household in section.households) {
+      for (final household in includeConversationPeople
+          ? section.households
+          : const <HumanContextRecord>[]) {
         _addAllowed(
           result,
           _recordItem(
@@ -329,7 +338,9 @@ final class LifeContextProjectionEngine {
           contract,
         );
       }
-      for (final residence in section.residences) {
+      for (final residence in includeConversationPeople
+          ? section.residences
+          : const <HumanContextRecord>[]) {
         _addAllowed(
           result,
           _recordItem(
@@ -343,7 +354,9 @@ final class LifeContextProjectionEngine {
           contract,
         );
       }
-      for (final relationship in section.relationships) {
+      for (final relationship in includeConversationPeople
+          ? section.relationships
+          : const <HumanContextRecord>[]) {
         if (relationship.relationshipStatus == null &&
             relationship.marriageDate == null &&
             relationship.engagementDate == null) {
@@ -818,16 +831,75 @@ final class LifeContextProjectionEngine {
           sensitivity,
           contract: contract,
         ),
-      if (record.validFrom != null)
+      if (!(type == 'responsibility' &&
+              contract.purpose == LifeContextConsumerPurpose.planning) &&
+          record.validFrom != null)
         _fact(
           LifeContextProjectionFactKeys.start,
           record.validFrom!.toUtc().toIso8601String(),
           LifeContextSensitivityLevel.publicTechnical,
         ),
-      if (record.validUntil != null)
+      if (!(type == 'responsibility' &&
+              contract.purpose == LifeContextConsumerPurpose.planning) &&
+          record.validUntil != null)
         _fact(
           LifeContextProjectionFactKeys.end,
           record.validUntil!.toUtc().toIso8601String(),
+          LifeContextSensitivityLevel.publicTechnical,
+        ),
+      if (type == 'responsibility' &&
+          contract.purpose == LifeContextConsumerPurpose.planning &&
+          record.planningConsequenceStart != null)
+        _fact(
+          LifeContextProjectionFactKeys.start,
+          record.planningConsequenceStart!.toUtc().toIso8601String(),
+          LifeContextSensitivityLevel.publicTechnical,
+        ),
+      if (type == 'responsibility' &&
+          contract.purpose == LifeContextConsumerPurpose.planning &&
+          record.planningConsequenceEnd != null)
+        _fact(
+          LifeContextProjectionFactKeys.end,
+          record.planningConsequenceEnd!.toUtc().toIso8601String(),
+          LifeContextSensitivityLevel.publicTechnical,
+        ),
+      if (type == 'responsibility' &&
+          contract.purpose == LifeContextConsumerPurpose.planning &&
+          record.sourceReferenceId != null)
+        _fact(
+          LifeContextProjectionFactKeys.sourceNodeId,
+          LifeContextGraphNode.deterministicId(
+            LifeContextDomain.human,
+            LifeContextNodeType.person,
+            record.sourceReferenceId!,
+          ),
+          LifeContextSensitivityLevel.publicTechnical,
+        ),
+      if (type == 'responsibility' &&
+          contract.purpose == LifeContextConsumerPurpose.planning &&
+          record.targetReferenceId != null)
+        _fact(
+          LifeContextProjectionFactKeys.targetNodeId,
+          LifeContextGraphNode.deterministicId(
+            LifeContextDomain.human,
+            LifeContextNodeType.person,
+            record.targetReferenceId!,
+          ),
+          LifeContextSensitivityLevel.publicTechnical,
+        ),
+      if (type == 'responsibility' &&
+          contract.purpose == LifeContextConsumerPurpose.planning &&
+          record.planningConsequenceType != null)
+        _fact(
+          LifeContextProjectionFactKeys.consequenceType,
+          record.planningConsequenceType!,
+          LifeContextSensitivityLevel.publicTechnical,
+        ),
+      if (type == 'responsibility' &&
+          contract.purpose == LifeContextConsumerPurpose.planning)
+        _fact(
+          LifeContextProjectionFactKeys.blocksResponsiblePerson,
+          '${record.blocksResponsiblePerson}',
           LifeContextSensitivityLevel.publicTechnical,
         ),
       if (contract.purpose == LifeContextConsumerPurpose.conversation &&

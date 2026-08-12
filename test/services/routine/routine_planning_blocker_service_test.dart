@@ -75,6 +75,146 @@ void main() {
     expect(blockers.single.endDateTimeIso, '2026-08-17T15:10:00.000');
   });
 
+  test('blocks only routines that belong to the primary person', () async {
+    final service = RoutinePlanningBlockerService(
+      loadPlanningContext: (_) async => PlanningProjectionContext(
+        primaryPersonNodeId: 'human:person:primary',
+        events: const [],
+        routines: const [
+          PlanningProjectionRoutine(
+            id: 'primary-commitment',
+            subjectNodeId: 'human:person:primary',
+            days: ['lundi'],
+            startTime: '09:00',
+            endTime: '10:00',
+            travelMinutes: 0,
+          ),
+          PlanningProjectionRoutine(
+            id: 'other-person-commitment',
+            subjectNodeId: 'human:person:housemate',
+            days: ['lundi'],
+            startTime: '11:00',
+            endTime: '12:00',
+            travelMinutes: 0,
+          ),
+        ],
+        temporalResponsibilities: const [],
+        warningCodes: const [],
+      ),
+    );
+
+    final blockers = await service.load(
+      accountScopeId: 'account-a',
+      startDay: DateTime(2026, 8, 17),
+    );
+
+    expect(blockers, hasLength(1));
+    expect(blockers.single.id, contains('primary-commitment'));
+  });
+
+  test('does not hard-block a person-scoped routine when primary is unknown',
+      () async {
+    final service = RoutinePlanningBlockerService(
+      loadPlanningContext: (_) async => PlanningProjectionContext(
+        events: const [],
+        routines: const [
+          PlanningProjectionRoutine(
+            id: 'person-scoped-commitment',
+            subjectNodeId: 'human:person:someone',
+            days: ['lundi'],
+            startTime: '09:00',
+            endTime: '10:00',
+            travelMinutes: 0,
+          ),
+        ],
+        temporalResponsibilities: const [],
+        warningCodes: const [],
+      ),
+    );
+
+    final blockers = await service.load(
+      accountScopeId: 'account-a',
+      startDay: DateTime(2026, 8, 17),
+    );
+
+    expect(blockers, isEmpty);
+  });
+
+  test('blocks a confirmed bounded consequence carried by the primary person',
+      () async {
+    final service = RoutinePlanningBlockerService(
+      loadPlanningContext: (_) async => PlanningProjectionContext(
+        primaryPersonNodeId: 'human:person:primary',
+        events: const [],
+        routines: const [],
+        temporalResponsibilities: const [],
+        planningConsequences: const [
+          PlanningProjectionConsequence(
+            id: 'school-drop-off',
+            kind: 'transport',
+            responsiblePersonNodeId: 'human:person:primary',
+            subjectPersonNodeId: 'human:person:housemate',
+            start: '2026-08-17T08:20:00',
+            end: '2026-08-17T08:40:00',
+          ),
+        ],
+        warningCodes: const [],
+      ),
+    );
+
+    final blockers = await service.load(
+      accountScopeId: 'account-a',
+      startDay: DateTime(2026, 8, 17),
+    );
+
+    expect(blockers, hasLength(1));
+    expect(blockers.single.title, 'Un trajet à assurer');
+    expect(blockers.single.startDateTimeIso, '2026-08-17T08:20:00.000');
+    expect(blockers.single.endDateTimeIso, '2026-08-17T08:40:00.000');
+  });
+
+  test('does not block a consequence carried by another person', () async {
+    final service = RoutinePlanningBlockerService(
+      loadPlanningContext: (_) async => PlanningProjectionContext(
+        primaryPersonNodeId: 'human:person:primary',
+        events: const [],
+        routines: const [],
+        temporalResponsibilities: const [],
+        planningConsequences: const [
+          PlanningProjectionConsequence(
+            id: 'other-person-transport',
+            kind: 'transport',
+            responsiblePersonNodeId: 'human:person:housemate',
+            subjectPersonNodeId: 'human:person:guest',
+            start: '2026-08-17T08:20:00',
+            end: '2026-08-17T08:40:00',
+          ),
+        ],
+        warningCodes: const [],
+      ),
+    );
+
+    final blockers = await service.load(
+      accountScopeId: 'account-a',
+      startDay: DateTime(2026, 8, 17),
+    );
+
+    expect(blockers, isEmpty);
+  });
+
+  test('rejects a broad responsibility range as a planning blocker', () {
+    const consequence = PlanningProjectionConsequence(
+      id: 'broad-custody-period',
+      kind: 'transport',
+      responsiblePersonNodeId: 'human:person:primary',
+      subjectPersonNodeId: 'human:person:someone',
+      start: '2026-08-17T00:00:00',
+      end: '2026-08-19T00:00:00',
+    );
+
+    expect(consequence.isConcreteBlockingTime, isFalse);
+  });
+
   test('uses profile schedules when only the Event projection is unavailable',
       () async {
     final service = RoutinePlanningBlockerService(

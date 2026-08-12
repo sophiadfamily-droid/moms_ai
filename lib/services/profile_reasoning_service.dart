@@ -141,7 +141,7 @@ class ProfileReasoningService {
         if (!_hasValidTimeRange(range)) continue;
         final legacyRange = _legacyTimeRange(range);
 
-        reasoning.add(_blockedPeriod(
+        reasoning.add(_otherPersonCommitment(
           sourceType: "child_school",
           label: school.isNotEmpty
               ? "École $childName - $school"
@@ -174,7 +174,7 @@ class ProfileReasoningService {
               ? activityTravel
               : _value(range.travelMinutes);
 
-          reasoning.add(_blockedPeriod(
+          reasoning.add(_otherPersonCommitment(
             sourceType: "child_activity",
             label: "${_value(activity.title)} - $childName",
             days: activity.days?.value ?? const <String>[],
@@ -295,6 +295,39 @@ class ProfileReasoningService {
       "location": location,
       "notes": notes,
       ...travel,
+    };
+  }
+
+  /// Keeps another person's schedule available as context without claiming
+  /// that the primary user is unavailable for the complete range.
+  ///
+  /// A separate, explicit consequence such as transport or participation must
+  /// become its own primary-user commitment before Planning can block time.
+  static Map<String, dynamic> _otherPersonCommitment({
+    required String sourceType,
+    required String label,
+    required String startTime,
+    required String endTime,
+    List<String> days = const [],
+    dynamic travelMinutes,
+    String location = "",
+    String notes = "",
+  }) {
+    final period = _blockedPeriod(
+      sourceType: sourceType,
+      label: label,
+      days: days,
+      startTime: startTime,
+      endTime: endTime,
+      travelMinutes: travelMinutes,
+      location: location,
+      notes: notes,
+    );
+    return {
+      ...period,
+      "type": "other_person_commitment",
+      "blocksPrimaryUser": false,
+      "userConsequence": "unknown",
     };
   }
 

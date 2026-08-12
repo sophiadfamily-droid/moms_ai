@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:moms_ai/models/routine/routine_occurrence_models.dart';
+import 'package:moms_ai/models/routine/routine_occurrence_override.dart';
 import 'package:moms_ai/models/routine_model.dart';
 import 'package:moms_ai/services/routine/routine_occurrence_service.dart';
 import 'package:timezone/data/latest.dart' as tz_data;
@@ -48,6 +49,42 @@ void main() {
           'routine_account_mismatch',
         ),
       ),
+    );
+  });
+
+  test('loads and applies occurrence overrides with the same account scope',
+      () async {
+    String? overrideAccount;
+    final service = RoutineOccurrenceService(
+      loadRoutines: (_) async => [_routine('account-a')],
+      loadOverrides: (accountScopeId) async {
+        overrideAccount = accountScopeId;
+        return [
+          RoutineOccurrenceOverride(
+            overrideId: 'routine-1-2026-08-04',
+            accountScopeId: 'account-a',
+            routineId: 'routine-1',
+            sourceDateIso: '2026-08-04',
+            type: RoutineOccurrenceOverrideType.cancelled,
+            overrideRevision: 1,
+            lastMutationId: 'mutation-a',
+            createdAt: DateTime.utc(2026, 8, 2),
+            updatedAt: DateTime.utc(2026, 8, 2),
+          ),
+        ];
+      },
+    );
+
+    final projection = await service.project(
+      accountScopeId: 'account-a',
+      windowStartDate: DateTime.utc(2026, 8, 3),
+      windowEndDateExclusive: DateTime.utc(2026, 8, 12),
+    );
+
+    expect(overrideAccount, 'account-a');
+    expect(
+      projection.occurrences.map((item) => item.dateIso),
+      ['2026-08-11'],
     );
   });
 

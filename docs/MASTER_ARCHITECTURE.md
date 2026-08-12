@@ -4,6 +4,12 @@
 
 This document is the constitutional architectural reference for ZELIA. It defines the durable mission, boundaries, principles, ownership model, system relationships, decision framework, and long-term direction of the repository.
 
+ZELIA's approved product mission is to become the personal second brain of its
+user. `docs/ZELIA_BRAIN_CONTRACT.md` is the authoritative product contract for
+that mission. This architecture must implement it without replacing evidence
+with plausible inference or moving deterministic domain truth into generated
+language.
+
 It is intentionally not an implementation manual. Individual classes, APIs, schemas, storage layouts, operational commands, and migration procedures belong in narrower documents and in the code itself.
 
 Statements labeled **Current state** describe behavior verified in the repository when this document was created. Statements labeled **Planned architecture** describe an approved direction that is not yet fully implemented. Repository-specific facts must always be rechecked before configuration, security, persistence, or remote work.
@@ -1778,6 +1784,11 @@ Architectural debt is recorded here to prevent accidental normalization. It does
 
 The roadmap is ordered by dependency and risk, not by feature visibility.
 
+The foundations in Stages 1 to 3 are substantially present. The product order
+from Stage 4 onward follows the validated brain contract: understand real
+consequences first, then exceptions, optimal scheduling, language breadth,
+document intake, and proactive mental-load assistance.
+
 ### Stage 1 — Secure and stabilize foundations
 
 - establish protected anonymous-capable identity;
@@ -1803,26 +1814,68 @@ The roadmap is ordered by dependency and risk, not by feature visibility.
 - unify routine projections used by planning and future engines;
 - preserve current planning invariants.
 
-### Stage 4 — Formalize cross-domain reasoning
+### Stage 4 — Model real availability and consequences
 
 - define typed Reasoning Engine inputs from conversation state and Life Context projections;
-- preserve deterministic planning, conflict, persistence, confirmation, and security ownership;
-- add explainable, bounded multi-domain reasoning contracts and regression tests.
+- make person, relationship, responsibility, commitment and user consequence the shared reasoning units;
+- distinguish another person's schedule from the primary user's availability;
+- block only a known participation, preparation, transport, waiting, replacement or responsibility consequence;
+- represent certainty so probable context cannot become a hard conflict;
+- preserve deterministic planning, conflict, persistence and security ownership;
+- add general household-shape and non-household-person regression tests.
 
-### Stage 5 — Mature core domain engines
+### Stage 5 — Handle cancellations, reports and exceptions
 
-- formalize Priority Engine behavior;
-- formalize Task and Shopping lifecycle contracts;
-- mature Routine and Profile engine boundaries according to Life Context dependencies;
-- establish the Notification Engine lifecycle;
+- distinguish one occurrence from an entire recurrence;
+- support cancelled, moved, replaced and exceptionally skipped commitments;
+- compare importance and flexibility without silently deciding for the user;
+- keep corrections reversible and prevent contradictory duplicates.
 
-### Stage 6 — Expand product intelligence
+The first Stage 5 slice introduces an account-owned, revisioned
+`RoutineOccurrenceOverride`, stored independently from the recurring Routine.
+It identifies one source occurrence by Routine and civil date. `cancelled` and
+`replaced` suppress only that occurrence; `moved` keeps its stable source
+identity while projecting it at one explicit replacement date and local time.
+Tombstones reverse an override without deleting its audit history. The Routine
+Occurrence Engine rejects duplicate overrides and a move onto another
+occurrence of the same Routine instead of silently producing contradictory
+copies. Conversation understanding and action confirmation will create these
+records in later Stage 5 slices; this foundation performs no implicit choice.
 
-- multi-domain organization and scenario reasoning;
-- proactive but user-controlled suggestions;
-- richer routine and life-context assistance;
-- broader platform and notification capabilities;
-- operational observability and measured optimization.
+### Stage 6 — Find the best real slot
+
+- rank available slots using location, travel, preparation, adjacent commitments and useful margin;
+- include preferences, rhythm, fatigue, responsibilities, importance and flexibility when evidenced;
+- propose the best contextual option instead of the first empty gap;
+- keep explanations concise, truthful and human.
+
+### Stage 7 — Broaden natural-language understanding
+
+- support spelling errors, voice-transcription variants, abbreviations, familiar language and bounded slang;
+- support several intents in one message and contextual corrections;
+- generalize every normalization across values instead of patching one observed phrase;
+- maintain zero unauthorized action for negation, contradiction and material ambiguity.
+
+### Stage 8 — Import structured schedules and documents
+
+- read image and PDF schedules, appointments and time-related documents;
+- extract person, date, time, place, recurrence and uncertainty into typed proposals;
+- provide one global review with targeted line correction;
+- persist only validated structured information and discard the original document after processing.
+
+### Stage 9 — Anticipate mental load
+
+- build explainable preparation plans for events, travel, deadlines and life transitions;
+- separate urgent alerts, important anticipation and optional daily-summary suggestions;
+- limit noise and require personal, actionable evidence for every proactive suggestion;
+- formalize Priority, Task, Shopping and Notification lifecycles around this policy.
+
+### Stage 10 — Extend connections and premium capabilities
+
+- add external calendar, mapping, health or service connections only behind explicit scope and ownership contracts;
+- preserve local truth, privacy, correction and graceful degradation;
+- leave room for future trusted sharing between two ZELIA accounts without implementing it prematurely;
+- finish operational observability, measured optimization and grand-public visual harmonization.
 
 Major new engines should not bypass unfinished identity, persistence, or source-of-truth foundations.
 
@@ -1833,6 +1886,7 @@ Documentation has explicit levels of authority and scope.
 | Document | Purpose | Status |
 |---|---|---|
 | `docs/MASTER_ARCHITECTURE.md` | Mission, global architecture, ownership, principles, decisions, debt, and roadmap | This document |
+| `docs/ZELIA_BRAIN_CONTRACT.md` | Authoritative product behavior for the personal second brain, including people, responsibilities, consequences, availability, memory, language, imports, anticipation and action consent | Current approved product contract |
 | `AGENTS.md` | Operational repository contract for human and AI contributors | Current |
 | `README.md` | Product/repository orientation and local entry points | Current file is generic and should eventually be replaced deliberately |
 | Architecture decision records | One durable decision per identity, persistence, security, schema, or ownership change | Planned |
@@ -2360,6 +2414,11 @@ Code existing in the repository does not by itself make an engine architecturall
 ## 30. Enduring direction
 
 ZELIA should grow by deepening trust, context, and deterministic coordination—not by accumulating disconnected “smart” features.
+
+Its durable product objective is a distinct second brain for each user: one
+that understands people and commitments through their real consequences,
+learns progressively without intrusion, and reduces mental load with the least
+possible input.
 
 The durable architecture is one in which:
 

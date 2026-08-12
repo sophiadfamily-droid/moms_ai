@@ -164,6 +164,10 @@ final class HumanContextRecord {
     this.relationshipStatus,
     this.marriageDate,
     this.engagementDate,
+    this.planningConsequenceType,
+    this.planningConsequenceStart,
+    this.planningConsequenceEnd,
+    this.blocksResponsiblePerson = false,
   });
 
   final String id;
@@ -184,6 +188,10 @@ final class HumanContextRecord {
   final String? relationshipStatus;
   final String? marriageDate;
   final String? engagementDate;
+  final String? planningConsequenceType;
+  final DateTime? planningConsequenceStart;
+  final DateTime? planningConsequenceEnd;
+  final bool blocksResponsiblePerson;
 
   Map<String, Object?> toJson() => {
         'id': id,
@@ -207,6 +215,15 @@ final class HumanContextRecord {
           'relationshipStatus': relationshipStatus,
         if (marriageDate != null) 'marriageDate': marriageDate,
         if (engagementDate != null) 'engagementDate': engagementDate,
+        if (planningConsequenceType != null)
+          'planningConsequenceType': planningConsequenceType,
+        if (planningConsequenceStart != null)
+          'planningConsequenceStart':
+              planningConsequenceStart!.toUtc().toIso8601String(),
+        if (planningConsequenceEnd != null)
+          'planningConsequenceEnd':
+              planningConsequenceEnd!.toUtc().toIso8601String(),
+        if (blocksResponsiblePerson) 'blocksResponsiblePerson': true,
       };
 }
 

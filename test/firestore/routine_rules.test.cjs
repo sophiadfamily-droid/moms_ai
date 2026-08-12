@@ -99,6 +99,31 @@ function routineRef(db, uid = ownerId, id = proposalId) {
   return doc(db, "users", uid, "routines", id);
 }
 
+function overrideRef(db, uid = ownerId, id = "override-a") {
+  return doc(db, "users", uid, "routineOccurrenceOverrides", id);
+}
+
+function occurrenceOverride(overrides = {}) {
+  const now = Timestamp.now();
+  return {
+    schemaVersion: 1,
+    overrideId: "override-a",
+    accountScopeId: ownerId,
+    routineId: proposalId,
+    sourceDateIso: "2026-08-04",
+    type: "cancelled",
+    replacementDateIso: null,
+    replacementStartTime: null,
+    replacementEntityId: null,
+    tombstone: false,
+    overrideRevision: 1,
+    lastMutationId: "mutation-a",
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  };
+}
+
 async function seedProposal(value) {
   await environment.withSecurityRulesDisabled(async (context) => {
     await setDoc(proposalRef(context.firestore()), value);
@@ -414,4 +439,87 @@ test("routine and proposal cannot be modified or deleted after commit", async ()
   await assertFails(updateDoc(routineRef(db), {durationMinutes: 61}));
   await assertFails(deleteDoc(routineRef(db)));
   await assertFails(deleteDoc(proposalRef(db)));
+});
+
+test("owner creates and revises one occurrence override", async () => {
+  const db = dbFor();
+  const value = proposal();
+  await setDoc(proposalRef(db), value);
+  await commit(db, value);
+  const original = occurrenceOverride();
+  await assertSucceeds(setDoc(overrideRef(db), original));
+  await assertSucceeds(getDoc(overrideRef(db)));
+  await assertSucceeds(
+    setDoc(overrideRef(db), {
+      ...original,
+      type: "moved",
+      replacementDateIso: "2026-08-06",
+      replacementStartTime: "18:30",
+      overrideRevision: 2,
+      lastMutationId: "mutation-b",
+      updatedAt: Timestamp.now(),
+    }),
+  );
+});
+
+test("occurrence override is owner-only and requires an existing routine", async () => {
+  const db = dbFor();
+  await assertFails(setDoc(overrideRef(db), occurrenceOverride()));
+  await assertFails(
+    setDoc(
+      overrideRef(dbFor(otherId), otherId),
+      occurrenceOverride({accountScopeId: ownerId}),
+    ),
+  );
+});
+
+for (const [name, changes] of [
+  ["foreign account", {accountScopeId: otherId}],
+  ["invalid source date", {sourceDateIso: "2026-02-31"}],
+  ["non-leap February 29", {sourceDateIso: "2025-02-29"}],
+  ["unknown type", {type: "skipped"}],
+  ["first revision already tombstoned", {tombstone: true}],
+  ["cancelled with destination", {
+    replacementDateIso: "2026-08-06",
+    replacementStartTime: "18:30",
+  }],
+  ["moved without destination", {type: "moved"}],
+]) {
+  test(`invalid occurrence override is refused: ${name}`, async () => {
+    const db = dbFor();
+    const value = proposal();
+    await setDoc(proposalRef(db), value);
+    await commit(db, value);
+    await assertFails(
+      setDoc(overrideRef(db), occurrenceOverride(changes)),
+    );
+  });
+}
+
+test("occurrence override refuses stale revisions, identity changes and delete", async () => {
+  const db = dbFor();
+  const value = proposal();
+  await setDoc(proposalRef(db), value);
+  await commit(db, value);
+  const original = occurrenceOverride();
+  await setDoc(overrideRef(db), original);
+  await assertFails(
+    setDoc(overrideRef(db), {
+      ...original,
+      type: "replaced",
+      replacementEntityId: "event-a",
+      lastMutationId: "mutation-b",
+      updatedAt: Timestamp.now(),
+    }),
+  );
+  await assertFails(
+    setDoc(overrideRef(db), {
+      ...original,
+      routineId: "b".repeat(64),
+      overrideRevision: 2,
+      lastMutationId: "mutation-b",
+      updatedAt: Timestamp.now(),
+    }),
+  );
+  await assertFails(deleteDoc(overrideRef(db)));
 });

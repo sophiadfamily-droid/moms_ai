@@ -81,8 +81,11 @@ void main() {
       expect(bridged[1]['scheduleMode'], 'night');
       expect(bridged[2]['days'], ['Lundi', 'Mardi']);
       expect(bridged[2]['notes'], 'École primaire');
+      expect(bridged[2]['type'], 'other_person_commitment');
       expect(bridged[3]['label'], 'Danse - Lina');
+      expect(bridged[3]['type'], 'other_person_commitment');
       expect(bridged[4]['label'], 'Yoga');
+      expect(bridged[4]['type'], 'blocked_period');
       expect(bridged[5]['preferredPeriod'], 'afternoon');
     });
 

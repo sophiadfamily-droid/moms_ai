@@ -175,6 +175,28 @@ abstract final class HumanResponsibilityTypes {
   static const custom = 'custom';
 }
 
+abstract final class HumanPlanningConsequenceTypes {
+  static const accompaniment = 'accompaniment';
+  static const transport = 'transport';
+  static const participation = 'participation';
+  static const preparation = 'preparation';
+  static const waiting = 'waiting';
+  static const replacement = 'replacement';
+  static const care = 'care';
+  static const dailyAssistance = 'dailyAssistance';
+
+  static const all = {
+    accompaniment,
+    transport,
+    participation,
+    preparation,
+    waiting,
+    replacement,
+    care,
+    dailyAssistance,
+  };
+}
+
 final class HumanPerson {
   HumanPerson({
     required this.id,
@@ -606,6 +628,53 @@ final class HumanHouseholdMembership {
   }
 }
 
+final class HumanPlanningConsequence {
+  HumanPlanningConsequence({
+    required this.type,
+    required this.start,
+    required this.end,
+    this.blocksResponsiblePerson = true,
+  }) {
+    if (!HumanPlanningConsequenceTypes.all.contains(type) ||
+        !end.isAfter(start)) {
+      throw const HumanModelException(
+        'invalid_human_planning_consequence',
+      );
+    }
+  }
+
+  final String type;
+  final DateTime start;
+  final DateTime end;
+  final bool blocksResponsiblePerson;
+
+  Map<String, Object?> toJson() => {
+        'type': type,
+        'start': start.toUtc().toIso8601String(),
+        'end': end.toUtc().toIso8601String(),
+        'blocksResponsiblePerson': blocksResponsiblePerson,
+      };
+
+  factory HumanPlanningConsequence.fromJson(Object? value) {
+    final map = _stringMap(value, 'invalid_human_planning_consequence');
+    return HumanPlanningConsequence(
+      type: _requiredString(
+        map['type'],
+        'invalid_human_planning_consequence_type',
+      ),
+      start: _requiredHumanDate(
+        map['start'],
+        'invalid_human_planning_consequence_start',
+      ),
+      end: _requiredHumanDate(
+        map['end'],
+        'invalid_human_planning_consequence_end',
+      ),
+      blocksResponsiblePerson: map['blocksResponsiblePerson'] == true,
+    );
+  }
+}
+
 final class HumanResponsibility {
   HumanResponsibility({
     required this.id,
@@ -615,6 +684,7 @@ final class HumanResponsibility {
     required this.type,
     this.customType,
     this.scope,
+    this.planningConsequence,
     this.validity = const HumanValidityPeriod(),
     this.status = HumanRecordStatus.active,
     required this.evidence,
@@ -639,6 +709,7 @@ final class HumanResponsibility {
   final String type;
   final String? customType;
   final String? scope;
+  final HumanPlanningConsequence? planningConsequence;
   final HumanValidityPeriod validity;
   final HumanRecordStatus status;
   final HumanEvidence evidence;
@@ -652,6 +723,8 @@ final class HumanResponsibility {
     bool clearCustomType = false,
     String? scope,
     bool clearScope = false,
+    HumanPlanningConsequence? planningConsequence,
+    bool clearPlanningConsequence = false,
     HumanValidityPeriod? validity,
     HumanRecordStatus? status,
     HumanEvidence? evidence,
@@ -664,6 +737,9 @@ final class HumanResponsibility {
         type: type ?? this.type,
         customType: clearCustomType ? null : (customType ?? this.customType),
         scope: clearScope ? null : (scope ?? this.scope),
+        planningConsequence: clearPlanningConsequence
+            ? null
+            : (planningConsequence ?? this.planningConsequence),
         validity: validity ?? this.validity,
         status: status ?? this.status,
         evidence: evidence ?? this.evidence,
@@ -677,6 +753,8 @@ final class HumanResponsibility {
         'type': type,
         'customType': customType,
         'scope': scope,
+        if (planningConsequence != null)
+          'planningConsequence': planningConsequence!.toJson(),
         'validity': validity.toJson(),
         'status': status.name,
         'evidence': evidence.toJson(),
@@ -699,6 +777,9 @@ final class HumanResponsibility {
       type: _requiredString(map['type'], 'invalid_human_responsibility_type'),
       customType: _optionalString(map['customType']),
       scope: _optionalString(map['scope']),
+      planningConsequence: map['planningConsequence'] == null
+          ? null
+          : HumanPlanningConsequence.fromJson(map['planningConsequence']),
       validity: HumanValidityPeriod.fromJson(map['validity']),
       status: _enumValue(
         HumanRecordStatus.values,
@@ -1058,6 +1139,13 @@ DateTime? _optionalDate(Object? value) {
   }
   final parsed = DateTime.tryParse(value);
   if (parsed == null) throw const HumanModelException('invalid_human_date');
+  return parsed.toUtc();
+}
+
+DateTime _requiredHumanDate(Object? value, String code) {
+  if (value is! String) throw HumanModelException(code);
+  final parsed = DateTime.tryParse(value);
+  if (parsed == null) throw HumanModelException(code);
   return parsed.toUtc();
 }
 

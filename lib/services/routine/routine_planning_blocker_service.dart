@@ -146,6 +146,7 @@ final class RoutinePlanningBlockerService {
     for (var offset = 0; offset < days; offset++) {
       final date = firstDay.add(Duration(days: offset));
       for (final routine in context.routines) {
+        if (!_blocksPrimaryUser(routine, context)) continue;
         final blockedPeriod = routine.toBlockedPeriod();
         if (!RecurrenceDateMatchService.appliesToDate(blockedPeriod, date)) {
           continue;
@@ -181,6 +182,35 @@ final class RoutinePlanningBlockerService {
         );
       }
     }
+    final windowEnd = firstDay.add(Duration(days: days));
+    for (final consequence in context.planningConsequences) {
+      if (consequence.responsiblePersonNodeId != context.primaryPersonNodeId ||
+          !consequence.isConcreteBlockingTime) {
+        continue;
+      }
+      final rawStart = consequence.parsedStart!;
+      final rawEnd = consequence.parsedEnd!;
+      final start = rawStart.isUtc ? rawStart.toLocal() : rawStart;
+      final end = rawEnd.isUtc ? rawEnd.toLocal() : rawEnd;
+      if (!end.isAfter(firstDay) || !start.isBefore(windowEnd)) continue;
+      final protectedStart = start.isBefore(firstDay) ? firstDay : start;
+      final protectedEnd = end.isAfter(windowEnd) ? windowEnd : end;
+      blockers.add(
+        EventModel(
+          id: 'responsibility:${consequence.id}',
+          title: _responsibilityTitle(consequence.kind),
+          date: _dateIso(protectedStart),
+          time: _time(protectedStart),
+          notes: '',
+          category: 'Responsabilité',
+          createdAt: protectedStart,
+          startDateTimeIso: protectedStart.toIso8601String(),
+          endTime: _time(protectedEnd),
+          endDateTimeIso: protectedEnd.toIso8601String(),
+          durationMinutes: protectedEnd.difference(protectedStart).inMinutes,
+        ),
+      );
+    }
     blockers.sort((left, right) {
       final start = left.startDateTimeIso.compareTo(right.startDateTimeIso);
       return start != 0 ? start : (left.id ?? '').compareTo(right.id ?? '');
@@ -202,6 +232,26 @@ final class RoutinePlanningBlockerService {
       return null;
     }
     return DateTime(date.year, date.month, date.day, hour, minute);
+  }
+
+  static bool _blocksPrimaryUser(
+    PlanningProjectionRoutine routine,
+    PlanningProjectionContext context,
+  ) {
+    final subject = routine.subjectNodeId?.trim();
+    final primary = context.primaryPersonNodeId?.trim();
+    if (subject != null && subject.isNotEmpty) {
+      if (primary == null || primary.isEmpty) {
+        return false;
+      }
+      return subject == primary;
+    }
+
+    // Compatibility for legacy projections that predate typed person IDs.
+    // These kinds are explicitly another person's schedule; they remain
+    // contextual until a separate primary-user consequence is projected.
+    return routine.routineKind != 'schoolSchedule' &&
+        routine.routineKind != 'childActivity';
   }
 
   static PlanningProjectionContext _planningContextFromProfile(
@@ -264,6 +314,18 @@ final class RoutinePlanningBlockerService {
       _ => 'Une routine',
     };
   }
+
+  static String _responsibilityTitle(String kind) => switch (kind) {
+        'accompaniment' => 'Un accompagnement prévu',
+        'transport' => 'Un trajet à assurer',
+        'participation' => 'Ta présence est prévue',
+        'preparation' => 'Un temps de préparation prévu',
+        'waiting' => 'Un temps d’attente prévu',
+        'replacement' => 'Un remplacement prévu',
+        'care' => 'Un temps de présence prévu',
+        'dailyAssistance' => 'Un temps d’aide prévu',
+        _ => 'Une responsabilité prévue',
+      };
 
   static String _dateIso(DateTime value) =>
       '${value.year.toString().padLeft(4, '0')}-'

@@ -92,6 +92,7 @@ final class PlanningProjectionRoutine {
     required this.travelMinutes,
     this.routineKind = 'routine',
     this.label,
+    this.subjectNodeId,
     this.recurrenceType,
     this.anchorDateIso,
     this.weekOfMonth,
@@ -103,6 +104,7 @@ final class PlanningProjectionRoutine {
   final String id;
   final String routineKind;
   final String? label;
+  final String? subjectNodeId;
   final List<String> days;
   final String? startTime;
   final String? endTime;
@@ -133,22 +135,78 @@ final class PlanningProjectionRoutine {
       };
 }
 
+/// A confirmed, time-bounded effect of one person's responsibility on the
+/// responsible person's own availability.
+///
+/// Broad responsibilities (parental role, custody, household role, etc.) are
+/// deliberately not represented here. Planning only receives a consequence
+/// when the responsibility type is explicit and its start/end form one small
+/// concrete time range.
+final class PlanningProjectionConsequence {
+  const PlanningProjectionConsequence({
+    required this.id,
+    required this.kind,
+    required this.responsiblePersonNodeId,
+    required this.subjectPersonNodeId,
+    required this.start,
+    required this.end,
+  });
+
+  static const blockingKinds = {
+    'accompaniment',
+    'transport',
+    'participation',
+    'preparation',
+    'waiting',
+    'replacement',
+    'care',
+    'dailyAssistance',
+  };
+
+  final String id;
+  final String kind;
+  final String responsiblePersonNodeId;
+  final String subjectPersonNodeId;
+  final String start;
+  final String end;
+
+  DateTime? get parsedStart => DateTime.tryParse(start);
+  DateTime? get parsedEnd => DateTime.tryParse(end);
+
+  bool get isConcreteBlockingTime {
+    final from = parsedStart;
+    final until = parsedEnd;
+    if (!blockingKinds.contains(kind) ||
+        from == null ||
+        until == null ||
+        !until.isAfter(from)) {
+      return false;
+    }
+    return until.difference(from) <= const Duration(hours: 24);
+  }
+}
+
 final class PlanningProjectionContext {
   PlanningProjectionContext({
     required List<PlanningProjectionEvent> events,
     required List<PlanningProjectionRoutine> routines,
     required List<LifeContextProjectionItem> temporalResponsibilities,
     required List<String> warningCodes,
+    List<PlanningProjectionConsequence> planningConsequences = const [],
+    this.primaryPersonNodeId,
   })  : events = UnmodifiableListView(events),
         routines = UnmodifiableListView(routines),
         temporalResponsibilities =
             UnmodifiableListView(temporalResponsibilities),
+        planningConsequences = UnmodifiableListView(planningConsequences),
         warningCodes = UnmodifiableListView(warningCodes);
 
   final List<PlanningProjectionEvent> events;
   final List<PlanningProjectionRoutine> routines;
   final List<LifeContextProjectionItem> temporalResponsibilities;
+  final List<PlanningProjectionConsequence> planningConsequences;
   final List<String> warningCodes;
+  final String? primaryPersonNodeId;
 }
 
 /// Typed bridge for existing planning services. It provides facts only and
@@ -165,6 +223,8 @@ abstract final class LifeContextPlanningProjectionAdapter {
     final events = <PlanningProjectionEvent>[];
     final routines = <PlanningProjectionRoutine>[];
     final responsibilities = <LifeContextProjectionItem>[];
+    final consequences = <PlanningProjectionConsequence>[];
+    String? primaryPersonNodeId;
     for (final section in projection.sections) {
       if (section.type == LifeContextProjectionSectionType.event) {
         for (final item in section.items) {
@@ -201,6 +261,7 @@ abstract final class LifeContextPlanningProjectionAdapter {
               routineKind:
                   facts[LifeContextProjectionFactKeys.routineKind] ?? 'routine',
               label: facts[LifeContextProjectionFactKeys.title],
+              subjectNodeId: facts[LifeContextProjectionFactKeys.subjectNodeId],
               days: (facts[LifeContextProjectionFactKeys.days] ?? '')
                   .split(',')
                   .where((day) => day.isNotEmpty)
@@ -233,16 +294,47 @@ abstract final class LifeContextPlanningProjectionAdapter {
           );
         }
       } else if (section.type == LifeContextProjectionSectionType.human) {
+        for (final item
+            in section.items.where((item) => item.type == 'person')) {
+          final facts = _facts(item);
+          if (facts[LifeContextProjectionFactKeys.personRole] == 'primary') {
+            primaryPersonNodeId = facts[LifeContextProjectionFactKeys.nodeId];
+            break;
+          }
+        }
         responsibilities.addAll(
           section.items.where((item) => item.type == 'responsibility'),
         );
+        for (final item
+            in section.items.where((item) => item.type == 'responsibility')) {
+          final facts = _facts(item);
+          final consequence = PlanningProjectionConsequence(
+            id: item.id,
+            kind: facts[LifeContextProjectionFactKeys.consequenceType] ?? '',
+            responsiblePersonNodeId:
+                facts[LifeContextProjectionFactKeys.sourceNodeId] ?? '',
+            subjectPersonNodeId:
+                facts[LifeContextProjectionFactKeys.targetNodeId] ?? '',
+            start: facts[LifeContextProjectionFactKeys.start] ?? '',
+            end: facts[LifeContextProjectionFactKeys.end] ?? '',
+          );
+          if (facts[LifeContextProjectionFactKeys.blocksResponsiblePerson] ==
+                  'true' &&
+              consequence.responsiblePersonNodeId.isNotEmpty &&
+              consequence.subjectPersonNodeId.isNotEmpty &&
+              consequence.isConcreteBlockingTime) {
+            consequences.add(consequence);
+          }
+        }
       }
     }
     return PlanningProjectionContext(
       events: events,
       routines: routines,
       temporalResponsibilities: responsibilities,
+      planningConsequences: consequences,
       warningCodes: projection.warningCodes,
+      primaryPersonNodeId: primaryPersonNodeId,
     );
   }
 
