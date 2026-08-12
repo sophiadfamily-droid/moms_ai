@@ -14,6 +14,7 @@ import 'event_title_service.dart';
 import 'notification_service.dart';
 import 'natural_date_service.dart';
 import 'natural_duration_service.dart';
+import 'natural_event_request_service.dart';
 import 'natural_time_service.dart';
 import 'memory_engine_service.dart';
 import 'planner_engine_service.dart';
@@ -184,6 +185,19 @@ final class ConversationLegacyActionExecutor {
 
   void invalidate() {
     _pendingEventDraft = null;
+  }
+
+  Future<ConversationOutcome?> resolveLocalRequest(
+    String message,
+    int sessionGeneration,
+  ) async {
+    final action = NaturalEventRequestService.parseAction(
+      message,
+      now: _clock(),
+    );
+    if (action == null) return null;
+    final outcome = await execute(action, message, sessionGeneration);
+    return ConversationOutcome(reply: outcome.message);
   }
 
   Future<ConversationOutcome?> resolvePending(
@@ -469,7 +483,8 @@ final class ConversationLegacyActionExecutor {
   ) {
     if (PlannerEngineService.isNoTravelAnswer(answer) ||
         _normalized(answer) == 'aucun' ||
-        _normalized(answer) == 'aucune') {
+        _normalized(answer) == 'aucune' ||
+        _isExplicitZeroDuration(answer)) {
       return 0;
     }
     final minutes = _contextualDurationMinutes(answer, expectedField);
@@ -481,7 +496,8 @@ final class ConversationLegacyActionExecutor {
     if (value == 'aucun' ||
         value == 'aucune' ||
         value == 'pas de marge' ||
-        value == 'sans marge') {
+        value == 'sans marge' ||
+        _isExplicitZeroDuration(answer)) {
       return 0;
     }
     final minutes = _contextualDurationMinutes(
@@ -489,6 +505,13 @@ final class ConversationLegacyActionExecutor {
       NaturalDurationExpectedField.margin,
     );
     return minutes > 0 ? minutes : null;
+  }
+
+  static bool _isExplicitZeroDuration(String answer) {
+    final value = _normalized(answer).replaceAll(RegExp(r'\s+'), ' ');
+    return RegExp(
+      r'^(0+|zero|zéro)\s*(min|minute|minutes|h|heure|heures)?$',
+    ).hasMatch(value);
   }
 
   static String _normalized(String value) => value
@@ -517,7 +540,10 @@ final class ConversationLegacyActionExecutor {
         action['originalMessage']?.toString() ?? userMessage;
     final policy =
         coordinator.lastAutonomyPolicy ?? await loadAutonomyPolicy?.call();
-    if (policy != null) smartPlanning?.updateAutonomyPolicy(policy);
+    if (policy != null) {
+      coordinator.observeAutonomyPolicyForLocalAction(policy);
+      smartPlanning?.updateAutonomyPolicy(policy);
+    }
     final result = await ActionHandlerService.handleAction(
       action: action,
       currentUserMessage: effectiveUserMessage,

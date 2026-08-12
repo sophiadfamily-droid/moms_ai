@@ -172,6 +172,12 @@ class ConversationCoordinator {
   List<ValidatedConversationReference> get validatedReferenceHistory =>
       List.unmodifiable(_validatedReferenceHistory);
 
+  void observeAutonomyPolicyForLocalAction(ActionAutonomyPolicy policy) {
+    policy.validate();
+    _lastAutonomyPolicy = policy;
+    _observedAccountScopeId = policy.accountScopeId;
+  }
+
   void restoreValidatedReferenceHistory(
     List<ValidatedConversationReference> references, {
     required String accountScopeId,

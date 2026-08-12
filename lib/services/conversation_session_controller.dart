@@ -43,6 +43,11 @@ typedef ConversationPendingResolver = Future<ConversationOutcome?> Function(
   String answer,
   int sessionGeneration,
 );
+typedef ConversationLocalRequestResolver = Future<ConversationOutcome?>
+    Function(
+  String message,
+  int sessionGeneration,
+);
 typedef ConversationClarificationDraftPreparer = Future<String?> Function(
   ConversationClarificationDraft draft,
   int sessionGeneration,
@@ -100,6 +105,7 @@ final class ConversationSessionController extends ChangeNotifier {
     required ConversationCoordinator coordinator,
     ConversationSessionActionExecutor? executeAction,
     ConversationPendingResolver? resolvePending,
+    ConversationLocalRequestResolver? resolveLocalRequest,
     ConversationClarificationDraftPreparer? prepareClarificationDraft,
     ConversationSessionInvalidator? invalidateSession,
     ConversationApplicationPendingPhase? applicationPendingPhase,
@@ -121,6 +127,7 @@ final class ConversationSessionController extends ChangeNotifier {
         _executeAction = executeAction ??
             ConversationLegacyActionExecutor(coordinator: coordinator).execute,
         _resolvePending = resolvePending,
+        _resolveLocalRequest = resolveLocalRequest,
         _prepareClarificationDraft = prepareClarificationDraft,
         _invalidateSession = invalidateSession,
         _applicationPendingPhase = applicationPendingPhase,
@@ -245,6 +252,7 @@ final class ConversationSessionController extends ChangeNotifier {
       coordinator: coordinator,
       executeAction: executeAction ?? legacyExecutor.execute,
       resolvePending: legacyExecutor.resolvePending,
+      resolveLocalRequest: legacyExecutor.resolveLocalRequest,
       prepareClarificationDraft:
           legacyExecutor.prepareClarificationDraftFromMessage,
       invalidateSession: (nextProfile, _) {
@@ -325,6 +333,7 @@ final class ConversationSessionController extends ChangeNotifier {
       _coordinator.activeConfirmation;
   final ConversationSessionActionExecutor _executeAction;
   final ConversationPendingResolver? _resolvePending;
+  final ConversationLocalRequestResolver? _resolveLocalRequest;
   final ConversationClarificationDraftPreparer? _prepareClarificationDraft;
   final ConversationSessionInvalidator? _invalidateSession;
   final ConversationApplicationPendingPhase? _applicationPendingPhase;
@@ -445,9 +454,16 @@ final class ConversationSessionController extends ChangeNotifier {
     _retryCount = 0;
     final submittedMessageId =
         _appendMessage(ConversationMessageRole.user, text);
-    if (_applicationPendingPhase?.call() == null ||
-        _lastLogicalRequestId == null) {
+    final continuesLogicalRequest =
+        _state.phase == ConversationSessionPhase.awaitingClarification ||
+            _state.phase == ConversationSessionPhase.awaitingConfirmation ||
+            _coordinator.state.pendingAction != null ||
+            _applicationPendingPhase?.call() != null;
+    if (!continuesLogicalRequest || _lastLogicalRequestId == null) {
       _lastLogicalRequestId = submittedMessageId;
+      _clarificationLedger = ConversationClarificationLedger(
+        sessionGeneration: _state.sessionGeneration,
+      );
     }
     await _runRequest(text, addUserMessage: false);
   }
@@ -485,7 +501,13 @@ final class ConversationSessionController extends ChangeNotifier {
       final pendingOutcome = _proactiveEventMoveAwaitingConfirmation
           ? null
           : await _resolvePending?.call(text, generation);
+      final localOutcome =
+          pendingOutcome == null && !_proactiveEventMoveAwaitingConfirmation
+              ? await _resolveLocalRequest?.call(text, generation)
+              : null;
+      final handledLocally = pendingOutcome != null || localOutcome != null;
       final outcome = pendingOutcome ??
+          localOutcome ??
           await _coordinator.send(
             input: ConversationInput(
               message: text,
@@ -504,7 +526,7 @@ final class ConversationSessionController extends ChangeNotifier {
       }
       final clarificationDraft = outcome.epistemicClarification?.draft;
       String? clarificationReplyOverride;
-      if (pendingOutcome == null && clarificationDraft != null) {
+      if (!handledLocally && clarificationDraft != null) {
         clarificationReplyOverride = await _prepareClarificationDraft?.call(
           clarificationDraft,
           generation,
@@ -521,7 +543,7 @@ final class ConversationSessionController extends ChangeNotifier {
       var responseKind = outcome.responseKind;
       var visibleReply = clarificationReplyOverride ?? outcome.reply;
       final clarification = outcome.epistemicClarification;
-      if (pendingOutcome == null &&
+      if (!handledLocally &&
           clarificationDraft != null &&
           EventTitleService.isGeneric(clarificationDraft.title)) {
         visibleReply = EventTitleService.clarificationQuestion;

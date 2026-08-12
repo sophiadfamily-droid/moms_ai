@@ -1027,6 +1027,36 @@ void main() {
       expect(coordinator.state.pendingAction?.event.marginMinutes, 5);
     });
 
+    test('Event accepts numeric zero for travel and margin', () async {
+      final coordinator = _coordinator();
+      final executor = ConversationLegacyActionExecutor(
+        coordinator: coordinator,
+        clock: () => DateTime.utc(2026, 7, 29, 10),
+      );
+      await executor.execute(
+        const {
+          'type': 'event',
+          'title': 'Médecin',
+          'date': '2026-07-30',
+          'time': '15:00',
+          'durationMinutes': 0,
+        },
+        'médecin demain 15h',
+        0,
+      );
+
+      await executor.resolvePending('1h', 0);
+      await executor.resolvePending('0', 0);
+      await executor.resolvePending('0 minute', 0);
+      final confirmation = await executor.resolvePending('zéro', 0);
+
+      expect(confirmation?.reply, contains('Veux-tu que je l’ajoute'));
+      expect(coordinator.state.pendingAction?.event.durationMinutes, 60);
+      expect(coordinator.state.pendingAction?.event.travelGoMinutes, 0);
+      expect(coordinator.state.pendingAction?.event.travelBackMinutes, 0);
+      expect(coordinator.state.pendingAction?.event.marginMinutes, 0);
+    });
+
     test('conflict replacement time cannot fill a missing duration', () async {
       final coordinator = _coordinator();
       final executor = ConversationLegacyActionExecutor(

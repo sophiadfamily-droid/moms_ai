@@ -216,6 +216,57 @@ void main() {
       harness.dispose();
     });
 
+    test('a completed request resets clarification limits for the next one',
+        () async {
+      final clarification = ConversationClarification(
+        clarificationId: 'clarification-reset',
+        reasonCode: 'event_duration_required',
+        questionText: 'Combien de temps dure le rendez-vous ?',
+        expectedAnswerType: ConversationClarificationAnswerType.duration,
+        allowedChoices: const [],
+        missingFieldCodes: const [
+          ConversationMissingInformationCode.missingDuration,
+        ],
+        createdAt: DateTime.utc(2026, 7, 23),
+        attemptNumber: 1,
+        sessionGeneration: 0,
+      );
+      var calls = 0;
+      final harness = _Harness(
+        resolvePending: (_, __) async {
+          calls++;
+          if (calls == 2) {
+            return const ConversationOutcome(reply: 'C’est noté.');
+          }
+          return ConversationOutcome(
+            reply: clarification.questionText,
+            responseKind: ConversationResponseKind.clarificationRequired,
+            epistemicClarification: clarification,
+          );
+        },
+      );
+
+      await harness.controller.submitText('Dentiste demain à 9h30');
+      await harness.controller.submitText('1h');
+      expect(harness.controller.state.phase, ConversationSessionPhase.ready);
+
+      await harness.controller.submitText('Médecin demain à 14h');
+
+      expect(
+        harness.controller.state.messages.last.text,
+        'Combien de temps dure le rendez-vous ?',
+      );
+      expect(
+        harness.controller.state.messages.last.text,
+        isNot(contains('informations restent insuffisantes')),
+      );
+      expect(
+        harness.controller.state.phase,
+        ConversationSessionPhase.awaitingClarification,
+      );
+      harness.dispose();
+    });
+
     test('dispose prevents late state application', () async {
       final completer = Completer<ChatBackendResponse>();
       final harness = _Harness(pending: completer.future);
@@ -341,6 +392,114 @@ void main() {
       controller.dispose();
     });
 
+    test('an explicit Event is prepared locally when the backend is offline',
+        () async {
+      final backend = _Backend(error: ChatBackendTimeoutException());
+      final controller = ConversationSessionController.production(
+        profile: _profile(),
+        backendClient: backend,
+        contextProvider: _Context(),
+        messageStore: _Store(),
+        accountScopeId: 'account',
+        eventStartConflictChecker: ({required startDateTimeIso}) async {
+          expect(startDateTimeIso, contains('2026-07-30T09:30'));
+          return EventModel(
+            title: 'ton Pilates',
+            date: '2026-07-30',
+            time: '09:00',
+            notes: '',
+            createdAt: DateTime.utc(2026, 7, 29),
+            startDateTimeIso: '2026-07-30T09:00:00.000',
+            endDateTimeIso: '2026-07-30T10:00:00.000',
+            durationMinutes: 60,
+          );
+        },
+        eventConflictChecker: ({required candidate}) async => null,
+        eventStartAlternativeSuggester: ({
+          required startDateTimeIso,
+          required conflict,
+        }) async =>
+            DateTime(2026, 7, 30, 10, 15),
+        clock: () => DateTime(2026, 7, 29, 12),
+        idGenerator: () => 'production-local-event-offline',
+      );
+
+      await controller.submitText('Coiffeur demain à 9h30');
+
+      expect(backend.calls, 0);
+      expect(controller.state.messages.last.text, contains('ton Pilates'));
+      expect(controller.state.messages.last.text, contains('10 h 15'));
+      expect(controller.state.messages.last.text, contains('ça te va'));
+      expect(controller.state.phase,
+          ConversationSessionPhase.awaitingClarification);
+      controller.dispose();
+    });
+
+    test('a generic explicit Event asks its motif without the backend',
+        () async {
+      final backend = _Backend(error: ChatBackendTimeoutException());
+      final controller = ConversationSessionController.production(
+        profile: _profile(),
+        backendClient: backend,
+        contextProvider: _Context(),
+        messageStore: _Store(),
+        accountScopeId: 'account',
+        eventStartConflictChecker: ({required startDateTimeIso}) async => null,
+        eventConflictChecker: ({required candidate}) async => null,
+        clock: () => DateTime(2026, 7, 29, 12),
+        idGenerator: () => 'production-local-generic-event',
+      );
+
+      await controller.submitText('rdv demain 14 heures');
+
+      expect(backend.calls, 0);
+      expect(controller.state.messages.last.text, contains('motif'));
+      expect(controller.state.phase,
+          ConversationSessionPhase.awaitingClarification);
+      controller.dispose();
+    });
+
+    test('a local Event reaches confirmation and is saved without the backend',
+        () async {
+      SharedPreferences.setMockInitialValues({});
+      final backend = _Backend(error: ChatBackendTimeoutException());
+      final controller = ConversationSessionController.production(
+        profile: _profile(),
+        backendClient: backend,
+        contextProvider: _Context(),
+        messageStore: _Store(),
+        accountScopeId: 'account',
+        eventStartConflictChecker: ({required startDateTimeIso}) async => null,
+        eventConflictChecker: ({required candidate}) async => null,
+        clock: () => DateTime(2026, 7, 29, 12),
+        idGenerator: () => 'production-local-event-full-path',
+      );
+
+      await controller.submitText('Coiffeur demain à 9h30');
+      await controller.submitText('1h');
+      await controller.submitText('10');
+      await controller.submitText('10');
+      await controller.submitText('0');
+
+      expect(backend.calls, 0);
+      expect(controller.state.phase,
+          ConversationSessionPhase.awaitingConfirmation);
+      await controller.submitText('oui');
+      expect(controller.state.messages.last.text, contains('agenda'));
+
+      final preferences = await SharedPreferences.getInstance();
+      final storedValues = preferences
+          .getKeys()
+          .where((key) => key.startsWith('${EventService.eventsKey}:'))
+          .expand((key) => preferences.getStringList(key) ?? const <String>[])
+          .toList(growable: false);
+      expect(storedValues, hasLength(1));
+      final stored = EventModel.fromJson(jsonDecode(storedValues.single));
+      expect(stored.title, 'Rendez-vous Coiffeur');
+      expect(stored.time, '09:30');
+      controller.dispose();
+    });
+
     test('production composition consumes callable Event draft before backend',
         () async {
       expect(
@@ -362,7 +521,7 @@ void main() {
         idGenerator: () => 'production-event-diagnosis',
       );
 
-      await controller.submitText('medecin demain 15h');
+      await controller.submitText('Prépare mon rendez-vous');
 
       expect(controller.state.hasPendingAction, isTrue);
       expect(
@@ -380,7 +539,7 @@ void main() {
       controller.dispose();
     });
 
-    test('an occupied start replaces the backend duration question', () async {
+    test('an occupied local Event replaces the duration question', () async {
       final backend = _JsonCallableBackend(_eventDraftCallableJson());
       final checkedStarts = <String>[];
       final controller = ConversationSessionController.production(
@@ -428,7 +587,7 @@ void main() {
 
       expect(controller.state.messages.last.text, contains('Combien de temps'));
       expect(checkedStarts, hasLength(2));
-      expect(backend.invocations, 1);
+      expect(backend.invocations, 0);
       controller.dispose();
     });
 
@@ -447,14 +606,14 @@ void main() {
         idGenerator: () => 'production-event-full-path',
       );
 
-      await controller.submitText('medecin demain 15h');
+      await controller.submitText('Prépare mon rendez-vous');
       await controller.submitText('1h');
       expect(controller.state.messages.last.text, contains('trajet aller'));
       await controller.submitText('vingt minutes');
       expect(controller.state.messages.last.text, contains('trajet retour'));
       await controller.submitText('aucun trajet');
       expect(controller.state.messages.last.text, contains('marge'));
-      await controller.submitText('aucune');
+      await controller.submitText('0');
 
       expect(backend.invocations, 1);
       expect(controller.state.phase,
@@ -475,7 +634,7 @@ void main() {
     });
 
     test(
-        'production composition clarifies a generic Event title and creates once',
+        'production composition clarifies a backend generic Event title and creates once',
         () async {
       SharedPreferences.setMockInitialValues({});
       final json = jsonDecode(jsonEncode(_eventDraftCallableJson()))
@@ -484,7 +643,7 @@ void main() {
       final clarification = epistemic['clarification'] as Map<String, dynamic>;
       final draft = clarification['draft'] as Map<String, dynamic>;
       draft['title'] = 'Rendez-vous';
-      draft['startTime'] = null;
+      draft['startTime'] = '14:00';
       final backend = _JsonCallableBackend(json);
       final controller = ConversationSessionController.production(
         profile: _profile(),
@@ -497,7 +656,7 @@ void main() {
         idGenerator: () => 'production-generic-event',
       );
 
-      await controller.submitText('rdv demain 14heur');
+      await controller.submitText('Prépare mon rendez-vous');
       expect(controller.state.messages.last.text, contains('motif'));
       await controller.submitText('dentiste');
       expect(controller.state.messages.last.text, contains('Combien de temps'));
@@ -561,7 +720,7 @@ void main() {
         idGenerator: () => 'production-event-conflict',
       );
 
-      await controller.submitText('medecin demain 15h');
+      await controller.submitText('Prépare mon rendez-vous');
 
       expect(controller.state.messages.last.text, contains('16 h'));
       expect(controller.state.messages.last.text, contains('ça te va'));
@@ -632,7 +791,7 @@ void main() {
         idGenerator: () => 'production-conflict-missing-duration',
       );
 
-      await controller.submitText('medecin demain 15h');
+      await controller.submitText('Prépare mon rendez-vous');
       await controller.submitText('23h');
 
       expect(backend.invocations, 1);
@@ -656,7 +815,7 @@ void main() {
         clock: () => now,
         idGenerator: () => 'production-event-expiry',
       );
-      await expiring.submitText('medecin demain 15h');
+      await expiring.submitText('Prépare mon rendez-vous');
       now = DateTime.utc(2026, 7, 29, 12, 16);
       await expiring.submitText('1h');
       expect(expiring.state.messages.last.text, contains('expiré'));
@@ -674,7 +833,7 @@ void main() {
         clock: () => DateTime.utc(2026, 7, 29, 12),
         idGenerator: () => 'production-event-account',
       );
-      await account.submitText('medecin demain 15h');
+      await account.submitText('Prépare mon rendez-vous');
       account.changeAccount(_profile(firstName: 'Compte B'));
       await account.submitText('1h');
 
