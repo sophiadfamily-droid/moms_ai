@@ -224,6 +224,8 @@ class NaturalTimeService {
         .replaceAll("î", "i")
         .replaceAll("ï", "i")
         .replaceAll("ô", "o")
-        .replaceAll("ç", "c");
+        .replaceAll("ç", "c")
+        .replaceAll('-', ' ')
+        .replaceAll(RegExp(r'\s+'), ' ');
   }
 }

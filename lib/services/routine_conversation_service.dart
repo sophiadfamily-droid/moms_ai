@@ -4,9 +4,19 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 
 import '../models/routine_model.dart';
+import '../models/routine/routine_occurrence_override.dart';
+import '../models/routine/routine_schedule_definition.dart';
+import '../models/user_profile.dart';
 import 'auth_service.dart';
+import 'cloud_profile_service.dart';
 import 'conversation_answer_classifier.dart';
+import 'natural_date_service.dart';
+import 'natural_time_service.dart';
+import 'routine/routine_date_applicability_engine.dart';
+import 'routine/routine_occurrence_override_repository.dart';
+import 'routine/routine_schedule_catalog_service.dart';
 import 'routine_repository.dart';
+import 'zelia_response_builder.dart';
 
 enum RoutineConversationResultType {
   notRoutine,
@@ -18,6 +28,11 @@ enum RoutineConversationResultType {
   unavailable,
 }
 
+typedef RoutineConversationScheduleLoader
+    = Future<List<RoutineScheduleDefinition>> Function(
+  String accountScopeId,
+);
+
 final class RoutineConversationResult {
   const RoutineConversationResult(this.type, this.message);
   final RoutineConversationResultType type;
@@ -25,10 +40,18 @@ final class RoutineConversationResult {
 }
 
 final class RoutineConversationService {
-  factory RoutineConversationService.production() {
+  factory RoutineConversationService.production({
+    UserProfile Function()? currentProfile,
+  }) {
+    final routineRepository = FirestoreRoutineRepository();
     final service = RoutineConversationService(
-      repository: FirestoreRoutineRepository(),
+      repository: routineRepository,
+      occurrenceOverrideRepository:
+          FirestoreRoutineOccurrenceOverrideRepository(),
       currentAccountScopeId: () => AuthService.currentUserId,
+      loadProfile: currentProfile == null
+          ? CloudProfileService.getProfile
+          : () async => currentProfile(),
     );
     unawaited(service.restoreActive());
     return service;
@@ -37,19 +60,35 @@ final class RoutineConversationService {
   RoutineConversationService({
     required RoutineRepository repository,
     required String? Function() currentAccountScopeId,
+    RoutineOccurrenceOverrideRepository? occurrenceOverrideRepository,
+    RoutineScheduleProfileLoader? loadProfile,
+    RoutineConversationScheduleLoader? loadScheduleCatalog,
     DateTime Function()? clock,
   })  : _repository = repository,
+        _occurrenceOverrideRepository = occurrenceOverrideRepository,
+        _loadScheduleCatalog = loadScheduleCatalog ??
+            RoutineScheduleCatalogService(
+              loadRoutines: repository.listForAccount,
+              loadProfile: loadProfile,
+            ).forAccount,
         _currentAccountScopeId = currentAccountScopeId,
         _clock = clock ?? DateTime.now;
 
   final RoutineRepository _repository;
+  final RoutineOccurrenceOverrideRepository? _occurrenceOverrideRepository;
+  final RoutineConversationScheduleLoader _loadScheduleCatalog;
   final String? Function() _currentAccountScopeId;
   final DateTime Function() _clock;
   final ConversationAnswerClassifier _answers =
       const ConversationAnswerClassifier();
   RoutineProposal? _pending;
+  _PendingRoutineOccurrenceChange? _pendingOccurrenceChange;
+  _PendingRoutineOccurrenceChangeDraft? _pendingOccurrenceDraft;
 
-  bool get hasPending => _pending != null;
+  bool get hasPending =>
+      _pending != null ||
+      _pendingOccurrenceChange != null ||
+      _pendingOccurrenceDraft != null;
 
   Future<bool> restoreActive({bool includeCommitted = false}) async {
     if (_pending != null) return true;
@@ -75,6 +114,11 @@ final class RoutineConversationService {
     String message, {
     required String logicalRequestId,
   }) async {
+    final occurrenceChange = await _processOccurrenceChange(
+      message,
+      logicalRequestId: logicalRequestId,
+    );
+    if (occurrenceChange != null) return occurrenceChange;
     if (_pending != null &&
         _isExplicitRoutine(message) &&
         _pending!.logicalRequestId != logicalRequestId) {
@@ -260,6 +304,7 @@ final class RoutineConversationService {
 
   static bool _isExplicitRoutine(String input) {
     final text = _normalize(input);
+    if (_containsRoutineChangeVerb(text)) return false;
     if (text.contains('?') ||
         text.contains('peut etre') ||
         text.contains('peut-etre') ||
@@ -287,6 +332,498 @@ final class RoutineConversationService {
       .replaceAll(RegExp('[ôö]'), 'o')
       .replaceAll(RegExp('[ùûü]'), 'u')
       .replaceAll('ç', 'c');
+
+  static bool _containsRoutineChangeVerb(String text) =>
+      RegExp(
+        r'\b(?:an{1,2}ul(?:e|er|ee)?|supprim(?:e|er)?|'
+        r'deplac(?:e|er|ee)?|decal(?:e|er|ee)?|report(?:e|er|ee)?|'
+        r'boug(?:e|er|ee)?|remplac(?:e|er|ee)?)\b',
+      ).hasMatch(text) ||
+      RegExp(r'\bpas de\b').hasMatch(text);
+
+  Future<RoutineConversationResult?> _processOccurrenceChange(
+    String message, {
+    required String logicalRequestId,
+  }) async {
+    final repository = _occurrenceOverrideRepository;
+    if (repository == null) return null;
+    final pending = _pendingOccurrenceChange;
+    if (pending != null) {
+      final answer = _answers.classify(message);
+      if (answer == ConversationAnswer.negative) {
+        _pendingOccurrenceChange = null;
+        return const RoutineConversationResult(
+          RoutineConversationResultType.cancelled,
+          'D’accord, je ne change rien.',
+        );
+      }
+      if (answer != ConversationAnswer.positive) {
+        return const RoutineConversationResult(
+          RoutineConversationResultType.ambiguous,
+          'Dis-moi simplement oui ou non pour confirmer ce changement.',
+        );
+      }
+      final current = await repository.listForAccount(pending.accountScopeId);
+      final previous = current
+          .where((item) => item.occurrenceKey == pending.occurrenceKey)
+          .firstOrNull;
+      final reference = _clock().toUtc();
+      final updatedAt = previous == null
+          ? reference
+          : (reference.isAfter(previous.updatedAt)
+              ? reference
+              : previous.updatedAt.add(const Duration(microseconds: 1)));
+      final override = RoutineOccurrenceOverride(
+        overrideId: _occurrenceOverrideId(
+          pending.accountScopeId,
+          pending.routine.id,
+          pending.sourceDateIso,
+        ),
+        accountScopeId: pending.accountScopeId,
+        routineId: pending.routine.id,
+        sourceDateIso: pending.sourceDateIso,
+        type: pending.type,
+        replacementDateIso: pending.replacementDateIso,
+        replacementStartTime: pending.replacementStartTime,
+        replacementLabel: pending.replacementLabel,
+        overrideRevision: (previous?.overrideRevision ?? 0) + 1,
+        lastMutationId: pending.mutationId,
+        createdAt: previous?.createdAt ?? updatedAt,
+        updatedAt: updatedAt,
+      );
+      final persisted = await repository.put(override);
+      if (persisted == null) {
+        return const RoutineConversationResult(
+          RoutineConversationResultType.unavailable,
+          'Je n’ai pas pu faire ce changement pour le moment. '
+          'Tu peux réessayer dans un instant.',
+        );
+      }
+      _pendingOccurrenceChange = null;
+      return RoutineConversationResult(
+        RoutineConversationResultType.created,
+        pending.successMessage,
+      );
+    }
+
+    final pendingDraft = _pendingOccurrenceDraft;
+    final answer = _answers.classify(message);
+    if (pendingDraft != null && answer == ConversationAnswer.negative) {
+      _pendingOccurrenceDraft = null;
+      return const RoutineConversationResult(
+        RoutineConversationResultType.cancelled,
+        'D’accord, je laisse cette séance comme elle est.',
+      );
+    }
+    final request = pendingDraft == null
+        ? _RoutineOccurrenceChangeRequest.parse(message, now: _clock())
+        : pendingDraft.request.completeFrom(message, now: _clock());
+    if (request == null) return null;
+    final effectiveLogicalRequestId =
+        pendingDraft?.logicalRequestId ?? logicalRequestId;
+    final accountScopeId = _currentAccountScopeId();
+    if (accountScopeId == null || accountScopeId.isEmpty) {
+      return const RoutineConversationResult(
+        RoutineConversationResultType.unavailable,
+        'Je ne peux pas préparer ce changement pour le moment.',
+      );
+    }
+    final catalog = await _loadScheduleCatalog(accountScopeId);
+    final routines = catalog.map((entry) => entry.routine).toList();
+    final namedMatches = routines
+        .where((routine) =>
+            routine.status == RoutineStatus.active &&
+            _matchesRoutine(request.sourceText, routine.title))
+        .toList(growable: false);
+    if (request.sourceDateIso == null) {
+      if (namedMatches.isEmpty) return null;
+      _pendingOccurrenceDraft = _PendingRoutineOccurrenceChangeDraft(
+        request: request,
+        logicalRequestId: effectiveLogicalRequestId,
+      );
+      return const RoutineConversationResult(
+        RoutineConversationResultType.clarification,
+        'Pour quelle séance veux-tu faire ce changement ?',
+      );
+    }
+    if (request.type == RoutineOccurrenceOverrideType.moved &&
+        request.replacementStartTime == null) {
+      _pendingOccurrenceDraft = _PendingRoutineOccurrenceChangeDraft(
+        request: request,
+        logicalRequestId: effectiveLogicalRequestId,
+      );
+      return const RoutineConversationResult(
+        RoutineConversationResultType.clarification,
+        'À quelle heure veux-tu déplacer cette séance ?',
+      );
+    }
+    if (request.type == RoutineOccurrenceOverrideType.replaced &&
+        request.replacementLabel == null) {
+      _pendingOccurrenceDraft = _PendingRoutineOccurrenceChangeDraft(
+        request: request,
+        logicalRequestId: effectiveLogicalRequestId,
+      );
+      return const RoutineConversationResult(
+        RoutineConversationResultType.clarification,
+        'Par quoi veux-tu remplacer cette séance ?',
+      );
+    }
+    final sourceDate = DateTime.parse(request.sourceDateIso!);
+    final applicable = routines
+        .where((routine) =>
+            routine.status == RoutineStatus.active &&
+            const RoutineDateApplicabilityEngine().applies(
+              recurrenceType: routine.recurrenceType.name,
+              weekdays: routine.days,
+              date: sourceDate,
+              anchorDateIso: routine.anchorDateIso,
+              weekOfMonth: routine.weekOfMonth,
+            ))
+        .toList(growable: false);
+    final matches = applicable
+        .where((routine) => _matchesRoutine(request.sourceText, routine.title))
+        .toList(growable: false);
+    final candidates = matches.isNotEmpty
+        ? matches
+        : (request.hasGenericTarget && applicable.length == 1
+            ? applicable
+            : const <RoutineModel>[]);
+    if (candidates.isEmpty) {
+      _pendingOccurrenceDraft = null;
+      if (namedMatches.isNotEmpty) {
+        return RoutineConversationResult(
+          RoutineConversationResultType.clarification,
+          '« ${namedMatches.first.title} » n’est pas prévu le '
+          '${ZeliaResponseBuilder.formatDateForUser(request.sourceDateIso!)}. '
+          'Tu peux me donner la date de la séance à modifier.',
+        );
+      }
+      return null;
+    }
+    if (candidates.length > 1) {
+      _pendingOccurrenceDraft = _PendingRoutineOccurrenceChangeDraft(
+        request: request,
+        logicalRequestId: effectiveLogicalRequestId,
+      );
+      final titles = candidates.map((item) => '« ${item.title} »').join(' ou ');
+      return RoutineConversationResult(
+        RoutineConversationResultType.clarification,
+        'Tu parles de $titles ?',
+      );
+    }
+    final routine = candidates.single;
+    final mutationId = sha256
+        .convert(utf8.encode(
+          'routine-occurrence-change-v1|$accountScopeId|'
+          '$effectiveLogicalRequestId',
+        ))
+        .toString();
+    final prepared = _PendingRoutineOccurrenceChange(
+      accountScopeId: accountScopeId,
+      routine: routine,
+      sourceDateIso: request.sourceDateIso!,
+      type: request.type,
+      replacementDateIso: request.type == RoutineOccurrenceOverrideType.moved
+          ? request.replacementDateIso ?? request.sourceDateIso
+          : null,
+      replacementStartTime: request.replacementStartTime,
+      replacementLabel: request.replacementLabel,
+      mutationId: mutationId,
+    );
+    _pendingOccurrenceDraft = null;
+    _pendingOccurrenceChange = prepared;
+    return RoutineConversationResult(
+      RoutineConversationResultType.confirmation,
+      prepared.confirmationMessage,
+    );
+  }
+
+  static bool _matchesRoutine(String sourceText, String title) {
+    final source = _matchText(sourceText);
+    final candidate = _matchText(title);
+    if (source.contains(candidate) || candidate.contains(source)) return true;
+    final sourceTokens = source.split(' ').where((item) => item.length > 2);
+    final titleTokens = candidate.split(' ').where((item) => item.length > 2);
+    return titleTokens.isNotEmpty &&
+        titleTokens.every((titleToken) => sourceTokens.any(
+              (sourceToken) =>
+                  sourceToken == titleToken ||
+                  _singular(sourceToken) == _singular(titleToken) ||
+                  _oneEditApart(sourceToken, titleToken),
+            ));
+  }
+
+  static String _matchText(String value) => _normalize(value)
+      .replaceAll("'", ' ')
+      .replaceAll('-', ' ')
+      .replaceAll(RegExp(r'[^a-z0-9 ]'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+
+  static String _singular(String value) =>
+      value.length > 3 && value.endsWith('s')
+          ? value.substring(0, value.length - 1)
+          : value;
+
+  static bool _oneEditApart(String left, String right) {
+    if (left.length < 4 ||
+        right.length < 4 ||
+        (left.length - right.length).abs() > 1) {
+      return false;
+    }
+    var row = List<int>.generate(right.length + 1, (index) => index);
+    for (var i = 1; i <= left.length; i++) {
+      final next = <int>[i];
+      for (var j = 1; j <= right.length; j++) {
+        next.add([
+          next[j - 1] + 1,
+          row[j] + 1,
+          row[j - 1] + (left[i - 1] == right[j - 1] ? 0 : 1),
+        ].reduce((a, b) => a < b ? a : b));
+      }
+      row = next;
+    }
+    return row.last <= 1;
+  }
+
+  static String _occurrenceOverrideId(
+    String accountScopeId,
+    String routineId,
+    String sourceDateIso,
+  ) =>
+      sha256
+          .convert(utf8.encode(
+            'routine-occurrence-override-v1|$accountScopeId|$routineId|'
+            '$sourceDateIso',
+          ))
+          .toString();
+}
+
+final class _PendingRoutineOccurrenceChangeDraft {
+  const _PendingRoutineOccurrenceChangeDraft({
+    required this.request,
+    required this.logicalRequestId,
+  });
+
+  final _RoutineOccurrenceChangeRequest request;
+  final String logicalRequestId;
+}
+
+final class _PendingRoutineOccurrenceChange {
+  const _PendingRoutineOccurrenceChange({
+    required this.accountScopeId,
+    required this.routine,
+    required this.sourceDateIso,
+    required this.type,
+    required this.mutationId,
+    this.replacementDateIso,
+    this.replacementStartTime,
+    this.replacementLabel,
+  });
+
+  final String accountScopeId;
+  final RoutineModel routine;
+  final String sourceDateIso;
+  final RoutineOccurrenceOverrideType type;
+  final String mutationId;
+  final String? replacementDateIso;
+  final String? replacementStartTime;
+  final String? replacementLabel;
+
+  String get occurrenceKey => '${routine.id}:$sourceDateIso';
+  String get _sourceDate =>
+      ZeliaResponseBuilder.formatDateForUser(sourceDateIso);
+  String get _replacementDate =>
+      ZeliaResponseBuilder.formatDateForUser(replacementDateIso ?? '');
+  String get _timeLabel => replacementStartTime == null
+      ? ''
+      : replacementStartTime!.endsWith(':00')
+          ? '${replacementStartTime!.substring(0, 2)} h'
+          : replacementStartTime!.replaceFirst(':', ' h ');
+
+  String get confirmationMessage => switch (type) {
+        RoutineOccurrenceOverrideType.cancelled =>
+          'Tu veux que j’annule seulement « ${routine.title} » du '
+              '$_sourceDate ? Les autres séances resteront inchangées.',
+        RoutineOccurrenceOverrideType.moved =>
+          'Tu veux que je déplace seulement « ${routine.title} » du '
+              '$_sourceDate au $_replacementDate à $_timeLabel ? '
+              'Les autres séances resteront inchangées.',
+        RoutineOccurrenceOverrideType.replaced =>
+          'Tu veux que je remplace seulement « ${routine.title} » du '
+              '$_sourceDate par « $replacementLabel » ? '
+              'Les autres séances resteront inchangées.',
+      };
+
+  String get successMessage => switch (type) {
+        RoutineOccurrenceOverrideType.cancelled =>
+          'C’est noté, « ${routine.title} » est annulé seulement le '
+              '$_sourceDate. Les autres séances ne changent pas.',
+        RoutineOccurrenceOverrideType.moved =>
+          'C’est noté, « ${routine.title} » est déplacé au '
+              '$_replacementDate à $_timeLabel. Les autres séances ne '
+              'changent pas.',
+        RoutineOccurrenceOverrideType.replaced =>
+          'C’est noté, « ${routine.title} » est remplacé par '
+              '« $replacementLabel » seulement le $_sourceDate. Les autres '
+              'séances ne changent pas.',
+      };
+}
+
+final class _RoutineOccurrenceChangeRequest {
+  const _RoutineOccurrenceChangeRequest({
+    required this.type,
+    required this.sourceText,
+    required this.hasGenericTarget,
+    this.sourceDateIso,
+    this.replacementDateIso,
+    this.replacementStartTime,
+    this.replacementLabel,
+  });
+
+  final RoutineOccurrenceOverrideType type;
+  final String sourceText;
+  final bool hasGenericTarget;
+  final String? sourceDateIso;
+  final String? replacementDateIso;
+  final String? replacementStartTime;
+  final String? replacementLabel;
+
+  _RoutineOccurrenceChangeRequest completeFrom(
+    String input, {
+    required DateTime now,
+  }) {
+    if (sourceDateIso == null) {
+      return _RoutineOccurrenceChangeRequest(
+        type: type,
+        sourceText: '$sourceText $input',
+        hasGenericTarget: hasGenericTarget,
+        sourceDateIso: _date(input, now),
+        replacementDateIso: replacementDateIso,
+        replacementStartTime: replacementStartTime,
+        replacementLabel: replacementLabel,
+      );
+    }
+    if (type == RoutineOccurrenceOverrideType.moved &&
+        replacementStartTime == null) {
+      final parsedDate = _date(input, now);
+      final parsedTime = NaturalTimeService.parseTime(input);
+      return _RoutineOccurrenceChangeRequest(
+        type: type,
+        sourceText: sourceText,
+        hasGenericTarget: hasGenericTarget,
+        sourceDateIso: sourceDateIso,
+        replacementDateIso: parsedDate ?? replacementDateIso ?? sourceDateIso,
+        replacementStartTime: parsedTime.isEmpty ? null : parsedTime,
+        replacementLabel: replacementLabel,
+      );
+    }
+    if (type == RoutineOccurrenceOverrideType.replaced &&
+        replacementLabel == null) {
+      return _RoutineOccurrenceChangeRequest(
+        type: type,
+        sourceText: sourceText,
+        hasGenericTarget: hasGenericTarget,
+        sourceDateIso: sourceDateIso,
+        replacementDateIso: replacementDateIso,
+        replacementStartTime: replacementStartTime,
+        replacementLabel: _cleanReplacement(input),
+      );
+    }
+    return _RoutineOccurrenceChangeRequest(
+      type: type,
+      sourceText: '$sourceText $input',
+      hasGenericTarget: hasGenericTarget,
+      sourceDateIso: sourceDateIso,
+      replacementDateIso: replacementDateIso,
+      replacementStartTime: replacementStartTime,
+      replacementLabel: replacementLabel,
+    );
+  }
+
+  static _RoutineOccurrenceChangeRequest? parse(
+    String input, {
+    required DateTime now,
+  }) {
+    final text = RoutineConversationService._normalize(input)
+        .replaceAll("'", ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (RegExp(
+      r'\b(?:tous les|toutes les|chaque|definitivement|pour toujours)\b',
+    ).hasMatch(text)) {
+      return null;
+    }
+    final replaced = RegExp(r'\bremplac(?:e|er|ee)?\b').hasMatch(text);
+    final moved = RegExp(
+      r'\b(?:deplac(?:e|er|ee)?|decal(?:e|er|ee)?|report(?:e|er|ee)?|'
+      r'boug(?:e|er|ee)?)\b',
+    ).hasMatch(text);
+    final cancelled = RegExp(
+      r'\b(?:an{1,2}ul(?:e|er|ee)?|supprim(?:e|er)?|pas de)\b',
+    ).hasMatch(text);
+    if (!replaced && !moved && !cancelled) return null;
+    if (RegExp(
+      r'\b(?:ne|n)\s+(?:veux\s+)?(?:anul|annul|supprim|deplac|decal|report|'
+      r'boug|remplac)\w*\s+pas\b|\b(?:anul|annul|supprim|deplac|decal|'
+      r'report|boug|remplac)\w*\s+pas\b',
+    ).hasMatch(text)) {
+      return null;
+    }
+
+    if (replaced) {
+      final split = RegExp(r'^(.*?)\s+par\s+(.+)$').firstMatch(text);
+      final label = split == null ? null : _cleanReplacement(split.group(2)!);
+      final source = split?.group(1) ?? text;
+      return _RoutineOccurrenceChangeRequest(
+        type: RoutineOccurrenceOverrideType.replaced,
+        sourceText: source,
+        hasGenericTarget: _hasGenericTarget(source),
+        sourceDateIso: _date(source, now),
+        replacementLabel: label,
+      );
+    }
+    if (moved) {
+      final split = RegExp(r'^(.*?)\s+(?:a|au|pour)\s+(.+)$').firstMatch(text);
+      final source = split?.group(1) ?? text;
+      final destination = split?.group(2) ?? '';
+      final sourceDate = _date(source, now);
+      return _RoutineOccurrenceChangeRequest(
+        type: RoutineOccurrenceOverrideType.moved,
+        sourceText: source,
+        hasGenericTarget: _hasGenericTarget(source),
+        sourceDateIso: sourceDate,
+        replacementDateIso: _date(destination, now) ?? sourceDate,
+        replacementStartTime:
+            NaturalTimeService.parseTime(destination).trim().isEmpty
+                ? null
+                : NaturalTimeService.parseTime(destination),
+      );
+    }
+    return _RoutineOccurrenceChangeRequest(
+      type: RoutineOccurrenceOverrideType.cancelled,
+      sourceText: text,
+      hasGenericTarget: _hasGenericTarget(text),
+      sourceDateIso: _date(text, now),
+    );
+  }
+
+  static String? _date(String text, DateTime now) {
+    final value = NaturalDateService.resolveDateFromText(text, now: now);
+    return value.isEmpty ? null : value;
+  }
+
+  static bool _hasGenericTarget(String text) => RegExp(
+        r'\b(?:seance|cours|activite|routine|habitude)\b',
+      ).hasMatch(text);
+
+  static String? _cleanReplacement(String value) {
+    var result = value
+        .replaceFirst(RegExp(r'^(?:le|la|les|un|une|du|de la)\s+'), '')
+        .replaceAll(RegExp(r'[.!?]+$'), '')
+        .trim();
+    return result.isEmpty ? null : result;
+  }
 }
 
 final class RoutineTimeExpressionNormalizer {

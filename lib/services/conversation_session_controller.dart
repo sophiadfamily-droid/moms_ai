@@ -211,7 +211,9 @@ final class ConversationSessionController extends ChangeNotifier {
           identityServices?.eventParticipantValidation,
       eventConversationMutationService: mutationService,
       loadAutonomyPolicy: loadAutonomyPolicy,
-      routineConversationService: RoutineConversationService.production(),
+      routineConversationService: RoutineConversationService.production(
+        currentProfile: () => activeProfile,
+      ),
       clock: clock,
     );
     final smartPlanningGateway =

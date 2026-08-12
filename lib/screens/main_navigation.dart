@@ -183,6 +183,7 @@ class _MainNavigationState extends State<MainNavigation> {
               '${requestedAgendaFocus?.routineId ?? ''}',
             ),
             accountScopeToken: widget.accountScopeId ?? 'guest',
+            profile: currentProfile,
             initialDate: requestedAgendaFocus?.date,
             highlightedEventId: requestedAgendaFocus?.eventId,
             highlightedRoutineId: requestedAgendaFocus?.routineId,

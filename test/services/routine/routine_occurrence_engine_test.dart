@@ -160,6 +160,35 @@ void main() {
     expect(output.occurrences.map((item) => item.dateIso), ['2026-08-11']);
   });
 
+  test('labelled replacement is visible only on the selected occurrence', () {
+    final output = engine.project(
+      accountScopeId: 'account-a',
+      windowStartDate: DateTime.utc(2026, 8, 3),
+      windowEndDateExclusive: DateTime.utc(2026, 8, 18),
+      routines: [
+        _routine(
+          id: 'sport',
+          recurrenceType: RoutineRecurrenceType.weekly,
+          days: const [DateTime.tuesday],
+        ),
+      ],
+      overrides: [
+        _override(
+          routineId: 'sport',
+          sourceDateIso: '2026-08-04',
+          type: RoutineOccurrenceOverrideType.replaced,
+          replacementLabel: 'Dentiste',
+        ),
+      ],
+    );
+
+    expect(output.occurrences, hasLength(2));
+    expect(output.occurrences.first.dateIso, '2026-08-04');
+    expect(output.occurrences.first.titleOverride, 'Dentiste');
+    expect(output.occurrences.last.dateIso, '2026-08-11');
+    expect(output.occurrences.last.titleOverride, isNull);
+  });
+
   test('moves one occurrence even when its source is outside the window', () {
     final output = engine.project(
       accountScopeId: 'account-a',
@@ -332,6 +361,7 @@ RoutineOccurrenceOverride _override({
   String? replacementDateIso,
   String? replacementStartTime,
   String? replacementEntityId,
+  String? replacementLabel,
 }) =>
     RoutineOccurrenceOverride(
       overrideId: '$routineId-$sourceDateIso',
@@ -342,6 +372,7 @@ RoutineOccurrenceOverride _override({
       replacementDateIso: replacementDateIso,
       replacementStartTime: replacementStartTime,
       replacementEntityId: replacementEntityId,
+      replacementLabel: replacementLabel,
       overrideRevision: 1,
       lastMutationId: 'mutation-$routineId-$sourceDateIso',
       createdAt: DateTime.utc(2026, 8, 2),

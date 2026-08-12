@@ -50,9 +50,21 @@ drop-off, still require their own future structured recurrence contract.
 One dated Routine exception is not a new recurrence. Canonical
 `RoutineOccurrenceOverride` records are applied by the Routine Occurrence
 Engine before its results enter Life Context or Planning: cancellation and
-replacement suppress only the named source occurrence, while a move projects
-that same stable occurrence at its explicit destination. The recurring Routine
-and all following occurrences remain intact.
+entity-linked replacement suppress only the named source occurrence, a labelled
+replacement remains visible as the exceptional commitment on that date, and a
+move projects that same stable occurrence at its explicit destination. The
+recurring Routine and all following occurrences remain intact. Conversation
+creates an override only after resolving one real applicable occurrence and
+receiving explicit confirmation; it never converts a whole-series or Event
+request into an occurrence exception.
+
+Agenda is a read-only projection of this same schedule reality. Structured
+Profile activities, work ranges, school ranges and household-person activities
+are adapted to stable technical Routine identities for projection and dated
+overrides only; they are not copied into Events. Agenda displays every valid
+range with a short human kind, but conflict detection still follows the user
+consequence rule above. Thus a child's school range can be visible in the day
+without declaring the primary user unavailable.
 
 ## Seven consumer sections
 

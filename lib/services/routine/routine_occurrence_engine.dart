@@ -64,7 +64,16 @@ final class RoutineOccurrenceEngine {
       for (final routine in active) {
         if (!_applies(routine, date)) continue;
         final dateIso = _dateIso(date);
-        if (overrideByOccurrence.containsKey('${routine.id}:$dateIso')) {
+        final occurrenceOverride =
+            overrideByOccurrence['${routine.id}:$dateIso'];
+        if (occurrenceOverride?.type ==
+                RoutineOccurrenceOverrideType.cancelled ||
+            occurrenceOverride?.type == RoutineOccurrenceOverrideType.moved) {
+          continue;
+        }
+        if (occurrenceOverride?.type ==
+                RoutineOccurrenceOverrideType.replaced &&
+            occurrenceOverride?.replacementLabel == null) {
           continue;
         }
         if (occurrences.length ==
@@ -85,6 +94,7 @@ final class RoutineOccurrenceEngine {
             travelBackMinutes: routine.travelBackMinutes,
             marginMinutes: routine.marginMinutes,
             sourceUpdatedAt: routine.updatedAt,
+            titleOverride: occurrenceOverride?.replacementLabel,
           ),
         );
       }

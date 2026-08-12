@@ -5,6 +5,8 @@ import '../models/event_model.dart';
 import '../models/event_sync_conflict.dart';
 import '../models/event_sync_models.dart';
 import '../models/routine/routine_agenda_item.dart';
+import '../models/routine/routine_schedule_definition.dart';
+import '../models/user_profile.dart';
 import '../services/event_service.dart';
 import '../services/event_mutation_result.dart';
 import '../services/event_mutation_service.dart';
@@ -24,6 +26,7 @@ class CalendarScreen extends StatefulWidget {
     this.loadRoutinesForDayForTest,
     this.routinesVersionForTest,
     this.accountScopeToken = 'guest',
+    this.profile,
     this.initialDate,
     this.highlightedEventId,
     this.highlightedRoutineId,
@@ -52,6 +55,7 @@ class CalendarScreen extends StatefulWidget {
   )? loadRoutinesForDayForTest;
   final ValueNotifier<int>? routinesVersionForTest;
   final String accountScopeToken;
+  final UserProfile? profile;
   final DateTime? initialDate;
   final String? highlightedEventId;
   final String? highlightedRoutineId;
@@ -100,7 +104,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   Future<List<RoutineAgendaItem>> getRoutinesForDay(DateTime day) =>
       widget.loadRoutinesForDayForTest?.call(widget.accountScopeToken, day) ??
-      RoutineAgendaService.production().forDay(
+      RoutineAgendaService.production(
+        loadProfile: widget.profile == null ? null : () async => widget.profile,
+      ).forDay(
         accountScopeId: widget.accountScopeToken,
         day: day,
       );
@@ -153,18 +159,25 @@ class _CalendarScreenState extends State<CalendarScreen> {
   @override
   void didUpdateWidget(covariant CalendarScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.accountScopeToken == widget.accountScopeToken) return;
+    final accountChanged =
+        oldWidget.accountScopeToken != widget.accountScopeToken;
+    final profileChanged = oldWidget.profile != widget.profile;
+    if (!accountChanged && !profileChanged) return;
     _screenInstanceGeneration++;
-    _loadGeneration++;
     _routineLoadGeneration++;
     EventService.updateScreenInstanceGeneration(_screenInstanceGeneration);
     setState(() {
-      events = [];
-      syncConflicts = [];
+      if (accountChanged) {
+        events = [];
+        syncConflicts = [];
+        loading = true;
+      }
       routineItems = [];
-      loading = true;
     });
-    loadEvents();
+    if (accountChanged) {
+      _loadGeneration++;
+      loadEvents();
+    }
     loadRoutineItems();
   }
 
@@ -1824,6 +1837,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       final eventEnd = EventService.parseProtectedEnd(event);
       if (eventStart == null || eventEnd == null) continue;
       for (final routine in routineItems) {
+        if (!routine.blocksPrimaryUser) continue;
         if (eventStart.isBefore(routine.protectedEnd) &&
             routine.protectedStart.isBefore(eventEnd)) {
           conflicts.add((event: event, routine: routine));
@@ -2016,7 +2030,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       ),
       child: Row(
         children: [
-          Icon(Icons.autorenew_rounded, color: accent),
+          Icon(_routineIcon(routine.kind), color: accent),
           const SizedBox(width: 14),
           SizedBox(
             width: 92,
@@ -2045,7 +2059,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Routine prévue par Zelia',
+                  _routineSubtitle(routine),
                   style: TextStyle(color: textSoft, fontSize: 13),
                 ),
               ],
@@ -2055,6 +2069,28 @@ class _CalendarScreenState extends State<CalendarScreen> {
       ),
     );
   }
+
+  IconData _routineIcon(RoutineScheduleKind kind) => switch (kind) {
+        RoutineScheduleKind.routine => Icons.autorenew_rounded,
+        RoutineScheduleKind.personalActivity => Icons.self_improvement,
+        RoutineScheduleKind.work => Icons.work_outline_rounded,
+        RoutineScheduleKind.school => Icons.school_outlined,
+        RoutineScheduleKind.householdActivity => Icons.groups_2_outlined,
+      };
+
+  String _routineSubtitle(RoutineAgendaItem item) => switch (item.kind) {
+        RoutineScheduleKind.routine => 'Habitude',
+        RoutineScheduleKind.personalActivity => 'Activité',
+        RoutineScheduleKind.work => 'Travail',
+        RoutineScheduleKind.school =>
+          item.subjectLabel?.trim().isNotEmpty == true
+              ? 'École · ${item.subjectLabel!.trim()}'
+              : 'École',
+        RoutineScheduleKind.householdActivity =>
+          item.subjectLabel?.trim().isNotEmpty == true
+              ? 'Activité · ${item.subjectLabel!.trim()}'
+              : 'Activité du foyer',
+      };
 
   Widget buildEventCard(EventModel event) {
     final color = categoryColor(categoryOf(event));

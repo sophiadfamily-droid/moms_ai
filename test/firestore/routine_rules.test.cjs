@@ -103,6 +103,10 @@ function overrideRef(db, uid = ownerId, id = "override-a") {
   return doc(db, "users", uid, "routineOccurrenceOverrides", id);
 }
 
+function profileRef(db, uid = ownerId) {
+  return doc(db, "users", uid, "private", "profile");
+}
+
 function occurrenceOverride(overrides = {}) {
   const now = Timestamp.now();
   return {
@@ -115,6 +119,7 @@ function occurrenceOverride(overrides = {}) {
     replacementDateIso: null,
     replacementStartTime: null,
     replacementEntityId: null,
+    replacementLabel: null,
     tombstone: false,
     overrideRevision: 1,
     lastMutationId: "mutation-a",
@@ -133,6 +138,15 @@ async function seedProposal(value) {
 async function seedRoutine(value) {
   await environment.withSecurityRulesDisabled(async (context) => {
     await setDoc(routineRef(context.firestore()), value);
+  });
+}
+
+async function seedProfile(uid = ownerId) {
+  await environment.withSecurityRulesDisabled(async (context) => {
+    await setDoc(profileRef(context.firestore(), uid), {
+      accountScopeId: uid,
+      seededForRoutineRulesTest: true,
+    });
   });
 }
 
@@ -462,7 +476,72 @@ test("owner creates and revises one occurrence override", async () => {
   );
 });
 
-test("occurrence override is owner-only and requires an existing routine", async () => {
+test("owner replaces one occurrence with a visible label", async () => {
+  const db = dbFor();
+  const value = proposal();
+  await setDoc(proposalRef(db), value);
+  await commit(db, value);
+  await assertSucceeds(
+    setDoc(
+      overrideRef(db),
+      occurrenceOverride({
+        type: "replaced",
+        replacementLabel: "Dentiste",
+      }),
+    ),
+  );
+});
+
+test("owner creates an occurrence override for a schedule projected from Profile", async () => {
+  const db = dbFor();
+  // Production deliberately uses the first 40 hexadecimal characters of the
+  // SHA-256 digest. Keep this fixture identical to the Flutter catalog.
+  const profileScheduleId = `profile-schedule-${"a".repeat(40)}`;
+  await seedProfile();
+  await assertSucceeds(
+    setDoc(
+      overrideRef(db),
+      occurrenceOverride({routineId: profileScheduleId}),
+    ),
+  );
+});
+
+test("projected Profile override requires an existing Profile source", async () => {
+  const db = dbFor();
+  const profileScheduleId = `profile-schedule-${"a".repeat(40)}`;
+  await assertFails(
+    setDoc(
+      overrideRef(db),
+      occurrenceOverride({routineId: profileScheduleId}),
+    ),
+  );
+});
+
+test("projected Profile override refuses a malformed synthetic identifier", async () => {
+  const db = dbFor();
+  await seedProfile();
+  await assertFails(
+    setDoc(
+      overrideRef(db),
+      occurrenceOverride({routineId: "profile-schedule-not-a-valid-digest"}),
+    ),
+  );
+});
+
+test("projected Profile override refuses the full digest not used by production", async () => {
+  const db = dbFor();
+  await seedProfile();
+  await assertFails(
+    setDoc(
+      overrideRef(db),
+      occurrenceOverride({
+        routineId: `profile-schedule-${"a".repeat(64)}`,
+      }),
+    ),
+  );
+});
+
+test("occurrence override is owner-only and requires a known schedule source", async () => {
   const db = dbFor();
   await assertFails(setDoc(overrideRef(db), occurrenceOverride()));
   await assertFails(
@@ -484,6 +563,11 @@ for (const [name, changes] of [
     replacementStartTime: "18:30",
   }],
   ["moved without destination", {type: "moved"}],
+  ["replacement without target", {type: "replaced"}],
+  ["replacement with empty label", {
+    type: "replaced",
+    replacementLabel: "",
+  }],
 ]) {
   test(`invalid occurrence override is refused: ${name}`, async () => {
     const db = dbFor();

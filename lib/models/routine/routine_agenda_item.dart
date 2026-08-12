@@ -1,3 +1,5 @@
+import 'routine_schedule_definition.dart';
+
 /// A read-only routine occurrence shown in the Agenda.
 ///
 /// This is a presentation model only. It is never persisted as an Event.
@@ -11,6 +13,9 @@ final class RoutineAgendaItem {
     required this.endTime,
     required this.protectedStart,
     required this.protectedEnd,
+    this.kind = RoutineScheduleKind.routine,
+    this.blocksPrimaryUser = true,
+    this.subjectLabel,
   });
 
   final String occurrenceId;
@@ -21,4 +26,7 @@ final class RoutineAgendaItem {
   final String endTime;
   final DateTime protectedStart;
   final DateTime protectedEnd;
+  final RoutineScheduleKind kind;
+  final bool blocksPrimaryUser;
+  final String? subjectLabel;
 }

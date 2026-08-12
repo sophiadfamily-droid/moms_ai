@@ -1,30 +1,42 @@
 import '../../models/routine/routine_agenda_item.dart';
 import '../../models/routine/routine_occurrence_override.dart';
+import '../../models/routine/routine_schedule_definition.dart';
 import '../../models/routine_model.dart';
+import '../cloud_profile_service.dart';
 import '../routine_repository.dart';
 import 'routine_occurrence_override_repository.dart';
 import 'routine_occurrence_engine.dart';
+import 'routine_schedule_catalog_service.dart';
 
 typedef RoutineAgendaLoader = Future<List<RoutineModel>> Function(
   String accountScopeId,
 );
 typedef RoutineAgendaOverrideLoader = Future<List<RoutineOccurrenceOverride>>
     Function(String accountScopeId);
+typedef RoutineAgendaCatalogLoader = Future<List<RoutineScheduleDefinition>>
+    Function(String accountScopeId);
 
 /// Projects canonical routines into read-only Agenda rows for one civil day.
 /// It does not create, edit, or persist Events.
 final class RoutineAgendaService {
-  const RoutineAgendaService({
+  RoutineAgendaService({
     required RoutineAgendaLoader loadRoutines,
     RoutineAgendaOverrideLoader? loadOverrides,
+    RoutineScheduleProfileLoader? loadProfile,
+    RoutineAgendaCatalogLoader? loadCatalog,
     RoutineOccurrenceEngine engine = const RoutineOccurrenceEngine(),
-  })  : _loadRoutines = loadRoutines,
+  })  : _loadCatalog = loadCatalog ??
+            RoutineScheduleCatalogService(
+              loadRoutines: loadRoutines,
+              loadProfile: loadProfile,
+            ).forAccount,
         _loadOverrides = loadOverrides,
         _engine = engine;
 
   factory RoutineAgendaService.production({
     RoutineRepository? repository,
     RoutineOccurrenceOverrideRepository? overrideRepository,
+    RoutineScheduleProfileLoader? loadProfile,
   }) {
     final source = repository ?? FirestoreRoutineRepository();
     final overrideSource =
@@ -32,10 +44,11 @@ final class RoutineAgendaService {
     return RoutineAgendaService(
       loadRoutines: source.listForAccount,
       loadOverrides: overrideSource.listForAccount,
+      loadProfile: loadProfile ?? CloudProfileService.getProfile,
     );
   }
 
-  final RoutineAgendaLoader _loadRoutines;
+  final RoutineAgendaCatalogLoader _loadCatalog;
   final RoutineAgendaOverrideLoader? _loadOverrides;
   final RoutineOccurrenceEngine _engine;
 
@@ -56,11 +69,14 @@ final class RoutineAgendaService {
     if (days < 1 || days > 31) {
       throw const FormatException('invalid_routine_agenda_window');
     }
-    final routines = await _loadRoutines(accountScopeId);
+    final catalog = await _loadCatalog(accountScopeId);
+    final routines = catalog.map((entry) => entry.routine).toList();
     final overrides = _loadOverrides == null
         ? const <RoutineOccurrenceOverride>[]
         : await _loadOverrides(accountScopeId);
-    final byId = {for (final routine in routines) routine.id: routine};
+    final byId = {
+      for (final definition in catalog) definition.routine.id: definition,
+    };
     final start = DateTime.utc(startDay.year, startDay.month, startDay.day);
     final projection = _engine.project(
       accountScopeId: accountScopeId,
@@ -70,7 +86,8 @@ final class RoutineAgendaService {
       overrides: overrides,
     );
     return projection.occurrences.map((occurrence) {
-      final routine = byId[occurrence.routineId]!;
+      final definition = byId[occurrence.routineId]!;
+      final routine = definition.routine;
       final timeParts = occurrence.startTime.split(':');
       final dateParts = occurrence.dateIso.split('-');
       final startTime = DateTime(
@@ -84,7 +101,7 @@ final class RoutineAgendaService {
         occurrenceId: occurrence.occurrenceId,
         routineId: occurrence.routineId,
         dateIso: occurrence.dateIso,
-        title: routine.title,
+        title: occurrence.titleOverride ?? routine.title,
         startTime: occurrence.startTime,
         endTime: occurrence.endTime,
         protectedStart: startTime.subtract(
@@ -97,6 +114,9 @@ final class RoutineAgendaService {
                 occurrence.marginMinutes,
           ),
         ),
+        kind: definition.kind,
+        blocksPrimaryUser: definition.blocksPrimaryUser,
+        subjectLabel: definition.subjectLabel,
       );
     }).toList(growable: false);
   }

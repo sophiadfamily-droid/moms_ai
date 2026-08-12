@@ -629,6 +629,17 @@ provider over its fourteen-day horizon. Event and Routine conflict sources
 fail independently, so one unavailable source cannot erase valid evidence
 from the other; no polling or background worker is added.
 
+The Agenda projection also reunites canonical Routine records with structured
+Profile schedules (personal activities, work ranges, school ranges and
+activities belonging to another household person). These items remain
+read-only lightweight schedule rows and are never persisted as Events. Their
+kind and subject remain explicit: primary-person routines, activities and work
+can protect time, while another person's school or activity is visible context
+and does not become a primary-user conflict without a separate typed
+consequence. The same deterministic catalog is used by conversation and
+Agenda, so a confirmed dated cancellation hides only that profile-sourced
+occurrence and leaves the following recurrence visible.
+
 **Planned architecture:** The Routine Engine provides one authoritative recurrence vocabulary and dated projection of routines for planning, notifications, and future organization features. A routine remains distinct from a generated series of persisted calendar events unless explicitly converted.
 
 ### 7.6 Planning Engine
@@ -1834,13 +1845,19 @@ document intake, and proactive mental-load assistance.
 The first Stage 5 slice introduces an account-owned, revisioned
 `RoutineOccurrenceOverride`, stored independently from the recurring Routine.
 It identifies one source occurrence by Routine and civil date. `cancelled` and
-`replaced` suppress only that occurrence; `moved` keeps its stable source
-identity while projecting it at one explicit replacement date and local time.
+an entity-linked `replaced` suppress only that occurrence; a labelled
+`replaced` projects the exceptional replacement visibly on that date; `moved`
+keeps its stable source identity while projecting it at one explicit
+replacement date and local time.
 Tombstones reverse an override without deleting its audit history. The Routine
 Occurrence Engine rejects duplicate overrides and a move onto another
 occurrence of the same Routine instead of silently producing contradictory
-copies. Conversation understanding and action confirmation will create these
-records in later Stage 5 slices; this foundation performs no implicit choice.
+copies. The first conversation slice understands bounded French cancellation,
+move and replacement requests, resolves the exact applicable Routine and civil
+date, asks only for missing information, and writes the revisioned override
+only after an explicit yes. A refusal, a date without that Routine, an Event
+mutation, or a whole-series request produces no occurrence override. The
+recurring Routine and its other occurrences are never rewritten.
 
 ### Stage 6 — Find the best real slot
 

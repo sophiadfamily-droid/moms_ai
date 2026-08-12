@@ -8,6 +8,7 @@ import 'package:moms_ai/models/agenda_conflict_help.dart';
 import 'package:moms_ai/models/event_sync_conflict.dart';
 import 'package:moms_ai/models/event_sync_models.dart';
 import 'package:moms_ai/models/routine/routine_agenda_item.dart';
+import 'package:moms_ai/models/routine/routine_schedule_definition.dart';
 import 'package:moms_ai/screens/calendar_screen.dart';
 import 'package:moms_ai/services/event_mutation_result.dart';
 
@@ -216,11 +217,98 @@ void main() {
 
     expect(find.text('Préparer les enfants'), findsOneWidget);
     expect(find.text('07:30 - 08:15'), findsOneWidget);
-    expect(find.text('Routine prévue par Zelia'), findsOneWidget);
+    expect(find.text('Habitude'), findsOneWidget);
     expect(
       find.byKey(ValueKey('routine-agenda-routine-1:${isoDate(today)}')),
       findsOneWidget,
     );
+    expect(find.byIcon(Icons.more_horiz), findsNothing);
+  });
+
+  testWidgets(
+    'shows a household school schedule without inventing a user conflict',
+    (WidgetTester tester) async {
+      final tomorrow = DateTime.now().add(const Duration(days: 1));
+      final date = isoDate(tomorrow);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CalendarScreen(
+            accountScopeToken: 'account-a',
+            initialDate: tomorrow,
+            eventsVersionForTest: ValueNotifier<int>(0),
+            routinesVersionForTest: ValueNotifier<int>(0),
+            loadEventsForTest: () async => [
+              EventModel(
+                id: 'event-coiffeur',
+                title: 'Coiffeur',
+                date: date,
+                time: '09:30',
+                durationMinutes: 30,
+                notes: '',
+                createdAt: DateTime.utc(2026, 8, 1),
+                startDateTimeIso: '${date}T09:30:00',
+              ),
+            ],
+            loadSyncConflictsForTest: () async => const [],
+            loadRoutinesForDayForTest: (_, day) async => [
+              RoutineAgendaItem(
+                occurrenceId: 'school:$date',
+                routineId: 'school',
+                dateIso: date,
+                title: 'École Kassim',
+                startTime: '08:30',
+                endTime: '11:50',
+                protectedStart: DateTime(day.year, day.month, day.day, 8, 30),
+                protectedEnd: DateTime(day.year, day.month, day.day, 11, 50),
+                kind: RoutineScheduleKind.school,
+                blocksPrimaryUser: false,
+                subjectLabel: 'Kassim',
+              ),
+            ],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('École Kassim'), findsOneWidget);
+      expect(find.text('École · Kassim'), findsOneWidget);
+      expect(find.textContaining('se chevauchent'), findsNothing);
+    },
+  );
+
+  testWidgets('shows a personal activity as a light read-only Agenda item',
+      (WidgetTester tester) async {
+    final tomorrow = DateTime.now().add(const Duration(days: 1));
+    final date = isoDate(tomorrow);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CalendarScreen(
+          accountScopeToken: 'account-a',
+          initialDate: tomorrow,
+          eventsVersionForTest: ValueNotifier<int>(0),
+          routinesVersionForTest: ValueNotifier<int>(0),
+          loadEventsForTest: () async => const [],
+          loadSyncConflictsForTest: () async => const [],
+          loadRoutinesForDayForTest: (_, day) async => [
+            RoutineAgendaItem(
+              occurrenceId: 'pilates:$date',
+              routineId: 'pilates',
+              dateIso: date,
+              title: 'Pilates',
+              startTime: '09:00',
+              endTime: '10:00',
+              protectedStart: DateTime(day.year, day.month, day.day, 9),
+              protectedEnd: DateTime(day.year, day.month, day.day, 10),
+              kind: RoutineScheduleKind.personalActivity,
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Pilates'), findsOneWidget);
+    expect(find.text('Activité'), findsOneWidget);
     expect(find.byIcon(Icons.more_horiz), findsNothing);
   });
 

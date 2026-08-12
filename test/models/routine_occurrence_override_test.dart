@@ -61,4 +61,41 @@ void main() {
       throwsA(isA<FormatException>()),
     );
   });
+
+  test('labelled replacement round-trips without a linked Event', () {
+    final override = RoutineOccurrenceOverride(
+      overrideId: 'override-replaced',
+      accountScopeId: 'account-a',
+      routineId: 'routine-a',
+      sourceDateIso: '2026-08-04',
+      type: RoutineOccurrenceOverrideType.replaced,
+      replacementLabel: 'Dentiste',
+      overrideRevision: 1,
+      lastMutationId: 'mutation-replaced',
+      createdAt: DateTime.utc(2026, 8, 2),
+      updatedAt: DateTime.utc(2026, 8, 2),
+    );
+
+    expect(
+      RoutineOccurrenceOverride.fromJson(override.toJson()).replacementLabel,
+      'Dentiste',
+    );
+  });
+
+  test('replacement requires a label or a linked canonical entity', () {
+    expect(
+      () => RoutineOccurrenceOverride(
+        overrideId: 'override-replaced',
+        accountScopeId: 'account-a',
+        routineId: 'routine-a',
+        sourceDateIso: '2026-08-04',
+        type: RoutineOccurrenceOverrideType.replaced,
+        overrideRevision: 1,
+        lastMutationId: 'mutation-replaced',
+        createdAt: DateTime.utc(2026, 8, 2),
+        updatedAt: DateTime.utc(2026, 8, 2),
+      ),
+      throwsA(isA<FormatException>()),
+    );
+  });
 }

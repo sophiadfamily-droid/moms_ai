@@ -23,6 +23,8 @@ void main() {
       'rdv demain quinze heur': '15:00',
       'rdv demain quinze heures': '15:00',
       'rdv demain quinze heures et quart': '15:15',
+      'jeudi dix-huit heures': '18:00',
+      'jeudi vingt-trois heures': '23:00',
       'plutôt 19 heures': '19:00',
       '23h': '23:00',
     }.entries) {

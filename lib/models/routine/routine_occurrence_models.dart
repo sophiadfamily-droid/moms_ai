@@ -26,6 +26,7 @@ final class RoutineOccurrence {
     required this.marginMinutes,
     required this.sourceUpdatedAt,
     this.originalDateIso,
+    this.titleOverride,
   }) {
     if (schemaVersion != currentSchemaVersion ||
         occurrenceId.trim().isEmpty ||
@@ -34,6 +35,8 @@ final class RoutineOccurrence {
         _parseCivilDate(dateIso) == null ||
         (originalDateIso != null &&
             _parseCivilDate(originalDateIso!) == null) ||
+        titleOverride?.trim().isEmpty == true ||
+        (titleOverride?.length ?? 0) > 300 ||
         !RegExp(r'^(?:[01]\d|2[0-3]):[0-5]\d$').hasMatch(startTime) ||
         durationMinutes < 1 ||
         travelGoMinutes < 0 ||
@@ -56,6 +59,7 @@ final class RoutineOccurrence {
   final int marginMinutes;
   final DateTime sourceUpdatedAt;
   final String? originalDateIso;
+  final String? titleOverride;
 
   bool get isMoved => originalDateIso != null && originalDateIso != dateIso;
 
@@ -81,6 +85,7 @@ final class RoutineOccurrence {
         'marginMinutes': marginMinutes,
         'sourceUpdatedAt': sourceUpdatedAt.toIso8601String(),
         if (originalDateIso != null) 'originalDateIso': originalDateIso,
+        if (titleOverride != null) 'titleOverride': titleOverride,
       };
 }
 

@@ -2,9 +2,10 @@ enum RoutineOccurrenceOverrideType { cancelled, moved, replaced }
 
 /// A durable exception affecting one dated occurrence of a recurring routine.
 ///
-/// The recurring routine remains unchanged. A cancelled or replaced override
-/// suppresses only [sourceDateIso]. A moved override projects that occurrence
-/// at [replacementDateIso] and [replacementStartTime].
+/// The recurring routine remains unchanged. A cancelled override suppresses
+/// only [sourceDateIso]. A moved override projects that occurrence at
+/// [replacementDateIso] and [replacementStartTime]. A replacement either
+/// points to a canonical entity or exposes [replacementLabel] on that date.
 final class RoutineOccurrenceOverride {
   static const int currentSchemaVersion = 1;
 
@@ -22,6 +23,7 @@ final class RoutineOccurrenceOverride {
     this.replacementDateIso,
     this.replacementStartTime,
     this.replacementEntityId,
+    this.replacementLabel,
     this.tombstone = false,
   }) {
     final moved = type == RoutineOccurrenceOverrideType.moved;
@@ -47,7 +49,11 @@ final class RoutineOccurrenceOverride {
             (replacementDateIso != null || replacementStartTime != null)) ||
         (replacementEntityId?.trim().isEmpty == true) ||
         (replacementEntityId?.length ?? 0) > 200 ||
-        (!replaced && replacementEntityId != null)) {
+        (replacementLabel?.trim().isEmpty == true) ||
+        (replacementLabel?.length ?? 0) > 300 ||
+        (!replaced &&
+            (replacementEntityId != null || replacementLabel != null)) ||
+        (replaced && replacementEntityId == null && replacementLabel == null)) {
       throw const FormatException('invalid_routine_occurrence_override_v1');
     }
   }
@@ -61,6 +67,7 @@ final class RoutineOccurrenceOverride {
   final String? replacementDateIso;
   final String? replacementStartTime;
   final String? replacementEntityId;
+  final String? replacementLabel;
   final bool tombstone;
   final int overrideRevision;
   final String lastMutationId;
@@ -79,6 +86,7 @@ final class RoutineOccurrenceOverride {
         'replacementDateIso': replacementDateIso,
         'replacementStartTime': replacementStartTime,
         'replacementEntityId': replacementEntityId,
+        'replacementLabel': replacementLabel,
         'tombstone': tombstone,
         'overrideRevision': overrideRevision,
         'lastMutationId': lastMutationId,
@@ -117,6 +125,7 @@ final class RoutineOccurrenceOverride {
       replacementDateIso: map['replacementDateIso'] as String?,
       replacementStartTime: map['replacementStartTime'] as String?,
       replacementEntityId: map['replacementEntityId'] as String?,
+      replacementLabel: map['replacementLabel'] as String?,
       tombstone: map['tombstone'] as bool? ?? false,
       overrideRevision: map['overrideRevision'] as int? ?? 0,
       lastMutationId: map['lastMutationId']?.toString() ?? '',
