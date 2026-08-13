@@ -146,6 +146,7 @@ final class PlanningProjectionConsequence {
   const PlanningProjectionConsequence({
     required this.id,
     required this.kind,
+    this.label,
     required this.responsiblePersonNodeId,
     required this.subjectPersonNodeId,
     required this.start,
@@ -165,6 +166,7 @@ final class PlanningProjectionConsequence {
 
   final String id;
   final String kind;
+  final String? label;
   final String responsiblePersonNodeId;
   final String subjectPersonNodeId;
   final String start;
@@ -193,6 +195,7 @@ final class PlanningProjectionRecurringConsequence {
   PlanningProjectionRecurringConsequence({
     required this.id,
     required this.kind,
+    this.label,
     required this.responsiblePersonNodeId,
     required this.subjectPersonNodeId,
     required List<int> weekdays,
@@ -204,6 +207,7 @@ final class PlanningProjectionRecurringConsequence {
 
   final String id;
   final String kind;
+  final String? label;
   final String responsiblePersonNodeId;
   final String subjectPersonNodeId;
   final List<int> weekdays;
@@ -398,6 +402,7 @@ abstract final class LifeContextPlanningProjectionAdapter {
           }
           final kind =
               facts[LifeContextProjectionFactKeys.consequenceType] ?? '';
+          final label = facts[LifeContextProjectionFactKeys.kind];
           final responsible =
               facts[LifeContextProjectionFactKeys.sourceNodeId] ?? '';
           final subject =
@@ -407,6 +412,7 @@ abstract final class LifeContextPlanningProjectionAdapter {
             final recurring = PlanningProjectionRecurringConsequence(
               id: item.id,
               kind: kind,
+              label: label,
               responsiblePersonNodeId: responsible,
               subjectPersonNodeId: subject,
               weekdays: (facts[LifeContextProjectionFactKeys.days] ?? '')
@@ -426,6 +432,7 @@ abstract final class LifeContextPlanningProjectionAdapter {
             final consequence = PlanningProjectionConsequence(
               id: item.id,
               kind: kind,
+              label: label,
               responsiblePersonNodeId: responsible,
               subjectPersonNodeId: subject,
               start: facts[LifeContextProjectionFactKeys.start] ?? '',

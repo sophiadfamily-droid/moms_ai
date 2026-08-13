@@ -216,6 +216,49 @@ void main() {
     expect(duringSchool, isNull);
   });
 
+  test('known school entry blocks the exact Event start without travel data',
+      () async {
+    final service = EventPlanningConflictService(
+      loadEventConflict: ({required candidate}) async => null,
+      routinePlanningBlockers: RoutinePlanningBlockerService(
+        loadPlanningContext: (_) async => PlanningProjectionContext(
+          primaryPersonNodeId: 'human:person:primary',
+          events: const [],
+          routines: const [],
+          temporalResponsibilities: const [],
+          recurringPlanningConsequences: [
+            PlanningProjectionRecurringConsequence(
+              id: 'school-drop-off-marker',
+              kind: 'transport',
+              label: 'Déposer Kassim à l’école',
+              responsiblePersonNodeId: 'human:person:primary',
+              subjectPersonNodeId: 'human:person:kassim',
+              weekdays: const [DateTime.monday, DateTime.friday],
+              startTime: '08:30',
+              endTime: '08:31',
+            ),
+          ],
+          warningCodes: const [],
+        ),
+      ),
+      currentAccountScopeId: () => 'account-a',
+    );
+
+    final monday = await service.findConflictAtStart(
+      startDateTimeIso: '2026-08-17T08:30:00',
+    );
+    final tuesday = await service.findConflictAtStart(
+      startDateTimeIso: '2026-08-18T08:30:00',
+    );
+    final duringSchool = await service.findConflictAtStart(
+      startDateTimeIso: '2026-08-17T09:30:00',
+    );
+
+    expect(monday?.title, 'Déposer Kassim à l’école');
+    expect(tuesday, isNull);
+    expect(duringSchool, isNull);
+  });
+
   test('an unavailable conflict source never breaks event preparation',
       () async {
     final service = EventPlanningConflictService(

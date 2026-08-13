@@ -111,27 +111,46 @@ final class RoutinePlanningBlockerService {
       throw StateError('routine_planning_context_unavailable');
     }
     LifeContextProjectionSection? routineSection;
+    LifeContextProjectionSection? humanSection;
     for (final section in projection.sections) {
       if (section.type == LifeContextProjectionSectionType.routine) {
         routineSection = section;
-        break;
+      } else if (section.type == LifeContextProjectionSectionType.human) {
+        humanSection = section;
       }
     }
-    if (routineSection == null ||
-        !routineSection.accountScopeMatch ||
-        const {
-          LifeContextAvailability.unavailable,
-          LifeContextAvailability.corrupted,
-          LifeContextAvailability.unsupported,
-          LifeContextAvailability.accountMismatch,
-        }.contains(routineSection.availability) ||
-        routineSection.truncated ||
-        routineSection.sourceTruncationState ==
-            LifeContextTruncationState.truncated) {
+    final routineUsable = _sectionIsComplete(routineSection);
+    final humanUsable = _sectionIsComplete(humanSection);
+    if (!routineUsable && !humanUsable) {
       throw StateError('routine_planning_context_unavailable');
     }
-    return LifeContextPlanningProjectionAdapter.toPlanningContext(projection);
+    final context =
+        LifeContextPlanningProjectionAdapter.toPlanningContext(projection);
+    return PlanningProjectionContext(
+      events: context.events,
+      routines: routineUsable ? context.routines : const [],
+      temporalResponsibilities:
+          humanUsable ? context.temporalResponsibilities : const [],
+      planningConsequences:
+          humanUsable ? context.planningConsequences : const [],
+      recurringPlanningConsequences:
+          humanUsable ? context.recurringPlanningConsequences : const [],
+      warningCodes: context.warningCodes,
+      primaryPersonNodeId: humanUsable ? context.primaryPersonNodeId : null,
+    );
   }
+
+  static bool _sectionIsComplete(LifeContextProjectionSection? section) =>
+      section != null &&
+      section.accountScopeMatch &&
+      !const {
+        LifeContextAvailability.unavailable,
+        LifeContextAvailability.corrupted,
+        LifeContextAvailability.unsupported,
+        LifeContextAvailability.accountMismatch,
+      }.contains(section.availability) &&
+      !section.truncated &&
+      section.sourceTruncationState != LifeContextTruncationState.truncated;
 
   List<EventModel> _fromPlanningContext({
     required PlanningProjectionContext context,
@@ -197,7 +216,10 @@ final class RoutinePlanningBlockerService {
         blockers.add(
           EventModel(
             id: 'responsibility:${consequence.id}:${_dateIso(date)}',
-            title: _responsibilityTitle(consequence.kind),
+            title: _responsibilityTitle(
+              consequence.kind,
+              label: consequence.label,
+            ),
             date: _dateIso(start),
             time: _time(start),
             notes: '',
@@ -227,7 +249,10 @@ final class RoutinePlanningBlockerService {
       blockers.add(
         EventModel(
           id: 'responsibility:${consequence.id}',
-          title: _responsibilityTitle(consequence.kind),
+          title: _responsibilityTitle(
+            consequence.kind,
+            label: consequence.label,
+          ),
           date: _dateIso(protectedStart),
           time: _time(protectedStart),
           notes: '',
@@ -344,17 +369,25 @@ final class RoutinePlanningBlockerService {
     };
   }
 
-  static String _responsibilityTitle(String kind) => switch (kind) {
-        'accompaniment' => 'Un accompagnement prévu',
-        'transport' => 'Un trajet à assurer',
-        'participation' => 'Ta présence est prévue',
-        'preparation' => 'Un temps de préparation prévu',
-        'waiting' => 'Un temps d’attente prévu',
-        'replacement' => 'Un remplacement prévu',
-        'care' => 'Un temps de présence prévu',
-        'dailyAssistance' => 'Un temps d’aide prévu',
-        _ => 'Une responsabilité prévue',
-      };
+  static String _responsibilityTitle(String kind, {String? label}) {
+    final informativeLabel = label?.trim();
+    if (informativeLabel != null &&
+        informativeLabel.isNotEmpty &&
+        informativeLabel != kind) {
+      return informativeLabel;
+    }
+    return switch (kind) {
+      'accompaniment' => 'Un accompagnement prévu',
+      'transport' => 'Un trajet à assurer',
+      'participation' => 'Ta présence est prévue',
+      'preparation' => 'Un temps de préparation prévu',
+      'waiting' => 'Un temps d’attente prévu',
+      'replacement' => 'Un remplacement prévu',
+      'care' => 'Un temps de présence prévu',
+      'dailyAssistance' => 'Un temps d’aide prévu',
+      _ => kind.trim().isEmpty ? 'Une responsabilité prévue' : kind.trim(),
+    };
+  }
 
   static String _dateIso(DateTime value) =>
       '${value.year.toString().padLeft(4, '0')}-'

@@ -35,7 +35,6 @@ void main() {
       accountScopeId: 'account-a',
       startDay: DateTime(2026, 8, 18),
     );
-
     expect(monday, hasLength(1));
     expect(monday.single.title, 'Tes horaires de travail');
     expect(monday.single.startDateTimeIso, '2026-08-17T08:45:00.000');
@@ -233,7 +232,6 @@ void main() {
       accountScopeId: 'account-a',
       startDay: DateTime(2026, 8, 18),
     );
-
     expect(monday, hasLength(1));
     expect(monday.single.title, 'Un trajet à assurer');
     expect(monday.single.startDateTimeIso, '2026-08-17T08:20:00.000');
@@ -299,6 +297,35 @@ void main() {
     expect(blockers, hasLength(1));
     expect(blockers.single.title, 'Une de tes activités');
     expect(blockers.single.time, '09:00');
+  });
+
+  test('uses a confirmed responsibility when the routine source is unavailable',
+      () async {
+    final service = RoutinePlanningBlockerService(
+      loadPlanningProjection: (_) async =>
+          _responsibilityOnlyPlanningProjection(),
+    );
+
+    final monday = await service.load(
+      accountScopeId: 'account-a',
+      startDay: DateTime(2026, 8, 17),
+    );
+    final tuesday = await service.load(
+      accountScopeId: 'account-a',
+      startDay: DateTime(2026, 8, 18),
+    );
+    final friday = await service.load(
+      accountScopeId: 'account-a',
+      startDay: DateTime(2026, 8, 21),
+    );
+
+    expect(monday, hasLength(1));
+    expect(monday.single.title, 'Déposer Kassim à l’école');
+    expect(monday.single.startDateTimeIso, '2026-08-17T08:30:00.000');
+    expect(monday.single.endDateTimeIso, '2026-08-17T08:31:00.000');
+    expect(tuesday, isEmpty);
+    expect(friday, hasLength(1));
+    expect(friday.single.title, 'Déposer Kassim à l’école');
   });
 
   test('reads the current profile directly with the activity name', () async {
@@ -420,4 +447,94 @@ LifeContextProjection _partialPlanningProjection() => LifeContextProjection(
       ],
       omittedCount: 0,
       warningCodes: const ['event_unavailable', 'routine_stale'],
+    );
+
+LifeContextProjection _responsibilityOnlyPlanningProjection() =>
+    LifeContextProjection(
+      projectionId: 'planning-responsibility',
+      sourceSnapshotId: 'snapshot-responsibility',
+      accountScopeId: 'account-a',
+      purpose: LifeContextConsumerPurpose.planning,
+      generatedAt: DateTime.utc(2026, 8, 16),
+      state: LifeContextProjectionState.partial,
+      budgetRequested: 180,
+      budgetUsed: 14,
+      sections: [
+        LifeContextProjectionSection(
+          type: LifeContextProjectionSectionType.human,
+          availability: LifeContextAvailability.available,
+          freshness: LifeContextFreshness.current,
+          items: [
+            _planningItem(
+              id: 'person-main',
+              type: 'person',
+              facts: const {
+                LifeContextProjectionFactKeys.nodeId:
+                    'human:person:person-main',
+                LifeContextProjectionFactKeys.personRole: 'primary',
+              },
+            ),
+            _planningItem(
+              id: 'school-dropoff',
+              type: 'responsibility',
+              facts: const {
+                LifeContextProjectionFactKeys.kind: 'Déposer Kassim à l’école',
+                LifeContextProjectionFactKeys.consequenceType: 'transport',
+                LifeContextProjectionFactKeys.sourceNodeId:
+                    'human:person:person-main',
+                LifeContextProjectionFactKeys.targetNodeId:
+                    'human:person:person-kassim',
+                LifeContextProjectionFactKeys.days: '1,5',
+                LifeContextProjectionFactKeys.startTime: '08:30',
+                LifeContextProjectionFactKeys.endTime: '08:31',
+                LifeContextProjectionFactKeys.recurringConsequence: 'weekly',
+                LifeContextProjectionFactKeys.blocksResponsiblePerson: 'true',
+              },
+            ),
+          ],
+          budgetLimit: 30,
+          budgetUsed: 14,
+          omittedCount: 0,
+          truncated: false,
+        ),
+        LifeContextProjectionSection(
+          type: LifeContextProjectionSectionType.routine,
+          availability: LifeContextAvailability.unavailable,
+          freshness: LifeContextFreshness.unknown,
+          items: const [],
+          budgetLimit: 35,
+          budgetUsed: 0,
+          omittedCount: 0,
+          truncated: false,
+        ),
+      ],
+      omittedCount: 0,
+      warningCodes: const ['routine_unavailable'],
+    );
+
+LifeContextProjectionItem _planningItem({
+  required String id,
+  required String type,
+  required Map<String, String> facts,
+}) =>
+    LifeContextProjectionItem(
+      id: id,
+      domain: LifeContextDomain.human,
+      type: type,
+      facts: [
+        for (final entry in facts.entries)
+          LifeContextProjectionFact(
+            key: entry.key,
+            value: entry.value,
+            sensitivity: LifeContextSensitivityLevel.publicTechnical,
+          ),
+      ],
+      confirmation: LifeContextConfirmation.confirmed,
+      freshness: LifeContextFreshness.current,
+      provenance: const LifeContextProjectionProvenance(
+        sourceDomain: LifeContextDomain.human,
+        sourceId: 'human-model',
+        sourceSnapshotId: 'snapshot-responsibility',
+        sourceKind: LifeContextSourceKind.humanModelLocal,
+      ),
     );

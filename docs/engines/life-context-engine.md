@@ -50,6 +50,31 @@ short recurring participation, transport, preparation, waiting, replacement
 or care range carried by the primary person; it never turns the subject's full
 school, work or activity range into the primary person's unavailability.
 
+Conversation can now create that weekly consequence from a bounded explicit
+first-person statement. The deterministic local path resolves a known person,
+collects only a missing time range or disambiguating name, and writes through
+`HumanModelEditService` after one yes. It is deliberately evaluated before
+generic Routine creation, so “I take Alex every Monday…” becomes a confirmed
+responsibility rather than a personal activity. Questions, tentative language,
+third-person schedules and unconfirmed relationship assumptions do not enter
+this write path.
+
+The profile-derived school drop-off clarification follows the same boundary.
+It never appears merely because Chat was opened. School hours reveal that a
+transition may be missing, so Zelia may ask once who usually handles drop-off
+only when a dated Event request actually touches that entry transition. After
+the answer, the suspended Event request resumes automatically. Before a yes
+there is no planning consequence. After a yes, an explicit one-way travel
+duration protects only the journey to school and the return from it around the
+entry time. When that duration is still unknown, the known school-entry
+instant is nevertheless projected as a one-minute technical marker: this
+makes a request placed exactly at the confirmed transition detectable without
+fabricating a commute duration. Existing confirmations that predate this
+marker are completed silently from the current school schedule and are never
+asked again. A no is remembered and does not resurface. The child's full
+school period always remains non-blocking for the primary person. Failure to
+load this optional question must not interrupt the Event request.
+
 One dated Routine exception is not a new recurrence. Canonical
 `RoutineOccurrenceOverride` records are applied by the Routine Occurrence
 Engine before its results enter Life Context or Planning: cancellation and

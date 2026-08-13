@@ -15,6 +15,7 @@ import '../models/life_context/life_context_provenance.dart';
 import '../models/memory_lifecycle.dart';
 import '../models/memory_contradiction.dart';
 import '../models/memory_lifecycle_state.dart';
+import '../models/user_profile.dart';
 import '../core/identity/uuid_v7_entity_id_generator.dart';
 import 'chat_backend_client.dart';
 import 'conversation_answer_classifier.dart';
@@ -28,6 +29,7 @@ import 'memory_lifecycle_engine.dart';
 import 'memory_lifecycle_repository.dart';
 import 'memory_pipeline_service.dart';
 import 'routine_conversation_service.dart';
+import 'human/recurring_responsibility_conversation_service.dart';
 import 'identity/identity_application_models.dart';
 import 'identity/identity_application_service.dart';
 import 'identity/identity_action_binding_service.dart';
@@ -85,6 +87,8 @@ class ConversationCoordinator {
   final ConversationAutonomyPolicyLoader? _loadAutonomyPolicy;
   final ActionAutonomyPolicyEngine _autonomyEngine;
   final RoutineConversationService? routineConversationService;
+  final RecurringResponsibilityConversationService?
+      recurringResponsibilityConversationService;
   final PriorityConsultationIntentDetector priorityConsultationIntentDetector;
   final PriorityConsultationService? priorityConsultationService;
   final TaskCreationDraftService taskCreationDraftService;
@@ -126,6 +130,7 @@ class ConversationCoordinator {
     ActionAutonomyPolicyEngine autonomyEngine =
         const ActionAutonomyPolicyEngine(),
     this.routineConversationService,
+    this.recurringResponsibilityConversationService,
     this.priorityConsultationIntentDetector =
         const PriorityConsultationIntentDetector(),
     PriorityConsultationService? priorityConsultationService,
@@ -233,10 +238,49 @@ class ConversationCoordinator {
     _identityActionBindings.clear();
     _eventIdentityDrafts.clear();
     _eventParticipantMutationDrafts.clear();
+    recurringResponsibilityConversationService?.invalidate();
     _observedAccountScopeId = null;
     _isSending = false;
     _isResolvingPendingAction = false;
   }
+
+  Future<RecurringResponsibilityConversationResult?>
+      beginContextualResponsibilityClarification(
+    UserProfile profile,
+    String planningRequest,
+  ) async {
+    final service = recurringResponsibilityConversationService;
+    if (service == null || _state.pendingAction != null || service.hasPending) {
+      return null;
+    }
+    RecurringResponsibilityConversationResult result;
+    try {
+      result = await service.proposeSchoolDropoffForPlanningRequest(
+        profile,
+        planningRequest,
+        now: _clock(),
+      );
+    } catch (_) {
+      // This optional, one-time clarification must never prevent the original
+      // planning request from continuing.
+      return null;
+    }
+    if (result.type ==
+            RecurringResponsibilityConversationResultType.notResponsibility ||
+        result.type ==
+            RecurringResponsibilityConversationResultType.unavailable) {
+      return null;
+    }
+    _state = _state.copyWith(
+      phase: service.hasPending
+          ? ConversationPhase.awaitingActionConfirmation
+          : ConversationPhase.idle,
+    );
+    return result;
+  }
+
+  bool get hasPendingRecurringResponsibility =>
+      recurringResponsibilityConversationService?.hasPending == true;
 
   void setPendingEventConfirmation(
     EventModel? event, {
@@ -2512,6 +2556,26 @@ class ConversationCoordinator {
       return ConversationOutcome(
         reply: eventMutationResolution.message,
         referenceResolution: eventMutationResolution.referenceResolution,
+      );
+    }
+    final recurringResponsibilityResult =
+        await recurringResponsibilityConversationService?.process(
+      input.message,
+    );
+    if (recurringResponsibilityResult != null &&
+        recurringResponsibilityResult.type !=
+            RecurringResponsibilityConversationResultType.notResponsibility) {
+      final hasPending = recurringResponsibilityConversationService!.hasPending;
+      _state = _state.copyWith(
+        phase: hasPending
+            ? ConversationPhase.awaitingActionConfirmation
+            : ConversationPhase.idle,
+      );
+      return ConversationOutcome(
+        reply: recurringResponsibilityResult.message,
+        responseKind: hasPending
+            ? ConversationResponseKind.confirmationRequired
+            : ConversationResponseKind.actionResult,
       );
     }
     final routineResult = await routineConversationService?.process(

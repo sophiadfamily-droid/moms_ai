@@ -1845,6 +1845,33 @@ Planning blocks only that consequence range when the primary person is the
 declared responsible person. No relationship label, school period, work period
 or household membership can manufacture transport, waiting or participation.
 
+The first Stage 4 conversation write path is also live. It recognizes a
+bounded, explicit first-person recurring responsibility such as regularly
+transporting, accompanying, waiting for, caring for or helping a known person.
+It resolves that person from HumanModel, asks only for a missing identity or
+time range, then requires one explicit confirmation before writing the
+canonical responsibility and its weekly consequence. This path runs before
+generic Routine detection, prevents exact duplicates, preserves one pending
+local write when offline and never infers a responsibility from another
+person's schedule or relationship label.
+
+A child's explicit school schedule may now support one bounded clarification
+about school drop-off. It is never asked when Chat opens: Zelia waits for a
+real dated planning request whose start touches the school-entry transition,
+asks whether the primary person generally handles that trip, then resumes the
+original request automatically after the answer. The schedule is only the
+reason to ask; it is never itself proof of responsibility and never blocks the
+primary person's agenda. A yes records a canonical transport responsibility.
+When the explicit school travel duration is available, only the short journey
+around school entry is protected. Otherwise, the known entry instant becomes
+a one-minute technical planning marker so an Event placed exactly at that
+confirmed transition cannot pass unnoticed; this marker does not pretend to
+know the journey duration. Older confirmed answers are completed silently
+from the current schedule without asking again. A no is retained as a rejected
+proposal so the question is not repeated. No school duration, pickup
+responsibility or travel duration is invented. If this optional clarification
+cannot be loaded, the original planning request continues unchanged.
+
 ### Stage 5 — Handle cancellations, reports and exceptions
 
 - distinguish one occurrence from an entire recurrence;

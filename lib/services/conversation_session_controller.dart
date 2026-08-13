@@ -29,6 +29,8 @@ import 'event_conversation_mutation_service.dart';
 import 'event_planning_conflict_service.dart';
 import 'event_title_service.dart';
 import 'routine_conversation_service.dart';
+import 'human/human_model_edit_service.dart';
+import 'human/recurring_responsibility_conversation_service.dart';
 import 'identity/identity_production_services.dart';
 import 'priority/proactive_interaction_registry.dart';
 import 'smart_planning_continuation_coordinator.dart';
@@ -214,6 +216,11 @@ final class ConversationSessionController extends ChangeNotifier {
       routineConversationService: RoutineConversationService.production(
         currentProfile: () => activeProfile,
       ),
+      recurringResponsibilityConversationService:
+          RecurringResponsibilityConversationService(
+        currentAccountScopeId: () => resolvedAccountScopeId,
+        loadEditor: HumanModelEditService.createProduction,
+      ),
       clock: clock,
     );
     final smartPlanningGateway =
@@ -367,6 +374,7 @@ final class ConversationSessionController extends ChangeNotifier {
   ConversationClarificationLedger _clarificationLedger =
       const ConversationClarificationLedger();
   bool _referenceHistoryLoaded = false;
+  String? _deferredRequestAfterResponsibilityClarification;
 
   Future<void> dispatch(ConversationUiIntent intent) => switch (intent) {
         SubmitConversationText(:final text) => submitText(text),
@@ -503,12 +511,37 @@ final class ConversationSessionController extends ChangeNotifier {
       final pendingOutcome = _proactiveEventMoveAwaitingConfirmation
           ? null
           : await _resolvePending?.call(text, generation);
-      final localOutcome =
-          pendingOutcome == null && !_proactiveEventMoveAwaitingConfirmation
-              ? await _resolveLocalRequest?.call(text, generation)
-              : null;
-      final handledLocally = pendingOutcome != null || localOutcome != null;
+      final hasPendingRecurringResponsibility =
+          _coordinator.hasPendingRecurringResponsibility;
+      final contextualResponsibility = pendingOutcome == null &&
+              !_proactiveEventMoveAwaitingConfirmation &&
+              !hasPendingRecurringResponsibility &&
+              _deferredRequestAfterResponsibilityClarification == null
+          ? await _coordinator.beginContextualResponsibilityClarification(
+              _profile,
+              text,
+            )
+          : null;
+      if (contextualResponsibility != null) {
+        _deferredRequestAfterResponsibilityClarification = text;
+      }
+      final contextualOutcome = contextualResponsibility == null
+          ? null
+          : ConversationOutcome(
+              reply: contextualResponsibility.message,
+              responseKind: ConversationResponseKind.confirmationRequired,
+            );
+      final localOutcome = pendingOutcome == null &&
+              contextualOutcome == null &&
+              !hasPendingRecurringResponsibility &&
+              !_proactiveEventMoveAwaitingConfirmation
+          ? await _resolveLocalRequest?.call(text, generation)
+          : null;
+      final handledLocally = pendingOutcome != null ||
+          contextualOutcome != null ||
+          localOutcome != null;
       final outcome = pendingOutcome ??
+          contextualOutcome ??
           localOutcome ??
           await _coordinator.send(
             input: ConversationInput(
@@ -601,6 +634,13 @@ final class ConversationSessionController extends ChangeNotifier {
               : ConversationUiEffectType.showConfirmation,
         );
       }
+      final deferred = _deferredRequestAfterResponsibilityClarification;
+      if (deferred != null &&
+          !_coordinator.hasPendingRecurringResponsibility &&
+          _state.phase == ConversationSessionPhase.ready) {
+        _deferredRequestAfterResponsibilityClarification = null;
+        await _runRequest(deferred, addUserMessage: false);
+      }
     } catch (error) {
       if (!_isCurrent(requestId, generation)) return;
       final descriptor = error is ConversationTaskPersistenceException
@@ -666,6 +706,8 @@ final class ConversationSessionController extends ChangeNotifier {
 
   Future<void> cancelCurrentRequest() async {
     if (_disposed || !_state.isBusy) return;
+    _deferredRequestAfterResponsibilityClarification = null;
+    _coordinator.invalidateSession();
     _setState(
       _state.copyWith(
         sessionGeneration: _state.sessionGeneration + 1,
@@ -713,6 +755,7 @@ final class ConversationSessionController extends ChangeNotifier {
     );
     _accountScopeId = null;
     _referenceHistoryLoaded = false;
+    _deferredRequestAfterResponsibilityClarification = null;
   }
 
   Future<void> _loadReferenceHistory() async {
@@ -919,6 +962,8 @@ final class ConversationSessionController extends ChangeNotifier {
   void dispose() {
     if (_disposed) return;
     final interactionOwnerId = _interactionOwnerId;
+    _deferredRequestAfterResponsibilityClarification = null;
+    _coordinator.invalidateSession();
     _disposed = true;
     _state = _state.copyWith(
       sessionGeneration: _state.sessionGeneration + 1,

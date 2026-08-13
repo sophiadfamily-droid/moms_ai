@@ -110,6 +110,8 @@ final class HumanModelEditService {
     required String accountScopeId,
     required HumanModel Function(HumanModel current) transform,
     bool resolvePendingProposal = false,
+    ActionType actionType = ActionType.updatePerson,
+    ActionOrigin actionOrigin = ActionOrigin.explicitUserRequest,
   }) async {
     HumanModelLocalState? current;
     try {
@@ -160,9 +162,9 @@ final class HumanModelEditService {
         final policy = await _policyLoader!();
         ledgerEntry = await ledger.begin(
           mutationId: mutationId,
-          actionType: ActionType.updatePerson,
+          actionType: actionType,
           domain: ActionLedgerDomain.humanModel,
-          origin: ActionOrigin.explicitUserRequest,
+          origin: actionOrigin,
           riskLevel: ActionRiskLevel.sensitiveMutation,
           policyMode: policy.mode,
           policyVersion: policy.schemaVersion,
