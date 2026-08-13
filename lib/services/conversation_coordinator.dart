@@ -255,7 +255,7 @@ class ConversationCoordinator {
     }
     RecurringResponsibilityConversationResult result;
     try {
-      result = await service.proposeSchoolDropoffForPlanningRequest(
+      result = await service.proposeSchoolTransitionForPlanningRequest(
         profile,
         planningRequest,
         now: _clock(),

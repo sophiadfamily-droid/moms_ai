@@ -1855,22 +1855,31 @@ generic Routine detection, prevents exact duplicates, preserves one pending
 local write when offline and never infers a responsibility from another
 person's schedule or relationship label.
 
-A child's explicit school schedule may now support one bounded clarification
-about school drop-off. It is never asked when Chat opens: Zelia waits for a
-real dated planning request whose start touches the school-entry transition,
-asks whether the primary person generally handles that trip, then resumes the
-original request automatically after the answer. The schedule is only the
-reason to ask; it is never itself proof of responsibility and never blocks the
-primary person's agenda. A yes records a canonical transport responsibility.
-When the explicit school travel duration is available, only the short journey
-around school entry is protected. Otherwise, the known entry instant becomes
-a one-minute technical planning marker so an Event placed exactly at that
-confirmed transition cannot pass unnoticed; this marker does not pretend to
-know the journey duration. Older confirmed answers are completed silently
-from the current schedule without asking again. A no is retained as a rejected
-proposal so the question is not repeated. No school duration, pickup
-responsibility or travel duration is invented. If this optional clarification
-cannot be loaded, the original planning request continues unchanged.
+A child's explicit structured school schedule may now support one bounded
+clarification about its entry or exit transition. It is never asked when Chat
+opens: Zelia waits for a real dated planning request that touches the relevant
+transition, asks whether the primary person generally handles that trip, then
+resumes the original request automatically after the answer. Drop-off and
+pickup are separate answers. The schedule is only the reason to ask; it is
+never itself proof of responsibility and never blocks the primary person's
+agenda. A yes records a canonical transport responsibility. When an explicit
+travel duration is available, only the short journey around the transition is
+protected. Otherwise, the known transition instant becomes a one-minute
+technical planning marker so an Event placed exactly there cannot pass
+unnoticed; this marker does not pretend to know the journey duration. Older
+confirmed answers are recognized without asking again. A no is retained as a
+rejected proposal so the question is not repeated. No responsibility or travel
+duration is invented. If this optional clarification cannot be loaded, the
+original planning request continues unchanged.
+
+Transport wording such as dropping off or collecting someone belongs to the
+universal explicit-responsibility path and works for every known HumanPerson,
+independently of age, gender, household membership or relationship type.
+Proactive schedule-derived clarification is intentionally narrower: it is
+restricted to ChildProfile school transitions. A partner, roommate, parent or
+other adult schedule can never trigger or imply a transport responsibility.
+For a non-child, the primary person's responsibility exists only after an
+explicit first-person statement from the user.
 
 Planning proposal ranking also consumes another dependent person's structured
 schedule as soft context. The period itself remains available to the primary

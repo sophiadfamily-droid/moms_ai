@@ -26,11 +26,15 @@ final class RecurringResponsibilityConversationResult {
 
 typedef HumanModelEditorLoader = Future<HumanModelEditService> Function();
 
-/// Understands explicit recurring responsibilities and proposes one bounded
-/// clarification when a school schedule reveals a likely missing transition.
+/// Understands explicit recurring responsibilities for any known person and
+/// proposes one bounded clarification when a child's structured school
+/// schedule reveals a likely missing transition.
 ///
-/// A schedule can trigger the question, but never becomes a responsibility or
-/// a planning blocker by itself. A canonical HumanModel mutation happens only
+/// Explicit drop-off and pickup statements are universal: neither age nor a
+/// family-role label is required. Automatic clarification is deliberately
+/// child-only; an adult's schedule never implies transport. A child's school
+/// schedule can trigger the question, but never becomes a responsibility or a
+/// planning blocker by itself. A canonical HumanModel mutation happens only
 /// after one explicit confirmation. A rejection is retained so the same
 /// question is not asked again.
 final class RecurringResponsibilityConversationService {
@@ -53,13 +57,13 @@ final class RecurringResponsibilityConversationService {
 
   HumanModelEditService? _editor;
   _RecurringResponsibilityDraft? _pending;
-  _SchoolDropoffProposal? _pendingSchoolDropoff;
+  _SchoolTransitionProposal? _pendingSchoolTransition;
 
-  bool get hasPending => _pending != null || _pendingSchoolDropoff != null;
+  bool get hasPending => _pending != null || _pendingSchoolTransition != null;
 
   void invalidate() {
     _pending = null;
-    _pendingSchoolDropoff = null;
+    _pendingSchoolTransition = null;
   }
 
   /// Proposes at most one missing school drop-off responsibility.
@@ -70,33 +74,64 @@ final class RecurringResponsibilityConversationService {
   Future<RecurringResponsibilityConversationResult> proposeSchoolDropoff(
     UserProfile profile,
   ) =>
-      _proposeSchoolDropoff(profile);
+      _proposeSchoolTransition(
+        profile,
+        kinds: const [_SchoolTransitionKind.dropoff],
+      );
 
-  /// Asks the one-time question only when a real Event request touches the
-  /// school-entry transition. Opening the chat or discussing something else
-  /// never triggers it.
+  /// Compatibility entry point used by focused tests and future profile
+  /// flows. It never infers that the user collects the child: it only asks
+  /// the bounded question and waits for an explicit answer.
+  Future<RecurringResponsibilityConversationResult> proposeSchoolPickup(
+    UserProfile profile,
+  ) =>
+      _proposeSchoolTransition(
+        profile,
+        kinds: const [_SchoolTransitionKind.pickup],
+      );
+
+  /// Backward-compatible name for the former entry-only behavior. The shared
+  /// implementation now checks both school-entry and school-exit transitions.
   Future<RecurringResponsibilityConversationResult>
       proposeSchoolDropoffForPlanningRequest(
+    UserProfile profile,
+    String message, {
+    DateTime? now,
+  }) =>
+          proposeSchoolTransitionForPlanningRequest(
+            profile,
+            message,
+            now: now,
+          );
+
+  /// Asks about an entry or exit responsibility only when the requested
+  /// Event actually touches that transition. Entry and exit decisions are
+  /// retained independently because one person may handle only one of them.
+  Future<RecurringResponsibilityConversationResult>
+      proposeSchoolTransitionForPlanningRequest(
     UserProfile profile,
     String message, {
     DateTime? now,
   }) async {
     final action = NaturalEventRequestService.parseAction(message, now: now);
     final date = DateTime.tryParse(action?['date']?.toString() ?? '');
-    final time =
-        _SchoolDropoffRange._canonicalTime(action?['time']?.toString() ?? '');
+    final time = _SchoolTransitionRange.canonicalTime(
+      action?['time']?.toString() ?? '',
+    );
     if (date == null || time == null) return _notResponsibility;
-    return _proposeSchoolDropoff(
+    return _proposeSchoolTransition(
       profile,
       relevantWeekday: date.weekday,
       relevantTime: time,
+      kinds: _SchoolTransitionKind.values,
     );
   }
 
-  Future<RecurringResponsibilityConversationResult> _proposeSchoolDropoff(
+  Future<RecurringResponsibilityConversationResult> _proposeSchoolTransition(
     UserProfile profile, {
     int? relevantWeekday,
     String? relevantTime,
+    required List<_SchoolTransitionKind> kinds,
   }) async {
     if (hasPending) {
       return const RecurringResponsibilityConversationResult(
@@ -116,46 +151,50 @@ final class RecurringResponsibilityConversationService {
       if (person == null || child.schoolTimeRanges.isEmpty) {
         continue;
       }
-      final ranges = _SchoolDropoffRange.earliestPerWeekday(
-        child.schoolTimeRanges
-            .map(_SchoolDropoffRange.fromProfile)
-            .whereType<_SchoolDropoffRange>(),
-      );
-      if (_hasSchoolDropoffDecision(model, person.id)) {
-        await _synchronizeConfirmedSchoolDropoff(
-          editor: editor,
-          model: model,
+      final displayName = person.displayName?.trim().isNotEmpty == true
+          ? person.displayName!.trim()
+          : child.firstName.trim();
+      for (final kind in kinds) {
+        final ranges = _SchoolTransitionRange.boundaryPerWeekday(
+          child.schoolTimeRanges
+              .map((range) => _SchoolTransitionRange.fromProfile(range, kind))
+              .whereType<_SchoolTransitionRange>(),
+          kind,
+        );
+        if (_hasSchoolTransitionDecision(model, person.id, kind, ranges)) {
+          await _synchronizeConfirmedSchoolTransition(
+            editor: editor,
+            model: model,
+            subjectPersonId: person.id,
+            subjectDisplayName: displayName,
+            ranges: ranges,
+            kind: kind,
+          );
+          continue;
+        }
+        if (ranges.isEmpty ||
+            (relevantWeekday != null &&
+                relevantTime != null &&
+                !ranges.any(
+                  (range) => range.isRelevantTo(
+                    weekday: relevantWeekday,
+                    time: relevantTime,
+                  ),
+                ))) {
+          continue;
+        }
+        final proposal = _SchoolTransitionProposal(
+          kind: kind,
           subjectPersonId: person.id,
-          subjectDisplayName: person.displayName?.trim().isNotEmpty == true
-              ? person.displayName!.trim()
-              : child.firstName.trim(),
+          subjectDisplayName: displayName,
           ranges: ranges,
         );
-        continue;
+        _pendingSchoolTransition = proposal;
+        return RecurringResponsibilityConversationResult(
+          RecurringResponsibilityConversationResultType.confirmation,
+          proposal.question,
+        );
       }
-      if (ranges.isEmpty ||
-          (relevantWeekday != null &&
-              relevantTime != null &&
-              !ranges.any(
-                (range) => range.isRelevantTo(
-                  weekday: relevantWeekday,
-                  time: relevantTime,
-                ),
-              ))) {
-        continue;
-      }
-      final proposal = _SchoolDropoffProposal(
-        subjectPersonId: person.id,
-        subjectDisplayName: person.displayName?.trim().isNotEmpty == true
-            ? person.displayName!.trim()
-            : child.firstName.trim(),
-        ranges: ranges,
-      );
-      _pendingSchoolDropoff = proposal;
-      return RecurringResponsibilityConversationResult(
-        RecurringResponsibilityConversationResultType.confirmation,
-        proposal.question,
-      );
     }
     return _notResponsibility;
   }
@@ -163,9 +202,9 @@ final class RecurringResponsibilityConversationService {
   Future<RecurringResponsibilityConversationResult> process(
     String message,
   ) async {
-    final schoolDropoff = _pendingSchoolDropoff;
-    if (schoolDropoff != null) {
-      return _resolveSchoolDropoff(message, schoolDropoff);
+    final schoolTransition = _pendingSchoolTransition;
+    if (schoolTransition != null) {
+      return _resolveSchoolTransition(message, schoolTransition);
     }
     final pending = _pending;
     if (pending != null) {
@@ -229,9 +268,9 @@ final class RecurringResponsibilityConversationService {
     );
   }
 
-  Future<RecurringResponsibilityConversationResult> _resolveSchoolDropoff(
+  Future<RecurringResponsibilityConversationResult> _resolveSchoolTransition(
     String message,
-    _SchoolDropoffProposal proposal,
+    _SchoolTransitionProposal proposal,
   ) async {
     final answer = _answers.classify(message);
     if (answer == ConversationAnswer.ambiguous) {
@@ -248,7 +287,7 @@ final class RecurringResponsibilityConversationService {
     if (model == null || model.accountScopeId != scope) return _unavailable;
 
     final responsibilities = answer == ConversationAnswer.positive
-        ? _confirmedSchoolDropoffResponsibilities(
+        ? _confirmedSchoolTransitionResponsibilities(
             editor: editor,
             model: model,
             proposal: proposal,
@@ -274,7 +313,7 @@ final class RecurringResponsibilityConversationService {
                     ? person.copyWith(
                         customFields: {
                           ...person.customFields,
-                          _SchoolDropoffProposal.rejectionField: true,
+                          proposal.rejectionField: true,
                         },
                       )
                     : person,
@@ -287,7 +326,7 @@ final class RecurringResponsibilityConversationService {
         result.status != HumanModelEditStatus.pendingSync) {
       return _unavailable;
     }
-    _pendingSchoolDropoff = null;
+    _pendingSchoolTransition = null;
     if (answer == ConversationAnswer.negative) {
       return const RecurringResponsibilityConversationResult(
         RecurringResponsibilityConversationResultType.cancelled,
@@ -307,10 +346,10 @@ final class RecurringResponsibilityConversationService {
     );
   }
 
-  static List<HumanResponsibility> _confirmedSchoolDropoffResponsibilities({
+  static List<HumanResponsibility> _confirmedSchoolTransitionResponsibilities({
     required HumanModelEditService editor,
     required HumanModel model,
-    required _SchoolDropoffProposal proposal,
+    required _SchoolTransitionProposal proposal,
   }) {
     return proposal.ranges
         .map(
@@ -332,12 +371,13 @@ final class RecurringResponsibilityConversationService {
         .toList(growable: false);
   }
 
-  static Future<void> _synchronizeConfirmedSchoolDropoff({
+  static Future<void> _synchronizeConfirmedSchoolTransition({
     required HumanModelEditService editor,
     required HumanModel model,
     required String subjectPersonId,
     required String subjectDisplayName,
-    required List<_SchoolDropoffRange> ranges,
+    required List<_SchoolTransitionRange> ranges,
+    required _SchoolTransitionKind kind,
   }) async {
     if (ranges.isEmpty) return;
     final existing = model.responsibilities
@@ -348,18 +388,19 @@ final class RecurringResponsibilityConversationService {
               responsibility.subjectPersonId == subjectPersonId &&
               responsibility.type == HumanResponsibilityTypes.transport &&
               (responsibility.scope ?? '').startsWith(
-                _SchoolDropoffProposal.scopePrefix,
+                kind.scopePrefix,
               ),
         )
         .toList(growable: false);
     if (existing.isEmpty) return;
 
-    final proposal = _SchoolDropoffProposal(
+    final proposal = _SchoolTransitionProposal(
+      kind: kind,
       subjectPersonId: subjectPersonId,
       subjectDisplayName: subjectDisplayName,
       ranges: ranges,
     );
-    if (_schoolDropoffTimingMatches(existing, proposal)) return;
+    if (_schoolTransitionTimingMatches(existing, proposal)) return;
 
     final replacements = <HumanResponsibility>[];
     for (var index = 0; index < ranges.length; index++) {
@@ -411,9 +452,9 @@ final class RecurringResponsibilityConversationService {
     );
   }
 
-  static bool _schoolDropoffTimingMatches(
+  static bool _schoolTransitionTimingMatches(
     List<HumanResponsibility> existing,
-    _SchoolDropoffProposal proposal,
+    _SchoolTransitionProposal proposal,
   ) {
     if (existing.length != proposal.ranges.length) return false;
     for (final range in proposal.ranges) {
@@ -634,9 +675,11 @@ final class RecurringResponsibilityConversationService {
     );
   }
 
-  static bool _hasSchoolDropoffDecision(
+  static bool _hasSchoolTransitionDecision(
     HumanModel model,
     String subjectPersonId,
+    _SchoolTransitionKind kind,
+    List<_SchoolTransitionRange> ranges,
   ) {
     HumanPerson? person;
     for (final candidate in model.persons) {
@@ -645,20 +688,42 @@ final class RecurringResponsibilityConversationService {
         break;
       }
     }
-    if (person?.customFields[_SchoolDropoffProposal.rejectionField] == true) {
+    if (person?.customFields[kind.rejectionField] == true) {
       return true;
     }
     return model.responsibilities.any((responsibility) =>
+        responsibility.status == HumanRecordStatus.active &&
         responsibility.responsiblePersonId == model.primaryPersonId &&
         responsibility.subjectPersonId == subjectPersonId &&
         responsibility.type == HumanResponsibilityTypes.transport &&
-        (responsibility.scope ?? '').startsWith(
-          _SchoolDropoffProposal.scopePrefix,
-        ) &&
+        ((responsibility.scope ?? '').startsWith(kind.scopePrefix) ||
+            kind.matchesExplicitLabel(responsibility.customType) ||
+            _matchesTransitionTiming(
+              responsibility.recurringPlanningConsequence,
+              ranges,
+            )) &&
         (responsibility.evidence.confirmation ==
                 HumanConfirmationStatus.confirmed ||
             responsibility.evidence.confirmation ==
                 HumanConfirmationStatus.rejected));
+  }
+
+  static bool _matchesTransitionTiming(
+    HumanRecurringPlanningConsequence? consequence,
+    List<_SchoolTransitionRange> ranges,
+  ) {
+    if (consequence == null) return false;
+    final consequenceStart =
+        _SchoolTransitionRange.minutes(consequence.startTime);
+    final consequenceEnd = _SchoolTransitionRange.minutes(consequence.endTime);
+    for (final range in ranges) {
+      if (!range.weekdays.any(consequence.weekdays.contains)) continue;
+      final boundary = _SchoolTransitionRange.minutes(range.boundaryTime);
+      if (consequenceStart <= boundary && consequenceEnd >= boundary) {
+        return true;
+      }
+    }
+    return false;
   }
 
   static HumanPerson? _matchNamedPerson(
@@ -983,46 +1048,84 @@ final class _TimeRange {
   final String end;
 }
 
-final class _SchoolDropoffProposal {
-  const _SchoolDropoffProposal({
+enum _SchoolTransitionKind { dropoff, pickup }
+
+extension on _SchoolTransitionKind {
+  String get scopePrefix => switch (this) {
+        _SchoolTransitionKind.dropoff => 'schoolDropoff:',
+        _SchoolTransitionKind.pickup => 'schoolPickup:',
+      };
+
+  String get rejectionField => switch (this) {
+        _SchoolTransitionKind.dropoff => 'schoolDropoffProposalRejected',
+        _SchoolTransitionKind.pickup => 'schoolPickupProposalRejected',
+      };
+
+  bool matchesExplicitLabel(String? value) {
+    final normalized =
+        RecurringResponsibilityConversationService._normalize(value ?? '');
+    return switch (this) {
+      _SchoolTransitionKind.dropoff =>
+        RegExp(r'\b(?:depos\w*|amen\w*)\b').hasMatch(normalized),
+      _SchoolTransitionKind.pickup =>
+        RegExp(r'\b(?:recuper\w*|cherch\w*)\b').hasMatch(normalized),
+    };
+  }
+}
+
+final class _SchoolTransitionProposal {
+  const _SchoolTransitionProposal({
+    required this.kind,
     required this.subjectPersonId,
     required this.subjectDisplayName,
     required this.ranges,
   });
 
-  static const scopePrefix = 'schoolDropoff:';
-  static const rejectionField = 'schoolDropoffProposalRejected';
+  final _SchoolTransitionKind kind;
   final String subjectPersonId;
   final String subjectDisplayName;
-  final List<_SchoolDropoffRange> ranges;
+  final List<_SchoolTransitionRange> ranges;
 
-  String get question =>
-      'Avant de vérifier ce créneau, j’ai juste besoin de savoir une chose : '
-      'est-ce que c’est généralement toi qui déposes $subjectDisplayName '
-      'à l’école ?';
-  String get planningLabel => 'Déposer $subjectDisplayName à l’école';
-  String scopeFor(_SchoolDropoffRange range) =>
-      '$scopePrefix$subjectPersonId:${range.weekdays.join(',')}:'
-      '${range.schoolStart}:${range.travelMinutes}';
+  String get rejectionField => kind.rejectionField;
+
+  String get question => switch (kind) {
+        _SchoolTransitionKind.dropoff =>
+          'Avant de vérifier ce créneau, j’ai juste besoin de savoir une '
+              'chose : est-ce que c’est généralement toi qui déposes '
+              '$subjectDisplayName à l’école ?',
+        _SchoolTransitionKind.pickup =>
+          'Avant de vérifier ce créneau, j’ai juste besoin de savoir une '
+              'chose : est-ce que c’est généralement toi qui récupères '
+              '$subjectDisplayName à la sortie de l’école ?',
+      };
+  String get planningLabel => switch (kind) {
+        _SchoolTransitionKind.dropoff =>
+          'Déposer $subjectDisplayName à l’école',
+        _SchoolTransitionKind.pickup =>
+          'Récupérer $subjectDisplayName à la sortie de l’école',
+      };
+  String scopeFor(_SchoolTransitionRange range) =>
+      '${kind.scopePrefix}$subjectPersonId:${range.weekdays.join(',')}:'
+      '${range.boundaryTime}:${range.travelMinutes}';
 }
 
-final class _SchoolDropoffRange {
-  const _SchoolDropoffRange({
+final class _SchoolTransitionRange {
+  const _SchoolTransitionRange({
     required this.weekdays,
-    required this.schoolStart,
+    required this.boundaryTime,
     required this.travelMinutes,
   });
 
   final List<int> weekdays;
-  final String schoolStart;
+  final String boundaryTime;
   final int travelMinutes;
 
-  String get protectedStart => _shift(schoolStart, -travelMinutes);
-  String get protectedEnd => _shift(schoolStart, travelMinutes);
+  String get protectedStart => _shift(boundaryTime, -travelMinutes);
+  String get protectedEnd => _shift(boundaryTime, travelMinutes);
   String get blockingStart => protectedStart;
   String get blockingEnd => travelMinutes > 0
       ? protectedEnd
-      : _shift(schoolStart, _minimumTransitionMinutes);
+      : _shift(boundaryTime, _minimumTransitionMinutes);
 
   // A confirmed responsibility at a known clock time must remain visible to
   // planning even when the commute duration is not known yet. This one-minute
@@ -1031,58 +1134,67 @@ final class _SchoolDropoffRange {
 
   bool isRelevantTo({required int weekday, required String time}) {
     if (!weekdays.contains(weekday)) return false;
-    final requested = _minutes(time);
-    if (travelMinutes <= 0) return requested == _minutes(schoolStart);
-    return requested >= _minutes(protectedStart) &&
-        requested <= _minutes(protectedEnd);
+    final requested = minutes(time);
+    if (travelMinutes <= 0) return requested == minutes(boundaryTime);
+    return requested >= minutes(protectedStart) &&
+        requested <= minutes(protectedEnd);
   }
 
-  static _SchoolDropoffRange? fromProfile(TimeRangeModel range) {
+  static _SchoolTransitionRange? fromProfile(
+    TimeRangeModel range,
+    _SchoolTransitionKind kind,
+  ) {
     final weekdays = SchoolScheduleMetadataService.daysFromRange(range)
         .map(_weekday)
         .whereType<int>()
         .toSet()
         .toList(growable: false)
       ..sort();
-    final start = _canonicalTime(range.startTime);
-    if (weekdays.isEmpty || start == null) return null;
+    final boundary = canonicalTime(
+      kind == _SchoolTransitionKind.dropoff ? range.startTime : range.endTime,
+    );
+    if (weekdays.isEmpty || boundary == null) return null;
     final travel = int.tryParse(range.travelMinutes.trim()) ?? 0;
-    return _SchoolDropoffRange(
+    return _SchoolTransitionRange(
       weekdays: weekdays,
-      schoolStart: start,
+      boundaryTime: boundary,
       travelMinutes: travel > 0 ? travel : 0,
     );
   }
 
-  static List<_SchoolDropoffRange> earliestPerWeekday(
-    Iterable<_SchoolDropoffRange> ranges,
+  static List<_SchoolTransitionRange> boundaryPerWeekday(
+    Iterable<_SchoolTransitionRange> ranges,
+    _SchoolTransitionKind kind,
   ) {
-    final earliest = <int, _SchoolDropoffRange>{};
+    final selected = <int, _SchoolTransitionRange>{};
     for (final range in ranges) {
       for (final weekday in range.weekdays) {
-        final current = earliest[weekday];
+        final current = selected[weekday];
         if (current == null ||
-            _minutes(range.schoolStart) < _minutes(current.schoolStart)) {
-          earliest[weekday] = _SchoolDropoffRange(
+            (kind == _SchoolTransitionKind.dropoff
+                ? minutes(range.boundaryTime) < minutes(current.boundaryTime)
+                : minutes(range.boundaryTime) >
+                    minutes(current.boundaryTime))) {
+          selected[weekday] = _SchoolTransitionRange(
             weekdays: [weekday],
-            schoolStart: range.schoolStart,
+            boundaryTime: range.boundaryTime,
             travelMinutes: range.travelMinutes,
           );
         }
       }
     }
     final grouped = <String, List<int>>{};
-    for (final entry in earliest.entries) {
+    for (final entry in selected.entries) {
       final range = entry.value;
-      final key = '${range.schoolStart}|${range.travelMinutes}';
+      final key = '${range.boundaryTime}|${range.travelMinutes}';
       grouped.putIfAbsent(key, () => []).add(entry.key);
     }
     final result = grouped.entries.map((entry) {
       final parts = entry.key.split('|');
       final weekdays = entry.value..sort();
-      return _SchoolDropoffRange(
+      return _SchoolTransitionRange(
         weekdays: weekdays,
-        schoolStart: parts[0],
+        boundaryTime: parts[0],
         travelMinutes: int.parse(parts[1]),
       );
     }).toList(growable: false)
@@ -1107,7 +1219,7 @@ final class _SchoolDropoffRange {
     }[normalized];
   }
 
-  static String? _canonicalTime(String value) {
+  static String? canonicalTime(String value) {
     final match = RegExp(r'^(\d{1,2}):(\d{2})$').firstMatch(value.trim());
     if (match == null) return null;
     final hour = int.tryParse(match.group(1)!);
@@ -1128,7 +1240,7 @@ final class _SchoolDropoffRange {
         '${(normalized % 60).toString().padLeft(2, '0')}';
   }
 
-  static int _minutes(String value) {
+  static int minutes(String value) {
     final parts = value.split(':');
     return int.parse(parts[0]) * 60 + int.parse(parts[1]);
   }

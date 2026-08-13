@@ -146,6 +146,38 @@ void main() {
       expect(responsibility.type, HumanResponsibilityTypes.accompaniment);
     });
 
+    test('une déclaration explicite reste comprise hors du rôle enfant',
+        () async {
+      final fixture = await _Fixture.create();
+
+      final proposal = await fixture.service.process(
+        'Je récupère Alex chaque jeudi de 14 heures à 15 heures',
+      );
+
+      expect(
+        proposal.type,
+        RecurringResponsibilityConversationResultType.confirmation,
+      );
+      expect(proposal.message, contains('Alex'));
+      await fixture.service.process('oui');
+
+      final responsibility = (await fixture.model).responsibilities.single;
+      expect(responsibility.subjectPersonId, 'person-alex');
+      expect(responsibility.type, HumanResponsibilityTypes.transport);
+      expect(
+        responsibility.recurringPlanningConsequence?.weekdays,
+        [DateTime.thursday],
+      );
+      expect(
+        responsibility.recurringPlanningConsequence?.startTime,
+        '14:00',
+      );
+      expect(
+        responsibility.recurringPlanningConsequence?.endTime,
+        '15:00',
+      );
+    });
+
     test('une réponse négative annule sans écriture', () async {
       final fixture = await _Fixture.create();
       await fixture.service.process(
@@ -421,6 +453,202 @@ void main() {
           RecurringResponsibilityConversationResultType.confirmation);
       expect(relevant.message, startsWith('Avant de vérifier ce créneau'));
       expect((await fixture.model).responsibilities, isEmpty);
+    });
+
+    test('la sortie déclenche sa propre question et protège la transition',
+        () async {
+      final fixture = await _Fixture.create();
+      final profile = _schoolProfile(travelMinutes: '10');
+
+      final proposal =
+          await fixture.service.proposeSchoolTransitionForPlanningRequest(
+        profile,
+        'Dentiste aujourd’hui à 11h50',
+        now: DateTime(2026, 8, 10, 7),
+      );
+
+      expect(
+        proposal.type,
+        RecurringResponsibilityConversationResultType.confirmation,
+      );
+      expect(proposal.message, contains('récupères Kassim'));
+      expect(proposal.message, contains('sortie de l’école'));
+      expect((await fixture.model).responsibilities, isEmpty);
+
+      await fixture.service.process('oui');
+
+      final responsibility = (await fixture.model).responsibilities.single;
+      expect(responsibility.customType, contains('Récupérer Kassim'));
+      expect(responsibility.scope, startsWith('schoolPickup:person-kassim:'));
+      expect(
+        responsibility.recurringPlanningConsequence?.startTime,
+        '11:40',
+      );
+      expect(
+        responsibility.recurringPlanningConsequence?.endTime,
+        '12:00',
+      );
+    });
+
+    test('la question automatique utilise la personne du profil, jamais Kassim',
+        () async {
+      final fixture = await _Fixture.create(withSecondChild: true);
+      final profile = _schoolProfile(
+        humanPersonId: 'person-lea',
+        firstName: 'Léa',
+        travelMinutes: '10',
+      );
+
+      final proposal =
+          await fixture.service.proposeSchoolTransitionForPlanningRequest(
+        profile,
+        'Dentiste aujourd’hui à 11h50',
+        now: DateTime(2026, 8, 10, 7),
+      );
+
+      expect(proposal.message, contains('récupères Léa'));
+      expect(proposal.message, isNot(contains('Kassim')));
+      await fixture.service.process('oui');
+      expect(
+        (await fixture.model).responsibilities.single.subjectPersonId,
+        'person-lea',
+      );
+    });
+
+    test("le planning d'un adulte ne déclenche aucune déduction de transport",
+        () async {
+      final fixture = await _Fixture.create();
+      final partnerProfile = UserProfile(
+        humanPersonId: 'person-main',
+        partnerHumanPersonId: 'person-alex',
+        firstName: 'Sophia',
+        familyStatus: 'Je vis en couple',
+        workStatus: '',
+        partnerName: 'Alex',
+        wantsNotifications: false,
+        children: const [],
+        partnerWorkSchedule: 'Lundi de 8 h à 17 h',
+      );
+
+      final result =
+          await fixture.service.proposeSchoolTransitionForPlanningRequest(
+        partnerProfile,
+        'Dentiste aujourd’hui à 8h30',
+        now: DateTime(2026, 8, 10, 7),
+      );
+
+      expect(
+        result.type,
+        RecurringResponsibilityConversationResultType.notResponsibility,
+      );
+      expect(fixture.service.hasPending, isFalse);
+      expect((await fixture.model).responsibilities, isEmpty);
+    });
+
+    test('une réponse sur le dépôt ne répond pas à la place de la sortie',
+        () async {
+      final fixture = await _Fixture.create();
+      final profile = _schoolProfile(travelMinutes: '10');
+      await fixture.service.proposeSchoolDropoff(profile);
+      await fixture.service.process('oui');
+
+      final pickup =
+          await fixture.service.proposeSchoolTransitionForPlanningRequest(
+        profile,
+        'Dentiste aujourd’hui à 11h50',
+        now: DateTime(2026, 8, 10, 7),
+      );
+
+      expect(
+        pickup.type,
+        RecurringResponsibilityConversationResultType.confirmation,
+      );
+      expect(pickup.message, contains('récupères Kassim'));
+      expect((await fixture.model).responsibilities, hasLength(1));
+    });
+
+    test('une récupération déjà donnée explicitement évite toute redemande',
+        () async {
+      final fixture = await _Fixture.create();
+      final profile = _schoolProfile(travelMinutes: '10');
+      await fixture.service.process(
+        'Je récupère Kassim tous les lundis de 11h40 à 12h',
+      );
+      await fixture.service.process('oui');
+
+      final result =
+          await fixture.service.proposeSchoolTransitionForPlanningRequest(
+        profile,
+        'Dentiste aujourd’hui à 11h50',
+        now: DateTime(2026, 8, 10, 7),
+      );
+
+      expect(
+        result.type,
+        RecurringResponsibilityConversationResultType.notResponsibility,
+      );
+      expect((await fixture.model).responsibilities, hasLength(1));
+    });
+
+    test('un non sur la sortie est retenu sans masquer la question du dépôt',
+        () async {
+      final fixture = await _Fixture.create();
+      final profile = _schoolProfile(travelMinutes: '10');
+      await fixture.service.proposeSchoolPickup(profile);
+      await fixture.service.process('non');
+
+      final kassim = (await fixture.model)
+          .persons
+          .singleWhere((person) => person.id == 'person-kassim');
+      expect(kassim.customFields['schoolPickupProposalRejected'], isTrue);
+      expect(
+        (await fixture.service.proposeSchoolPickup(profile)).type,
+        RecurringResponsibilityConversationResultType.notResponsibility,
+      );
+
+      final dropoff =
+          await fixture.service.proposeSchoolTransitionForPlanningRequest(
+        profile,
+        'Dentiste aujourd’hui à 8h30',
+        now: DateTime(2026, 8, 10, 7),
+      );
+      expect(
+        dropoff.type,
+        RecurringResponsibilityConversationResultType.confirmation,
+      );
+      expect(dropoff.message, contains('déposes Kassim'));
+    });
+
+    test('une journée coupée utilise la dernière sortie de chaque jour',
+        () async {
+      final fixture = await _Fixture.create();
+      final profile = _schoolProfile(travelMinutes: '10');
+      final child = profile.children.single;
+      final splitProfile = profile.copyWith(
+        children: [
+          child.copyWith(
+            schoolTimeRanges: [
+              ...child.schoolTimeRanges,
+              TimeRangeModel(
+                startTime: '13:30',
+                endTime: '16:30',
+                travelMinutes: '10',
+                notes: '__DAYS__:Lundi|Mardi__',
+              ),
+            ],
+          ),
+        ],
+      );
+
+      await fixture.service.proposeSchoolPickup(splitProfile);
+      await fixture.service.process('oui');
+
+      final consequence = (await fixture.model)
+          .responsibilities
+          .single
+          .recurringPlanningConsequence!;
+      expect(consequence.startTime, '16:20');
+      expect(consequence.endTime, '16:40');
     });
 
     test('le coordinateur ouvre la question puis applique la réponse',
@@ -776,7 +1004,12 @@ UserProfile _profile() => UserProfile(
       children: const [],
     );
 
-UserProfile _schoolProfile({String travelMinutes = ''}) => UserProfile(
+UserProfile _schoolProfile({
+  String humanPersonId = 'person-kassim',
+  String firstName = 'Kassim',
+  String travelMinutes = '',
+}) =>
+    UserProfile(
       firstName: 'Sophia',
       familyStatus: 'Nous sommes une famille avec enfants',
       workStatus: '',
@@ -784,8 +1017,8 @@ UserProfile _schoolProfile({String travelMinutes = ''}) => UserProfile(
       wantsNotifications: false,
       children: [
         ChildProfile(
-          humanPersonId: 'person-kassim',
-          firstName: 'Kassim',
+          humanPersonId: humanPersonId,
+          firstName: firstName,
           age: '4',
           birthDate: '',
           gender: 'Garçon',
