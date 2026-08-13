@@ -216,10 +216,7 @@ final class RoutinePlanningBlockerService {
         blockers.add(
           EventModel(
             id: 'responsibility:${consequence.id}:${_dateIso(date)}',
-            title: _responsibilityTitle(
-              consequence.kind,
-              label: consequence.label,
-            ),
+            title: consequence.displayLabel,
             date: _dateIso(start),
             time: _time(start),
             notes: '',
@@ -249,10 +246,7 @@ final class RoutinePlanningBlockerService {
       blockers.add(
         EventModel(
           id: 'responsibility:${consequence.id}',
-          title: _responsibilityTitle(
-            consequence.kind,
-            label: consequence.label,
-          ),
+          title: consequence.displayLabel,
           date: _dateIso(protectedStart),
           time: _time(protectedStart),
           notes: '',
@@ -366,26 +360,6 @@ final class RoutinePlanningBlockerService {
       'schoolSchedule' => 'Un horaire d’école',
       'childActivity' => 'Une activité familiale',
       _ => 'Une routine',
-    };
-  }
-
-  static String _responsibilityTitle(String kind, {String? label}) {
-    final informativeLabel = label?.trim();
-    if (informativeLabel != null &&
-        informativeLabel.isNotEmpty &&
-        informativeLabel != kind) {
-      return informativeLabel;
-    }
-    return switch (kind) {
-      'accompaniment' => 'Un accompagnement prévu',
-      'transport' => 'Un trajet à assurer',
-      'participation' => 'Ta présence est prévue',
-      'preparation' => 'Un temps de préparation prévu',
-      'waiting' => 'Un temps d’attente prévu',
-      'replacement' => 'Un remplacement prévu',
-      'care' => 'Un temps de présence prévu',
-      'dailyAssistance' => 'Un temps d’aide prévu',
-      _ => kind.trim().isEmpty ? 'Une responsabilité prévue' : kind.trim(),
     };
   }
 

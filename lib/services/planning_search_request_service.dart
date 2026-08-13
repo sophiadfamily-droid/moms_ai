@@ -1,0 +1,204 @@
+import 'natural_date_service.dart';
+
+/// A bounded request to search for the best slot over a civil-date period.
+///
+/// This is deliberately distinct from Event creation: "next week" is a
+/// search range, not an incomplete Event date.
+final class PlanningSearchRequest {
+  const PlanningSearchRequest({
+    required this.title,
+    required this.startDate,
+    required this.searchDays,
+  });
+
+  final String title;
+  final DateTime startDate;
+  final int searchDays;
+}
+
+final class PlanningSearchRequestService {
+  const PlanningSearchRequestService._();
+
+  static PlanningSearchRequest? parse(
+    String text, {
+    DateTime? now,
+  }) {
+    final original = text.trim();
+    if (original.isEmpty) return null;
+    final normalized = _normalize(original);
+    if (!_expressesSlotSearch(normalized)) return null;
+
+    final title = _title(original, normalized);
+    if (title == null) return null;
+    final period = _period(normalized, now ?? DateTime.now());
+    return PlanningSearchRequest(
+      title: title,
+      startDate: period.startDate,
+      searchDays: period.searchDays,
+    );
+  }
+
+  static bool _expressesSlotSearch(String value) {
+    return RegExp(
+          r'\b(?:propose|trouve|cherche|cale|place)(?:\s+moi)?\s+'
+          r'(?:(?:un|le|des)\s+)?(?:creneau|horaire|moment)\b',
+        ).hasMatch(value) ||
+        RegExp(
+          r'\bquand\s+(?:est\s+ce\s+que\s+)?je\s+peux\s+'
+          r'(?:prevoir|placer|caler|aller)\b',
+        ).hasMatch(value);
+  }
+
+  static String? _title(String original, String normalized) {
+    final known = _knownTitle(normalized);
+    final forMatch = RegExp(r'\bpour\b', caseSensitive: false)
+        .allMatches(original)
+        .lastOrNull;
+    if (forMatch == null) return known;
+
+    var value = original.substring(forMatch.end).trim();
+    value = value
+        .replaceAll(_trailingPeriod, ' ')
+        .replaceAll(RegExp(r'[.,!?;:()\[\]{}"“”«»]+'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim()
+        .replaceFirst(
+          RegExp(
+            r'^(?:une|un|les|le|la|du|de\s+la|des)\b\s*|^l[’\x27]\s*',
+            caseSensitive: false,
+          ),
+          '',
+        )
+        .trim();
+    if (value.isEmpty) return known;
+    final normalizedTarget = _normalize(value);
+    final mapped = _knownTitle(normalizedTarget);
+    if (mapped != null && normalizedTarget.split(' ').length <= 4) {
+      return mapped;
+    }
+    return '${value[0].toUpperCase()}${value.substring(1)}';
+  }
+
+  static String? _knownTitle(String value) {
+    const values = <String, String>{
+      'controle technique': 'Contrôle technique',
+      'estheticienne': 'Esthéticienne',
+      'ophtalmo': 'Ophtalmo',
+      'pediatre': 'Pédiatre',
+      'medecin': 'Médecin',
+      'dentiste': 'Dentiste',
+      'veterinaire': 'Vétérinaire',
+      'reunion': 'Réunion',
+      'coiffeuse': 'Coiffeur',
+      'coiffeur': 'Coiffeur',
+      'ongles': 'Ongles',
+      'garage': 'Garage',
+    };
+    for (final entry in values.entries) {
+      if (RegExp('\\b${RegExp.escape(entry.key)}\\b').hasMatch(value)) {
+        return entry.value;
+      }
+    }
+    return null;
+  }
+
+  static _PlanningSearchPeriod _period(String text, DateTime now) {
+    final today = DateTime(now.year, now.month, now.day);
+    if (RegExp(r'\b(?:la\s+)?semaine\s+prochaine\b').hasMatch(text)) {
+      final daysUntilNextMonday = 8 - today.weekday;
+      return _PlanningSearchPeriod(
+        today.add(Duration(days: daysUntilNextMonday)),
+        7,
+      );
+    }
+    if (RegExp(r'\b(?:cette|dans\s+la)\s+semaine\b').hasMatch(text)) {
+      return _PlanningSearchPeriod(today, 8 - today.weekday);
+    }
+    final nextDays = RegExp(
+      r'\bdans\s+(?:les\s+)?(\d{1,2})\s+prochains?\s+jours?\b',
+    ).firstMatch(text);
+    if (nextDays != null) {
+      final count = int.tryParse(nextDays.group(1) ?? '');
+      if (count != null && count >= 1 && count <= 31) {
+        return _PlanningSearchPeriod(today, count);
+      }
+    }
+    if (RegExp(r'\bdans\s+les\s+prochains?\s+jours?\b').hasMatch(text)) {
+      return _PlanningSearchPeriod(today, 7);
+    }
+    if (RegExp(r'\b(?:ce|le)\s+week\s*end\s+prochain\b').hasMatch(text)) {
+      final currentSaturday = today.add(
+        Duration(days: (DateTime.saturday - today.weekday + 7) % 7),
+      );
+      return _PlanningSearchPeriod(
+        currentSaturday.add(const Duration(days: 7)),
+        2,
+      );
+    }
+    if (RegExp(r'\b(?:ce|le)\s+week\s*end\b').hasMatch(text)) {
+      final saturday = today.add(
+        Duration(days: (DateTime.saturday - today.weekday + 7) % 7),
+      );
+      return _PlanningSearchPeriod(saturday, 2);
+    }
+    if (const [
+      'aujourd hui',
+      'ce matin',
+      'cet apres midi',
+      'ce soir',
+    ].any(text.contains)) {
+      return _PlanningSearchPeriod(today, 1);
+    }
+
+    final dateIso = NaturalDateService.resolveDateFromText(text, now: now);
+    final date = DateTime.tryParse(dateIso);
+    if (date != null) {
+      return _PlanningSearchPeriod(
+        DateTime(date.year, date.month, date.day),
+        1,
+      );
+    }
+    return _PlanningSearchPeriod(today, 21);
+  }
+
+  static final RegExp _trailingPeriod = RegExp(
+    r'\b(?:(?:la\s+)?semaine\s+prochaine|(?:cette|dans\s+la)\s+semaine|'
+    r'dans\s+(?:les\s+)?\d{1,2}\s+prochains?\s+jours?|'
+    r'dans\s+les\s+prochains?\s+jours?|'
+    r'(?:aujourd[’\x27\s-]*hui|demain|apr[èe]s[\s-]*demain)|'
+    r'(?:ce|le)\s+week[\s-]*end(?:\s+prochain)?|'
+    r'(?:(?:ce|le)\s+)?(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)(?:\s+prochain)?)\b.*$',
+    caseSensitive: false,
+  );
+
+  static String _normalize(String value) => value
+      .trim()
+      .toLowerCase()
+      .replaceAll('’', "'")
+      .replaceAll(RegExp(r'[-_]'), ' ')
+      .replaceAll(RegExp(r'[éèêë]'), 'e')
+      .replaceAll(RegExp(r'[àâä]'), 'a')
+      .replaceAll(RegExp(r'[îï]'), 'i')
+      .replaceAll(RegExp(r'[ôö]'), 'o')
+      .replaceAll(RegExp(r'[ùûü]'), 'u')
+      .replaceAll('ç', 'c')
+      .replaceAll("'", ' ')
+      .replaceAll(RegExp(r'\s+'), ' ');
+}
+
+final class _PlanningSearchPeriod {
+  const _PlanningSearchPeriod(this.startDate, this.searchDays);
+
+  final DateTime startDate;
+  final int searchDays;
+}
+
+extension on Iterable<RegExpMatch> {
+  RegExpMatch? get lastOrNull {
+    RegExpMatch? result;
+    for (final value in this) {
+      result = value;
+    }
+    return result;
+  }
+}

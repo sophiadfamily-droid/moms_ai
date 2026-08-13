@@ -10,6 +10,7 @@ import 'package:moms_ai/models/life_context/life_context_snapshot.dart';
 import 'package:moms_ai/models/life_context/notes_context.dart';
 import 'package:moms_ai/models/life_context/schedule_context.dart';
 import 'package:moms_ai/services/life_context/life_context_projection_compatibility.dart';
+import 'package:moms_ai/services/life_context/life_context_domain_adapters.dart';
 import 'package:moms_ai/services/life_context/life_context_projection_engine.dart';
 import 'package:moms_ai/services/life_context/life_context_relation_engine.dart';
 
@@ -409,6 +410,27 @@ void main() {
       expect(routines.truncated, isFalse);
     });
 
+    test('Planning conserve tous les éléments bornés d’un agenda chargé', () {
+      final projection = _build(
+        _snapshot(
+          now,
+          eventCount: LifeContextSourceBudgets.events,
+          routineCount: LifeContextSourceBudgets.routines,
+        ),
+        LifeContextConsumerPurpose.planning,
+      );
+      final events =
+          _section(projection, LifeContextProjectionSectionType.event);
+      final routines =
+          _section(projection, LifeContextProjectionSectionType.routine);
+
+      expect(events.items, hasLength(60));
+      expect(events.truncated, isFalse);
+      expect(routines.items, hasLength(LifeContextSourceBudgets.routines));
+      expect(routines.truncated, isFalse);
+      expect(projection.warningCodes, isNot(contains('projection_truncated')));
+    });
+
     test('filtre Events hors fenêtre et Tasks terminées', () {
       final projection = _build(
         _snapshot(now, includeOutsideEvent: true),
@@ -502,6 +524,12 @@ void main() {
         context.routines.single.subjectNodeId,
         'human:person:person-child',
       );
+      expect(
+        context.routines.single.toPlanningReasoning(
+          primaryPersonNodeId: context.primaryPersonNodeId,
+        ),
+        containsPair('type', 'other_person_schedule'),
+      );
       expect(context.temporalResponsibilities, hasLength(1));
       expect(context.planningConsequences, isEmpty);
     });
@@ -533,6 +561,10 @@ void main() {
         consequence.subjectPersonNodeId,
         'human:person:person-child',
       );
+      final blocker = consequence.toBlockingEvent();
+      expect(blocker, isNotNull);
+      expect(blocker!.category, 'Responsabilité');
+      expect(blocker.title, 'Un trajet à assurer');
     });
 
     test(
@@ -573,6 +605,10 @@ void main() {
       );
       expect(consequence.startTime, '08:20');
       expect(consequence.endTime, '08:40');
+      expect(
+        consequence.toBlockedPeriod(),
+        containsPair('days', ['1', '4']),
+      );
     });
 
     test('ne transforme pas la validité générale en temps bloqué', () {

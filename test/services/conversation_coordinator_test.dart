@@ -10,6 +10,8 @@ import 'package:moms_ai/models/conversation_epistemic_models.dart';
 import 'package:moms_ai/models/conversation_models.dart';
 import 'package:moms_ai/models/event_model.dart';
 import 'package:moms_ai/models/shopping_item_model.dart';
+import 'package:moms_ai/models/smart_planning_continuation.dart';
+import 'package:moms_ai/models/task_model.dart';
 import 'package:moms_ai/models/user_profile.dart';
 import 'package:moms_ai/services/action_handler_service.dart';
 import 'package:moms_ai/services/callable_chat_backend_client.dart';
@@ -20,6 +22,10 @@ import 'package:moms_ai/services/conversation_legacy_action_executor.dart';
 import 'package:moms_ai/services/event_service.dart';
 import 'package:moms_ai/services/shopping_service.dart';
 import 'package:moms_ai/services/planner_engine_service.dart';
+import 'package:moms_ai/services/planning_proposal_engine.dart';
+import 'package:moms_ai/services/selected_slot_revalidation_service.dart';
+import 'package:moms_ai/services/smart_planning_continuation_coordinator.dart';
+import 'package:moms_ai/services/smart_planning_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -689,6 +695,36 @@ void main() {
       expect(duration?.reply, contains('trajet aller'));
       expect(duration?.reply, isNot(contains('pour quel rendez-vous')));
       expect(executor.hasPendingEventDraft, isTrue);
+    });
+
+    test('slot search period is routed before classic Event creation',
+        () async {
+      final now = DateTime(2026, 8, 13, 14, 48);
+      final smartPlanning = SmartPlanningContinuationCoordinator(
+        gateway: _SlotSearchGateway(),
+        clock: () => now,
+        idGenerator: () => 'slot-search-period',
+      );
+      final executor = ConversationLegacyActionExecutor(
+        coordinator: _coordinator(),
+        smartPlanning: smartPlanning,
+        clock: () => now,
+      );
+
+      final outcome = await executor.resolveLocalRequest(
+        'Propose-moi un créneau pour le dentiste la semaine prochaine',
+        0,
+      );
+
+      expect(outcome?.reply, contains('durée'));
+      expect(outcome?.reply, isNot(contains('Quel jour')));
+      expect(executor.hasPendingEventDraft, isFalse);
+      expect(
+        smartPlanning.active?.type,
+        SmartPlanningContinuationType.explicitSlotRequest,
+      );
+      expect(smartPlanning.active?.task.title, 'Dentiste');
+      expect(smartPlanning.active?.startDate, DateTime(2026, 8, 17));
     });
 
     test('generic Event title is completed on the same local draft', () async {
@@ -1791,6 +1827,60 @@ class _FakeContextProvider implements ConversationContextProvider {
   Future<void> saveResponseMemory(dynamic memory) async {
     savedMemories.add(memory);
   }
+}
+
+final class _SlotSearchGateway implements SmartPlanningContinuationGateway {
+  @override
+  Future<void> addEvent(EventModel event, {String? mutationId}) async {}
+
+  @override
+  Future<SmartPlanningProposal> buildProposal({
+    required TaskModel task,
+    required String originalMessage,
+    required int actionMinutes,
+    required int travelGoMinutes,
+    required int travelBackMinutes,
+    required List<TaskModel> groupedTasks,
+  }) =>
+      throw UnimplementedError();
+
+  @override
+  Future<EventModel?> conflict(EventModel event) async => null;
+
+  @override
+  Future<PlanningProposalEngineResult> findOptions({
+    required DateTime startDate,
+    required int totalMinutes,
+    required int searchDays,
+  }) async =>
+      const PlanningProposalEngineResult(
+        hasOptions: false,
+        options: [],
+        explanation: '',
+      );
+
+  @override
+  Future<List<TaskModel>> relatedTasks(
+    TaskModel task,
+    String originalMessage,
+  ) async =>
+      [task];
+
+  @override
+  Future<SelectedSlotRevalidationResult> revalidate({
+    required EventModel event,
+    required DateTime protectedStart,
+    required int totalMinutes,
+  }) async =>
+      const SelectedSlotRevalidationResult(
+        isAvailable: true,
+        conflictEvent: null,
+        alternatives: PlanningProposalEngineResult(
+          hasOptions: false,
+          options: [],
+          explanation: '',
+        ),
+      );
 }
 
 ConversationCoordinator _coordinator() {

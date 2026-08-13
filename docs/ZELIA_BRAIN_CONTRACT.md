@@ -102,6 +102,13 @@ En cas d'incertitude, Zélia ne transforme pas l'emploi du temps d'un tiers en
 indisponibilité. Elle peut signaler doucement une information pertinente ou
 poser une question courte si cela change immédiatement la décision.
 
+Pour classer plusieurs créneaux encore possibles, l'incertitude peut néanmoins
+servir de préférence souple. Zélia privilégie alors un rendez-vous qui tient
+confortablement pendant l'engagement structuré d'une personne dépendante et
+évite ses heures d'entrée, de sortie et de transition probables. Ce classement
+ne présente pas une responsabilité comme certaine, ne crée pas de conflit dur
+et cède toujours devant une information explicite de l'utilisatrice.
+
 ### 2.5 Comprendre les engagements par leur effet réel
 
 Tout engagement est décrit avec autant de dimensions structurées que possible :

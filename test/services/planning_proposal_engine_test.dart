@@ -138,5 +138,123 @@ void main() {
       expect(result.hasOptions, false);
       expect(result.options, isEmpty);
     });
+
+    test(
+      'does not propose an appointment at a dependent school pickup time',
+      () {
+        final result = PlanningProposalEngine.findBestOptionsFromEvents(
+          startDate: DateTime(2026, 7, 20),
+          totalMinutes: 90,
+          events: <EventModel>[],
+          reasoning: const [
+            {
+              'type': 'other_person_schedule',
+              'planningEffect': 'potential_care_transition',
+              'routineKind': 'schoolSchedule',
+              'days': ['Lundi'],
+              'startTime': '13:30',
+              'endTime': '16:30',
+              'transitionBeforeMinutes': 10,
+              'transitionAfterMinutes': 10,
+            },
+          ],
+          searchDays: 1,
+          maxOptions: 3,
+        );
+
+        expect(result.hasOptions, true);
+        expect(result.options, isNotEmpty);
+        expect(
+          result.options.any(
+            (option) => option.start == DateTime(2026, 7, 20, 16, 30),
+          ),
+          false,
+        );
+        expect(
+          result.options.every(
+            (option) =>
+                !option.start.isBefore(DateTime(2026, 7, 20, 13, 45)) &&
+                !option.end.isAfter(DateTime(2026, 7, 20, 16)),
+          ),
+          true,
+        );
+      },
+    );
+
+    test(
+      'ranks school-time comfort above pickup boundaries across a week',
+      () {
+        final result = PlanningProposalEngine.findBestOptionsFromEvents(
+          startDate: DateTime(2026, 7, 20),
+          totalMinutes: 90,
+          events: <EventModel>[],
+          reasoning: const [
+            {
+              'type': 'other_person_schedule',
+              'planningEffect': 'potential_care_transition',
+              'routineKind': 'schoolSchedule',
+              'days': ['Lundi', 'Mardi', 'Jeudi', 'Vendredi'],
+              'startTime': '08:30',
+              'endTime': '11:50',
+            },
+            {
+              'type': 'other_person_schedule',
+              'planningEffect': 'potential_care_transition',
+              'routineKind': 'schoolSchedule',
+              'days': ['Lundi', 'Mardi', 'Jeudi', 'Vendredi'],
+              'startTime': '13:30',
+              'endTime': '16:30',
+            },
+          ],
+          searchDays: 5,
+          maxOptions: 3,
+        );
+
+        expect(result.hasOptions, true);
+        expect(
+          result.options.map((option) => option.start.weekday).toList(),
+          [DateTime.monday, DateTime.tuesday, DateTime.thursday],
+        );
+        expect(
+          result.options.every(
+            (option) {
+              final morningStart = DateTime(
+                option.start.year,
+                option.start.month,
+                option.start.day,
+                8,
+                45,
+              );
+              final morningEnd = DateTime(
+                option.end.year,
+                option.end.month,
+                option.end.day,
+                11,
+                20,
+              );
+              final afternoonStart = DateTime(
+                option.start.year,
+                option.start.month,
+                option.start.day,
+                13,
+                45,
+              );
+              final afternoonEnd = DateTime(
+                option.end.year,
+                option.end.month,
+                option.end.day,
+                16,
+              );
+              final insideMorning = !option.start.isBefore(morningStart) &&
+                  !option.end.isAfter(morningEnd);
+              final insideAfternoon = !option.start.isBefore(afternoonStart) &&
+                  !option.end.isAfter(afternoonEnd);
+              return insideMorning || insideAfternoon;
+            },
+          ),
+          true,
+        );
+      },
+    );
   });
 }

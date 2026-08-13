@@ -513,6 +513,9 @@ final class EventLifeContextAdapter implements LifeContextDomainAdapter {
   final EventContextLoader _load;
   final EventContextSyncLoader? _loadSyncStatuses;
 
+  static const Duration _operationalPastWindow = Duration(days: 7);
+  static const Duration _operationalFutureWindow = Duration(days: 60);
+
   @override
   LifeContextDomain get domain => LifeContextDomain.event;
 
@@ -548,6 +551,15 @@ final class EventLifeContextAdapter implements LifeContextDomainAdapter {
           participantEntityId: participant?.identity.entityId,
           parentRecurringId: _optional(event.parentRecurringId),
         );
+      }).where((event) {
+        final start = DateTime.tryParse(event.startDateTimeIso)?.toUtc();
+        if (start == null) return true;
+        final parsedEnd = DateTime.tryParse(event.endDateTimeIso)?.toUtc();
+        final end = parsedEnd ??
+            start.add(Duration(minutes: event.durationMinutes.clamp(0, 1440)));
+        final lower = request.readAt.toUtc().subtract(_operationalPastWindow);
+        final upper = request.readAt.toUtc().add(_operationalFutureWindow);
+        return !end.isBefore(lower) && !start.isAfter(upper);
       }).toList()
         ..sort((a, b) {
           final date = a.startDateTimeIso.compareTo(b.startDateTimeIso);

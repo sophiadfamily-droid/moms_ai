@@ -229,6 +229,51 @@ void main() {
       expect(section.events, isEmpty);
     });
 
+    test('Event ignores old history before applying its operational budget',
+        () async {
+      final history = List<EventModel>.generate(
+        LifeContextSourceBudgets.events + 20,
+        (index) => EventModel(
+          id: 'old-$index',
+          title: 'Ancien rendez-vous',
+          date: '2025-01-01',
+          time: '09:00',
+          notes: '',
+          createdAt: now.subtract(const Duration(days: 500)),
+          startDateTimeIso:
+              now.subtract(Duration(days: 30 + index)).toIso8601String(),
+          endDateTimeIso: now
+              .subtract(Duration(days: 30 + index))
+              .add(const Duration(hours: 1))
+              .toIso8601String(),
+          durationMinutes: 60,
+        ),
+      );
+      final future = EventModel(
+        id: 'future',
+        title: 'Prochain rendez-vous',
+        date: '2026-07-24',
+        time: '09:00',
+        notes: '',
+        createdAt: now,
+        startDateTimeIso: now.add(const Duration(days: 1)).toIso8601String(),
+        endDateTimeIso:
+            now.add(const Duration(days: 1, hours: 1)).toIso8601String(),
+        durationMinutes: 60,
+      );
+      final section = await EventLifeContextAdapter(
+        load: (_) async => [...history, future],
+      ).load(
+        LifeContextAdapterRequest(accountScopeId: 'account-a', readAt: now),
+      );
+
+      expect(section.events.map((event) => event.id), ['future']);
+      expect(
+        section.metadata.truncationState,
+        LifeContextTruncationState.complete,
+      );
+    });
+
     test('Task source budget is deterministic and reports truncation',
         () async {
       final tasks = List<TaskModel>.generate(

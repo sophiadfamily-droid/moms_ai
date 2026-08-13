@@ -116,6 +116,47 @@ final class PlanningProjectionRoutine {
   final int travelBackMinutes;
   final int marginMinutes;
 
+  /// Planning must not treat another person's timetable as if the primary
+  /// user were occupied for the whole period. A school day, for example, is
+  /// often a useful availability window for the caregiver; its boundaries
+  /// are nevertheless important because a drop-off or pickup may be needed.
+  Map<String, dynamic> toPlanningReasoning({
+    required String? primaryPersonNodeId,
+  }) {
+    final mayCreateCareTransitions =
+        routineKind == 'schoolSchedule' || routineKind == 'childActivity';
+
+    // These routine kinds are sourced only from another household person's
+    // profile. Keep the semantic fallback when an older profile has no linked
+    // person id yet: missing migration metadata must not turn a child's whole
+    // school day into a hard block for the primary user.
+    final belongsToAnotherPerson = subjectNodeId == null ||
+        subjectNodeId!.isEmpty ||
+        subjectNodeId != primaryPersonNodeId;
+
+    if (mayCreateCareTransitions && belongsToAnotherPerson) {
+      return {
+        'type': 'other_person_schedule',
+        'planningEffect': 'potential_care_transition',
+        'routineKind': routineKind,
+        if (label != null && label!.trim().isNotEmpty) 'label': label,
+        'subjectNodeId': subjectNodeId,
+        'recurrenceType': recurrenceType ?? 'weekly',
+        'days': days,
+        if (startTime != null) 'startTime': startTime,
+        if (endTime != null) 'endTime': endTime,
+        'transitionBeforeMinutes':
+            travelGoMinutes > 0 ? travelGoMinutes : travelMinutes ?? 0,
+        'transitionAfterMinutes':
+            travelBackMinutes > 0 ? travelBackMinutes : travelMinutes ?? 0,
+        if (anchorDateIso != null) 'anchorDateIso': anchorDateIso,
+        if (weekOfMonth != null) 'weekOfMonth': weekOfMonth,
+      };
+    }
+
+    return toBlockedPeriod();
+  }
+
   Map<String, dynamic> toBlockedPeriod() => {
         'type': 'blocked_period',
         'recurrenceType': recurrenceType ?? 'weekly',
@@ -174,6 +215,7 @@ final class PlanningProjectionConsequence {
 
   DateTime? get parsedStart => DateTime.tryParse(start);
   DateTime? get parsedEnd => DateTime.tryParse(end);
+  String get displayLabel => _planningConsequenceLabel(kind, label: label);
 
   bool get isConcreteBlockingTime {
     final from = parsedStart;
@@ -185,6 +227,27 @@ final class PlanningProjectionConsequence {
       return false;
     }
     return until.difference(from) <= const Duration(hours: 24);
+  }
+
+  EventModel? toBlockingEvent() {
+    if (!isConcreteBlockingTime) return null;
+    final rawStart = parsedStart!;
+    final rawEnd = parsedEnd!;
+    final localStart = rawStart.isUtc ? rawStart.toLocal() : rawStart;
+    final localEnd = rawEnd.isUtc ? rawEnd.toLocal() : rawEnd;
+    return EventModel(
+      id: 'responsibility:$id',
+      title: displayLabel,
+      date: _dateIso(localStart),
+      time: _time(localStart),
+      notes: '',
+      category: 'Responsabilité',
+      createdAt: localStart,
+      startDateTimeIso: localStart.toIso8601String(),
+      endTime: _time(localEnd),
+      endDateTimeIso: localEnd.toIso8601String(),
+      durationMinutes: localEnd.difference(localStart).inMinutes,
+    );
   }
 }
 
@@ -215,6 +278,7 @@ final class PlanningProjectionRecurringConsequence {
   final String endTime;
   final DateTime? validFrom;
   final DateTime? validUntil;
+  String get displayLabel => _planningConsequenceLabel(kind, label: label);
 
   bool get isConcreteBlockingTime {
     final start = _localMinutes(startTime);
@@ -250,6 +314,23 @@ final class PlanningProjectionRecurringConsequence {
         (until == null || !day.isAfter(until));
   }
 
+  Map<String, dynamic>? toBlockedPeriod() {
+    if (!isConcreteBlockingTime) return null;
+    return {
+      'type': 'blocked_period',
+      'sourceType': 'responsibility',
+      'label': displayLabel,
+      'recurrenceType': 'weekly',
+      'days': weekdays.map((weekday) => '$weekday').toList(growable: false),
+      'startTime': startTime,
+      'endTime': endTime,
+      'travelBeforeMinutes': 0,
+      'travelAfterMinutes': 0,
+      if (validFrom != null) 'validFrom': _dateIso(validFrom!),
+      if (validUntil != null) 'validUntil': _dateIso(validUntil!),
+    };
+  }
+
   static int? _localMinutes(String value) {
     final parts = value.trim().split(':');
     if (parts.length != 2) return null;
@@ -266,6 +347,31 @@ final class PlanningProjectionRecurringConsequence {
     return hour * 60 + minute;
   }
 }
+
+String _planningConsequenceLabel(String kind, {String? label}) {
+  final informative = label?.trim();
+  if (informative != null && informative.isNotEmpty && informative != kind) {
+    return informative;
+  }
+  return switch (kind) {
+    'accompaniment' => 'Un accompagnement prévu',
+    'transport' => 'Un trajet à assurer',
+    'participation' => 'Ta présence est prévue',
+    'preparation' => 'Un temps de préparation prévu',
+    'waiting' => 'Un temps d’attente prévu',
+    'replacement' => 'Un remplacement prévu',
+    'care' => 'Un temps de présence prévu',
+    'dailyAssistance' => 'Un temps d’aide prévu',
+    _ => kind.trim().isEmpty ? 'Une responsabilité prévue' : kind.trim(),
+  };
+}
+
+String _dateIso(DateTime value) => '${value.year.toString().padLeft(4, '0')}-'
+    '${value.month.toString().padLeft(2, '0')}-'
+    '${value.day.toString().padLeft(2, '0')}';
+
+String _time(DateTime value) => '${value.hour.toString().padLeft(2, '0')}:'
+    '${value.minute.toString().padLeft(2, '0')}';
 
 final class PlanningProjectionContext {
   PlanningProjectionContext({

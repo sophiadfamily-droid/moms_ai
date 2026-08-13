@@ -51,6 +51,37 @@ void main() {
         true,
       );
     });
+
+    test('honors the inclusive validity period of a weekly consequence', () {
+      const item = {
+        'recurrenceType': 'weekly',
+        'days': ['Lundi'],
+        'validFrom': '2026-07-21',
+        'validUntil': '2026-08-03',
+      };
+
+      expect(
+        RecurrenceDateMatchService.appliesToDate(
+          item,
+          DateTime(2026, 7, 20),
+        ),
+        false,
+      );
+      expect(
+        RecurrenceDateMatchService.appliesToDate(
+          item,
+          DateTime(2026, 8, 3),
+        ),
+        true,
+      );
+      expect(
+        RecurrenceDateMatchService.appliesToDate(
+          item,
+          DateTime(2026, 8, 10),
+        ),
+        false,
+      );
+    });
   });
 
   group('RecurrenceDateMatchService weekdays recurrence', () {

@@ -3,6 +3,7 @@ import 'package:moms_ai/core/identity/entity_id_generator.dart';
 import 'package:moms_ai/models/event_model.dart';
 import 'package:moms_ai/models/life_context/life_context_domains.dart';
 import 'package:moms_ai/models/life_context/life_context_projection.dart';
+import 'package:moms_ai/models/smart_planning_continuation.dart';
 import 'package:moms_ai/models/user_profile.dart';
 import 'package:moms_ai/services/life_context/life_context_adapter.dart';
 import 'package:moms_ai/services/life_context/life_context_engine.dart';
@@ -148,6 +149,175 @@ void main() {
     );
   });
 
+  test('Planning still searches when optional Task context is unavailable',
+      () async {
+    final production = _production(
+      now: now,
+      taskAvailability: LifeContextAvailability.unavailable,
+    );
+    final gateway = ProductionSmartPlanningContinuationGateway(
+      _profile(),
+      loadLifeContext: () async => production,
+    );
+
+    final planning = await gateway.findOptions(
+      startDate: DateTime(2026, 8, 17),
+      totalMinutes: 90,
+      searchDays: 7,
+    );
+
+    expect(planning.hasOptions, isTrue);
+    expect(planning.options, isNotEmpty);
+  });
+
+  test(
+      'Slot request reaches proposals after duration, outbound and same return travel',
+      () async {
+    final production = _production(
+      now: now,
+      taskAvailability: LifeContextAvailability.unavailable,
+      events: [
+        for (var index = 0; index < 30; index++)
+          EventContextItem(
+            id: 'busy-event-$index',
+            title: 'Rendez-vous existant',
+            startDateTimeIso: now
+                .add(Duration(days: index % 10, hours: index))
+                .toIso8601String(),
+            endDateTimeIso: now
+                .add(Duration(days: index % 10, hours: index + 1))
+                .toIso8601String(),
+            durationMinutes: 60,
+            travelGoMinutes: 0,
+            travelBackMinutes: 0,
+            marginMinutes: 0,
+            isRecurring: false,
+            recurringType: '',
+            revision: 1,
+            syncStatus: 'synced',
+          ),
+      ],
+      routines: [
+        for (var index = 0; index < 20; index++)
+          RoutineContextItem(
+            id: 'busy-routine-$index',
+            source: 'routine.v1',
+            label: 'Habitude existante',
+            days: const ['dimanche'],
+            startTime: '07:00',
+            endTime: '07:05',
+            travelMinutes: 0,
+            recurrenceType: 'weekly',
+          ),
+      ],
+    );
+    final gateway = ProductionSmartPlanningContinuationGateway(
+      _profile(),
+      loadLifeContext: () async => production,
+    );
+    final coordinator = SmartPlanningContinuationCoordinator(
+      gateway: gateway,
+      clock: () => now,
+    );
+
+    final started = await coordinator.tryStartExplicitSlotRequest(
+      text: 'Propose-moi un créneau pour le dentiste la semaine prochaine',
+      sessionGeneration: 1,
+    );
+    expect(started, isNotNull);
+
+    await coordinator.resolve('1h', sessionGeneration: 1);
+    await coordinator.resolve('10', sessionGeneration: 1);
+    final result = await coordinator.resolve('pareil', sessionGeneration: 1);
+
+    expect(result, isNotNull);
+    expect(result!.reply, isNot(contains('problème')));
+    expect(
+      coordinator.active!.step,
+      SmartPlanningContinuationStep.optionChoice,
+    );
+    expect(coordinator.active!.travelGoMinutes, 10);
+    expect(coordinator.active!.travelBackMinutes, 10);
+    expect(coordinator.active!.options, isNotEmpty);
+  });
+
+  test('Planning excludes a dated responsibility of the primary person',
+      () async {
+    final production = _production(
+      now: now,
+      human: _humanWithPlanningResponsibility(
+        now,
+        responsiblePersonId: 'person-main',
+        start: DateTime(2026, 8, 3, 8, 30),
+        end: DateTime(2026, 8, 3, 8, 31),
+      ),
+    );
+    final gateway = ProductionSmartPlanningContinuationGateway(
+      _profile(),
+      loadLifeContext: () async => production,
+    );
+
+    final planning = await gateway.findOptions(
+      startDate: DateTime(2026, 8, 3),
+      totalMinutes: 750,
+      searchDays: 1,
+    );
+
+    expect(planning.hasOptions, isFalse);
+  });
+
+  test('Planning excludes a recurring responsibility of the primary person',
+      () async {
+    final production = _production(
+      now: now,
+      human: _humanWithPlanningResponsibility(
+        now,
+        responsiblePersonId: 'person-main',
+        recurringWeekdays: const [DateTime.monday],
+      ),
+    );
+    final gateway = ProductionSmartPlanningContinuationGateway(
+      _profile(),
+      loadLifeContext: () async => production,
+    );
+
+    final planning = await gateway.findOptions(
+      startDate: DateTime(2026, 8, 3),
+      totalMinutes: 750,
+      searchDays: 1,
+    );
+
+    expect(planning.hasOptions, isFalse);
+  });
+
+  test("Planning does not block the primary person for another person's duty",
+      () async {
+    final production = _production(
+      now: now,
+      human: _humanWithPlanningResponsibility(
+        now,
+        responsiblePersonId: 'person-other',
+        recurringWeekdays: const [DateTime.monday],
+      ),
+    );
+    final gateway = ProductionSmartPlanningContinuationGateway(
+      _profile(),
+      loadLifeContext: () async => production,
+    );
+
+    final planning = await gateway.findOptions(
+      startDate: DateTime(2026, 8, 3),
+      totalMinutes: 750,
+      searchDays: 1,
+    );
+
+    expect(planning.hasOptions, isTrue);
+    expect(
+      planning.options.map((option) => option.startTime),
+      contains('08:00'),
+    );
+  });
+
   test('Memory reasoning excludes stale lifecycle and expired records', () {
     final section = MemoryDomainSection(
       metadata: _metadata(
@@ -248,10 +418,12 @@ void main() {
 LifeContextProduction _production({
   required DateTime now,
   void Function()? onRead,
+  HumanContextSection? human,
   List<EventContextItem> events = const [],
   List<RoutineContextItem> routines = const [],
   List<MemoryContextItem> memories = const [],
   LifeContextAvailability eventAvailability = LifeContextAvailability.available,
+  LifeContextAvailability taskAvailability = LifeContextAvailability.available,
   LifeContextAvailability memoryAvailability =
       LifeContextAvailability.available,
 }) {
@@ -266,10 +438,12 @@ LifeContextProduction _production({
           now: now,
           onRead: onRead,
           eventAvailability: eventAvailability,
+          taskAvailability: taskAvailability,
           memoryAvailability: memoryAvailability,
           events: events,
           routines: routines,
           memories: memories,
+          human: human,
         ),
     ],
   );
@@ -292,10 +466,12 @@ final class _SectionAdapter implements LifeContextDomainAdapter {
     required this.domain,
     required this.now,
     required this.eventAvailability,
+    required this.taskAvailability,
     required this.memoryAvailability,
     required this.events,
     required this.routines,
     required this.memories,
+    required this.human,
     this.onRead,
   });
 
@@ -304,10 +480,12 @@ final class _SectionAdapter implements LifeContextDomainAdapter {
   final DateTime now;
   final void Function()? onRead;
   final LifeContextAvailability eventAvailability;
+  final LifeContextAvailability taskAvailability;
   final LifeContextAvailability memoryAvailability;
   final List<EventContextItem> events;
   final List<RoutineContextItem> routines;
   final List<MemoryContextItem> memories;
+  final HumanContextSection? human;
 
   @override
   Future<LifeContextDomainSection> load(
@@ -318,6 +496,7 @@ final class _SectionAdapter implements LifeContextDomainAdapter {
         ? eventAvailability
         : switch (domain) {
             LifeContextDomain.event => eventAvailability,
+            LifeContextDomain.task => taskAvailability,
             LifeContextDomain.routine => routines.isEmpty
                 ? LifeContextAvailability.empty
                 : LifeContextAvailability.available,
@@ -326,6 +505,9 @@ final class _SectionAdapter implements LifeContextDomainAdapter {
                     ? LifeContextAvailability.empty
                     : memoryAvailability)
                 : memoryAvailability,
+            LifeContextDomain.human => human == null
+                ? LifeContextAvailability.empty
+                : LifeContextAvailability.available,
             _ => LifeContextAvailability.empty,
           };
     final metadata = _metadata(
@@ -336,12 +518,13 @@ final class _SectionAdapter implements LifeContextDomainAdapter {
         LifeContextDomain.event => events.length,
         LifeContextDomain.routine => routines.length,
         LifeContextDomain.memory => memories.length,
+        LifeContextDomain.human => human?.metadata.itemCount ?? 0,
         _ => 0,
       },
     );
     return switch (domain) {
       LifeContextDomain.human =>
-        HumanContextSection(metadata: metadata, primaryPersonId: null),
+        human ?? HumanContextSection(metadata: metadata, primaryPersonId: null),
       LifeContextDomain.identity => IdentityDomainSection(metadata: metadata),
       LifeContextDomain.event =>
         EventDomainSection(metadata: metadata, events: events),
@@ -358,6 +541,66 @@ final class _SectionAdapter implements LifeContextDomainAdapter {
     };
   }
 }
+
+HumanContextSection _humanWithPlanningResponsibility(
+  DateTime now, {
+  required String responsiblePersonId,
+  DateTime? start,
+  DateTime? end,
+  List<int> recurringWeekdays = const [],
+}) =>
+    HumanContextSection(
+      metadata: _metadata(
+        LifeContextDomain.human,
+        now,
+        LifeContextAvailability.available,
+        count: 4,
+      ),
+      primaryPersonId: 'person-main',
+      persons: const [
+        HumanContextPerson(
+          id: 'person-main',
+          displayName: 'Personne principale',
+          status: 'active',
+          confirmation: 'confirmed',
+        ),
+        HumanContextPerson(
+          id: 'person-child',
+          displayName: 'Enfant',
+          status: 'active',
+          confirmation: 'confirmed',
+        ),
+        HumanContextPerson(
+          id: 'person-other',
+          displayName: 'Autre personne',
+          status: 'active',
+          confirmation: 'confirmed',
+        ),
+      ],
+      responsibilities: [
+        HumanContextRecord(
+          id: 'responsibility-1',
+          kind: 'transport',
+          label: 'Déposer une personne',
+          references: [responsiblePersonId, 'person-child'],
+          status: 'active',
+          confirmation: 'confirmed',
+          sourceReferenceId: responsiblePersonId,
+          targetReferenceId: 'person-child',
+          validFrom: now.subtract(const Duration(days: 1)),
+          validUntil: DateTime.utc(2026, 8, 20),
+          planningConsequenceType: 'transport',
+          planningConsequenceStart: start,
+          planningConsequenceEnd: end,
+          planningConsequenceWeekdays: recurringWeekdays,
+          planningConsequenceStartTime:
+              recurringWeekdays.isEmpty ? null : '08:20',
+          planningConsequenceEndTime:
+              recurringWeekdays.isEmpty ? null : '08:40',
+          blocksResponsiblePerson: true,
+        ),
+      ],
+    );
 
 LifeContextSourceMetadata _metadata(
   LifeContextDomain domain,

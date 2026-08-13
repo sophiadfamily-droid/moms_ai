@@ -24,6 +24,7 @@ import 'planner_engine_service.dart';
 import 'planning_proposal_engine.dart';
 import 'planning_proposal_selection_service.dart';
 import 'planning_proposal_service.dart';
+import 'planning_search_request_service.dart';
 import 'selected_slot_revalidation_service.dart';
 import 'selected_slot_schedule_service.dart';
 import 'smart_planning_response_builder.dart';
@@ -74,14 +75,16 @@ final class ProductionSmartPlanningContinuationGateway
 
   void updateProfile(UserProfile _) {}
 
-  Future<_CanonicalPlanningInput> _planningInput() async {
+  Future<_CanonicalPlanningInput> _planningInput({
+    DateTime? windowStart,
+    int? windowDays,
+  }) async {
     final production = await _loadLifeContext();
     final projection = await production.getCurrentProjection(
       LifeContextConsumerPurpose.planning,
     );
     final compatibility = production.compatibility(
       LifeContextCapability.planning,
-      additionalRequiredDomains: const {LifeContextDomain.task},
     );
     final truncatedRequired = projection.sections.any(
       (section) =>
@@ -120,11 +123,36 @@ final class ProductionSmartPlanningContinuationGateway
         await MemoryPlanningCompatibilityService.buildFromLifeContext(
       production: production,
     );
+    final events = [
+      ...context.events.map((event) => event.toEventModel()),
+      ...context.planningConsequences
+          .where(
+            (consequence) =>
+                consequence.responsiblePersonNodeId ==
+                context.primaryPersonNodeId,
+          )
+          .map((consequence) => consequence.toBlockingEvent())
+          .whereType<EventModel>(),
+    ];
     return _CanonicalPlanningInput(
       generation: production.projectionGeneration,
-      events: context.events.map((event) => event.toEventModel()).toList(),
+      events: windowStart == null || windowDays == null
+          ? events
+          : _eventsIntersectingWindow(events, windowStart, windowDays),
       reasoning: [
-        ...context.routines.map((routine) => routine.toBlockedPeriod()),
+        ...context.routines.map(
+          (routine) => routine.toPlanningReasoning(
+            primaryPersonNodeId: context.primaryPersonNodeId,
+          ),
+        ),
+        ...context.recurringPlanningConsequences
+            .where(
+              (consequence) =>
+                  consequence.responsiblePersonNodeId ==
+                  context.primaryPersonNodeId,
+            )
+            .map((consequence) => consequence.toBlockedPeriod())
+            .whereType<Map<String, dynamic>>(),
         ...memoryReasoning,
       ],
     );
@@ -157,7 +185,10 @@ final class ProductionSmartPlanningContinuationGateway
     required int totalMinutes,
     required int searchDays,
   }) async {
-    final input = await _planningInput();
+    final input = await _planningInput(
+      windowStart: startDate,
+      windowDays: searchDays,
+    );
     _proposalGeneration = input.generation;
     return PlanningProposalEngine.findBestOptionsFromEvents(
       startDate: startDate,
@@ -291,6 +322,26 @@ final class ProductionSmartPlanningContinuationGateway
     }
     return null;
   }
+
+  static List<EventModel> _eventsIntersectingWindow(
+    List<EventModel> events,
+    DateTime startDate,
+    int days,
+  ) {
+    final windowStart = DateTime(
+      startDate.year,
+      startDate.month,
+      startDate.day,
+    );
+    final windowEnd = windowStart.add(Duration(days: days));
+    return events.where((event) {
+      final protectedStart = EventService.parseProtectedStart(event);
+      final protectedEnd = EventService.parseProtectedEnd(event);
+      if (protectedStart == null || protectedEnd == null) return false;
+      return protectedStart.isBefore(windowEnd) &&
+          protectedEnd.isAfter(windowStart);
+    }).toList(growable: false);
+  }
 }
 
 final class _CanonicalPlanningInput {
@@ -419,9 +470,10 @@ final class SmartPlanningContinuationCoordinator {
     required String text,
     required int sessionGeneration,
   }) async {
-    if (!_looksLikeSlotRequest(text)) return null;
-    final title = _slotTitle(text);
-    final startDate = _slotStartDate(text);
+    final request = PlanningSearchRequestService.parse(text, now: _clock());
+    if (request == null) return null;
+    final title = request.title;
+    final startDate = request.startDate;
     final task = TaskModel(
       title: title,
       category: 'Agenda',
@@ -1283,7 +1335,9 @@ final class SmartPlanningContinuationCoordinator {
     return lines.join('\n');
   }
 
-  static int _searchDays(String text) {
+  int _searchDays(String text) {
+    final request = PlanningSearchRequestService.parse(text, now: _clock());
+    if (request != null) return request.searchDays;
     final lower = text.toLowerCase();
     if ([
       'demain',
@@ -1297,88 +1351,5 @@ final class SmartPlanningContinuationCoordinator {
       return 1;
     }
     return lower.contains('semaine prochaine') ? 7 : 21;
-  }
-
-  static bool _looksLikeSlotRequest(String text) {
-    final lower = text.toLowerCase();
-    final proposal = [
-      'propose-moi un créneau',
-      'propose moi un créneau',
-      'propose-moi un creneau',
-      'propose moi un creneau',
-      'trouve-moi un créneau',
-      'trouve moi un créneau',
-      'cherche-moi un créneau',
-      'cherche moi un créneau',
-      'place-moi un rendez-vous',
-      'place moi un rendez-vous',
-      "quand est-ce que je peux",
-      'quand est ce que je peux',
-    ].any(lower.contains);
-    final appointment = [
-      'rendez-vous',
-      'rendez vous',
-      'rdv',
-      'médecin',
-      'medecin',
-      'dentiste',
-      'consultation',
-      'réunion',
-      'reunion',
-      'coiffeur',
-      'coiffeuse',
-      'esthéticienne',
-      'estheticienne',
-      'ongles',
-      'garage',
-      'contrôle technique',
-      'controle technique',
-    ].any(lower.contains);
-    return proposal && appointment;
-  }
-
-  static String _slotTitle(String text) {
-    final lower = text.toLowerCase();
-    const values = <String, String>{
-      'médecin': 'Médecin',
-      'medecin': 'Médecin',
-      'dentiste': 'Dentiste',
-      'pédiatre': 'Pédiatre',
-      'pediatre': 'Pédiatre',
-      'réunion': 'Réunion',
-      'reunion': 'Réunion',
-      'coiffeur': 'Coiffeur',
-      'coiffeuse': 'Coiffeur',
-      'esthéticienne': 'Esthéticienne',
-      'estheticienne': 'Esthéticienne',
-      'ongles': 'Ongles',
-      'garage': 'Garage',
-      'contrôle technique': 'Contrôle technique',
-      'controle technique': 'Contrôle technique',
-    };
-    for (final entry in values.entries) {
-      if (lower.contains(entry.key)) return entry.value;
-    }
-    return 'Rendez-vous';
-  }
-
-  DateTime _slotStartDate(String text) {
-    final lower = text.toLowerCase();
-    final now = _clock();
-    final today = DateTime(now.year, now.month, now.day);
-    if (lower.contains('semaine prochaine')) {
-      final delta = (8 - today.weekday) % 7;
-      return today.add(Duration(days: delta == 0 ? 7 : delta));
-    }
-    return SmartPlanningService.targetDateFromText(
-      text,
-      TaskModel(
-        title: 'Rendez-vous',
-        category: 'Agenda',
-        isDone: false,
-        createdAt: now,
-        notes: text,
-      ),
-    );
   }
 }

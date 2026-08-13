@@ -1,5 +1,6 @@
 import '../models/event_model.dart';
 import 'event_service.dart';
+import 'recurrence_date_match_service.dart';
 
 class PlanningScoreService {
   static int scoreSlot({
@@ -30,7 +31,115 @@ class PlanningScoreService {
 
     score += _dayComfortScore(start);
 
+    score += _careWindowComfortScore(
+      start: start,
+      end: end,
+      reasoning: reasoning,
+    );
+
     return score.clamp(0, 100);
+  }
+
+  /// Gives preference to an appointment that fits comfortably inside a
+  /// dependent person's structured schedule, while avoiding the moments at
+  /// which a hand-off, drop-off or pickup is likely. This is deliberately a
+  /// soft score: until a responsibility is confirmed, it must not invent a
+  /// hard unavailability for the user.
+  static int _careWindowComfortScore({
+    required DateTime start,
+    required DateTime end,
+    required List<Map<String, dynamic>> reasoning,
+  }) {
+    var bestComfortBonus = 0;
+    var strongestTransitionPenalty = 0;
+
+    for (final item in reasoning) {
+      if (item['type'] != 'other_person_schedule' ||
+          item['planningEffect'] != 'potential_care_transition' ||
+          !RecurrenceDateMatchService.appliesToDate(item, start)) {
+        continue;
+      }
+
+      final rawStart = _dateTimeFromTime(
+        start,
+        item['startTime']?.toString(),
+      );
+      final rawEnd = _dateTimeFromTime(
+        start,
+        item['endTime']?.toString(),
+      );
+      if (rawStart == null || rawEnd == null || !rawEnd.isAfter(rawStart)) {
+        continue;
+      }
+
+      final transitionBefore = _transitionMinutes(
+        item['transitionBeforeMinutes'],
+        minimum: 15,
+      );
+      final transitionAfter = _transitionMinutes(
+        item['transitionAfterMinutes'],
+        minimum: 30,
+      );
+      final comfortableStart = rawStart.add(
+        Duration(minutes: transitionBefore),
+      );
+      final comfortableEnd = rawEnd.subtract(
+        Duration(minutes: transitionAfter),
+      );
+
+      final fullyInsideComfortWindow =
+          !start.isBefore(comfortableStart) && !end.isAfter(comfortableEnd);
+      if (fullyInsideComfortWindow &&
+          comfortableEnd.isAfter(comfortableStart)) {
+        bestComfortBonus = 35;
+        continue;
+      }
+
+      final overlapsRawWindow =
+          start.isBefore(rawEnd) && rawStart.isBefore(end);
+      if (overlapsRawWindow) {
+        strongestTransitionPenalty = -45;
+        continue;
+      }
+
+      final minutesAfterEnd = start.difference(rawEnd).inMinutes;
+      if (minutesAfterEnd >= 0 && minutesAfterEnd < transitionAfter) {
+        strongestTransitionPenalty = -45;
+        continue;
+      }
+
+      final minutesBeforeStart = rawStart.difference(end).inMinutes;
+      if (minutesBeforeStart >= 0 && minutesBeforeStart < transitionBefore) {
+        if (strongestTransitionPenalty > -30) {
+          strongestTransitionPenalty = -30;
+        }
+      }
+    }
+
+    if (strongestTransitionPenalty < 0) return strongestTransitionPenalty;
+    return bestComfortBonus;
+  }
+
+  static int _transitionMinutes(dynamic value, {required int minimum}) {
+    final parsed = int.tryParse(value?.toString() ?? '') ?? 0;
+    return parsed > minimum ? parsed : minimum;
+  }
+
+  static DateTime? _dateTimeFromTime(DateTime date, String? value) {
+    final clean = value?.trim().toLowerCase().replaceAll('h', ':') ?? '';
+    if (!RegExp(r'^\d{1,2}(:\d{1,2})?$').hasMatch(clean)) return null;
+    final parts = clean.split(':');
+    final hour = int.tryParse(parts.first);
+    final minute = parts.length > 1 ? int.tryParse(parts[1]) : 0;
+    if (hour == null ||
+        minute == null ||
+        hour < 0 ||
+        hour > 23 ||
+        minute < 0 ||
+        minute > 59) {
+      return null;
+    }
+    return DateTime(date.year, date.month, date.day, hour, minute);
   }
 
   static int _preferredPeriodScore({

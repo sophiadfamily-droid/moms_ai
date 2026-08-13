@@ -1872,6 +1872,14 @@ proposal so the question is not repeated. No school duration, pickup
 responsibility or travel duration is invented. If this optional clarification
 cannot be loaded, the original planning request continues unchanged.
 
+Planning proposal ranking also consumes another dependent person's structured
+schedule as soft context. The period itself remains available to the primary
+person and may be preferred when an appointment fits comfortably inside it.
+Candidates crossing its entry or exit, or beginning immediately at its end,
+receive a soft transition penalty. This does not create a blocker, assert who
+performs transport, or replace the explicit responsibility flow; it only ranks
+otherwise valid options more humanely until evidence is confirmed.
+
 ### Stage 5 — Handle cancellations, reports and exceptions
 
 - distinguish one occurrence from an entire recurrence;
@@ -1902,6 +1910,17 @@ recurring Routine and its other occurrences are never rewritten.
 - include preferences, rhythm, fatigue, responsibilities, importance and flexibility when evidenced;
 - propose the best contextual option instead of the first empty gap;
 - keep explanations concise, truthful and human.
+
+The first Stage 6 slice makes every Smart Planning slot search consume the
+same typed, confirmed consequences already enforced by direct Event conflict
+checks. A dated consequence carried by the primary person is projected as a
+read-only blocking Event; a weekly consequence is projected as a bounded
+blocked period and respects its inclusive validity dates. A consequence
+carried by another person remains contextual and does not block the primary
+person. This closes the path where ZELIA could reject a responsibility-bound
+time during direct creation and later propose that same time during an
+alternative-slot search. It does not yet infer a new responsibility, invent a
+duration, or implement the later contextual ranking signals listed above.
 
 ### Stage 7 — Broaden natural-language understanding
 

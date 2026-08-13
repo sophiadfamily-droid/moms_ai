@@ -191,6 +191,13 @@ final class ConversationLegacyActionExecutor {
     String message,
     int sessionGeneration,
   ) async {
+    final planning = await smartPlanning?.tryStartExplicitSlotRequest(
+      text: message,
+      sessionGeneration: sessionGeneration,
+    );
+    if (planning != null) {
+      return ConversationOutcome(reply: planning.message);
+    }
     final action = NaturalEventRequestService.parseAction(
       message,
       now: _clock(),

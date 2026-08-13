@@ -146,6 +146,72 @@ void main() {
       expect(score, lessThanOrEqualTo(50));
     });
 
+    test(
+      'prefers a comfortable appointment while a dependent is occupied',
+      () {
+        const schoolReasoning = <Map<String, dynamic>>[
+          {
+            'type': 'other_person_schedule',
+            'planningEffect': 'potential_care_transition',
+            'routineKind': 'schoolSchedule',
+            'days': ['Lundi'],
+            'startTime': '13:30',
+            'endTime': '16:30',
+            'transitionBeforeMinutes': 10,
+            'transitionAfterMinutes': 10,
+          },
+        ];
+
+        final comfortable = PlanningScoreService.scoreSlot(
+          start: DateTime(2026, 7, 20, 14),
+          end: DateTime(2026, 7, 20, 15, 30),
+          events: const [],
+          reasoning: schoolReasoning,
+        );
+        final atPickup = PlanningScoreService.scoreSlot(
+          start: DateTime(2026, 7, 20, 16, 30),
+          end: DateTime(2026, 7, 20, 18),
+          events: const [],
+          reasoning: schoolReasoning,
+        );
+        final crossingDropoff = PlanningScoreService.scoreSlot(
+          start: DateTime(2026, 7, 20, 13),
+          end: DateTime(2026, 7, 20, 14, 30),
+          events: const [],
+          reasoning: schoolReasoning,
+        );
+
+        expect(comfortable, greaterThan(atPickup));
+        expect(comfortable, greaterThan(crossingDropoff));
+      },
+    );
+
+    test('a transition for one dependent outweighs another free window', () {
+      final score = PlanningScoreService.scoreSlot(
+        start: DateTime(2026, 7, 20, 16, 30),
+        end: DateTime(2026, 7, 20, 17, 30),
+        events: const [],
+        reasoning: const [
+          {
+            'type': 'other_person_schedule',
+            'planningEffect': 'potential_care_transition',
+            'days': ['Lundi'],
+            'startTime': '13:30',
+            'endTime': '16:30',
+          },
+          {
+            'type': 'other_person_schedule',
+            'planningEffect': 'potential_care_transition',
+            'days': ['Lundi'],
+            'startTime': '09:00',
+            'endTime': '18:00',
+          },
+        ],
+      );
+
+      expect(score, lessThan(50));
+    });
+
     test('returns zero for an invalid candidate range', () {
       final score = PlanningScoreService.scoreSlot(
         start: DateTime(2026, 7, 20, 14),

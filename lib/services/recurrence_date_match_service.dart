@@ -7,6 +7,7 @@ class RecurrenceDateMatchService {
     Map<String, dynamic> item,
     DateTime date,
   ) {
+    if (!_withinValidity(item, date)) return false;
     final recurrenceType =
         item["recurrenceType"]?.toString().trim().toLowerCase() ?? "weekly";
 
@@ -19,6 +20,23 @@ class RecurrenceDateMatchService {
       // Old blocked periods without `days` historically applied every day.
       emptyWeekdaysMatchAll: true,
     );
+  }
+
+  static bool _withinValidity(
+    Map<String, dynamic> item,
+    DateTime date,
+  ) {
+    final day = DateTime(date.year, date.month, date.day);
+    final rawFrom = DateTime.tryParse(item['validFrom']?.toString() ?? '');
+    final rawUntil = DateTime.tryParse(item['validUntil']?.toString() ?? '');
+    final from = rawFrom == null
+        ? null
+        : DateTime(rawFrom.year, rawFrom.month, rawFrom.day);
+    final until = rawUntil == null
+        ? null
+        : DateTime(rawUntil.year, rawUntil.month, rawUntil.day);
+    return (from == null || !day.isBefore(from)) &&
+        (until == null || !day.isAfter(until));
   }
 
   static List<int> _configuredWeekdays(Map<String, dynamic> item) {

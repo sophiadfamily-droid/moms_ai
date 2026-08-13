@@ -207,6 +207,28 @@ void main() {
         coordinator.active!.step, SmartPlanningContinuationStep.optionChoice);
   });
 
+  test('next-week slot request searches Monday through Sunday', () async {
+    final started = await coordinator.resolve(
+      'Propose-moi un créneau pour le dentiste la semaine prochaine',
+      sessionGeneration: 2,
+    );
+
+    expect(started!.reply, contains('durée'));
+    expect(coordinator.active!.task.title, 'Dentiste');
+    expect(coordinator.active!.startDate, DateTime(2026, 7, 27));
+
+    await coordinator.resolve('1 heure', sessionGeneration: 2);
+    await coordinator.resolve('0', sessionGeneration: 2);
+    await coordinator.resolve('0', sessionGeneration: 2);
+
+    expect(gateway.lastSearchStart, DateTime(2026, 7, 27));
+    expect(gateway.lastSearchDays, 7);
+    expect(
+      coordinator.active!.step,
+      SmartPlanningContinuationStep.optionChoice,
+    );
+  });
+
   test('explicit slot request without options asks to search farther',
       () async {
     gateway.options = const [];
@@ -372,6 +394,8 @@ final class _FakeGateway implements SmartPlanningContinuationGateway {
   bool revalidationConflict = false;
   int proposalCalls = 0;
   int proposalCanSucceedAfter = 0;
+  DateTime? lastSearchStart;
+  int? lastSearchDays;
 
   @override
   Future<void> addEvent(EventModel event, {String? mutationId}) async =>
@@ -415,12 +439,15 @@ final class _FakeGateway implements SmartPlanningContinuationGateway {
     required DateTime startDate,
     required int totalMinutes,
     required int searchDays,
-  }) async =>
-      PlanningProposalEngineResult(
-        hasOptions: options.isNotEmpty,
-        options: options,
-        explanation: '',
-      );
+  }) async {
+    lastSearchStart = startDate;
+    lastSearchDays = searchDays;
+    return PlanningProposalEngineResult(
+      hasOptions: options.isNotEmpty,
+      options: options,
+      explanation: '',
+    );
+  }
 
   @override
   Future<List<TaskModel>> relatedTasks(
