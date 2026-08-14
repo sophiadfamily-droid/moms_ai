@@ -227,6 +227,12 @@ reposent sur des règles générales et testées.
 Quand un message contient plusieurs demandes, Zélia les sépare, traite ce qui
 est sûr et demande uniquement l'élément réellement manquant.
 
+Quand une question est déjà en cours, Zélia ne transforme jamais directement
+la réponse en valeur. Elle détermine d'abord si l'utilisatrice répond, corrige
+ce qu'elle vient de dire, refuse une proposition, abandonne la demande ou
+change de sujet. Ce rôle conversationnel est prioritaire sur le champ attendu.
+Une négation ou une intention incertaine ne déclenche aucune action.
+
 ## 7. Import de documents et d'images
 
 Toute image ou tout PDF contenant un planning, un rendez-vous, une activité ou

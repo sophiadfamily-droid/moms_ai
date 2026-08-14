@@ -66,17 +66,45 @@ void main() {
     }
   });
 
+  test('normalizes bounded SMS, dictation and spelling families', () {
+    final cases = <String, String>{
+      'RDV dem1 14 hure': 'rendez vous demain 14 heure',
+      'rendezvous dmain quatorze heurs trente svp':
+          'rendez vous demain quatorze heure trente s il vous plait',
+      'trouvemoi un crenau la sem proch stp':
+          'trouve moi un creneau la semaine prochaine s il te plait',
+      'dentiste ajd aprem': 'dentiste aujourd hui apres midi',
+      'apresdemain 15:30': 'apres demain 15:30',
+    };
+
+    for (final entry in cases.entries) {
+      expect(
+        normalizer.normalize(entry.key).normalizedText,
+        entry.value,
+        reason: entry.key,
+      );
+    }
+  });
+
   test('confirmation classifier accepts simple oral answers only', () {
     const classifier = ConversationAnswerClassifier();
     for (final answer in <String>['ouais', 'yep', "d'accord", 'vas-y']) {
       expect(classifier.classify(answer), ConversationAnswer.positive);
     }
-    for (final answer in <String>['nan', 'laisse tomber']) {
+    for (final answer in <String>[
+      'nan',
+      'annul',
+      'arrête',
+      'laisse tomber',
+      "j'ai changé d'avis",
+    ]) {
       expect(classifier.classify(answer), ConversationAnswer.negative);
     }
     for (final answer in <String>[
       'oui mais demain',
       'non plutôt mardi',
+      "n'annule pas",
+      'annule mon rendez-vous de lundi',
       'peut-être',
     ]) {
       expect(classifier.classify(answer), ConversationAnswer.ambiguous);

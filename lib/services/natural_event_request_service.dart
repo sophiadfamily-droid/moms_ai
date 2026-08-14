@@ -145,7 +145,7 @@ final class NaturalEventRequestService {
 
   static final List<RegExp> _temporalPatterns = [
     RegExp(
-      r'\b(?:(?:[àa]|vers|environ|autour\s+de|aux\s+alentours\s+de)\s*)?\d{1,2}\s*(?:h(?:eur(?:es?)?|rs?)?|:)\s*\d{0,2}\b',
+      r'\b(?:(?:[àa]|vers|environ|autour\s+de|aux\s+alentours\s+de)\s*)?\d{1,2}\s*(?:h(?:eur(?:es?)?|ure(?:s?)?|rs?)?|:)\s*\d{0,2}\b',
       caseSensitive: false,
     ),
     RegExp(
@@ -154,7 +154,7 @@ final class NaturalEventRequestService {
     ),
     RegExp(
       r'\b(?:(?:[àa]|vers|environ|autour\s+de|aux\s+alentours\s+de)\s*)?'
-      '$_spokenHourPattern\\s*(?:h(?:eur(?:es?)?|rs?))'
+      '$_spokenHourPattern\\s*(?:h(?:eur(?:es?)?|ure(?:s?)?|rs?))'
       r'(?:\s+(?:et\s+(?:quart|demi(?:e)?)|trente|\d{1,2}))?\b',
       caseSensitive: false,
     ),
@@ -163,7 +163,8 @@ final class NaturalEventRequestService {
       caseSensitive: false,
     ),
     RegExp(
-      r'\b(?:apr[èe]s[\s-]*demain|aujourd[’\x27\s-]*hui|demain)\b',
+      r'\b(?:apr[èe]s[\s-]*demain|apresdemain|aujourd[’\x27\s-]*hui|'
+      r'auj|ajd|ojd|demain|dem1|dmain|deman|deamin)\b',
       caseSensitive: false,
     ),
     RegExp(

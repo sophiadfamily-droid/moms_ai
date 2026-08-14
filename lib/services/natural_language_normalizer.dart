@@ -10,11 +10,43 @@ final class NaturalLanguageNormalizer {
     'prebdre': 'prendre',
     'ajoutr': 'ajouter',
     'demian': 'demain',
+    'deamin': 'demain',
+    'deman': 'demain',
+    'dem1': 'demain',
+    'dmain': 'demain',
+    'apresdemain': 'apres demain',
     'mtn': 'maintenant',
     'rapel': 'rappel',
     'rdv': 'rendez vous',
+    'rendezvous': 'rendez vous',
+    'rendezvou': 'rendez vous',
+    'rendevous': 'rendez vous',
+    'rendevouz': 'rendez vous',
+    'rendezvouz': 'rendez vous',
+    'crenau': 'creneau',
+    'crenaux': 'creneau',
+    'creneux': 'creneau',
+    'heur': 'heure',
+    'heurs': 'heure',
+    'hure': 'heure',
+    'hures': 'heure',
+    'minut': 'minute',
+    'mins': 'minutes',
     'stp': 's il te plait',
+    'svp': 's il vous plait',
     'aujourdhui': 'aujourd hui',
+    'auj': 'aujourd hui',
+    'ajd': 'aujourd hui',
+    'ojd': 'aujourd hui',
+    'aprem': 'apres midi',
+    'proposemoi': 'propose moi',
+    'trouvemoi': 'trouve moi',
+    'cherchemoi': 'cherche moi',
+    'calemoi': 'cale moi',
+    'ajoutemoi': 'ajoute moi',
+    'rappellemoi': 'rappelle moi',
+    'jveux': 'je veux',
+    'jvoudrais': 'je voudrais',
     'doeuf': 'd oeuf',
     'doeufs': 'd oeufs',
   };
@@ -33,7 +65,8 @@ final class NaturalLanguageNormalizer {
     if (folded != value) codes.add('accents_folded');
     value = folded
         .replaceAll(RegExp(r"['-]"), ' ')
-        .replaceAll(RegExp(r'[.!?;,:()\[\]{}"…]+'), ' ')
+        // A colon is meaningful inside a clock expression such as 14:30.
+        .replaceAll(RegExp(r'[.!?;,()\[\]{}"…]+'), ' ')
         .replaceAll(RegExp(r'[\u{1F300}-\u{1FAFF}]', unicode: true), ' ')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
@@ -60,6 +93,19 @@ final class NaturalLanguageNormalizer {
     }
     value = tokens.join(' ').replaceAll(RegExp(r'\s+'), ' ').trim();
     if (corrected) codes.add('safe_typo_corrected');
+
+    final beforePhrases = value;
+    value = value
+        .replaceAll(
+          RegExp(
+            r'\b(?:la\s+)?(?:sem|semain|semiane|semaine)\s+'
+            r'(?:proch|prochane|prochiane|prochaine)\b',
+          ),
+          'la semaine prochaine',
+        )
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (value != beforePhrases) codes.add('safe_phrase_normalized');
 
     if (RegExp(r'\b(?:je veux|ajoute)\s+plus\b').hasMatch(value)) {
       ambiguities.add('positive_or_quantity_plus');

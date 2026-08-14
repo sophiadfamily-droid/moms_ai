@@ -54,6 +54,32 @@ void main() {
       expect(action['time'], '14:00');
     });
 
+    test('recognizes bounded spelling and dictation variants generally', () {
+      final cases = <String, Map<String, String>>{
+        'rendezvous dentiste dem1 a quatorze hure': {
+          'title': 'Rendez-vous dentiste',
+          'date': '2026-08-12',
+          'time': '14:00',
+        },
+        'Coiffeur dmain 15:30': {
+          'title': 'Rendez-vous Coiffeur',
+          'date': '2026-08-12',
+          'time': '15:30',
+        },
+      };
+
+      for (final entry in cases.entries) {
+        final action = NaturalEventRequestService.parseAction(
+          entry.key,
+          now: now,
+        );
+        expect(action, isNotNull, reason: entry.key);
+        expect(action!['title'], entry.value['title'], reason: entry.key);
+        expect(action['date'], entry.value['date'], reason: entry.key);
+        expect(action['time'], entry.value['time'], reason: entry.key);
+      }
+    });
+
     test('does not intercept questions, mutations, tasks or routines', () {
       final messages = [
         'Quand est mon coiffeur demain à 9h30 ?',

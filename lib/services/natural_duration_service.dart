@@ -1,3 +1,5 @@
+import 'natural_language_normalizer.dart';
+
 enum NaturalDurationExpectedField {
   duration,
   travelGo,
@@ -45,7 +47,9 @@ class NaturalDurationService {
 
     if (_containsAny(lower, [
       "un quart d'heure",
+      "un quart d heure",
       "quart d'heure",
+      "quart d heure",
       "quinze minutes",
     ])) {
       return 15;
@@ -62,9 +66,13 @@ class NaturalDurationService {
 
     if (_containsAny(lower, [
       "trois quarts d'heure",
+      "trois quarts d heure",
       "trois quart d'heure",
+      "trois quart d heure",
       "3 quarts d'heure",
+      "3 quarts d heure",
       "3 quart d'heure",
+      "3 quart d heure",
     ])) {
       return 45;
     }
@@ -160,7 +168,7 @@ class NaturalDurationService {
 
   static int _explicitDurationMinutes(String text) {
     final pattern = RegExp(
-      r"(?:\b(?:pendant|duree|durer|dure|prevoir|bloquer|bloque|pour)\s+(?:de\s+)?|\bd'\s*|\bde\s+)"
+      r"(?:\b(?:pendant|duree|durer|dure|prevoir|bloquer|bloque|pour)\s+(?:de\s+)?|\bd'\s*|\bd\s+|\bde\s+)"
       r'(\d+)\s*(heures|heure|h|minutes|minute|min)\s*'
       r'(\d+)?\s*(min|minute|minutes)?',
     );
@@ -209,7 +217,9 @@ class NaturalDurationService {
       "demi heure",
       "demi-heure",
       "un quart d'heure",
+      "un quart d heure",
       "trois quarts d'heure",
+      "trois quarts d heure",
       "quelques minutes",
     ]);
   }
@@ -225,22 +235,7 @@ class NaturalDurationService {
   }
 
   static String _normalize(String text) {
-    return text
-        .trim()
-        .toLowerCase()
-        .replaceAll("’", "'")
-        .replaceAll("é", "e")
-        .replaceAll("è", "e")
-        .replaceAll("ê", "e")
-        .replaceAll("ë", "e")
-        .replaceAll("à", "a")
-        .replaceAll("â", "a")
-        .replaceAll("ù", "u")
-        .replaceAll("û", "u")
-        .replaceAll("î", "i")
-        .replaceAll("ï", "i")
-        .replaceAll("ô", "o")
-        .replaceAll("ç", "c");
+    return const NaturalLanguageNormalizer().normalize(text).normalizedText;
   }
 
   static String _replaceFrenchNumbers(String text) {

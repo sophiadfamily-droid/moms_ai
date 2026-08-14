@@ -1,5 +1,6 @@
 import 'natural_date_service.dart';
 import 'natural_duration_service.dart';
+import 'natural_language_normalizer.dart';
 
 /// A bounded request to search for the best slot over a civil-date period.
 ///
@@ -213,7 +214,9 @@ final class PlanningSearchRequestService {
   }
 
   static final RegExp _trailingPeriod = RegExp(
-    r'\b(?:(?:la\s+)?semaine\s+prochaine|(?:cette|dans\s+la)\s+semaine|'
+    r'\b(?:(?:la\s+)?(?:semaine|sem|semain|semiane)\s+'
+    r'(?:prochaine|proch|prochane|prochiane)|'
+    r'(?:cette|dans\s+la)\s+semaine|'
     r'dans\s+(?:les\s+)?\d{1,2}\s+prochains?\s+jours?|'
     r'dans\s+les\s+prochains?\s+jours?|'
     r'(?:aujourd[’\x27\s-]*hui|demain|apr[èe]s[\s-]*demain)|'
@@ -222,19 +225,8 @@ final class PlanningSearchRequestService {
     caseSensitive: false,
   );
 
-  static String _normalize(String value) => value
-      .trim()
-      .toLowerCase()
-      .replaceAll('’', "'")
-      .replaceAll(RegExp(r'[-_]'), ' ')
-      .replaceAll(RegExp(r'[éèêë]'), 'e')
-      .replaceAll(RegExp(r'[àâä]'), 'a')
-      .replaceAll(RegExp(r'[îï]'), 'i')
-      .replaceAll(RegExp(r'[ôö]'), 'o')
-      .replaceAll(RegExp(r'[ùûü]'), 'u')
-      .replaceAll('ç', 'c')
-      .replaceAll("'", ' ')
-      .replaceAll(RegExp(r'\s+'), ' ');
+  static String _normalize(String value) =>
+      const NaturalLanguageNormalizer().normalize(value).normalizedText;
 }
 
 final class _PlanningSearchPeriod {

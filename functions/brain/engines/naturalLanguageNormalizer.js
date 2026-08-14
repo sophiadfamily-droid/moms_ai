@@ -4,11 +4,43 @@ const SAFE_TOKEN_REPLACEMENTS = Object.freeze({
   prebdre: "prendre",
   ajoutr: "ajouter",
   demian: "demain",
+  deamin: "demain",
+  deman: "demain",
+  dem1: "demain",
+  dmain: "demain",
+  apresdemain: "apres demain",
   mtn: "maintenant",
   rapel: "rappel",
   rdv: "rendez vous",
+  rendezvous: "rendez vous",
+  rendezvou: "rendez vous",
+  rendevous: "rendez vous",
+  rendevouz: "rendez vous",
+  rendezvouz: "rendez vous",
+  crenau: "creneau",
+  crenaux: "creneau",
+  creneux: "creneau",
+  heur: "heure",
+  heurs: "heure",
+  hure: "heure",
+  hures: "heure",
+  minut: "minute",
+  mins: "minutes",
   stp: "s il te plait",
+  svp: "s il vous plait",
   aujourdhui: "aujourd hui",
+  auj: "aujourd hui",
+  ajd: "aujourd hui",
+  ojd: "aujourd hui",
+  aprem: "apres midi",
+  proposemoi: "propose moi",
+  trouvemoi: "trouve moi",
+  cherchemoi: "cherche moi",
+  calemoi: "cale moi",
+  ajoutemoi: "ajoute moi",
+  rappellemoi: "rappelle moi",
+  jveux: "je veux",
+  jvoudrais: "je voudrais",
   doeuf: "d oeuf",
   doeufs: "d oeufs",
 });
@@ -59,7 +91,8 @@ function normalizeNaturalLanguage(input) {
   if (folded !== value) normalizationCodes.push("accents_folded");
   value = folded
       .replace(/['-]/g, " ")
-      .replace(/[.!?;,:()[\]{}"…]+/g, " ")
+      // A colon is meaningful inside a clock expression such as 14:30.
+      .replace(/[.!?;,()[\]{}"…]+/g, " ")
       .replace(/[\u{1F300}-\u{1FAFF}]/gu, " ")
       .replace(/\s+/g, " ")
       .trim();
@@ -91,6 +124,22 @@ function normalizeNaturalLanguage(input) {
   }
   value = correctedTokens.join(" ");
   if (corrected) normalizationCodes.push("safe_typo_corrected");
+
+  const beforePhrases = value;
+  value = value
+      .replace(
+          new RegExp(
+              String.raw`\b(?:la\s+)?(?:sem|semain|semiane|semaine)\s+` +
+              String.raw`(?:proch|prochane|prochiane|prochaine)\b`,
+              "g",
+          ),
+          "la semaine prochaine",
+      )
+      .replace(/\s+/g, " ")
+      .trim();
+  if (value !== beforePhrases) {
+    normalizationCodes.push("safe_phrase_normalized");
+  }
 
   if (/\b(?:je veux|ajoute)\s+plus\b/.test(value)) {
     preservedAmbiguities.push("positive_or_quantity_plus");

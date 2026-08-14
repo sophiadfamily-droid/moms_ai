@@ -1989,6 +1989,29 @@ unsupported platforms remain on that explicit fallback.
 - generalize every normalization across values instead of patching one observed phrase;
 - maintain zero unauthorized action for negation, contradiction and material ambiguity.
 
+The first Stage 7 slice makes the bounded French normalization contract feed
+the deterministic date, clock, duration, Event and slot-search paths instead
+of leaving several private normalizers in front of them. Flutter and Node now
+share additional safe families for common SMS, dictation and spelling forms
+around commands and temporal grammar, including compact appointment words,
+relative dates, clock units and `semaine prochaine`. Colons remain meaningful
+inside clock values. Original text is still preserved for display and
+provenance; names, free titles and places are never fuzzily rewritten. Critical
+negation and multi-action ambiguity remain fail-closed. This is the first
+bounded language-breadth slice, not an open spell-checker or arbitrary slang
+inference.
+
+The second Stage 7 slice introduces a deterministic turn-role arbiter before
+an active Event draft consumes an answer. It distinguishes a field answer, a
+contextual correction, a rejection, an explicit abandonment and a new targeted
+request. A short cancellation can no longer become an Event title; targeted
+commands return to normal routing; correction markers expose only their useful
+content to the expected field. Negated control commands remain non-executable
+and preserve the draft. The same bounded cancellation understanding feeds the
+shared confirmation classifier. This establishes the ordering rule for future
+domains: understand what the user is doing in the conversation before parsing
+what value the current form expects.
+
 ### Stage 8 — Import structured schedules and documents
 
 - read image and PDF schedules, appointments and time-related documents;

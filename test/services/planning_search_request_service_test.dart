@@ -31,6 +31,19 @@ void main() {
     expect(request.durationMinutes, 60);
   });
 
+  test('understands bounded spelling and SMS variants in a slot search', () {
+    final request = PlanningSearchRequestService.parse(
+      'Trouvemoi un crenau d une heure pour le dentiste la sem proch',
+      now: now,
+    );
+
+    expect(request, isNotNull);
+    expect(request!.title, 'Dentiste');
+    expect(request.startDate, DateTime(2026, 8, 17));
+    expect(request.searchDays, 7);
+    expect(request.durationMinutes, 60);
+  });
+
   test('separates an explicit appointment place from its title', () {
     final request = PlanningSearchRequestService.parse(
       'Propose-moi un créneau d’une heure pour le dentiste '

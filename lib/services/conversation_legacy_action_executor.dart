@@ -7,6 +7,7 @@ import '../models/action_autonomy_policy.dart';
 import 'action_handler_service.dart';
 import 'chat_planning_helper_service.dart';
 import 'conversation_coordinator.dart';
+import 'conversation_turn_intent_service.dart';
 import 'event_confirmation_service.dart';
 import 'event_planning_conflict_service.dart';
 import 'event_service.dart';
@@ -302,7 +303,29 @@ final class ConversationLegacyActionExecutor {
         reply: 'Cette demande de rendez-vous a expiré. Tu peux la reformuler.',
       );
     }
-    if (PlannerEngineService.isNegativeAnswer(answer)) {
+    final turn = const ConversationTurnIntentService().interpret(answer);
+    if (turn.intent == ConversationTurnIntent.ambiguousControl) {
+      return const ConversationOutcome(
+        reply: 'Je garde ce rendez-vous en cours. Tu veux continuer à le '
+            'préparer ?',
+      );
+    }
+    if (turn.intent == ConversationTurnIntent.cancelCurrentFlow) {
+      _pendingEventDraft = null;
+      return const ConversationOutcome(
+        reply: 'D’accord, on laisse tomber ce rendez-vous.',
+      );
+    }
+    if (turn.intent == ConversationTurnIntent.switchToNewRequest) {
+      _pendingEventDraft = null;
+      return null;
+    }
+    final effectiveAnswer =
+        turn.intent == ConversationTurnIntent.reviseCurrentAnswer
+            ? turn.semanticContent
+            : answer;
+    if (turn.intent == ConversationTurnIntent.rejectCurrentProposal ||
+        PlannerEngineService.isNegativeAnswer(effectiveAnswer)) {
       if (pending.expectedField == _PendingEventField.conflictAlternativeTime &&
           pending.suggestedAlternativeStart != null) {
         _pendingEventDraft = pending.copyWith(clearSuggestedAlternative: true);
@@ -312,10 +335,10 @@ final class ConversationLegacyActionExecutor {
       }
       _pendingEventDraft = null;
       return const ConversationOutcome(
-        reply: 'D’accord, je ferme cette préparation de rendez-vous.',
+        reply: 'D’accord, on laisse tomber ce rendez-vous.',
       );
     }
-    if (MemoryEngineService.hasExplicitMemoryRequest(answer)) {
+    if (MemoryEngineService.hasExplicitMemoryRequest(effectiveAnswer)) {
       _pendingEventDraft = null;
       return null;
     }
@@ -323,8 +346,11 @@ final class ConversationLegacyActionExecutor {
     final action = Map<String, dynamic>.from(pending.action);
     switch (pending.expectedField) {
       case _PendingEventField.eventTitle:
-        if (EventTitleService.shouldRouteIndependently(answer)) return null;
-        final title = EventTitleService.titleFromMotif(answer);
+        if (EventTitleService.shouldRouteIndependently(effectiveAnswer)) {
+          _pendingEventDraft = null;
+          return null;
+        }
+        final title = EventTitleService.titleFromMotif(effectiveAnswer);
         if (title == null) {
           return const ConversationOutcome(
             reply: EventTitleService.precisionQuestion,
@@ -334,26 +360,26 @@ final class ConversationLegacyActionExecutor {
         break;
       case _PendingEventField.date:
         final date = NaturalDateService.resolveDateFromText(
-          answer,
+          effectiveAnswer,
           now: _clock(),
         );
         if (date.isEmpty) return null;
         action['date'] = date;
         break;
       case _PendingEventField.time:
-        final time = NaturalTimeService.parseTime(answer);
+        final time = NaturalTimeService.parseTime(effectiveAnswer);
         if (time.isEmpty) return null;
         action['time'] = time;
         break;
       case _PendingEventField.duration:
         final minutes = _contextualDurationMinutes(
-          answer,
+          effectiveAnswer,
           NaturalDurationExpectedField.duration,
         );
         if (minutes <= 0) {
-          final revised = _applyDateOrTimeRevision(action, answer);
+          final revised = _applyDateOrTimeRevision(action, effectiveAnswer);
           if (revised == null) {
-            if (PlannerEngineService.isPositiveAnswer(answer)) {
+            if (PlannerEngineService.isPositiveAnswer(effectiveAnswer)) {
               return const ConversationOutcome(
                 reply: 'Indique-moi la durée, par exemple 1h ou 45 minutes.',
               );
@@ -369,7 +395,7 @@ final class ConversationLegacyActionExecutor {
         break;
       case _PendingEventField.travelGo:
         final minutes = _travelMinutes(
-          answer,
+          effectiveAnswer,
           NaturalDurationExpectedField.travelGo,
         );
         if (minutes == null) return null;
@@ -383,7 +409,7 @@ final class ConversationLegacyActionExecutor {
         );
       case _PendingEventField.travelBack:
         final minutes = _travelMinutes(
-          answer,
+          effectiveAnswer,
           NaturalDurationExpectedField.travelBack,
         );
         if (minutes == null) return null;
@@ -396,7 +422,7 @@ final class ConversationLegacyActionExecutor {
           reply: 'Quelle marge veux-tu prévoir ? Tu peux répondre aucune.',
         );
       case _PendingEventField.margin:
-        final minutes = _marginMinutes(answer);
+        final minutes = _marginMinutes(effectiveAnswer);
         if (minutes == null) return null;
         action['marginMinutes'] = minutes;
         action['usesSeparateTravelTimes'] = true;
@@ -404,16 +430,16 @@ final class ConversationLegacyActionExecutor {
       case _PendingEventField.conflictAlternativeTime:
         final suggested = pending.suggestedAlternativeStart;
         if (suggested != null &&
-            PlannerEngineService.isPositiveAnswer(answer)) {
+            PlannerEngineService.isPositiveAnswer(effectiveAnswer)) {
           action['date'] = EventService.formatIsoDate(suggested);
           action['time'] = EventService.formatIsoTime(suggested);
           break;
         }
         final revisedDate = NaturalDateService.resolveDateFromText(
-          answer,
+          effectiveAnswer,
           now: _clock(),
         );
-        final revisedTime = NaturalTimeService.parseTime(answer);
+        final revisedTime = NaturalTimeService.parseTime(effectiveAnswer);
         if (revisedDate.isNotEmpty) action['date'] = revisedDate;
         if (revisedTime.isEmpty) {
           if (revisedDate.isNotEmpty) {
@@ -422,7 +448,7 @@ final class ConversationLegacyActionExecutor {
               reply: 'À quelle heure précise veux-tu déplacer ce rendez-vous ?',
             );
           }
-          if (_hasAmbiguousConflictAlternative(answer)) {
+          if (_hasAmbiguousConflictAlternative(effectiveAnswer)) {
             return const ConversationOutcome(
               reply: 'À quelle heure précise veux-tu déplacer ce rendez-vous ?',
             );
@@ -432,7 +458,7 @@ final class ConversationLegacyActionExecutor {
         action['time'] = revisedTime;
         break;
       case _PendingEventField.conflictAlternativeDate:
-        final revised = _applyDateOrTimeRevision(action, answer);
+        final revised = _applyDateOrTimeRevision(action, effectiveAnswer);
         final revisedDate = revised?['date']?.toString() ?? '';
         if (revised == null || revisedDate.isEmpty) return null;
         action['date'] = revisedDate;
@@ -451,7 +477,7 @@ final class ConversationLegacyActionExecutor {
         return null;
     }
 
-    final outcome = await execute(action, answer, sessionGeneration);
+    final outcome = await execute(action, effectiveAnswer, sessionGeneration);
     return ConversationOutcome(reply: outcome.message);
   }
 

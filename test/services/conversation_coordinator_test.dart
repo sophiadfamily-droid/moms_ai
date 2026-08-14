@@ -757,6 +757,33 @@ void main() {
       expect(executor.hasPendingEventDraft, isFalse);
     });
 
+    test('slot search routes bounded SMS and spelling variants', () async {
+      final now = DateTime(2026, 8, 13, 14, 48);
+      final smartPlanning = SmartPlanningContinuationCoordinator(
+        gateway: _SlotSearchGateway(),
+        clock: () => now,
+        idGenerator: () => 'slot-search-natural-variants',
+      );
+      final executor = ConversationLegacyActionExecutor(
+        coordinator: _coordinator(),
+        smartPlanning: smartPlanning,
+        clock: () => now,
+      );
+
+      final outcome = await executor.resolveLocalRequest(
+        'Trouvemoi un crenau d une heure pour le dentiste la sem proch',
+        0,
+      );
+
+      expect(outcome?.reply, contains('trajet aller'));
+      expect(outcome?.reply, isNot(contains('Quel jour')));
+      expect(outcome?.reply, isNot(contains('durée du rendez-vous')));
+      expect(smartPlanning.active?.task.title, 'Dentiste');
+      expect(smartPlanning.active?.startDate, DateTime(2026, 8, 17));
+      expect(smartPlanning.active?.actionMinutes, 60);
+      expect(executor.hasPendingEventDraft, isFalse);
+    });
+
     test('generic Event title is completed on the same local draft', () async {
       final coordinator = _coordinator();
       final executor = ConversationLegacyActionExecutor(
@@ -783,20 +810,119 @@ void main() {
       expect(executor.registerClarificationDraft(draft, 0), isTrue);
       expect(executor.pendingEventExpectedFieldCode, 'eventTitle');
 
-      final independent =
-          await executor.resolvePending('ajoute du lait aux courses', 0);
-      expect(independent, isNull);
-      expect(executor.pendingEventDraftId, 'generic-event-draft');
-
       final ambiguous = await executor.resolvePending('un truc', 0);
       expect(ambiguous?.reply, contains('préciser le motif'));
       expect(executor.pendingEventDraftId, 'generic-event-draft');
 
-      final motif = await executor.resolvePending('dentiste', 0);
+      final motif = await executor.resolvePending('en fait dentiste', 0);
       expect(motif?.reply, contains('Combien de temps'));
       expect(executor.pendingEventDraftId, 'generic-event-draft');
       expect(executor.pendingEventLogicalRequestId, 'logical-generic-event');
       expect(executor.pendingEventExpectedFieldCode, 'duration');
+    });
+
+    test('a new explicit request supersedes a pending Event field', () async {
+      final coordinator = _coordinator();
+      final executor = ConversationLegacyActionExecutor(
+        coordinator: coordinator,
+        clock: () => DateTime.utc(2026, 7, 29, 10),
+      );
+      final draft = ConversationClarificationDraft(
+        schemaVersion: 1,
+        draftType: ConversationClarificationDraftType.eventCreation,
+        logicalRequestId: 'logical-event-topic-switch',
+        draftId: 'event-topic-switch',
+        title: 'Rendez-vous',
+        date: '2026-07-30',
+        startTime: '15:00',
+        durationMinutes: null,
+        travelGoMinutes: null,
+        travelBackMinutes: null,
+        marginMinutes: null,
+        expectedField: ConversationEventDraftExpectedField.duration,
+        createdAt: DateTime.utc(2026, 7, 29, 10),
+        expiresAt: DateTime.utc(2026, 7, 29, 10, 15),
+        sessionGeneration: 0,
+      );
+      expect(executor.registerClarificationDraft(draft, 0), isTrue);
+
+      final independent =
+          await executor.resolvePending('ajoute du lait aux courses', 0);
+
+      expect(independent, isNull);
+      expect(executor.hasPendingEventDraft, isFalse);
+    });
+
+    test('semantic cancellation is never consumed as the Event title',
+        () async {
+      for (final answer in <String>[
+        'annul',
+        'stop',
+        'laisse tomber',
+        "j'ai changé d'avis",
+      ]) {
+        final coordinator = _coordinator();
+        final executor = ConversationLegacyActionExecutor(
+          coordinator: coordinator,
+          clock: () => DateTime.utc(2026, 7, 29, 10),
+        );
+        final draft = ConversationClarificationDraft(
+          schemaVersion: 1,
+          draftType: ConversationClarificationDraftType.eventCreation,
+          logicalRequestId: 'logical-cancel-$answer',
+          draftId: 'cancel-$answer',
+          title: 'Rendez-vous',
+          date: '2026-07-30',
+          startTime: '15:00',
+          durationMinutes: null,
+          travelGoMinutes: null,
+          travelBackMinutes: null,
+          marginMinutes: null,
+          expectedField: ConversationEventDraftExpectedField.duration,
+          createdAt: DateTime.utc(2026, 7, 29, 10),
+          expiresAt: DateTime.utc(2026, 7, 29, 10, 15),
+          sessionGeneration: 0,
+        );
+        expect(executor.registerClarificationDraft(draft, 0), isTrue);
+
+        final result = await executor.resolvePending(answer, 0);
+
+        expect(result?.reply, contains('laisse tomber ce rendez-vous'),
+            reason: answer);
+        expect(executor.hasPendingEventDraft, isFalse, reason: answer);
+      }
+    });
+
+    test('negated cancellation stays safe and asks what the user means',
+        () async {
+      final coordinator = _coordinator();
+      final executor = ConversationLegacyActionExecutor(
+        coordinator: coordinator,
+        clock: () => DateTime.utc(2026, 7, 29, 10),
+      );
+      final draft = ConversationClarificationDraft(
+        schemaVersion: 1,
+        draftType: ConversationClarificationDraftType.eventCreation,
+        logicalRequestId: 'logical-negated-cancel',
+        draftId: 'negated-cancel',
+        title: 'Rendez-vous',
+        date: '2026-07-30',
+        startTime: '15:00',
+        durationMinutes: null,
+        travelGoMinutes: null,
+        travelBackMinutes: null,
+        marginMinutes: null,
+        expectedField: ConversationEventDraftExpectedField.duration,
+        createdAt: DateTime.utc(2026, 7, 29, 10),
+        expiresAt: DateTime.utc(2026, 7, 29, 10, 15),
+        sessionGeneration: 0,
+      );
+      expect(executor.registerClarificationDraft(draft, 0), isTrue);
+
+      final result = await executor.resolvePending("n'annule pas", 0);
+
+      expect(result?.reply, contains('Tu veux continuer'));
+      expect(executor.hasPendingEventDraft, isTrue);
     });
 
     test('explicit memory request closes a pending generic Event draft',
@@ -1176,7 +1302,7 @@ void main() {
 
       final cancelled = await executor.resolvePending('non', 0);
 
-      expect(cancelled?.reply, contains('ferme cette préparation'));
+      expect(cancelled?.reply, contains('laisse tomber ce rendez-vous'));
       expect(cancelled?.reply, isNot(contains('respecter la négation')));
       expect(executor.hasPendingEventDraft, isFalse);
     });

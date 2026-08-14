@@ -1,4 +1,5 @@
 import 'natural_language_normalizer.dart';
+import 'conversation_turn_intent_service.dart';
 
 enum ConversationAnswer { positive, negative, ambiguous }
 
@@ -8,6 +9,16 @@ final class ConversationAnswerClassifier {
   ConversationAnswer classify(String input) {
     final normalized = _normalize(input);
     if (normalized.isEmpty) return ConversationAnswer.ambiguous;
+    final turn = const ConversationTurnIntentService().interpret(input);
+    if (turn.intent == ConversationTurnIntent.cancelCurrentFlow ||
+        turn.intent == ConversationTurnIntent.rejectCurrentProposal) {
+      return ConversationAnswer.negative;
+    }
+    if (turn.intent == ConversationTurnIntent.ambiguousControl ||
+        turn.intent == ConversationTurnIntent.reviseCurrentAnswer ||
+        turn.intent == ConversationTurnIntent.switchToNewRequest) {
+      return ConversationAnswer.ambiguous;
+    }
     final positive = _matchesPositive(normalized);
     final negative = _matchesNegative(normalized);
     if (positive == negative) return ConversationAnswer.ambiguous;

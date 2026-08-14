@@ -21,6 +21,36 @@ void main() {
     }
   });
 
+  test('extracts date and time after bounded SMS and dictation variants', () {
+    final cases = <String, (String, String)>{
+      'rdv dem1 14 hure': ('2026-07-30', '14:00'),
+      'rendezvous dmain quatorze heurs trente': ('2026-07-30', '14:30'),
+      'médecin ajd 9h': ('2026-07-29', '09:00'),
+      'dentiste apresdemain quinze heure': ('2026-07-31', '15:00'),
+    };
+
+    for (final entry in cases.entries) {
+      final result = NaturalLanguageUnderstandingService.parse(
+        entry.key,
+        now: reference,
+      );
+      expect(result.dateIso, entry.value.$1, reason: entry.key);
+      expect(result.time, entry.value.$2, reason: entry.key);
+      expect(result.hasDuration, isFalse, reason: entry.key);
+    }
+  });
+
+  test('keeps colon clock forms after shared normalization', () {
+    final result = NaturalLanguageUnderstandingService.parse(
+      'dentiste dem1 15:30',
+      now: reference,
+    );
+
+    expect(result.dateIso, '2026-07-30');
+    expect(result.time, '15:30');
+    expect(result.hasDuration, isFalse);
+  });
+
   test('understanding is fail closed when normalization preserves ambiguity',
       () {
     for (final text in <String>[

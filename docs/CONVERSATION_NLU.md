@@ -26,6 +26,7 @@ revalidation, l’idempotence et la portée de compte existants.
 ```text
 message brut / transcription éditable
   → normalisation sûre (original conservé)
+  → arbitrage du rôle du tour (répondre, corriger, refuser, abandonner, changer de demande)
   → détection locale déterministe
   → clarification bornée si ambiguïté critique
   → backend si aucune route locale certaine
@@ -61,12 +62,28 @@ champ attendu. Une réponse simple (`oui`, `ouais`, `yep`, `d’accord`, `vas-y`
 interprétée selon son contenu. Une question indépendante, par exemple
 `quelles sont mes priorités ?`, n’est pas capturée comme réponse de champ.
 
+Avant toute consommation d'un champ Event, `ConversationTurnIntentService`
+interprète le rôle de la phrase entière. Une formule autonome d'abandon
+(`annul`, `arrête`, `j'ai changé d'avis`) ferme le brouillon sans devenir un
+titre. Une action portant une cible (`annule mon rendez-vous de lundi`) change
+de demande et retourne au routage général. Une reprise (`en fait dentiste`,
+`je voulais dire 15 h`, `change pour vendredi`) fournit seulement son contenu
+utile au champ courant. Une commande de contrôle niée (`n'annule pas`) reste
+non exécutable et ne supprime rien. Cette couche est prioritaire sur le type de
+champ attendu : Zélia comprend d'abord ce que fait l'utilisatrice dans la
+conversation, puis seulement la valeur qu'elle donne.
+
 ## Normalisations autorisées
 
 Sont autorisés : casse, accents, variantes d’apostrophes, tirets, espaces,
 ponctuation légère, emoji léger, contractions françaises bornées, formes SMS
-listées (`rdv`, `mtn`, `stp`), fautes sûres listées (`prebdre`, `ajoutr`,
-`demian`, `rapel`) et quelques heures dictées déterministes.
+listées (`rdv`, `mtn`, `stp`, `svp`, `ajd`), fautes sûres portant sur la
+grammaire de commande ou de temps (`dem1`, `dmain`, `rendezvous`, `crenau`,
+`14 hure`, `sem proch`) et heures dictées déterministes. Les parseurs locaux de
+date, d’heure, de durée et de recherche de créneau consomment cette même
+projection ; la règle est donc générale pour toutes les valeurs reconnues, et
+non liée à une heure ou à un rendez-vous précis. Flutter et Node partagent les
+mêmes cas de contrat.
 
 Ne sont jamais corrigés arbitrairement : noms propres, personnes, lieux,
 titres libres ou mots proches d’une action sensible. La négation n’est jamais
@@ -133,7 +150,9 @@ restent traités par le backend derrière son schéma fermé.
 
 ## Limites V1
 
-V1 n’est pas un correcteur orthographique général. Elle ne fait pas de
+V1 n’est pas un correcteur orthographique général : l'intention portée par la
+phrase et le contexte conversationnel restent prioritaires sur la correction
+de surface. Elle ne fait pas de
 correction phonétique ouverte, de segmentation automatique de plusieurs
 actions, de résolution arbitraire de pronom, de rapprochement flou de nom
 propre ni d’inférence de lieu/personne. Routine conserve une normalisation

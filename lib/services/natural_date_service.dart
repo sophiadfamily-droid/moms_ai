@@ -1,3 +1,5 @@
+import 'natural_language_normalizer.dart';
+
 class NaturalDateService {
   static String resolveDateFromText(
     String text, {
@@ -293,22 +295,7 @@ class NaturalDateService {
   }
 
   static String _normalize(String text) {
-    return text
-        .trim()
-        .toLowerCase()
-        .replaceAll("’", "'")
-        .replaceAll("é", "e")
-        .replaceAll("è", "e")
-        .replaceAll("ê", "e")
-        .replaceAll("ë", "e")
-        .replaceAll("à", "a")
-        .replaceAll("â", "a")
-        .replaceAll("ù", "u")
-        .replaceAll("û", "u")
-        .replaceAll("î", "i")
-        .replaceAll("ï", "i")
-        .replaceAll("ô", "o")
-        .replaceAll("ç", "c");
+    return const NaturalLanguageNormalizer().normalize(text).normalizedText;
   }
 
   static String _replaceFrenchNumbers(String text) {
