@@ -1,4 +1,5 @@
 import 'natural_date_service.dart';
+import 'natural_duration_service.dart';
 
 /// A bounded request to search for the best slot over a civil-date period.
 ///
@@ -9,11 +10,13 @@ final class PlanningSearchRequest {
     required this.title,
     required this.startDate,
     required this.searchDays,
+    required this.durationMinutes,
   });
 
   final String title;
   final DateTime startDate;
   final int searchDays;
+  final int durationMinutes;
 }
 
 final class PlanningSearchRequestService {
@@ -35,6 +38,7 @@ final class PlanningSearchRequestService {
       title: title,
       startDate: period.startDate,
       searchDays: period.searchDays,
+      durationMinutes: NaturalDurationService.parseMinutes(original),
     );
   }
 

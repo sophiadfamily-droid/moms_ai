@@ -207,6 +207,29 @@ void main() {
         coordinator.active!.step, SmartPlanningContinuationStep.optionChoice);
   });
 
+  test('explicit slot request reuses the duration stated initially', () async {
+    final started = await coordinator.resolve(
+      'Propose-moi un créneau d’une heure pour le dentiste demain',
+      sessionGeneration: 2,
+    );
+
+    expect(started!.reply, contains('trajet aller'));
+    expect(started.reply, isNot(contains('durée du rendez-vous')));
+    expect(coordinator.active!.actionMinutes, 60);
+    expect(
+      coordinator.active!.step,
+      SmartPlanningContinuationStep.travelGo,
+    );
+
+    await coordinator.resolve('10', sessionGeneration: 2);
+    await coordinator.resolve('pareil', sessionGeneration: 2);
+
+    expect(
+      coordinator.active!.step,
+      SmartPlanningContinuationStep.optionChoice,
+    );
+  });
+
   test('next-week slot request searches Monday through Sunday', () async {
     final started = await coordinator.resolve(
       'Propose-moi un créneau pour le dentiste la semaine prochaine',

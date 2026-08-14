@@ -34,6 +34,42 @@ void main() {
       expect(window.avoidMorning, false);
     });
 
+    test('uses the morning preference as a soft preferred window', () {
+      final window = PlanningWindowService.build(
+        reasoning: const [
+          {
+            'type': 'schedule_preference',
+            'preferredPeriod': 'morning',
+          },
+        ],
+      );
+
+      expect(window.startHour, 8);
+      expect(window.endHour, 21);
+      expect(window.preferredStartHour, 8);
+      expect(window.preferredEndHour, 12);
+      expect(window.allowNightHours, false);
+      expect(window.avoidMorning, false);
+    });
+
+    test('uses the evening preference without opening night hours', () {
+      final window = PlanningWindowService.build(
+        reasoning: const [
+          {
+            'type': 'schedule_preference',
+            'preferredPeriod': 'evening',
+          },
+        ],
+      );
+
+      expect(window.startHour, 8);
+      expect(window.endHour, 23);
+      expect(window.preferredStartHour, 17);
+      expect(window.preferredEndHour, 22);
+      expect(window.allowNightHours, false);
+      expect(window.avoidMorning, false);
+    });
+
     test('avoids mornings only from an explicit constraint', () {
       final window = PlanningWindowService.build(
         reasoning: const [
@@ -49,6 +85,26 @@ void main() {
       expect(window.preferredStartHour, 13);
       expect(window.preferredEndHour, 20);
       expect(window.allowNightHours, false);
+      expect(window.avoidMorning, true);
+    });
+
+    test('an explicit constraint wins over a conflicting preference', () {
+      final window = PlanningWindowService.build(
+        reasoning: const [
+          {
+            'type': 'schedule_preference',
+            'preferredPeriod': 'morning',
+          },
+          {
+            'type': 'schedule_constraint',
+            'avoidMorning': true,
+          },
+        ],
+      );
+
+      expect(window.startHour, 12);
+      expect(window.preferredStartHour, 13);
+      expect(window.preferredEndHour, 20);
       expect(window.avoidMorning, true);
     });
 

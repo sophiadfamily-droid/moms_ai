@@ -164,6 +164,12 @@ Zélia propose le meilleur créneau connu, pas simplement le premier trou de
 l'agenda. Elle explique brièvement la raison utile : proximité, trajet plus
 court, moment préféré ou absence de conflit.
 
+Une préférence reste liée à son sujet. Préférer faire les courses ou une
+activité le matin ne signifie pas préférer les rendez-vous le matin. Seule une
+préférence de rendez-vous confirmée peut classer les créneaux de rendez-vous ;
+elle reste souple, ne crée jamais un blocage et cède devant une contrainte
+structurée certaine.
+
 La localisation sert au contexte et aux trajets. Elle ne crée pas un historique
 exhaustif des déplacements.
 
@@ -311,6 +317,7 @@ Le cerveau respecte ce contrat si, au minimum :
   sans bloquer toute la plage ;
 - une colocataire occupée ne bloque rien sans conséquence connue ;
 - un rendez-vous proposé tient compte du lieu, des trajets et de la journée ;
+- une durée déjà donnée dans une recherche de créneau n'est jamais redemandée ;
 - une correction remplace l'ancienne information sans doublon ;
 - une annulation ponctuelle ne supprime pas toute une habitude ;
 - un message avec fautes, abréviations ou plusieurs demandes est compris ;

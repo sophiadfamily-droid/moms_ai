@@ -10,8 +10,9 @@ typedef LegacyMemoryLoader = Future<List<Map<String, dynamic>>> Function();
 
 /// Transitional boundary for the legacy planning reasoning contract.
 ///
-/// Free-form memories are excluded by [LifeContextMemorySerializer]. Only
-/// legacy recurring routines remain until their structured Routine migration.
+/// Free-form memories never become arbitrary Planning instructions. Confirmed
+/// appointment preferences may provide a soft ranking signal, while legacy
+/// recurring routines remain until their structured Routine migration.
 final class MemoryPlanningCompatibilityService {
   const MemoryPlanningCompatibilityService._();
 
@@ -60,7 +61,10 @@ final class MemoryPlanningCompatibilityService {
     return MemoryReasoningService.buildReasoningFromLifeContext(
       context,
       referenceDate: referenceDate ?? snapshot.generatedAt,
-      recurringRoutinesOnly: true,
+      recurringRoutinesOnly: false,
+      // Planning already receives structured Human constraints. Do not revive
+      // broad free-text work constraints through this compatibility bridge.
+      includeScheduleConstraints: false,
     );
   }
 }

@@ -483,14 +483,27 @@ final class SmartPlanningContinuationCoordinator {
       planning: SmartPlanningService.formatIsoDate(startDate),
       notes: text,
     );
+    final durationMinutes = request.durationMinutes;
     _active = _new(
       type: SmartPlanningContinuationType.explicitSlotRequest,
-      step: SmartPlanningContinuationStep.duration,
+      step: durationMinutes > 0
+          ? SmartPlanningContinuationStep.travelGo
+          : SmartPlanningContinuationStep.duration,
       task: task,
       originalMessage: text,
       sessionGeneration: sessionGeneration,
       startDate: startDate,
-    );
+    ).copyWith(actionMinutes: durationMinutes);
+    if (durationMinutes > 0) {
+      return const SmartPlanningContinuationResult(
+        status:
+            SmartPlanningContinuationResultStatus.clarificationStillRequired,
+        message: 'D’accord 💕\n\n'
+            'Combien de temps faut-il prévoir pour le trajet aller ?\n'
+            'Tu peux répondre 0 si aucun trajet.',
+        handled: true,
+      );
+    }
     return SmartPlanningContinuationResult(
       status: SmartPlanningContinuationResultStatus.clarificationStillRequired,
       message:

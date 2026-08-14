@@ -25,10 +25,12 @@ class NaturalDurationService {
       return 0;
     }
 
+    final normalizedNumbers = _replaceFrenchNumbers(lower);
+    final embeddedDuration = _explicitDurationMinutes(normalizedNumbers);
     final hasDurationContext = _hasDurationContext(lower);
     final standaloneDuration = _looksLikeStandaloneDuration(lower);
 
-    if (!hasDurationContext && !standaloneDuration) {
+    if (!hasDurationContext && !standaloneDuration && embeddedDuration <= 0) {
       return 0;
     }
 
@@ -92,15 +94,8 @@ class NaturalDurationService {
       return _safeDuration((hours * 60) + minutes);
     }
 
-    final explicitHourMinute = RegExp(
-      r'(pendant|duree|durer|prevoir|bloquer|bloque|pour)\s+(\d+)\s*(h|heure|heures)\s*(\d+)?\s*(min|minute|minutes)?',
-    ).firstMatch(normalized);
-
-    if (explicitHourMinute != null) {
-      final hours = int.tryParse(explicitHourMinute.group(2) ?? "0") ?? 0;
-      final minutes = int.tryParse(explicitHourMinute.group(4) ?? "0") ?? 0;
-      return _safeDuration((hours * 60) + minutes);
-    }
+    final explicitDuration = _explicitDurationMinutes(normalized);
+    if (explicitDuration > 0) return explicitDuration;
 
     final standaloneHourMinute = RegExp(
       r'^(\d+)\s*(h|heure|heures)\s*(\d+)?\s*(min|minute|minutes)?$',
@@ -148,6 +143,7 @@ class NaturalDurationService {
       "duree",
       "durée",
       "durer",
+      "dure",
       "combien de temps",
       "prevoir",
       "prévoir",
@@ -160,6 +156,29 @@ class NaturalDurationService {
       "temps necessaire",
       "temps nécessaire",
     ]);
+  }
+
+  static int _explicitDurationMinutes(String text) {
+    final pattern = RegExp(
+      r"(?:\b(?:pendant|duree|durer|dure|prevoir|bloquer|bloque|pour)\s+(?:de\s+)?|\bd'\s*|\bde\s+)"
+      r'(\d+)\s*(heures|heure|h|minutes|minute|min)\s*'
+      r'(\d+)?\s*(min|minute|minutes)?',
+    );
+
+    for (final match in pattern.allMatches(text)) {
+      final value = int.tryParse(match.group(1) ?? '0') ?? 0;
+      if (value <= 0) continue;
+      final unit = match.group(2) ?? '';
+      if (unit.startsWith('min')) return _safeDuration(value);
+
+      final trailing = text.substring(match.end);
+      if (RegExp(r'^\s*a\s+\d+\s*(?:h|heure|heures)\b').hasMatch(trailing)) {
+        continue;
+      }
+      final minutes = int.tryParse(match.group(3) ?? '0') ?? 0;
+      return _safeDuration((value * 60) + minutes);
+    }
+    return 0;
   }
 
   static bool _looksLikeStandaloneDuration(String text) {

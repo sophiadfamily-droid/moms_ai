@@ -14,6 +14,34 @@ void main() {
     expect(request!.title, 'Dentiste');
     expect(request.startDate, DateTime(2026, 8, 17));
     expect(request.searchDays, 7);
+    expect(request.durationMinutes, 0);
+  });
+
+  test('keeps the duration already stated in the slot-search request', () {
+    final request = PlanningSearchRequestService.parse(
+      'Propose-moi un créneau d’une heure pour le dentiste '
+      'la semaine prochaine',
+      now: now,
+    );
+
+    expect(request, isNotNull);
+    expect(request!.title, 'Dentiste');
+    expect(request.startDate, DateTime(2026, 8, 17));
+    expect(request.searchDays, 7);
+    expect(request.durationMinutes, 60);
+  });
+
+  test('supports minute and mixed-hour durations in a slot search', () {
+    for (final entry in const {
+      'Trouve-moi un créneau de 45 minutes pour le médecin': 45,
+      'Cherche un horaire de 1 h 30 pour le garage': 90,
+      'Trouve un moment pour le vétérinaire qui dure deux heures': 120,
+    }.entries) {
+      final request = PlanningSearchRequestService.parse(entry.key, now: now);
+
+      expect(request, isNotNull, reason: entry.key);
+      expect(request!.durationMinutes, entry.value, reason: entry.key);
+    }
   });
 
   test('searches only through Sunday for this week', () {

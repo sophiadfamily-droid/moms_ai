@@ -9,6 +9,48 @@ void main() {
       expect(NaturalDurationService.parseMinutes('45 min'), 45);
     });
 
+    test('extracts a duration embedded in a slot-search request', () {
+      expect(
+        NaturalDurationService.parseMinutes(
+          'Propose-moi un créneau d’une heure pour le dentiste',
+        ),
+        60,
+      );
+      expect(
+        NaturalDurationService.parseMinutes(
+          'Trouve-moi un créneau de 45 minutes pour le médecin',
+        ),
+        45,
+      );
+      expect(
+        NaturalDurationService.parseMinutes(
+          'Cherche un horaire de 1 h 30 pour le garage',
+        ),
+        90,
+      );
+      expect(
+        NaturalDurationService.parseMinutes(
+          'Trouve un moment pour un rendez-vous qui dure deux heures',
+        ),
+        120,
+      );
+    });
+
+    test('does not confuse a start time or a time range with a duration', () {
+      expect(
+        NaturalDurationService.parseMinutes(
+          'Propose-moi un créneau pour le dentiste à 15 heures',
+        ),
+        0,
+      );
+      expect(
+        NaturalDurationService.parseMinutes(
+          'Trouve-moi un créneau pour le dentiste de 15 heures à 16 heures',
+        ),
+        0,
+      );
+    });
+
     test('uses minutes for a bare number under an explicit field contract', () {
       for (final field in NaturalDurationExpectedField.values) {
         expect(

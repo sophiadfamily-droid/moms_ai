@@ -1067,6 +1067,7 @@ final class MemoryLifeContextAdapter implements LifeContextDomainAdapter {
               structuredReferenceId: memory.structuredReferenceId,
               semanticIdentityKey:
                   memory.semanticIdentityRead.identity?.canonicalKey,
+              semanticValue: memory.semanticValue,
               revision: memory.memoryRevision,
             ),
           )

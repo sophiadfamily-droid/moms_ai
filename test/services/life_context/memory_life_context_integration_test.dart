@@ -28,6 +28,17 @@ void main() {
           'source': 'user',
           'lifecycleState': 'active',
           'confirmationStatus': 'confirmed',
+          'semanticIdentity': const {
+            'schemaVersion': 1,
+            'domain': 'planning',
+            'attribute': 'preferred_appointment_period',
+            'subjectScope': 'authenticated_user',
+            'contextType': 'personal_appointments',
+            'canonicalKey': 'v1|planning|preferred_appointment_period|'
+                'authenticated_user|scope|personal_appointments|none',
+            'eligibleForAutomaticContradiction': true,
+          },
+          'semanticValue': 'morning',
           'unknownLegacyField': 'préservé dans le lecteur legacy',
         },
         {
@@ -68,6 +79,12 @@ void main() {
     expect(section.policyGeneralMode, 'paused');
     expect(section.metadata.syncStatus, 'paused');
     expect(section.metadata.itemCount, 1);
+    expect(
+      section.memories.single.semanticIdentityKey,
+      'v1|planning|preferred_appointment_period|'
+      'authenticated_user|scope|personal_appointments|none',
+    );
+    expect(section.memories.single.semanticValue, 'morning');
   });
 
   test('scope incorrect et corruption restent explicites', () async {

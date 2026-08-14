@@ -8,6 +8,7 @@ import 'package:moms_ai/models/user_profile.dart';
 import 'package:moms_ai/services/life_context/life_context_adapter.dart';
 import 'package:moms_ai/services/life_context/life_context_engine.dart';
 import 'package:moms_ai/services/life_context/life_context_production.dart';
+import 'package:moms_ai/services/memory_planning_compatibility_service.dart';
 import 'package:moms_ai/services/memory_reasoning_service.dart';
 import 'package:moms_ai/services/smart_planning_continuation_coordinator.dart';
 
@@ -121,6 +122,46 @@ void main() {
     );
     expect(conflict?.id, 'event:event:event-1');
     expect(reads, LifeContextDomain.values.length);
+  });
+
+  test('Planning softly ranks a confirmed appointment preference', () async {
+    final production = _production(
+      now: now,
+      memories: const [
+        MemoryContextItem(
+          id: 'appointment-preference',
+          text: 'Mes rendez-vous',
+          semanticType: 'preference',
+          category: 'preference',
+          importance: 5,
+          status: 'active',
+          confirmation: 'confirmed',
+          provenance: 'explicitUserMessage',
+          sensitivity: 'ordinary',
+          isExplicitHealth: false,
+          semanticIdentityKey: 'v1|planning|preferred_appointment_period|'
+              'authenticated_user|scope|personal_appointments|none',
+          semanticValue: 'morning',
+        ),
+      ],
+    );
+    final gateway = ProductionSmartPlanningContinuationGateway(
+      _profile(),
+      loadLifeContext: () async => production,
+    );
+
+    final planning = await gateway.findOptions(
+      startDate: DateTime(2026, 7, 29),
+      totalMinutes: 60,
+      searchDays: 1,
+    );
+
+    expect(planning.hasOptions, isTrue);
+    expect(planning.options, isNotEmpty);
+    expect(
+      planning.options.every((option) => option.start.hour < 12),
+      isTrue,
+    );
   });
 
   test('Planning fails closed when Event is unavailable', () async {
@@ -386,6 +427,85 @@ void main() {
       contains(
         containsPair('preferredPeriod', 'afternoon'),
       ),
+    );
+  });
+
+  test('Memory reasoning ignores a preference unrelated to appointments', () {
+    final section = MemoryDomainSection(
+      metadata: _metadata(
+        LifeContextDomain.memory,
+        now,
+        LifeContextAvailability.available,
+        count: 1,
+      ),
+      policyGeneralMode: 'automatic',
+      policyHealthMode: 'disabled',
+      policyConfigured: true,
+      memories: const [
+        MemoryContextItem(
+          id: 'shopping-preference',
+          text: 'Je préfère faire mes courses le matin',
+          semanticType: 'preference',
+          category: 'preference',
+          importance: 4,
+          status: 'active',
+          confirmation: 'confirmed',
+          provenance: 'explicitUserMessage',
+          sensitivity: 'ordinary',
+          isExplicitHealth: false,
+          semanticIdentityKey:
+              'v1|preference|general_preference|authenticated_user|scope|'
+              'general|none',
+          semanticValue: 'courses le matin',
+        ),
+      ],
+    );
+
+    final context = MemoryReasoningService.contextFromLifeContext(
+      section: section,
+      sourceGeneration: 8,
+      referenceDate: now,
+    );
+    final reasoning = MemoryReasoningService.buildReasoningFromLifeContext(
+      context,
+      referenceDate: now,
+    );
+
+    expect(
+      reasoning.where((item) => item['type'] == 'schedule_preference'),
+      isEmpty,
+    );
+  });
+
+  test('Planning bridge does not revive broad work text as a constraint',
+      () async {
+    final production = _production(
+      now: now,
+      memories: const [
+        MemoryContextItem(
+          id: 'foreign-work-text',
+          text: 'Mon colocataire travaille de nuit',
+          semanticType: 'fact',
+          category: 'fact',
+          importance: 4,
+          status: 'active',
+          confirmation: 'confirmed',
+          provenance: 'explicitUserMessage',
+          sensitivity: 'ordinary',
+          isExplicitHealth: false,
+        ),
+      ],
+    );
+
+    final reasoning =
+        await MemoryPlanningCompatibilityService.buildFromLifeContext(
+      production: production,
+      referenceDate: now,
+    );
+
+    expect(
+      reasoning.where((item) => item['type'] == 'schedule_constraint'),
+      isEmpty,
     );
   });
 

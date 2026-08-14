@@ -21,7 +21,7 @@ class PlanningWindowService {
     required List<Map<String, dynamic>> reasoning,
   }) {
     final avoidMorning = _shouldAvoidMorning(reasoning);
-    final prefersAfternoon = _prefersAfternoon(reasoning);
+    final preferredPeriod = _preferredPeriod(reasoning);
     final scheduleMode = _scheduleMode(reasoning);
 
     if (scheduleMode == "night") {
@@ -46,7 +46,7 @@ class PlanningWindowService {
       );
     }
 
-    if (prefersAfternoon || avoidMorning) {
+    if (avoidMorning || preferredPeriod == "afternoon") {
       return PlanningWindow(
         startHour: avoidMorning ? 12 : 8,
         endHour: 21,
@@ -54,6 +54,28 @@ class PlanningWindowService {
         preferredEndHour: 20,
         allowNightHours: false,
         avoidMorning: avoidMorning,
+      );
+    }
+
+    if (preferredPeriod == "morning") {
+      return const PlanningWindow(
+        startHour: 8,
+        endHour: 21,
+        preferredStartHour: 8,
+        preferredEndHour: 12,
+        allowNightHours: false,
+        avoidMorning: false,
+      );
+    }
+
+    if (preferredPeriod == "evening") {
+      return const PlanningWindow(
+        startHour: 8,
+        endHour: 23,
+        preferredStartHour: 17,
+        preferredEndHour: 22,
+        allowNightHours: false,
+        avoidMorning: false,
       );
     }
 
@@ -76,13 +98,17 @@ class PlanningWindowService {
     });
   }
 
-  static bool _prefersAfternoon(
+  static String? _preferredPeriod(
     List<Map<String, dynamic>> reasoning,
   ) {
-    return reasoning.any((item) {
-      return item["type"] == "schedule_preference" &&
-          item["preferredPeriod"] == "afternoon";
-    });
+    for (final item in reasoning.reversed) {
+      if (item["type"] != "schedule_preference") continue;
+      final period = item["preferredPeriod"]?.toString().trim().toLowerCase();
+      if (const {"morning", "afternoon", "evening"}.contains(period)) {
+        return period;
+      }
+    }
+    return null;
   }
 
   static String _scheduleMode(

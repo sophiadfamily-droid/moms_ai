@@ -589,10 +589,12 @@ excluded in M.1's current Conversation contract. The single
 `MemoryProjectionBackendSerializer` emits only bounded legacy-compatible
 `memories` maps from either the LC.3 section or the already-filtered historical
 selection; it never receives a repository, snapshot, graph, profile, or full
-`MemoryContext`. Planning excludes the Memory domain. A narrowly scoped
-compatibility bridge preserves only historical records explicitly categorized
-as recurring routines until Routine owns their migration; free preferences,
-facts, and constraints never become planning rules.
+`MemoryContext`. Planning excludes arbitrary Memory content. A narrowly scoped
+compatibility bridge preserves historical records explicitly categorized as
+recurring routines until Routine owns their migration. It may also expose the
+closed `preferred_appointment_period` identity as a soft appointment-ranking
+signal. Unrelated preferences, facts and free-text constraints never become
+Planning rules.
 
 The profile exposes only the minimal policy settings. The complete memory
 library, correction/deletion UI, versioned offline synchronization and
@@ -1930,6 +1932,21 @@ person. This closes the path where ZELIA could reject a responsibility-bound
 time during direct creation and later propose that same time during an
 alternative-slot search. It does not yet infer a new responsibility, invent a
 duration, or implement the later contextual ranking signals listed above.
+
+The second Stage 6 slice connects a confirmed, active and semantically closed
+appointment-period preference to slot ranking. Morning, afternoon and evening
+are supported as soft preferences: they improve ordering but never make an
+otherwise valid time unavailable. A structured hard constraint still wins.
+The signal is scoped to appointments, so a preference about shopping,
+activities or another subject cannot leak into appointment planning. Broad
+free-text work constraints remain excluded from this compatibility path.
+
+The slot-search continuation also preserves an explicit duration already
+contained in the initial request. French forms such as `d’une heure`,
+`de 45 minutes`, `de 1 h 30` and `qui dure deux heures` enter the same typed
+planning draft, so ZELIA moves directly to the next genuinely missing field.
+A start time (`à 15 heures`) and a time range (`de 15 heures à 16 heures`)
+remain temporal placement signals and are never converted into a duration.
 
 ### Stage 7 — Broaden natural-language understanding
 

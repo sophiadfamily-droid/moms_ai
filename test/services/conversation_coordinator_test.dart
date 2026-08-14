@@ -727,6 +727,36 @@ void main() {
       expect(smartPlanning.active?.startDate, DateTime(2026, 8, 17));
     });
 
+    test('slot search keeps an initial duration instead of asking again',
+        () async {
+      final now = DateTime(2026, 8, 13, 14, 48);
+      final smartPlanning = SmartPlanningContinuationCoordinator(
+        gateway: _SlotSearchGateway(),
+        clock: () => now,
+        idGenerator: () => 'slot-search-with-duration',
+      );
+      final executor = ConversationLegacyActionExecutor(
+        coordinator: _coordinator(),
+        smartPlanning: smartPlanning,
+        clock: () => now,
+      );
+
+      final outcome = await executor.resolveLocalRequest(
+        'Propose-moi un créneau d’une heure pour le dentiste '
+        'la semaine prochaine',
+        0,
+      );
+
+      expect(outcome?.reply, contains('trajet aller'));
+      expect(outcome?.reply, isNot(contains('durée du rendez-vous')));
+      expect(smartPlanning.active?.actionMinutes, 60);
+      expect(
+        smartPlanning.active?.step,
+        SmartPlanningContinuationStep.travelGo,
+      );
+      expect(executor.hasPendingEventDraft, isFalse);
+    });
+
     test('generic Event title is completed on the same local draft', () async {
       final coordinator = _coordinator();
       final executor = ConversationLegacyActionExecutor(

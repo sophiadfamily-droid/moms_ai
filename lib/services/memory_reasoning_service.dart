@@ -102,6 +102,7 @@ class MemoryReasoningService {
     MemoryReasoningContext context, {
     required DateTime referenceDate,
     bool recurringRoutinesOnly = false,
+    bool includeScheduleConstraints = true,
   }) =>
       _buildReasoningFromMaps(
         context.memories.map(
@@ -110,11 +111,16 @@ class MemoryReasoningService {
             'category': memory.category,
             'importance': memory.importance,
             'semanticType': memory.semanticType,
+            if (memory.semanticIdentityKey != null)
+              'semanticIdentityKey': memory.semanticIdentityKey,
+            if (memory.semanticValue != null)
+              'semanticValue': memory.semanticValue,
             if (memory.createdAt != null)
               'createdAtIso': memory.createdAt!.toIso8601String(),
           },
         ),
         recurringRoutinesOnly: recurringRoutinesOnly,
+        includeScheduleConstraints: includeScheduleConstraints,
       );
 
   static List<Map<String, dynamic>> buildReasoning(
@@ -143,6 +149,7 @@ class MemoryReasoningService {
   static List<Map<String, dynamic>> _buildReasoningFromMaps(
     Iterable<Map<String, dynamic>> memories, {
     bool recurringRoutinesOnly = false,
+    bool includeScheduleConstraints = true,
   }) {
     final reasoning = <Map<String, dynamic>>[];
 
@@ -153,6 +160,7 @@ class MemoryReasoningService {
       if (text.isEmpty) continue;
 
       if (!recurringRoutinesOnly &&
+          includeScheduleConstraints &&
           _containsAny(lower, [
             "je travaille de nuit",
             "travail de nuit",
@@ -166,6 +174,7 @@ class MemoryReasoningService {
           "source": text,
         });
       } else if (!recurringRoutinesOnly &&
+          includeScheduleConstraints &&
           _containsAny(lower, [
             "je travaille le soir",
             "travail le soir",
@@ -182,16 +191,13 @@ class MemoryReasoningService {
         });
       }
 
-      if (!recurringRoutinesOnly &&
-          _containsAny(lower, [
-            "je préfère l'après-midi",
-            "je prefere l'apres-midi",
-            "je préfère les rendez-vous l'après-midi",
-            "je prefere les rendez-vous l'apres-midi",
-          ])) {
+      final preferredAppointmentPeriod = recurringRoutinesOnly
+          ? null
+          : _preferredAppointmentPeriod(memory, lower);
+      if (preferredAppointmentPeriod != null) {
         reasoning.add({
           "type": "schedule_preference",
-          "preferredPeriod": "afternoon",
+          "preferredPeriod": preferredAppointmentPeriod,
           "source": text,
         });
       }
@@ -283,5 +289,64 @@ class MemoryReasoningService {
 
   static bool _containsAny(String text, List<String> values) {
     return values.any(text.contains);
+  }
+
+  static String? _preferredAppointmentPeriod(
+    Map<String, dynamic> memory,
+    String normalizedText,
+  ) {
+    final semanticType =
+        memory['semanticType']?.toString().trim().toLowerCase() ?? '';
+    if (semanticType != LifeMemorySemanticType.preference.name) return null;
+
+    final identityKey =
+        memory['semanticIdentityKey']?.toString().trim().toLowerCase() ?? '';
+    final hasClosedAppointmentIdentity =
+        identityKey.contains('|preferred_appointment_period|');
+    final isExplicitAppointmentPreference = _containsAny(normalizedText, const [
+          'rendez-vous',
+          'rendez vous',
+          'rdv',
+        ]) &&
+        _containsAny(normalizedText, const [
+          'je préfère',
+          'je prefere',
+        ]);
+    if (!hasClosedAppointmentIdentity && !isExplicitAppointmentPreference) {
+      return null;
+    }
+
+    final semanticValue =
+        memory['semanticValue']?.toString().trim().toLowerCase() ?? '';
+    final structured = _canonicalPreferredPeriod(semanticValue);
+    if (structured != null) return structured;
+    return _preferredPeriodFromText(normalizedText);
+  }
+
+  static String? _canonicalPreferredPeriod(String value) {
+    return switch (value) {
+      'morning' || 'matin' => 'morning',
+      'afternoon' || 'après-midi' || 'apres-midi' => 'afternoon',
+      'evening' || 'soir' || 'soirée' || 'soiree' => 'evening',
+      _ => null,
+    };
+  }
+
+  static String? _preferredPeriodFromText(String text) {
+    if (_containsAny(text, const ['matin', 'matinée', 'matinee'])) {
+      return 'morning';
+    }
+    if (_containsAny(text, const [
+      'après-midi',
+      'apres-midi',
+      'après midi',
+      'apres midi',
+    ])) {
+      return 'afternoon';
+    }
+    if (_containsAny(text, const ['soir', 'soirée', 'soiree'])) {
+      return 'evening';
+    }
+    return null;
   }
 }

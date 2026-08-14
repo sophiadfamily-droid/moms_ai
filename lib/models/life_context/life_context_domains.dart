@@ -513,6 +513,7 @@ final class MemoryContextItem {
     this.structuredDomain,
     this.structuredReferenceId,
     this.semanticIdentityKey,
+    this.semanticValue,
     this.revision,
   });
 
@@ -533,6 +534,7 @@ final class MemoryContextItem {
   final String? structuredDomain;
   final String? structuredReferenceId;
   final String? semanticIdentityKey;
+  final String? semanticValue;
   final int? revision;
 
   Map<String, Object?> toJson() => {
@@ -559,6 +561,7 @@ final class MemoryContextItem {
           'structuredReferenceId': structuredReferenceId,
         if (semanticIdentityKey != null)
           'semanticIdentityKey': semanticIdentityKey,
+        if (semanticValue != null) 'semanticValue': semanticValue,
         if (revision != null) 'revision': revision,
       };
 }
