@@ -2687,6 +2687,12 @@ class ConversationCoordinator {
           contextProvider is MemoryConversationAttemptStatusProvider
               ? contextProvider as MemoryConversationAttemptStatusProvider
               : null;
+      if (memoryAttemptStatus?.lastMemoryProposalWasActivated == true) {
+        return ConversationOutcome(
+          reply: memoryCopy.confirmed,
+          request: request,
+        );
+      }
       if (memoryContext != null &&
           (MemoryPipelineService.hasExplicitMemoryRequest(input.message) ||
               (memoryAttemptStatus?.lastMemoryProposalWasAttempted == true &&

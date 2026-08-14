@@ -29,6 +29,7 @@ final class MemoryPolicyProposal {
     required this.sensitivity,
     required this.isExplicitHealth,
     required this.hasExplicitUserEvidence,
+    this.hasExplicitSaveDirective = false,
     this.structuredDomain,
     this.structuredReferenceId,
     this.isDuplicate = false,
@@ -39,6 +40,7 @@ final class MemoryPolicyProposal {
   final MemoryProposalSensitivity sensitivity;
   final bool isExplicitHealth;
   final bool hasExplicitUserEvidence;
+  final bool hasExplicitSaveDirective;
   final String? structuredDomain;
   final String? structuredReferenceId;
   final bool isDuplicate;
@@ -149,6 +151,15 @@ final class MemoryPolicyEngine {
             );
           }
       }
+    }
+    if (input.hasExplicitSaveDirective &&
+        input.hasExplicitUserEvidence &&
+        input.sensitivity == MemoryProposalSensitivity.ordinary &&
+        (proposal.confidence == null || proposal.confidence! >= 0.8)) {
+      return const MemoryPolicyDecision(
+        MemoryPolicyDecisionType.saveAutomatically,
+        'explicit_memory_directive',
+      );
     }
     if (policy.generalMode == MemoryGeneralMode.askEveryTime ||
         input.sensitivity == MemoryProposalSensitivity.sensitive ||

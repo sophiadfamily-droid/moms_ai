@@ -2034,6 +2034,29 @@ field. Short values whose meaning depends on the prompt remain contextual:
 `15 heures` can correct the start time. Conflict-date continuations retain
 their dedicated replacement flow.
 
+The fourth Stage 7 slice adds a bounded compound-request boundary at the
+canonical conversation session. It separates at most three autonomous clauses
+only when every clause after the first contains an explicit, deterministically
+recognized command and the message covers more than one distinct domain, such
+as Event, Task, Shopping or Memory. Same-domain lists remain intact for their
+specialist parser; negation, excessive clauses and materially ambiguous wording remain
+unsplit and fail closed. The original message is shown once. Clauses are then
+processed in order with a distinct logical request identity, and a later clause
+cannot run while an earlier clarification or confirmation is pending. A first
+contextual clause may answer the active workflow before a following explicit
+request is queued. No new domain action, confirmation bypass or persistence
+owner is introduced.
+
+The fifth Stage 7 slice removes redundant memory consent. A deterministically
+recognized explicit directive such as `souviens-toi`, `rappelle-toi`, `retiens`
+or `mémorise` is the user's fresh confirmation for an ordinary, clear and
+attributable memory. The lifecycle still records `proposed -> confirmed ->
+active`, with the user as actor, but the conversation acknowledges the saved
+result directly instead of asking for `oui`. Inferred preferences and routines
+continue to follow `MemoryPolicy`; ambiguity, unresolved third parties,
+contradictions, health consent, sensitivity, duplicates, pause and structured
+domain ownership remain fail-closed.
+
 ### Stage 8 — Import structured schedules and documents
 
 - read image and PDF schedules, appointments and time-related documents;

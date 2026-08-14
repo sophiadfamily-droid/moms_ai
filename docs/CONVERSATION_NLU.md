@@ -26,6 +26,7 @@ revalidation, l’idempotence et la portée de compte existants.
 ```text
 message brut / transcription éditable
   → normalisation sûre (original conservé)
+  → séparation bornée des demandes autonomes explicitement reconnaissables
   → arbitrage du rôle du tour (répondre, corriger, refuser, abandonner, changer de demande)
   → détection locale déterministe
   → clarification bornée si ambiguïté critique
@@ -111,6 +112,24 @@ supprimée. Les sens de `plus` sont conservés comme ambiguïté lorsque le
 contexte ne suffit pas. Une phrase multi-action est clarifiée si elle ne peut
 pas être séparée sans risque.
 
+## Plusieurs demandes dans un message
+
+La session peut séparer au maximum trois demandes autonomes reliées par une
+ponctuation ou un connecteur explicite (`puis`, `ensuite`, `et aussi`, ou `et`
+devant une nouvelle commande). Chaque fragment suivant doit porter sa propre
+commande et être reconnu de manière déterministe comme Event, Task, Shopping
+ou Memory. Une liste d'articles ou plusieurs éléments d'un même domaine restent
+intacts pour leur parseur spécialisé. Une négation, un fragment incertain ou
+un message trop long n'est jamais découpé arbitrairement.
+
+Le message original est affiché une seule fois. Les demandes reconnues sont
+traitées dans leur ordre, avec une identité logique distincte. Si la première
+demande nécessite une précision ou un accord, les suivantes attendent. Une
+réponse contextuelle peut terminer la question en cours avant qu'une nouvelle
+commande explicite du même message soit exécutée. Cette file ne confirme, ne
+persiste et n'exécute rien elle-même : chaque domaine conserve ses validations,
+son récapitulatif, son accord et son écriture idempotente.
+
 ## Entités
 
 Une entité structurée contient son type, son extrait original, sa valeur
@@ -173,9 +192,10 @@ restent traités par le backend derrière son schéma fermé.
 V1 n’est pas un correcteur orthographique général : l'intention portée par la
 phrase et le contexte conversationnel restent prioritaires sur la correction
 de surface. Elle ne fait pas de
-correction phonétique ouverte, de segmentation automatique de plusieurs
-actions, de résolution arbitraire de pronom, de rapprochement flou de nom
-propre ni d’inférence de lieu/personne. Routine conserve une normalisation
+correction phonétique ouverte, de segmentation libre ou probabiliste de
+plusieurs actions, de résolution arbitraire de pronom, de rapprochement flou de
+nom propre ni d’inférence de lieu/personne. La séparation multi-demande reste
+bornée aux commandes explicites et aux domaines déterministes. Routine conserve une normalisation
 horaire spécialisée parce que sa ponctuation et ses plages font partie de son
 contrat. Les expressions contextuelles telles qu’`après l’école` ne doivent
 pas inventer une disponibilité universelle ; le moteur métier doit demander

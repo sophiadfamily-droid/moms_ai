@@ -58,7 +58,10 @@ General modes:
 
 - `automatic`: only an explicit, ordinary, sufficiently trusted, eligible,
   non-duplicate proposal outside a structured domain may be saved;
-- `askEveryTime`: an eligible proposal stays proposed until confirmed;
+- `askEveryTime`: an inferred eligible proposal stays proposed until confirmed.
+  A clear user directive such as `souviens-toi`, `rappelle-toi`, `retiens` or
+  `mémorise` is itself the fresh confirmation for an ordinary, attributable,
+  unambiguous fact and does not trigger a redundant second question;
 - `paused`: no new proposal or write is created. Existing records remain
   readable and untouched.
 
@@ -88,6 +91,12 @@ declarative, present or durable statement with an attributable subject and no
 ambiguity, hypothesis, conditional, quotation, unresolved third party,
 question, past-only state, or temporary-only state may enter the policy's
 explicit-evidence path. Assistant candidates always remain proposed.
+
+An explicit save directive is recorded separately from evidence. It may
+activate the eligible proposal immediately because the directive already
+expresses the user's decision. It never bypasses pause, health consent,
+high-sensitivity rejection, structured-domain ownership, duplicate handling,
+or contradiction/replacement safeguards.
 
 Qualification is fail-closed. The deterministic order is: quotation, unresolved
 third party or question; bounded correction and its current clause; hypothesis,
@@ -299,9 +308,13 @@ bounded compatibility field and does not duplicate the Memory repository.
 
 V1-A.1 adds an independent account-scoped autonomy guard. It never replaces
 `MemoryPolicy`: the effective result is the most restrictive of autonomy mode,
-memory mode, health consent and the existing lifecycle confirmation. Thus
-`normal + askEveryTime` still confirms, `suggestions + automatic` confirms,
-and `paused + automatic` blocks the mutation without deleting its proposal.
+memory mode, health consent and the existing lifecycle confirmation. An
+inferred candidate in `normal + askEveryTime` still requires confirmation,
+`suggestions + automatic` confirms, and `paused + automatic` blocks the
+mutation without deleting its proposal. A clear explicit save directive is
+already the user's fresh confirmation for an eligible ordinary memory; the
+conversation therefore activates it and acknowledges the result without
+asking `oui` a second time.
 
 `ConversationCoordinator` is the application boundary for a memory proposal.
 It keeps a typed pending action containing only the proposal identifier, the

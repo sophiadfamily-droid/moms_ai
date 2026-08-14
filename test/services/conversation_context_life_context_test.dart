@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:moms_ai/models/life_context/memory_context.dart';
 import 'package:moms_ai/models/user_profile.dart';
 import 'package:moms_ai/models/memory_lifecycle.dart';
+import 'package:moms_ai/models/memory_lifecycle_state.dart';
 import 'package:moms_ai/models/memory_policy.dart';
 import 'package:moms_ai/models/memory_evidence.dart';
 import 'package:moms_ai/models/memory_semantic_identity.dart';
@@ -122,28 +123,92 @@ void main() {
     expect(repository.proposals, isEmpty);
   });
 
-  test('automatic garde une commande mémoire explicite dans la conversation',
+  for (final command in const [
+    'Souviens-toi que je préfère les rendez-vous le matin',
+    'Rappelle-toi que je préfère les rendez-vous le matin',
+    'Retiens que je préfère les rendez-vous le matin',
+    'Mémorise que je préfère les rendez-vous le matin',
+    'Garde ça en mémoire : je préfère les rendez-vous le matin',
+    'Note bien que je préfère les rendez-vous le matin',
+    "N'oublie pas que je préfère les rendez-vous le matin",
+    'À partir de maintenant, je préfère les rendez-vous le matin',
+    'Dorénavant, je préfère les rendez-vous le matin',
+  ]) {
+    test('une commande mémoire explicite est son propre accord : $command',
+        () async {
+      final repository = _FakeLifecycleRepository();
+      final provider = DefaultConversationContextProvider(
+        memoryLifecycleRepository: repository,
+        loadMemoryPolicy: () async => _policyWith(
+          MemoryGeneralMode.askEveryTime,
+        ),
+      );
+
+      final request = await provider.proposeUserMemory(command);
+
+      expect(request, isNull);
+      expect(provider.lastMemoryProposalWasActivated, isTrue);
+      expect(repository.proposals, hasLength(1));
+      expect(
+        repository.applied.map((mutation) => mutation.newState.name),
+        ['confirmed', 'active'],
+      );
+      expect(
+        repository.applied.every(
+          (mutation) => mutation.record.actor == MemoryLifecycleActor.user,
+        ),
+        isTrue,
+      );
+      expect(
+        repository.proposals.single.evidenceClassification,
+        anyOf(
+          MemoryEvidenceClassification.directExplicit,
+          MemoryEvidenceClassification.correction,
+        ),
+      );
+      expect(repository.proposals.single.semanticIdentity?.domain,
+          MemorySemanticDomain.planning);
+      expect(repository.proposals.single.semanticIdentity?.attribute,
+          MemorySemanticAttribute.preferredAppointmentPeriod);
+      expect(repository.proposals.single.semanticValue, 'morning');
+    });
+  }
+
+  test('une préférence sans commande explicite demande encore un accord',
       () async {
     final repository = _FakeLifecycleRepository();
     final provider = DefaultConversationContextProvider(
       memoryLifecycleRepository: repository,
       loadMemoryPolicy: () async => _policyWith(
-        MemoryGeneralMode.automatic,
+        MemoryGeneralMode.askEveryTime,
       ),
     );
+
     final request = await provider.proposeUserMemory(
-      'Souviens-toi que je préfère les rendez-vous le matin',
+      'Je préfère les rendez-vous le matin',
     );
+
     expect(request, isNotNull);
-    expect(repository.proposals, hasLength(1));
+    expect(provider.lastMemoryProposalWasActivated, isFalse);
     expect(repository.applied, isEmpty);
-    expect(repository.proposals.single.evidenceClassification,
-        MemoryEvidenceClassification.directExplicit);
-    expect(repository.proposals.single.semanticIdentity?.domain,
-        MemorySemanticDomain.planning);
-    expect(repository.proposals.single.semanticIdentity?.attribute,
-        MemorySemanticAttribute.preferredAppointmentPeriod);
-    expect(repository.proposals.single.semanticValue, 'morning');
+  });
+
+  test('une commande explicite ambiguë demande encore un accord', () async {
+    final repository = _FakeLifecycleRepository();
+    final provider = DefaultConversationContextProvider(
+      memoryLifecycleRepository: repository,
+      loadMemoryPolicy: () async => _policyWith(
+        MemoryGeneralMode.askEveryTime,
+      ),
+    );
+
+    final request = await provider.proposeUserMemory(
+      'Souviens-toi que je crois que je préfère les rendez-vous le matin',
+    );
+
+    expect(request, isNotNull);
+    expect(provider.lastMemoryProposalWasActivated, isFalse);
+    expect(repository.applied, isEmpty);
   });
 
   test('automatic active une préférence ordinaire sans commande mémoire',
@@ -337,7 +402,8 @@ void main() {
     expect(repository.applied, isEmpty);
   });
 
-  test('une entité structurée résolue peut être attribuée', () async {
+  test('une commande explicite sur une personne résolue est enregistrée',
+      () async {
     final repository = _FakeLifecycleRepository();
     final provider = DefaultConversationContextProvider(
       memoryLifecycleRepository: repository,
@@ -351,11 +417,21 @@ void main() {
       resolvedSubjectEntityId: 'person-42',
     );
 
-    expect(request, isNotNull);
+    expect(request, isNull);
+    expect(provider.lastMemoryProposalWasActivated, isTrue);
     expect(repository.proposals.single.subjectEntityId, 'person-42');
     expect(repository.proposals.single.evidenceSubjectType,
         MemoryEvidenceSubjectType.structuredEntity);
-    expect(repository.applied, isEmpty);
+    expect(
+      repository.applied.map((mutation) => mutation.newState),
+      [MemoryLifecycleState.confirmed, MemoryLifecycleState.active],
+    );
+    expect(
+      repository.applied.every(
+        (mutation) => mutation.record.actor == MemoryLifecycleActor.user,
+      ),
+      isTrue,
+    );
   });
 
   test('un foyer explicite conserve son scope sans foyer par défaut', () async {

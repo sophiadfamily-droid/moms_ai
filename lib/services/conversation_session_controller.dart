@@ -18,6 +18,7 @@ import 'action_autonomy_policy_service.dart';
 import 'chat_backend_client.dart';
 import 'chat_backend_client_factory.dart';
 import 'chat_service.dart';
+import 'conversation_compound_request_service.dart';
 import 'conversation_context_service.dart';
 import 'conversation_coordinator.dart';
 import 'conversation_grounding_policy.dart';
@@ -108,6 +109,8 @@ final class ConversationSessionController extends ChangeNotifier {
     ConversationSessionActionExecutor? executeAction,
     ConversationPendingResolver? resolvePending,
     ConversationLocalRequestResolver? resolveLocalRequest,
+    ConversationCompoundRequestService compoundRequestService =
+        const ConversationCompoundRequestService(),
     ConversationClarificationDraftPreparer? prepareClarificationDraft,
     ConversationSessionInvalidator? invalidateSession,
     ConversationApplicationPendingPhase? applicationPendingPhase,
@@ -130,6 +133,7 @@ final class ConversationSessionController extends ChangeNotifier {
             ConversationLegacyActionExecutor(coordinator: coordinator).execute,
         _resolvePending = resolvePending,
         _resolveLocalRequest = resolveLocalRequest,
+        _compoundRequestService = compoundRequestService,
         _prepareClarificationDraft = prepareClarificationDraft,
         _invalidateSession = invalidateSession,
         _applicationPendingPhase = applicationPendingPhase,
@@ -344,6 +348,7 @@ final class ConversationSessionController extends ChangeNotifier {
   final ConversationSessionActionExecutor _executeAction;
   final ConversationPendingResolver? _resolvePending;
   final ConversationLocalRequestResolver? _resolveLocalRequest;
+  final ConversationCompoundRequestService _compoundRequestService;
   final ConversationClarificationDraftPreparer? _prepareClarificationDraft;
   final ConversationSessionInvalidator? _invalidateSession;
   final ConversationApplicationPendingPhase? _applicationPendingPhase;
@@ -376,6 +381,7 @@ final class ConversationSessionController extends ChangeNotifier {
       const ConversationClarificationLedger();
   bool _referenceHistoryLoaded = false;
   String? _deferredRequestAfterResponsibilityClarification;
+  final List<String> _deferredCompoundRequests = [];
 
   Future<void> dispatch(ConversationUiIntent intent) => switch (intent) {
         SubmitConversationText(:final text) => submitText(text),
@@ -460,23 +466,34 @@ final class ConversationSessionController extends ChangeNotifier {
   Future<void> submitText(String rawText) async {
     final text = rawText.trim();
     if (_disposed || text.isEmpty || _state.isBusy) return;
-    _lastSubmittedText = text;
-    _lastCorrelationId = AppDiagnostics.createCorrelationId();
-    _retryCount = 0;
-    final submittedMessageId =
-        _appendMessage(ConversationMessageRole.user, text);
     final continuesLogicalRequest =
         _state.phase == ConversationSessionPhase.awaitingClarification ||
             _state.phase == ConversationSessionPhase.awaitingConfirmation ||
             _coordinator.state.pendingAction != null ||
             _applicationPendingPhase?.call() != null;
+    final compound = _deferredCompoundRequests.isEmpty
+        ? _compoundRequestService.split(
+            text,
+            referenceDate: _clock(),
+            allowContextualLeadingPart: continuesLogicalRequest,
+          )
+        : null;
+    final requestText = compound?.parts.first ?? text;
+    if (compound != null) {
+      _deferredCompoundRequests.addAll(compound.parts.skip(1));
+    }
+    _lastSubmittedText = requestText;
+    _lastCorrelationId = AppDiagnostics.createCorrelationId();
+    _retryCount = 0;
+    final submittedMessageId =
+        _appendMessage(ConversationMessageRole.user, text);
     if (!continuesLogicalRequest || _lastLogicalRequestId == null) {
       _lastLogicalRequestId = submittedMessageId;
       _clarificationLedger = ConversationClarificationLedger(
         sessionGeneration: _state.sessionGeneration,
       );
     }
-    await _runRequest(text, addUserMessage: false);
+    await _runRequest(requestText, addUserMessage: false);
   }
 
   Future<void> retryLastRequest() async {
@@ -641,7 +658,9 @@ final class ConversationSessionController extends ChangeNotifier {
           _state.phase == ConversationSessionPhase.ready) {
         _deferredRequestAfterResponsibilityClarification = null;
         await _runRequest(deferred, addUserMessage: false);
+        return;
       }
+      await _runNextCompoundRequestIfReady();
     } catch (error) {
       if (!_isCurrent(requestId, generation)) return;
       final descriptor = error is ConversationTaskPersistenceException
@@ -708,6 +727,7 @@ final class ConversationSessionController extends ChangeNotifier {
   Future<void> cancelCurrentRequest() async {
     if (_disposed || !_state.isBusy) return;
     _deferredRequestAfterResponsibilityClarification = null;
+    _deferredCompoundRequests.clear();
     _coordinator.invalidateSession();
     _setState(
       _state.copyWith(
@@ -757,6 +777,27 @@ final class ConversationSessionController extends ChangeNotifier {
     _accountScopeId = null;
     _referenceHistoryLoaded = false;
     _deferredRequestAfterResponsibilityClarification = null;
+    _deferredCompoundRequests.clear();
+  }
+
+  Future<void> _runNextCompoundRequestIfReady() async {
+    if (_disposed ||
+        _state.phase != ConversationSessionPhase.ready ||
+        _coordinator.state.pendingAction != null ||
+        _applicationPendingPhase?.call() != null ||
+        _deferredRequestAfterResponsibilityClarification != null ||
+        _deferredCompoundRequests.isEmpty) {
+      return;
+    }
+    final next = _deferredCompoundRequests.removeAt(0);
+    _lastSubmittedText = next;
+    _lastLogicalRequestId = _idGenerator();
+    _lastCorrelationId = AppDiagnostics.createCorrelationId();
+    _retryCount = 0;
+    _clarificationLedger = ConversationClarificationLedger(
+      sessionGeneration: _state.sessionGeneration,
+    );
+    await _runRequest(next, addUserMessage: false);
   }
 
   Future<void> _loadReferenceHistory() async {
@@ -964,6 +1005,7 @@ final class ConversationSessionController extends ChangeNotifier {
     if (_disposed) return;
     final interactionOwnerId = _interactionOwnerId;
     _deferredRequestAfterResponsibilityClarification = null;
+    _deferredCompoundRequests.clear();
     _coordinator.invalidateSession();
     _disposed = true;
     _state = _state.copyWith(

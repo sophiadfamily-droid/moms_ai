@@ -303,6 +303,34 @@ void main() {
       expect(coordinator.state.pendingAction, isNull);
     });
 
+    test('an explicitly activated memory reports success without confirmation',
+        () async {
+      final repository = _FakeRepository(_memory());
+      final backend = _FakeBackend();
+      final context = _MemoryContext(
+        repository,
+        returnsProposal: false,
+        proposalWasAttempted: true,
+        proposalWasActivated: true,
+      );
+      final coordinator = ConversationCoordinator(
+        backend: backend,
+        contextProvider: context,
+      );
+
+      final outcome = await coordinator.send(
+        input: ConversationInput(
+          message: 'Retiens que je préfère les rendez-vous le matin',
+          profile: _profile(),
+        ),
+        executeAction: (_) async => const ConversationActionOutcome(),
+      );
+
+      expect(outcome?.reply, contains('mémorisée'));
+      expect(backend.calls, 0);
+      expect(coordinator.state.pendingAction, isNull);
+    });
+
     test('a detected durable fact storage failure never reaches the backend',
         () async {
       final repository = _FakeRepository(_memory());
@@ -762,16 +790,21 @@ final class _MemoryContext extends _FakeContext
     this.memoryLifecycleRepository, {
     this.returnsProposal = true,
     this.proposalWasAttempted = false,
+    this.proposalWasActivated = false,
   });
 
   final bool returnsProposal;
   final bool proposalWasAttempted;
+  final bool proposalWasActivated;
 
   @override
   bool get lastMemoryProposalWasAttempted => proposalWasAttempted;
 
   @override
   bool get lastMemoryProposalWasPersistedOrPending => returnsProposal;
+
+  @override
+  bool get lastMemoryProposalWasActivated => proposalWasActivated;
 
   @override
   Future<MemoryConfirmationRequest?> proposeResponseMemory(dynamic memory) {

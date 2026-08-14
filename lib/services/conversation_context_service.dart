@@ -67,6 +67,7 @@ abstract interface class MemoryConversationContextProvider {
 abstract interface class MemoryConversationAttemptStatusProvider {
   bool get lastMemoryProposalWasAttempted;
   bool get lastMemoryProposalWasPersistedOrPending;
+  bool get lastMemoryProposalWasActivated;
 }
 
 abstract interface class PriorityConversationContextProvider {
@@ -112,6 +113,7 @@ class DefaultConversationContextProvider
 
   bool _lastMemoryProposalWasAttempted = false;
   bool _lastMemoryProposalWasPersistedOrPending = false;
+  bool _lastMemoryProposalWasActivated = false;
 
   @override
   bool get lastMemoryProposalWasAttempted => _lastMemoryProposalWasAttempted;
@@ -119,6 +121,9 @@ class DefaultConversationContextProvider
   @override
   bool get lastMemoryProposalWasPersistedOrPending =>
       _lastMemoryProposalWasPersistedOrPending;
+
+  @override
+  bool get lastMemoryProposalWasActivated => _lastMemoryProposalWasActivated;
 
   @override
   Future<ChatBackendRequest> buildRequest({
@@ -248,6 +253,7 @@ class DefaultConversationContextProvider
     _lastMemoryProposalWasAttempted =
         MemoryPipelineService.shouldProcessMemory(message);
     _lastMemoryProposalWasPersistedOrPending = false;
+    _lastMemoryProposalWasActivated = false;
     if (!_lastMemoryProposalWasAttempted) return null;
     final evidenceQualification = _memoryEvidenceClassifier.classify(
       message,
@@ -390,6 +396,7 @@ class DefaultConversationContextProvider
           hasExplicitUserEvidence:
               evidenceQualification.canConfirmImmediately &&
                   evidenceQualification.hasAttributableSubject,
+          hasExplicitSaveDirective: explicitMemoryRequest,
           isDuplicate: existing.any(
             (item) =>
                 item.semanticType == effectiveProposal.semanticType &&
@@ -461,10 +468,19 @@ class DefaultConversationContextProvider
       await repository.createProposal(effectiveProposal, proposalMutation);
       _lastMemoryProposalWasPersistedOrPending = true;
       if (policyDecision.type == MemoryPolicyDecisionType.saveAutomatically) {
-        if (explicitMemoryRequest) {
-          return decision.confirmationRequest;
-        }
-        await _activateAutomatically(repository, effectiveProposal, proposedAt);
+        final activated = await _activateAutomatically(
+          repository,
+          effectiveProposal,
+          proposedAt,
+          actor: explicitMemoryRequest
+              ? MemoryLifecycleActor.user
+              : MemoryLifecycleActor.system,
+          source: explicitMemoryRequest
+              ? 'explicit_user_memory_directive'
+              : 'memory_policy_v1',
+        );
+        if (!activated) return decision.confirmationRequest;
+        _lastMemoryProposalWasActivated = true;
         return null;
       }
       return decision.confirmationRequest;
@@ -489,37 +505,40 @@ class DefaultConversationContextProvider
     return service.load();
   }
 
-  Future<void> _activateAutomatically(
+  Future<bool> _activateAutomatically(
     MemoryLifecycleRepository repository,
     MemoryProposal proposal,
-    DateTime referenceDate,
-  ) async {
+    DateTime referenceDate, {
+    required MemoryLifecycleActor actor,
+    required String source,
+  }) async {
     var fact = _factFromProposal(proposal, MemoryLifecycleState.proposed);
     final confirmed = _memoryLifecycleEngine.evaluate(
       MemoryLifecycleCommand(
         action: MemoryLifecycleAction.confirm,
         referenceDate: referenceDate,
-        actor: MemoryLifecycleActor.system,
-        source: 'memory_policy_v1',
+        actor: actor,
+        source: source,
         target: fact,
       ),
     );
-    if (!confirmed.hasMutations) return;
+    if (!confirmed.hasMutations) return false;
     fact = _factFromProposal(proposal, MemoryLifecycleState.confirmed);
     final active = _memoryLifecycleEngine.evaluate(
       MemoryLifecycleCommand(
         action: MemoryLifecycleAction.activate,
         referenceDate: referenceDate,
-        actor: MemoryLifecycleActor.system,
-        source: 'memory_policy_v1',
+        actor: actor,
+        source: source,
         target: fact,
       ),
     );
-    if (!active.hasMutations) return;
+    if (!active.hasMutations) return false;
     await repository.applyMutations([
       ...confirmed.mutations,
       ...active.mutations,
     ]);
+    return true;
   }
 
   LifeMemoryFact _factFromProposal(

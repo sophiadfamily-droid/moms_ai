@@ -129,6 +129,16 @@ void main() {
       );
     });
 
+    test('une directive explicite vaut accord en mode askEveryTime', () {
+      final decision = engine.evaluate(
+        policy: _policy(now),
+        input: _input(explicitSaveDirective: true),
+      );
+
+      expect(decision.type, MemoryPolicyDecisionType.saveAutomatically);
+      expect(decision.code, 'explicit_memory_directive');
+    });
+
     test('santé reste séparée du mode automatique général', () {
       final automatic = _policy(
         now,
@@ -151,7 +161,10 @@ void main() {
                 general: MemoryGeneralMode.automatic,
                 health: MemoryHealthMode.askEveryTime,
               ),
-              input: _input(health: true),
+              input: _input(
+                health: true,
+                explicitSaveDirective: true,
+              ),
             )
             .type,
         MemoryPolicyDecisionType.requireConfirmation,
@@ -234,6 +247,7 @@ MemoryPolicyProposal _input({
   bool health = false,
   bool explicitEvidence = true,
   bool duplicate = false,
+  bool explicitSaveDirective = false,
   bool contradiction = false,
   String? structuredDomain,
   MemoryProposalSensitivity sensitivity = MemoryProposalSensitivity.ordinary,
@@ -256,6 +270,7 @@ MemoryPolicyProposal _input({
       sensitivity: sensitivity,
       isExplicitHealth: health,
       hasExplicitUserEvidence: explicitEvidence,
+      hasExplicitSaveDirective: explicitSaveDirective,
       isDuplicate: duplicate,
       contradictsConfirmedFact: contradiction,
       structuredDomain: structuredDomain,

@@ -58,6 +58,132 @@ void main() {
       harness.dispose();
     });
 
+    test('runs two independent requests in order from one visible message',
+        () async {
+      final handled = <String>[];
+      final harness = _Harness(
+        resolveLocalRequest: (message, _) async {
+          handled.add(message);
+          return ConversationOutcome(reply: 'Traité : $message');
+        },
+      );
+
+      await harness.controller.submitText(
+        'Dentiste demain à 14h puis ajoute du lait aux courses',
+      );
+
+      expect(
+        handled,
+        ['Dentiste demain à 14h', 'ajoute du lait aux courses'],
+      );
+      expect(harness.backend.calls, 0);
+      expect(
+        harness.controller.state.messages
+            .where((message) => message.role == ConversationMessageRole.user)
+            .map((message) => message.text),
+        ['Dentiste demain à 14h puis ajoute du lait aux courses'],
+      );
+      expect(
+        harness.controller.state.messages
+            .where(
+              (message) => message.role == ConversationMessageRole.assistant,
+            )
+            .map((message) => message.text),
+        [
+          'Traité : Dentiste demain à 14h',
+          'Traité : ajoute du lait aux courses',
+        ],
+      );
+      expect(harness.controller.state.phase, ConversationSessionPhase.ready);
+      harness.dispose();
+    });
+
+    test('waits for the first confirmation before running the next request',
+        () async {
+      var awaitingConfirmation = false;
+      final locallyHandled = <String>[];
+      final pendingAnswers = <String>[];
+      final harness = _Harness(
+        applicationPendingPhase: () => awaitingConfirmation
+            ? ConversationSessionPhase.awaitingConfirmation
+            : null,
+        resolvePending: (answer, _) async {
+          if (!awaitingConfirmation) return null;
+          pendingAnswers.add(answer);
+          awaitingConfirmation = false;
+          return const ConversationOutcome(reply: 'Rendez-vous confirmé.');
+        },
+        resolveLocalRequest: (message, _) async {
+          locallyHandled.add(message);
+          if (message.startsWith('Dentiste')) {
+            awaitingConfirmation = true;
+            return const ConversationOutcome(
+              reply: 'Veux-tu ajouter ce rendez-vous ?',
+              responseKind: ConversationResponseKind.confirmationRequired,
+            );
+          }
+          return const ConversationOutcome(reply: 'Lait ajouté aux courses.');
+        },
+      );
+
+      await harness.controller.submitText(
+        'Dentiste demain à 14h puis ajoute du lait aux courses',
+      );
+
+      expect(locallyHandled, ['Dentiste demain à 14h']);
+      expect(harness.controller.state.phase,
+          ConversationSessionPhase.awaitingConfirmation);
+
+      await harness.controller.submitText('oui');
+
+      expect(pendingAnswers, ['oui']);
+      expect(
+        locallyHandled,
+        ['Dentiste demain à 14h', 'ajoute du lait aux courses'],
+      );
+      expect(harness.backend.calls, 0);
+      expect(harness.controller.state.phase, ConversationSessionPhase.ready);
+      harness.dispose();
+    });
+
+    test('keeps a contextual clarification answer separate from a new request',
+        () async {
+      var awaitingMotif = true;
+      final pendingAnswers = <String>[];
+      final locallyHandled = <String>[];
+      final harness = _Harness(
+        applicationPendingPhase: () => awaitingMotif
+            ? ConversationSessionPhase.awaitingClarification
+            : null,
+        resolvePending: (answer, _) async {
+          if (!awaitingMotif) return null;
+          pendingAnswers.add(answer);
+          awaitingMotif = false;
+          return const ConversationOutcome(reply: 'Motif ajouté : dentiste.');
+        },
+        resolveLocalRequest: (message, _) async {
+          locallyHandled.add(message);
+          return const ConversationOutcome(reply: 'Lait ajouté aux courses.');
+        },
+      );
+
+      await harness.controller.submitText(
+        'dentiste et ajoute du lait aux courses',
+      );
+
+      expect(pendingAnswers, ['dentiste']);
+      expect(locallyHandled, ['ajoute du lait aux courses']);
+      expect(harness.backend.calls, 0);
+      expect(
+        harness.controller.state.messages
+            .where((message) => message.role == ConversationMessageRole.user)
+            .map((message) => message.text),
+        ['dentiste et ajoute du lait aux courses'],
+      );
+      expect(harness.controller.state.phase, ConversationSessionPhase.ready);
+      harness.dispose();
+    });
+
     test('double submit while active is ignored', () async {
       final completer = Completer<ChatBackendResponse>();
       final harness = _Harness(pending: completer.future);
@@ -849,6 +975,7 @@ final class _Harness {
     Future<ChatBackendResponse>? pending,
     Object? error,
     ConversationPendingResolver? resolvePending,
+    ConversationLocalRequestResolver? resolveLocalRequest,
     ConversationTaskDurationStarter? startTaskDuration,
     ConversationApplicationPendingPhase? applicationPendingPhase,
   })  : backend = _Backend(pending: pending, error: error),
@@ -864,6 +991,7 @@ final class _Harness {
       coordinator: coordinator,
       executeAction: (_, __, ___) async => const ConversationActionOutcome(),
       resolvePending: resolvePending,
+      resolveLocalRequest: resolveLocalRequest,
       startTaskDuration: startTaskDuration,
       applicationPendingPhase: applicationPendingPhase,
       messageStore: store,
