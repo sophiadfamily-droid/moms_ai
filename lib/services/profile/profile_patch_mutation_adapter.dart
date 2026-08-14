@@ -54,6 +54,8 @@ final class ProfilePatchMutationAdapter {
   ) =>
       switch (field) {
         ProfileOwnedField.wantsNotifications => profile.wantsNotifications,
+        ProfileOwnedField.automaticTravelCalculationEnabled =>
+          profile.automaticTravelCalculationEnabled,
         ProfileOwnedField.workDays => List<String>.of(profile.workDays),
         ProfileOwnedField.workTimeRanges =>
           List<TimeRangeModel>.of(profile.workTimeRanges),

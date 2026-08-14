@@ -469,6 +469,19 @@ final class LifeContextProjectionEngine {
           '${event.marginMinutes}',
           LifeContextSensitivityLevel.publicTechnical,
         ),
+        if (event.location?.isNotEmpty == true)
+          _fact(
+            LifeContextProjectionFactKeys.location,
+            event.location!,
+            LifeContextSensitivityLevel.privatePersonal,
+            contract: contract,
+          ),
+        if (event.locationEntityId?.isNotEmpty == true)
+          _fact(
+            LifeContextProjectionFactKeys.locationEntityId,
+            event.locationEntityId!,
+            LifeContextSensitivityLevel.publicTechnical,
+          ),
         if (event.recurringType.isNotEmpty)
           _fact(
             LifeContextProjectionFactKeys.recurringType,

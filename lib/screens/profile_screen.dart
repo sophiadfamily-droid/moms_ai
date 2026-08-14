@@ -889,6 +889,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       workStatus: selectedWorkStatus,
       partnerName: partnerNameController.text.trim(),
       wantsNotifications: wantsNotifications,
+      automaticTravelCalculationEnabled:
+          profile.automaticTravelCalculationEnabled,
       children: children,
       age: calculateAgeFromBirthDate(
         birthDateController.text.trim(),
@@ -4587,7 +4589,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
           onTap: () {
             Navigator.of(context).push(
               MaterialPageRoute<void>(
-                builder: (_) => const PrivacyDataScreen(),
+                builder: (_) => PrivacyDataScreen(
+                  automaticTravelCalculationEnabled:
+                      profile.automaticTravelCalculationEnabled,
+                  onAutomaticTravelSettingChanged: (enabled) async {
+                    if (!mounted) return;
+                    setState(() {
+                      profile = profile.copyWith(
+                        automaticTravelCalculationEnabled: enabled,
+                      );
+                    });
+                    await saveProfile(showSnack: false);
+                  },
+                ),
               ),
             );
           },

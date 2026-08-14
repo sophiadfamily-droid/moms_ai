@@ -31,6 +31,58 @@ void main() {
     expect(request.durationMinutes, 60);
   });
 
+  test('separates an explicit appointment place from its title', () {
+    final request = PlanningSearchRequestService.parse(
+      'Propose-moi un créneau d’une heure pour le dentiste '
+      'à la clinique Saint-Jean la semaine prochaine',
+      now: now,
+    );
+
+    expect(request, isNotNull);
+    expect(request!.title, 'Dentiste');
+    expect(request.location, 'la clinique Saint-Jean');
+  });
+
+  test('keeps an address stated after the requested search period', () {
+    final request = PlanningSearchRequestService.parse(
+      'Propose-moi un créneau d’une heure pour le dentiste '
+      'la semaine prochaine au 45, avenue Pasteur Tremblay-en-France',
+      now: now,
+    );
+
+    expect(request, isNotNull);
+    expect(request!.title, 'Dentiste');
+    expect(request.durationMinutes, 60);
+    expect(request.startDate, DateTime(2026, 8, 17));
+    expect(
+      request.location,
+      '45, avenue Pasteur Tremblay-en-France',
+    );
+  });
+
+  test('keeps an address stated before the requested search period', () {
+    final request = PlanningSearchRequestService.parse(
+      'Trouve-moi un créneau pour le médecin au 12 rue de la Paix '
+      'la semaine prochaine',
+      now: now,
+    );
+
+    expect(request, isNotNull);
+    expect(request!.title, 'Médecin');
+    expect(request.location, '12 rue de la Paix');
+  });
+
+  test('does not invent a physical place from chez le dentiste', () {
+    final request = PlanningSearchRequestService.parse(
+      'Trouve-moi un créneau chez le dentiste demain',
+      now: now,
+    );
+
+    expect(request, isNotNull);
+    expect(request!.title, 'Dentiste');
+    expect(request.location, isEmpty);
+  });
+
   test('supports minute and mixed-hour durations in a slot search', () {
     for (final entry in const {
       'Trouve-moi un créneau de 45 minutes pour le médecin': 45,

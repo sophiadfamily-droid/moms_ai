@@ -35,6 +35,8 @@ final class PlanningProjectionEvent {
     required this.recurringType,
     required this.syncStatus,
     required this.revision,
+    this.location,
+    this.locationEntityId,
   });
 
   final String id;
@@ -46,6 +48,8 @@ final class PlanningProjectionEvent {
   final String? recurringType;
   final String syncStatus;
   final int revision;
+  final String? location;
+  final String? locationEntityId;
 
   EventModel toEventModel() {
     final parsedStart = DateTime.tryParse(start);
@@ -67,6 +71,8 @@ final class PlanningProjectionEvent {
       time: time(parsedStart),
       notes: '',
       category: 'Planning',
+      location: location ?? '',
+      locationEntityId: locationEntityId,
       createdAt: parsedStart,
       startDateTimeIso: start,
       endTime: time(parsedEnd),
@@ -443,6 +449,9 @@ abstract final class LifeContextPlanningProjectionAdapter {
               revision: int.parse(
                 facts[LifeContextProjectionFactKeys.revision]!,
               ),
+              location: facts[LifeContextProjectionFactKeys.location],
+              locationEntityId:
+                  facts[LifeContextProjectionFactKeys.locationEntityId],
             ),
           );
         }

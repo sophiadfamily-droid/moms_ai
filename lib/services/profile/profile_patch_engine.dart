@@ -40,7 +40,8 @@ final class ProfilePatchEngine {
   }
 
   void _validateValue(ProfileOwnedField field, Object value) {
-    if (field == ProfileOwnedField.wantsNotifications) {
+    if (field == ProfileOwnedField.wantsNotifications ||
+        field == ProfileOwnedField.automaticTravelCalculationEnabled) {
       if (value is! bool) _invalidValue();
       return;
     }

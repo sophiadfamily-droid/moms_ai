@@ -5,6 +5,7 @@ import '../user_profile.dart';
 enum ProfileOwnedField {
   workStatus,
   wantsNotifications,
+  automaticTravelCalculationEnabled,
   workHours,
   workScheduleType,
   workDays,

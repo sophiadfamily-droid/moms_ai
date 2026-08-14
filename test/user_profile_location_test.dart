@@ -9,6 +9,7 @@ void main() {
       workStatus: 'Je suis salariée',
       partnerName: '',
       wantsNotifications: true,
+      automaticTravelCalculationEnabled: true,
       children: const [],
       city: 'Trondheim',
       country: 'Norvège',
@@ -26,5 +27,19 @@ void main() {
     expect(restored.homeAddress, 'Mon domicile');
     expect(restored.workAddress, 'Mon travail');
     expect(restored.importantPlaces, 'École et sport');
+    expect(restored.automaticTravelCalculationEnabled, isTrue);
+  });
+
+  test('le calcul automatique des trajets est désactivé par défaut', () {
+    final restored = UserProfile.fromJson({
+      'firstName': 'Sophia',
+      'familyStatus': 'Je vis seule',
+      'workStatus': '',
+      'partnerName': '',
+      'wantsNotifications': true,
+      'children': const [],
+    });
+
+    expect(restored.automaticTravelCalculationEnabled, isFalse);
   });
 }

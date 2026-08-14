@@ -46,6 +46,7 @@ enum ActionConfirmationFieldKey {
   dueDate,
   quantity,
   category,
+  location,
   section,
   tombstone,
   choiceId,

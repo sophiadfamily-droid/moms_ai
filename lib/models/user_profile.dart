@@ -283,6 +283,7 @@ class UserProfile {
     "workStatus",
     "partnerName",
     "wantsNotifications",
+    "automaticTravelCalculationEnabled",
     "children",
     "age",
     "birthDate",
@@ -347,6 +348,7 @@ class UserProfile {
   final String workStatus;
   final String partnerName;
   final bool wantsNotifications;
+  final bool automaticTravelCalculationEnabled;
   final List<ChildProfile> children;
 
   final String age;
@@ -420,6 +422,7 @@ class UserProfile {
     required this.workStatus,
     required this.partnerName,
     required this.wantsNotifications,
+    this.automaticTravelCalculationEnabled = false,
     required this.children,
     this.age = "",
     this.birthDate = "",
@@ -485,6 +488,7 @@ class UserProfile {
     String? workStatus,
     String? partnerName,
     bool? wantsNotifications,
+    bool? automaticTravelCalculationEnabled,
     List<ChildProfile>? children,
     String? age,
     String? birthDate,
@@ -549,6 +553,8 @@ class UserProfile {
       workStatus: workStatus ?? this.workStatus,
       partnerName: partnerName ?? this.partnerName,
       wantsNotifications: wantsNotifications ?? this.wantsNotifications,
+      automaticTravelCalculationEnabled: automaticTravelCalculationEnabled ??
+          this.automaticTravelCalculationEnabled,
       children: children ?? this.children,
       age: age ?? this.age,
       birthDate: birthDate ?? this.birthDate,
@@ -617,6 +623,7 @@ class UserProfile {
       "workStatus": workStatus,
       "partnerName": partnerName,
       "wantsNotifications": wantsNotifications,
+      "automaticTravelCalculationEnabled": automaticTravelCalculationEnabled,
       "children": children.map((child) => child.toJson()).toList(),
       "age": age,
       "birthDate": birthDate,
@@ -687,6 +694,8 @@ class UserProfile {
       workStatus: json["workStatus"] ?? "",
       partnerName: json["partnerName"] ?? "",
       wantsNotifications: json["wantsNotifications"] ?? true,
+      automaticTravelCalculationEnabled:
+          json["automaticTravelCalculationEnabled"] == true,
       children: (json["children"] as List? ?? [])
           .map((child) =>
               ChildProfile.fromJson(Map<String, dynamic>.from(child)))

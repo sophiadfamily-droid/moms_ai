@@ -1,4 +1,29 @@
 class ZeliaResponseBuilder {
+  static const _frenchWeekdays = <String>[
+    'lundi',
+    'mardi',
+    'mercredi',
+    'jeudi',
+    'vendredi',
+    'samedi',
+    'dimanche',
+  ];
+
+  static const _frenchMonths = <String>[
+    'janvier',
+    'février',
+    'mars',
+    'avril',
+    'mai',
+    'juin',
+    'juillet',
+    'août',
+    'septembre',
+    'octobre',
+    'novembre',
+    'décembre',
+  ];
+
   static String formatDateForUser(String date) {
     final cleanDate = date.trim();
     final parts = cleanDate.split("-");
@@ -11,6 +36,13 @@ class ZeliaResponseBuilder {
     }
 
     return cleanDate;
+  }
+
+  static String formatLongDateForUser(String date) {
+    final parsed = DateTime.tryParse(date.trim());
+    if (parsed == null) return formatDateForUser(date);
+    return '${_frenchWeekdays[parsed.weekday - 1]} ${parsed.day} '
+        '${_frenchMonths[parsed.month - 1]} ${parsed.year}';
   }
 
   static String joinTitles(List<String> titles) {

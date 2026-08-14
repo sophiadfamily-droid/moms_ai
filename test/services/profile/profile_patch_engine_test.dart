@@ -17,6 +17,7 @@ void main() {
         changes: const {
           ProfileOwnedField.planningStyle: 'Souple',
           ProfileOwnedField.wantsNotifications: false,
+          ProfileOwnedField.automaticTravelCalculationEnabled: true,
           ProfileOwnedField.workDays: ['lundi', 'mardi'],
           ProfileOwnedField.partnerNotes: 'Disponible pour la garde le jeudi',
           ProfileOwnedField.partnerWorkSchedule:
@@ -28,6 +29,7 @@ void main() {
     expect(result.nextRevision, 5);
     expect(result.profile.planningStyle, 'Souple');
     expect(result.profile.wantsNotifications, isFalse);
+    expect(result.profile.automaticTravelCalculationEnabled, isTrue);
     expect(result.profile.workDays, ['lundi', 'mardi']);
     expect(
       result.profile.partnerNotes,

@@ -61,6 +61,8 @@ abstract final class LifeContextProjectionFactKeys {
   static const anchorDateIso = 'anchorDateIso';
   static const weekOfMonth = 'weekOfMonth';
   static const title = 'title';
+  static const location = 'location';
+  static const locationEntityId = 'locationEntityId';
   static const category = 'category';
   static const sourceNodeId = 'sourceNodeId';
   static const targetNodeId = 'targetNodeId';
@@ -107,6 +109,8 @@ abstract final class LifeContextProjectionFactKeys {
     anchorDateIso,
     weekOfMonth,
     title,
+    location,
+    locationEntityId,
     category,
     sourceNodeId,
     targetNodeId,

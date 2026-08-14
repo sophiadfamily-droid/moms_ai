@@ -30,6 +30,35 @@ void main() {
       expect(restored.totalTravelMinutes, 15);
     });
 
+    test('preserves an optional physical place without changing old events',
+        () {
+      final event = EventModel(
+        title: 'Dentiste',
+        date: '2026-07-14',
+        time: '10:15',
+        notes: '',
+        location: 'Clinique Saint-Jean',
+        locationEntityId: 'place-clinique-saint-jean',
+        createdAt: DateTime(2026, 7, 13),
+        startDateTimeIso: '2026-07-14T10:15:00',
+      );
+
+      final restored = EventModel.fromJson(event.toJson());
+      final legacy = EventModel.fromJson({
+        'title': 'Ancien rendez-vous',
+        'date': '2026-07-14',
+        'time': '09:00',
+        'notes': '',
+        'createdAt': '2026-07-13T10:00:00',
+        'startDateTimeIso': '2026-07-14T09:00:00',
+      });
+
+      expect(restored.location, 'Clinique Saint-Jean');
+      expect(restored.locationEntityId, 'place-clinique-saint-jean');
+      expect(legacy.location, isEmpty);
+      expect(legacy.locationEntityId, isNull);
+    });
+
     test(
       'keeps legacy travel when zero-valued separate keys are present',
       () {

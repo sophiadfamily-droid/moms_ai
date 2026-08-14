@@ -11,6 +11,7 @@ import 'chat_planning_helper_service.dart';
 import 'app_diagnostics.dart';
 import 'action_autonomy_policy_engine.dart';
 import 'action_confirmation_coordinator.dart';
+import 'automatic_travel_planning_service.dart';
 import 'event_service.dart';
 import 'memory_planning_compatibility_service.dart';
 import 'life_context/life_context_projection_compatibility.dart';
@@ -27,8 +28,10 @@ import 'planning_proposal_service.dart';
 import 'planning_search_request_service.dart';
 import 'selected_slot_revalidation_service.dart';
 import 'selected_slot_schedule_service.dart';
+import 'route_travel_time_service.dart';
 import 'smart_planning_response_builder.dart';
 import 'smart_planning_service.dart';
+import 'zelia_response_builder.dart';
 
 abstract interface class SmartPlanningContinuationGateway {
   Future<List<TaskModel>> relatedTasks(TaskModel task, String originalMessage);
@@ -37,6 +40,7 @@ abstract interface class SmartPlanningContinuationGateway {
     required DateTime startDate,
     required int totalMinutes,
     required int searchDays,
+    String location = '',
   });
 
   Future<SmartPlanningProposal> buildProposal({
@@ -59,21 +63,105 @@ abstract interface class SmartPlanningContinuationGateway {
   Future<void> addEvent(EventModel event, {String? mutationId});
 }
 
+abstract interface class SmartPlanningAutomaticTravelGateway {
+  Future<bool> canCalculateTravelAutomatically();
+
+  Future<PlanningProposalEngineResult?> findOptionsWithAutomaticTravel({
+    required DateTime startDate,
+    required int actionMinutes,
+    required int marginMinutes,
+    required int searchDays,
+    required String location,
+  });
+}
+
 typedef SmartPlanningAutonomyPolicyLoader = Future<ActionAutonomyPolicy>
     Function();
 
+RouteTravelConsentGateway _resolveTravelConsentGateway(
+  RouteTravelTimeGateway? routeGateway,
+  RouteTravelConsentGateway? consentGateway,
+) {
+  if (consentGateway != null) return consentGateway;
+  if (routeGateway is RouteTravelConsentGateway) {
+    return routeGateway as RouteTravelConsentGateway;
+  }
+  return const AppleMapsRouteTravelTimeGateway();
+}
+
 final class ProductionSmartPlanningContinuationGateway
-    implements SmartPlanningContinuationGateway {
+    implements
+        SmartPlanningContinuationGateway,
+        SmartPlanningAutomaticTravelGateway {
   ProductionSmartPlanningContinuationGateway(
-    UserProfile _, {
+    UserProfile profile, {
     Future<LifeContextProduction> Function()? loadLifeContext,
-  }) : _loadLifeContext =
+    RouteTravelTimeGateway? routeGateway,
+    RouteTravelConsentGateway? travelConsentGateway,
+  })  : _profile = profile,
+        _routeGateway = routeGateway ?? const AppleMapsRouteTravelTimeGateway(),
+        _travelConsentGateway = _resolveTravelConsentGateway(
+          routeGateway,
+          travelConsentGateway,
+        ),
+        _loadLifeContext =
             loadLifeContext ?? LifeContextProductionFactory.production;
 
   final Future<LifeContextProduction> Function() _loadLifeContext;
+  final RouteTravelTimeGateway _routeGateway;
+  final RouteTravelConsentGateway _travelConsentGateway;
+  UserProfile _profile;
   int? _proposalGeneration;
 
-  void updateProfile(UserProfile _) {}
+  void updateProfile(UserProfile profile) => _profile = profile;
+
+  @override
+  Future<bool> canCalculateTravelAutomatically() async =>
+      _profile.automaticTravelCalculationEnabled &&
+      await _travelConsentGateway.isAuthorized();
+
+  @override
+  Future<PlanningProposalEngineResult?> findOptionsWithAutomaticTravel({
+    required DateTime startDate,
+    required int actionMinutes,
+    required int marginMinutes,
+    required int searchDays,
+    required String location,
+  }) async {
+    if (!await canCalculateTravelAutomatically()) return null;
+    final input = await _planningInput(
+      windowStart: startDate,
+      windowDays: searchDays,
+    );
+    _proposalGeneration = input.generation;
+    return AutomaticTravelPlanningService(routeGateway: _routeGateway)
+        .findOptions(
+      startDate: startDate,
+      actionMinutes: actionMinutes,
+      marginMinutes: marginMinutes,
+      searchDays: searchDays,
+      destination: location,
+      homeAddress: _profile.homeAddress,
+      events: input.events,
+      reasoning: input.reasoning,
+      mode: _routeMode(_profile.transportInfo),
+    );
+  }
+
+  static RouteTravelMode _routeMode(String transportInfo) {
+    final normalized = transportInfo.trim().toLowerCase();
+    if (normalized.contains('marche') || normalized.contains('pied')) {
+      return RouteTravelMode.walking;
+    }
+    if (normalized.contains('transport') ||
+        normalized.contains('bus') ||
+        normalized.contains('métro') ||
+        normalized.contains('metro') ||
+        normalized.contains('train')) {
+      return RouteTravelMode.publicTransport;
+    }
+    return RouteTravelMode.automobile;
+  }
 
   Future<_CanonicalPlanningInput> _planningInput({
     DateTime? windowStart,
@@ -173,17 +261,20 @@ final class ProductionSmartPlanningContinuationGateway
     required DateTime startDate,
     required int totalMinutes,
     required int searchDays,
+    String location = '',
   }) async =>
       _findOptions(
         startDate: startDate,
         totalMinutes: totalMinutes,
         searchDays: searchDays,
+        location: location,
       );
 
   Future<PlanningProposalEngineResult> _findOptions({
     required DateTime startDate,
     required int totalMinutes,
     required int searchDays,
+    String location = '',
   }) async {
     final input = await _planningInput(
       windowStart: startDate,
@@ -197,6 +288,7 @@ final class ProductionSmartPlanningContinuationGateway
       reasoning: input.reasoning,
       searchDays: searchDays,
       maxOptions: 3,
+      location: location,
     );
   }
 
@@ -294,6 +386,7 @@ final class ProductionSmartPlanningContinuationGateway
         reasoning: reasoning,
         searchDays: searchDays,
         maxOptions: maxOptions,
+        location: candidate.location,
       ),
     );
   }
@@ -484,7 +577,7 @@ final class SmartPlanningContinuationCoordinator {
       notes: text,
     );
     final durationMinutes = request.durationMinutes;
-    _active = _new(
+    final continuation = _new(
       type: SmartPlanningContinuationType.explicitSlotRequest,
       step: durationMinutes > 0
           ? SmartPlanningContinuationStep.travelGo
@@ -493,16 +586,11 @@ final class SmartPlanningContinuationCoordinator {
       originalMessage: text,
       sessionGeneration: sessionGeneration,
       startDate: startDate,
+      location: request.location,
     ).copyWith(actionMinutes: durationMinutes);
+    _active = continuation;
     if (durationMinutes > 0) {
-      return const SmartPlanningContinuationResult(
-        status:
-            SmartPlanningContinuationResultStatus.clarificationStillRequired,
-        message: 'D’accord 💕\n\n'
-            'Combien de temps faut-il prévoir pour le trajet aller ?\n'
-            'Tu peux répondre 0 si aucun trajet.',
-        handled: true,
-      );
+      return _continueExplicitRequestAfterDuration(continuation);
     }
     return SmartPlanningContinuationResult(
       status: SmartPlanningContinuationResultStatus.clarificationStillRequired,
@@ -555,6 +643,8 @@ final class SmartPlanningContinuationCoordinator {
         _resolvePlanningConsent(continuation, answer),
       SmartPlanningContinuationStep.duration =>
         _resolveDuration(continuation, answer),
+      SmartPlanningContinuationStep.location =>
+        _resolveLocation(continuation, answer),
       SmartPlanningContinuationStep.travelGo =>
         _resolveTravelGo(continuation, answer),
       SmartPlanningContinuationStep.travelBack =>
@@ -658,15 +748,62 @@ final class SmartPlanningContinuationCoordinator {
         !continuation.outside) {
       return _findProposal(updated);
     }
+    if (continuation.type ==
+        SmartPlanningContinuationType.explicitSlotRequest) {
+      return _continueExplicitRequestAfterDuration(updated);
+    }
     _active = updated;
     return _result(
       SmartPlanningContinuationResultStatus.clarificationStillRequired,
-      continuation.type == SmartPlanningContinuationType.explicitSlotRequest
-          ? 'Très bien 💕\n\nCombien de temps faut-il prévoir pour le trajet aller ?\n'
-              'Tu peux répondre 0 si aucun trajet.'
-          : SmartPlanningResponseBuilder.askTravelForOutsideTask(
-              continuation.task.title,
-            ),
+      SmartPlanningResponseBuilder.askTravelForOutsideTask(
+        continuation.task.title,
+      ),
+    );
+  }
+
+  Future<SmartPlanningContinuationResult> _continueExplicitRequestAfterDuration(
+    SmartPlanningContinuation continuation,
+  ) async {
+    if (await _canCalculateTravelAutomatically()) {
+      if (continuation.location.trim().isEmpty) {
+        _active = continuation.copyWith(
+          step: SmartPlanningContinuationStep.location,
+        );
+        return _result(
+          SmartPlanningContinuationResultStatus.clarificationStillRequired,
+          'Très bien 💕 Où se trouve « ${continuation.task.title} » ?\n'
+          'Tu peux m’indiquer le nom du lieu ou son adresse.',
+        );
+      }
+      return _findProposal(continuation);
+    }
+    _active = continuation.copyWith(
+      step: SmartPlanningContinuationStep.travelGo,
+    );
+    return _result(
+      SmartPlanningContinuationResultStatus.clarificationStillRequired,
+      'Très bien 💕\n\nCombien de temps faut-il prévoir pour le trajet aller ?\n'
+      'Tu peux répondre 0 si aucun trajet.',
+    );
+  }
+
+  Future<SmartPlanningContinuationResult> _resolveLocation(
+    SmartPlanningContinuation continuation,
+    String answer,
+  ) async {
+    final location = _cleanLocation(answer);
+    if (location == null) {
+      _active = continuation.copyWith(
+        step: SmartPlanningContinuationStep.travelGo,
+      );
+      return _result(
+        SmartPlanningContinuationResultStatus.clarificationStillRequired,
+        'D’accord. Sans lieu précis, dis-moi simplement combien de temps '
+        'tu veux prévoir pour le trajet aller.',
+      );
+    }
+    return _findProposal(
+      continuation.copyWith(location: location),
     );
   }
 
@@ -729,11 +866,44 @@ final class SmartPlanningContinuationCoordinator {
           continuation.originalMessage,
           continuation.task,
         );
-    final options = await _gateway.findOptions(
-      startDate: start,
-      totalMinutes: total,
-      searchDays: _searchDays(continuation.originalMessage),
-    );
+    final searchDays = _searchDays(continuation.originalMessage);
+    PlanningProposalEngineResult options;
+    final automaticGateway = _gateway is SmartPlanningAutomaticTravelGateway
+        ? _gateway as SmartPlanningAutomaticTravelGateway
+        : null;
+    final shouldCalculateTravel = automaticGateway != null &&
+        continuation.type ==
+            SmartPlanningContinuationType.explicitSlotRequest &&
+        continuation.step != SmartPlanningContinuationStep.travelBack &&
+        continuation.location.trim().isNotEmpty &&
+        await automaticGateway.canCalculateTravelAutomatically();
+    if (shouldCalculateTravel) {
+      final automatic = await automaticGateway.findOptionsWithAutomaticTravel(
+        startDate: start,
+        actionMinutes: continuation.actionMinutes,
+        marginMinutes: margin,
+        searchDays: searchDays,
+        location: continuation.location,
+      );
+      if (automatic == null) {
+        _active = continuation.copyWith(
+          step: SmartPlanningContinuationStep.travelGo,
+        );
+        return _result(
+          SmartPlanningContinuationResultStatus.clarificationStillRequired,
+          'Je n’arrive pas à calculer ce trajet avec précision pour le '
+          'moment. Combien de temps veux-tu prévoir pour l’aller ?',
+        );
+      }
+      options = automatic;
+    } else {
+      options = await _gateway.findOptions(
+        startDate: start,
+        totalMinutes: total,
+        searchDays: searchDays,
+        location: continuation.location,
+      );
+    }
     if (options.hasOptions && options.options.isNotEmpty) {
       _active = continuation.copyWith(
         type: SmartPlanningContinuationType.proposalSelection,
@@ -820,6 +990,12 @@ final class SmartPlanningContinuationCoordinator {
       type: SmartPlanningContinuationType.selectedSlot,
       step: SmartPlanningContinuationStep.confirmation,
       selectedOption: selected,
+      travelGoMinutes: selected.travelGoMinutes ?? continuation.travelGoMinutes,
+      travelBackMinutes:
+          selected.travelBackMinutes ?? continuation.travelBackMinutes,
+      departureContext:
+          selected.departureContext ?? continuation.departureContext,
+      arrivalContext: selected.arrivalContext ?? continuation.arrivalContext,
       options: const [],
       mutationId: _idGenerator(),
     );
@@ -992,7 +1168,8 @@ final class SmartPlanningContinuationCoordinator {
     _active = null;
     return _result(
       SmartPlanningContinuationResultStatus.success,
-      'C’est fait 💕 J’ai réservé « ${event.title} » le ${event.date} '
+      'C’est fait 💕 J’ai réservé « ${event.title} » le '
+      '${ZeliaResponseBuilder.formatLongDateForUser(event.date)} '
       'de ${event.time} à ${event.endTime} dans ton agenda.',
     );
   }
@@ -1067,6 +1244,7 @@ final class SmartPlanningContinuationCoordinator {
     required String originalMessage,
     required int sessionGeneration,
     DateTime? startDate,
+    String location = '',
     String? logicalRequestId,
     String? sourceSuggestionId,
   }) {
@@ -1082,6 +1260,7 @@ final class SmartPlanningContinuationCoordinator {
       originalMessage: originalMessage,
       groupedTasks: [task],
       startDate: startDate,
+      location: location,
       mutationId: _idGenerator(),
       policyModeAtCreation: _currentPolicy.mode,
       policyVersionAtCreation: _currentPolicy.schemaVersion,
@@ -1130,6 +1309,10 @@ final class SmartPlanningContinuationCoordinator {
         ActionConfirmationField(
           key: ActionConfirmationFieldKey.marginMinutes,
           value: event.marginMinutes,
+        ),
+        ActionConfirmationField(
+          key: ActionConfirmationFieldKey.location,
+          value: event.location.isEmpty ? null : event.location,
         ),
         ActionConfirmationField(
           key: ActionConfirmationFieldKey.participantId,
@@ -1303,11 +1486,16 @@ final class SmartPlanningContinuationCoordinator {
       travelBackMinutes: continuation.travelBackMinutes,
       usesSeparateTravelTimes: true,
       marginMinutes: continuation.marginMinutes,
-      departureContext: 'previous_event',
-      arrivalContext: 'next_event',
+      departureContext: continuation.departureContext.isEmpty
+          ? 'previous_event'
+          : continuation.departureContext,
+      arrivalContext: continuation.arrivalContext.isEmpty
+          ? 'next_event'
+          : continuation.arrivalContext,
       startDateTimeIso: '${date}T$start:00',
       endDateTimeIso: '${date}T$end:00',
       category: continuation.task.category,
+      location: continuation.location,
       notes: 'Planifié par Zelia depuis une proposition multi-créneaux.',
       createdAt: _clock(),
     );
@@ -1316,16 +1504,21 @@ final class SmartPlanningContinuationCoordinator {
   static String _recap(SmartPlanningContinuation continuation) {
     final option = continuation.selectedOption!;
     final schedule = _schedule(continuation)!;
+    final locationLine = continuation.location.isEmpty
+        ? ''
+        : '• Lieu : ${continuation.location}\n';
     return 'Je récapitule avant de réserver 💕\n\n'
         '• Rendez-vous : ${continuation.task.title}\n'
-        '• Date : ${option.dateIso}\n'
-        '• Départ prévu : ${option.startTime}\n'
+        '• Date : ${ZeliaResponseBuilder.formatLongDateForUser(option.dateIso)}\n'
+        '• Départ prévu : '
+        '${SmartPlanningService.formatIsoTime(schedule.protectedStart)}\n'
         '• Rendez-vous : ${SmartPlanningService.formatIsoTime(schedule.appointmentStart)} '
         'à ${SmartPlanningService.formatIsoTime(schedule.appointmentEnd)}\n'
         '• Retour et marge terminés à : '
         '${SmartPlanningService.formatIsoTime(schedule.protectedEnd)}\n'
         '• Durée du rendez-vous : '
         '${SmartPlanningService.durationLabel(continuation.actionMinutes)}\n'
+        '$locationLine'
         '• Trajet aller : '
         '${SmartPlanningService.durationLabel(continuation.travelGoMinutes)}\n'
         '• Trajet retour : '
@@ -1368,5 +1561,40 @@ final class SmartPlanningContinuationCoordinator {
       return 1;
     }
     return lower.contains('semaine prochaine') ? 7 : 21;
+  }
+
+  Future<bool> _canCalculateTravelAutomatically() async {
+    final gateway = _gateway;
+    if (gateway is! SmartPlanningAutomaticTravelGateway) return false;
+    try {
+      return await (gateway as SmartPlanningAutomaticTravelGateway)
+          .canCalculateTravelAutomatically();
+    } on Object {
+      return false;
+    }
+  }
+
+  static String? _cleanLocation(String value) {
+    final normalized = value.trim().toLowerCase();
+    if (normalized.isEmpty ||
+        const {
+          'je ne sais pas',
+          'je sais pas',
+          'aucun',
+          'pas de lieu',
+          'inconnu',
+        }.contains(normalized)) {
+      return null;
+    }
+    final cleaned = value
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim()
+        .replaceFirst(
+          RegExp(r'^(?:c[’\x27]est|chez|à|a|au)\s+', caseSensitive: false),
+          '',
+        )
+        .trim();
+    if (cleaned.isEmpty || cleaned.length > 240) return null;
+    return cleaned;
   }
 }

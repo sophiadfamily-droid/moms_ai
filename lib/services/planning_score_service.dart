@@ -10,6 +10,7 @@ class PlanningScoreService {
     required List<Map<String, dynamic>> reasoning,
     int? preferredStartHour,
     int? preferredEndHour,
+    String location = '',
   }) {
     if (!end.isAfter(start)) {
       return 0;
@@ -27,6 +28,13 @@ class PlanningScoreService {
       start: start,
       end: end,
       events: events,
+    );
+
+    score += _sameLocationContinuityScore(
+      start: start,
+      end: end,
+      events: events,
+      location: location,
     );
 
     score += _dayComfortScore(start);
@@ -47,6 +55,7 @@ class PlanningScoreService {
     required List<Map<String, dynamic>> reasoning,
     int? preferredStartHour,
     int? preferredEndHour,
+    String location = '',
   }) {
     if (_fitsComfortablyInsideCareWindow(
       start: start,
@@ -55,6 +64,14 @@ class PlanningScoreService {
     )) {
       return 'Ce moment évite les horaires probables de dépôt ou de récupération.';
     }
+
+    final locationReason = _sameLocationContinuityReason(
+      start: start,
+      end: end,
+      events: events,
+      location: location,
+    );
+    if (locationReason != null) return locationReason;
 
     if (_matchesPreferredPeriod(
       start: start,
@@ -77,6 +94,85 @@ class PlanningScoreService {
 
     return 'Ce créneau garde tout le temps prévu autour du rendez-vous.';
   }
+
+  static int _sameLocationContinuityScore({
+    required DateTime start,
+    required DateTime end,
+    required List<EventModel> events,
+    required String location,
+  }) {
+    final gap = _nearestSameLocationGap(
+      start: start,
+      end: end,
+      events: events,
+      location: location,
+    );
+    if (gap == null) return 0;
+    if (gap <= 120) return 20;
+    if (gap <= 180) return 10;
+    return 0;
+  }
+
+  static String? _sameLocationContinuityReason({
+    required DateTime start,
+    required DateTime end,
+    required List<EventModel> events,
+    required String location,
+  }) {
+    final gap = _nearestSameLocationGap(
+      start: start,
+      end: end,
+      events: events,
+      location: location,
+    );
+    if (gap == null || gap > 180) return null;
+    return 'Ce créneau reste proche d’un autre rendez-vous au même endroit.';
+  }
+
+  static int? _nearestSameLocationGap({
+    required DateTime start,
+    required DateTime end,
+    required List<EventModel> events,
+    required String location,
+  }) {
+    final requested = _normalizedLocation(location);
+    if (requested.isEmpty) return null;
+    int? nearest;
+    for (final event in events) {
+      if (_normalizedLocation(event.location) != requested) continue;
+      final eventStart = EventService.parseProtectedStart(event);
+      final eventEnd = EventService.parseProtectedEnd(event);
+      if (eventStart == null || eventEnd == null) continue;
+      if (!_isSameCalendarDay(eventStart, start) &&
+          !_isSameCalendarDay(eventEnd, start)) {
+        continue;
+      }
+      final gap = _gapBetween(
+        candidateStart: start,
+        candidateEnd: end,
+        eventStart: eventStart,
+        eventEnd: eventEnd,
+      );
+      if (gap < 0) continue;
+      if (nearest == null || gap < nearest) nearest = gap;
+    }
+    return nearest;
+  }
+
+  static String _normalizedLocation(String value) => value
+      .trim()
+      .toLowerCase()
+      .replaceAll('’', "'")
+      .replaceAll(RegExp(r'[éèêë]'), 'e')
+      .replaceAll(RegExp(r'[àâä]'), 'a')
+      .replaceAll(RegExp(r'[îï]'), 'i')
+      .replaceAll(RegExp(r'[ôö]'), 'o')
+      .replaceAll(RegExp(r'[ùûü]'), 'u')
+      .replaceAll('ç', 'c')
+      .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
+      .replaceFirst(RegExp(r'^(?:a|au|aux|chez|la|le|les|l)\s+'), '')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
 
   /// Gives preference to an appointment that fits comfortably inside a
   /// dependent person's structured schedule, while avoiding the moments at

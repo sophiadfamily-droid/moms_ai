@@ -481,8 +481,10 @@ void main() {
 
   group('projection Planning', () {
     test('inclut temps, trajets, marges, récurrence, conflit et révision', () {
-      final projection =
-          _build(_snapshot(now), LifeContextConsumerPurpose.planning);
+      final projection = _build(
+        _snapshot(now, eventLocation: 'Clinique Saint-Jean'),
+        LifeContextConsumerPurpose.planning,
+      );
       final event = _section(projection, LifeContextProjectionSectionType.event)
           .items
           .single;
@@ -494,6 +496,10 @@ void main() {
       expect(facts[LifeContextProjectionFactKeys.recurringType], 'weekly');
       expect(facts[LifeContextProjectionFactKeys.syncStatus], 'conflict');
       expect(facts[LifeContextProjectionFactKeys.revision], '3');
+      expect(
+        facts[LifeContextProjectionFactKeys.location],
+        'Clinique Saint-Jean',
+      );
       expect(facts, isNot(contains(LifeContextProjectionFactKeys.title)));
     });
 
@@ -801,6 +807,7 @@ LifeContextSnapshot _snapshot(
   String? planningConsequenceStartTime,
   String? planningConsequenceEndTime,
   bool blocksResponsiblePerson = false,
+  String? eventLocation,
 }) {
   final events = <EventContextItem>[
     for (var index = 0; index < eventCount; index++)
@@ -819,6 +826,7 @@ LifeContextSnapshot _snapshot(
         revision: 3,
         syncStatus: index == 0 ? 'conflict' : 'synced',
         participantEntityId: index == 0 ? 'identity-child' : null,
+        location: index == 0 ? eventLocation : null,
       ),
     if (includeOutsideEvent)
       EventContextItem(

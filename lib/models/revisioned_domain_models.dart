@@ -218,6 +218,7 @@ abstract final class ProfileFieldOwnership {
   static const profileOwnedFields = {
     'workStatus',
     'wantsNotifications',
+    'automaticTravelCalculationEnabled',
     'workHours',
     'workScheduleType',
     'workDays',

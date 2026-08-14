@@ -233,6 +233,109 @@ void main() {
     );
   });
 
+  test('le calcul automatique évite les questions de trajet', () async {
+    gateway.automaticTravelEnabled = true;
+    gateway.automaticOptions = [
+      PlanningProposalOption(
+        start: DateTime.utc(2026, 7, 24, 8, 45),
+        end: DateTime.utc(2026, 7, 24, 10, 20),
+        score: 95,
+        dateIso: '2026-07-24',
+        startTime: '09:00',
+        endTime: '10:00',
+        label: 'vendredi 24 juillet de 09:00 à 10:00',
+        travelGoMinutes: 15,
+        travelBackMinutes: 20,
+        departureContext: 'home',
+        arrivalContext: 'next_event',
+      ),
+    ];
+
+    final started = await coordinator.resolve(
+      'Propose-moi un créneau d’une heure pour le dentiste '
+      'à la clinique Saint-Jean demain',
+      sessionGeneration: 21,
+    );
+
+    expect(started!.reply, contains('créneaux disponibles'));
+    expect(started.reply, isNot(contains('trajet aller')));
+    expect(
+      coordinator.active!.step,
+      SmartPlanningContinuationStep.optionChoice,
+    );
+
+    final recap = await coordinator.resolve('1', sessionGeneration: 21);
+    expect(recap!.reply, contains('Trajet aller : 15 min'));
+    expect(recap.reply, contains('Trajet retour : 20 min'));
+    expect(coordinator.active!.departureContext, 'home');
+    expect(coordinator.active!.arrivalContext, 'next_event');
+  });
+
+  test('le calcul automatique réutilise une adresse placée après la période',
+      () async {
+    gateway.automaticTravelEnabled = true;
+    gateway.automaticOptions = gateway.options;
+
+    final started = await coordinator.resolve(
+      'Propose-moi un créneau d’une heure pour le dentiste la semaine '
+      'prochaine au 45, avenue Pasteur Tremblay-en-France',
+      sessionGeneration: 23,
+    );
+
+    expect(started!.reply, contains('créneaux disponibles'));
+    expect(started.reply, isNot(contains('Où se trouve')));
+    expect(
+      gateway.lastAutomaticLocation,
+      '45, avenue Pasteur Tremblay-en-France',
+    );
+  });
+
+  test('le calcul automatique demande seulement le lieu manquant', () async {
+    gateway.automaticTravelEnabled = true;
+    gateway.automaticOptions = gateway.options;
+
+    final started = await coordinator.resolve(
+      'Propose-moi un créneau d’une heure pour le dentiste demain',
+      sessionGeneration: 22,
+    );
+
+    expect(started!.reply, contains('Où se trouve'));
+    expect(started.reply, isNot(contains('trajet aller')));
+    expect(coordinator.active!.step, SmartPlanningContinuationStep.location);
+
+    await coordinator.resolve(
+      '12 rue de la Paix',
+      sessionGeneration: 22,
+    );
+
+    expect(gateway.lastAutomaticLocation, '12 rue de la Paix');
+    expect(
+      coordinator.active!.step,
+      SmartPlanningContinuationStep.optionChoice,
+    );
+  });
+
+  test('keeps an explicit place through search, recap and reservation',
+      () async {
+    final started = await coordinator.resolve(
+      'Propose-moi un créneau d’une heure pour le dentiste '
+      'à la clinique Saint-Jean demain',
+      sessionGeneration: 12,
+    );
+
+    expect(started!.reply, contains('trajet aller'));
+    expect(coordinator.active!.location, 'la clinique Saint-Jean');
+    await coordinator.resolve('10', sessionGeneration: 12);
+    await coordinator.resolve('pareil', sessionGeneration: 12);
+    expect(gateway.lastSearchLocation, 'la clinique Saint-Jean');
+
+    final recap = await coordinator.resolve('1', sessionGeneration: 12);
+    expect(recap!.reply, contains('Lieu : la clinique Saint-Jean'));
+    await coordinator.resolve('oui', sessionGeneration: 12);
+
+    expect(gateway.addedEvents.single.location, 'la clinique Saint-Jean');
+  });
+
   test('next-week slot request searches Monday through Sunday', () async {
     final started = await coordinator.resolve(
       'Propose-moi un créneau pour le dentiste la semaine prochaine',
@@ -278,11 +381,14 @@ void main() {
     await _reachOptions(coordinator, task(), generation: 3);
     final recap = await coordinator.resolve('1', sessionGeneration: 3);
     expect(recap!.reply, contains('Tu confirmes'));
+    expect(recap.reply, contains('vendredi 24 juillet 2026'));
+    expect(recap.reply, isNot(contains('2026-07-24')));
     expect(
         coordinator.active!.step, SmartPlanningContinuationStep.confirmation);
 
     final success = await coordinator.resolve('oui', sessionGeneration: 3);
     expect(success!.reply, contains('C’est fait'));
+    expect(success.reply, contains('vendredi 24 juillet 2026'));
     expect(gateway.addedEvents, hasLength(1));
     expect(gateway.addedEvents.single.travelGoMinutes, 15);
     expect(gateway.addedEvents.single.travelBackMinutes, 15);
@@ -403,7 +509,10 @@ Future<void> _reachProposal(
   await _reachOptions(coordinator, task, generation: generation);
 }
 
-final class _FakeGateway implements SmartPlanningContinuationGateway {
+final class _FakeGateway
+    implements
+        SmartPlanningContinuationGateway,
+        SmartPlanningAutomaticTravelGateway {
   List<PlanningProposalOption> options = [
     PlanningProposalOption(
       start: DateTime.utc(2026, 7, 24, 9),
@@ -423,6 +532,32 @@ final class _FakeGateway implements SmartPlanningContinuationGateway {
   int proposalCanSucceedAfter = 0;
   DateTime? lastSearchStart;
   int? lastSearchDays;
+  String? lastSearchLocation;
+  bool automaticTravelEnabled = false;
+  List<PlanningProposalOption>? automaticOptions;
+  String? lastAutomaticLocation;
+
+  @override
+  Future<bool> canCalculateTravelAutomatically() async =>
+      automaticTravelEnabled;
+
+  @override
+  Future<PlanningProposalEngineResult?> findOptionsWithAutomaticTravel({
+    required DateTime startDate,
+    required int actionMinutes,
+    required int marginMinutes,
+    required int searchDays,
+    required String location,
+  }) async {
+    lastAutomaticLocation = location;
+    final values = automaticOptions;
+    if (values == null) return null;
+    return PlanningProposalEngineResult(
+      hasOptions: values.isNotEmpty,
+      options: values,
+      explanation: '',
+    );
+  }
 
   @override
   Future<void> addEvent(EventModel event, {String? mutationId}) async =>
@@ -466,9 +601,11 @@ final class _FakeGateway implements SmartPlanningContinuationGateway {
     required DateTime startDate,
     required int totalMinutes,
     required int searchDays,
+    String location = '',
   }) async {
     lastSearchStart = startDate;
     lastSearchDays = searchDays;
+    lastSearchLocation = location;
     return PlanningProposalEngineResult(
       hasOptions: options.isNotEmpty,
       options: options,

@@ -332,6 +332,8 @@ final class EventContextItem {
     required this.syncStatus,
     this.participantEntityId,
     this.parentRecurringId,
+    this.location,
+    this.locationEntityId,
   });
 
   final String id;
@@ -348,6 +350,8 @@ final class EventContextItem {
   final String syncStatus;
   final String? participantEntityId;
   final String? parentRecurringId;
+  final String? location;
+  final String? locationEntityId;
 
   Map<String, Object?> toJson() => {
         'id': id,
@@ -365,6 +369,8 @@ final class EventContextItem {
         if (participantEntityId != null)
           'participantEntityId': participantEntityId,
         if (parentRecurringId != null) 'parentRecurringId': parentRecurringId,
+        if (location != null) 'location': location,
+        if (locationEntityId != null) 'locationEntityId': locationEntityId,
       };
 }
 

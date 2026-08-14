@@ -13,6 +13,10 @@ class PlanningProposalOption {
   final String endTime;
   final String label;
   final String reason;
+  final int? travelGoMinutes;
+  final int? travelBackMinutes;
+  final String? departureContext;
+  final String? arrivalContext;
 
   const PlanningProposalOption({
     required this.start,
@@ -23,6 +27,10 @@ class PlanningProposalOption {
     required this.endTime,
     required this.label,
     this.reason = '',
+    this.travelGoMinutes,
+    this.travelBackMinutes,
+    this.departureContext,
+    this.arrivalContext,
   });
 
   Map<String, dynamic> toJson() {
@@ -33,6 +41,10 @@ class PlanningProposalOption {
       "score": score,
       "label": label,
       "reason": reason,
+      if (travelGoMinutes != null) "travelGoMinutes": travelGoMinutes,
+      if (travelBackMinutes != null) "travelBackMinutes": travelBackMinutes,
+      if (departureContext != null) "departureContext": departureContext,
+      if (arrivalContext != null) "arrivalContext": arrivalContext,
       "start": start.toIso8601String(),
       "end": end.toIso8601String(),
     };
@@ -58,6 +70,7 @@ class PlanningProposalEngine {
     required List<Map<String, dynamic>> reasoning,
     int searchDays = 21,
     int maxOptions = 3,
+    String location = '',
   }) async {
     final events = await EventService.getEvents();
 
@@ -68,6 +81,7 @@ class PlanningProposalEngine {
       reasoning: reasoning,
       searchDays: searchDays,
       maxOptions: maxOptions,
+      location: location,
     );
   }
 
@@ -78,6 +92,7 @@ class PlanningProposalEngine {
     required List<Map<String, dynamic>> reasoning,
     int searchDays = 21,
     int maxOptions = 3,
+    String location = '',
   }) {
     if (totalMinutes <= 0) {
       return const PlanningProposalEngineResult(
@@ -102,6 +117,7 @@ class PlanningProposalEngine {
           totalMinutes: totalMinutes,
           events: events,
           reasoning: reasoning,
+          location: location,
         ),
       );
     }
@@ -130,6 +146,7 @@ class PlanningProposalEngine {
     required int totalMinutes,
     required List<EventModel> events,
     required List<Map<String, dynamic>> reasoning,
+    String location = '',
   }) {
     final planningWindow = PlanningWindowService.build(reasoning: reasoning);
 
@@ -188,6 +205,7 @@ class PlanningProposalEngine {
           reasoning: reasoning,
           preferredStartHour: planningWindow.preferredStartHour,
           preferredEndHour: planningWindow.preferredEndHour,
+          location: location,
         );
         final reason = PlanningScoreService.explainSlot(
           start: cursor,
@@ -196,6 +214,7 @@ class PlanningProposalEngine {
           reasoning: reasoning,
           preferredStartHour: planningWindow.preferredStartHour,
           preferredEndHour: planningWindow.preferredEndHour,
+          location: location,
         );
 
         options.add(

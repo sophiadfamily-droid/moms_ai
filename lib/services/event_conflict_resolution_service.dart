@@ -269,6 +269,13 @@ final class EventConflictResolutionService {
       notes: base.notes == local.notes ? cloud.notes : local.notes,
       category:
           base.category == local.category ? cloud.category : local.category,
+      location:
+          base.location == local.location ? cloud.location : local.location,
+      locationEntityId: base.locationEntityId == local.locationEntityId
+          ? cloud.locationEntityId
+          : local.locationEntityId,
+      clearLocationEntityId: base.locationEntityId != local.locationEntityId &&
+          local.locationEntityId == null,
       startDateTimeIso: base.startDateTimeIso == local.startDateTimeIso
           ? cloud.startDateTimeIso
           : local.startDateTimeIso,

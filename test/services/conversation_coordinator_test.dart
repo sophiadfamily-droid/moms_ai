@@ -1882,6 +1882,7 @@ final class _SlotSearchGateway implements SmartPlanningContinuationGateway {
     required DateTime startDate,
     required int totalMinutes,
     required int searchDays,
+    String location = '',
   }) async =>
       const PlanningProposalEngineResult(
         hasOptions: false,

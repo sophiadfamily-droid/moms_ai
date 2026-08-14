@@ -11,12 +11,14 @@ final class PlanningSearchRequest {
     required this.startDate,
     required this.searchDays,
     required this.durationMinutes,
+    this.location = '',
   });
 
   final String title;
   final DateTime startDate;
   final int searchDays;
   final int durationMinutes;
+  final String location;
 }
 
 final class PlanningSearchRequestService {
@@ -31,14 +33,15 @@ final class PlanningSearchRequestService {
     final normalized = _normalize(original);
     if (!_expressesSlotSearch(normalized)) return null;
 
-    final title = _title(original, normalized);
-    if (title == null) return null;
+    final target = _target(original, normalized);
+    if (target == null) return null;
     final period = _period(normalized, now ?? DateTime.now());
     return PlanningSearchRequest(
-      title: title,
+      title: target.title,
       startDate: period.startDate,
       searchDays: period.searchDays,
       durationMinutes: NaturalDurationService.parseMinutes(original),
+      location: target.location,
     );
   }
 
@@ -53,17 +56,18 @@ final class PlanningSearchRequestService {
         ).hasMatch(value);
   }
 
-  static String? _title(String original, String normalized) {
+  static _PlanningSearchTarget? _target(String original, String normalized) {
     final known = _knownTitle(normalized);
     final forMatch = RegExp(r'\bpour\b', caseSensitive: false)
         .allMatches(original)
         .lastOrNull;
-    if (forMatch == null) return known;
+    if (forMatch == null) {
+      return known == null ? null : _PlanningSearchTarget(known, '');
+    }
 
     var value = original.substring(forMatch.end).trim();
     value = value
-        .replaceAll(_trailingPeriod, ' ')
-        .replaceAll(RegExp(r'[.,!?;:()\[\]{}"“”«»]+'), ' ')
+        .replaceAll(RegExp(r'[!?;:()\[\]{}"“”«»]+'), ' ')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim()
         .replaceFirst(
@@ -74,13 +78,56 @@ final class PlanningSearchRequestService {
           '',
         )
         .trim();
-    if (value.isEmpty) return known;
-    final normalizedTarget = _normalize(value);
+    if (value.isEmpty) {
+      return known == null ? null : _PlanningSearchTarget(known, '');
+    }
+    final separated = _separateExplicitLocation(value);
+    final cleanTitle = _withoutSearchPeriod(separated.title);
+    final cleanLocation = _withoutSearchPeriod(separated.location);
+    if (cleanTitle.isEmpty) {
+      return known == null ? null : _PlanningSearchTarget(known, cleanLocation);
+    }
+    final normalizedTarget = _normalize(cleanTitle);
     final mapped = _knownTitle(normalizedTarget);
     if (mapped != null && normalizedTarget.split(' ').length <= 4) {
-      return mapped;
+      return _PlanningSearchTarget(mapped, cleanLocation);
     }
-    return '${value[0].toUpperCase()}${value.substring(1)}';
+    final title = cleanTitle;
+    return _PlanningSearchTarget(
+      '${title[0].toUpperCase()}${title.substring(1)}',
+      cleanLocation,
+    );
+  }
+
+  static String _withoutSearchPeriod(String value) => value
+      .replaceAll(_trailingPeriod, ' ')
+      .replaceFirst(RegExp(r'[.,]+$'), '')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+
+  static _PlanningSearchTarget _separateExplicitLocation(String value) {
+    final match = RegExp(
+      r'^(.+?)\s+(?:à|a|au|aux|chez)\s+(.+)$',
+      caseSensitive: false,
+    ).firstMatch(value);
+    if (match == null) return _PlanningSearchTarget(value, '');
+    final title = match.group(1)?.trim() ?? '';
+    final location = match.group(2)?.trim() ?? '';
+    if (title.isEmpty || location.isEmpty || _looksTemporal(location)) {
+      return _PlanningSearchTarget(value, '');
+    }
+    return _PlanningSearchTarget(
+      title,
+      location.length <= 240 ? location : '',
+    );
+  }
+
+  static bool _looksTemporal(String value) {
+    final normalized = _normalize(value);
+    return RegExp(r'^\d{1,2}\s*(?:h|heure|:)').hasMatch(normalized) ||
+        RegExp(
+          r'^(?:aujourd hui|demain|apres demain|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)\b',
+        ).hasMatch(normalized);
   }
 
   static String? _knownTitle(String value) {
@@ -195,6 +242,13 @@ final class _PlanningSearchPeriod {
 
   final DateTime startDate;
   final int searchDays;
+}
+
+final class _PlanningSearchTarget {
+  const _PlanningSearchTarget(this.title, this.location);
+
+  final String title;
+  final String location;
 }
 
 extension on Iterable<RegExpMatch> {

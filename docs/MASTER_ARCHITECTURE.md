@@ -1956,6 +1956,32 @@ with adjacent protected Events. When no stronger contextual signal exists, it
 states only that the complete protected time remains available. The other
 options stay concise, so the conversation does not become a technical report.
 
+The fourth Stage 6 slice introduces an optional physical Event place without
+breaking legacy Events. An explicit place in a slot-search request is separated
+from the appointment title, preserved in the typed continuation, included in
+the final confirmation scope, written on the Event and projected back through
+Life Context for later planning. A nearby Event at the same explicitly known
+place gives a soft continuity bonus and may explain the first option. Unknown
+or different places remain neutral: this slice asks no additional location
+question, performs no geocoding and never invents a distance or travel time.
+Dynamic routing and place identity resolution remain later capabilities.
+
+The fifth Stage 6 slice adds opt-in Apple Maps travel-time calculation on iOS.
+The profile flag and a device-local authorization must both be active before a
+route request is allowed. The native boundary refuses every request otherwise.
+Only the bounded origin, destination, departure time and transport mode needed
+for the current calculation are sent to Apple Maps; ZELIA stores no route
+history.
+
+For each candidate, planning uses the nearest located preceding Event within a
+bounded same-day horizon, or the user's home, as the origin. It similarly uses
+the nearest located following Event, or home, as the destination after the
+appointment. The complete protected range is rechecked with both calculated
+journeys and the margin. A missing appointment place is requested once. A
+missing home place or a routing failure falls back to the existing manual
+travel estimate without claiming that a calculation succeeded. Android and
+unsupported platforms remain on that explicit fallback.
+
 ### Stage 7 — Broaden natural-language understanding
 
 - support spelling errors, voice-transcription variants, abbreviations, familiar language and bounded slang;

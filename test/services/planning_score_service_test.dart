@@ -10,6 +10,7 @@ void main() {
     int travelGoMinutes = 0,
     int travelBackMinutes = 0,
     int marginMinutes = 0,
+    String location = '',
   }) {
     final start = DateTime.parse(startIso);
     final end = DateTime.parse(endIso);
@@ -29,6 +30,7 @@ void main() {
       endDateTimeIso: endIso,
       notes: '',
       category: 'Personnel',
+      location: location,
       createdAt: DateTime(2026, 7, 16),
     );
   }
@@ -253,6 +255,57 @@ void main() {
       );
 
       expect(reason, 'Ce moment correspond à ta préférence pour le matin.');
+    });
+
+    test('rewards only an explicitly matching nearby place', () {
+      final nearby = buildEvent(
+        title: 'Médecin',
+        startIso: '2026-07-20T09:00:00',
+        endIso: '2026-07-20T10:00:00',
+        location: 'Clinique Saint-Jean',
+      );
+
+      final matching = PlanningScoreService.scoreSlot(
+        start: DateTime(2026, 7, 20, 10, 30),
+        end: DateTime(2026, 7, 20, 11, 30),
+        events: [nearby],
+        reasoning: const [],
+        location: 'la clinique Saint Jean',
+      );
+      final unknown = PlanningScoreService.scoreSlot(
+        start: DateTime(2026, 7, 20, 10, 30),
+        end: DateTime(2026, 7, 20, 11, 30),
+        events: [nearby],
+        reasoning: const [],
+      );
+      final different = PlanningScoreService.scoreSlot(
+        start: DateTime(2026, 7, 20, 10, 30),
+        end: DateTime(2026, 7, 20, 11, 30),
+        events: [nearby],
+        reasoning: const [],
+        location: 'Cabinet Victor-Hugo',
+      );
+
+      expect(matching, greaterThan(unknown));
+      expect(different, unknown);
+    });
+
+    test('explains continuity only for the same known place', () {
+      final event = buildEvent(
+        title: 'Médecin',
+        startIso: '2026-07-20T09:00:00',
+        endIso: '2026-07-20T10:00:00',
+        location: 'Clinique Saint-Jean',
+      );
+      final reason = PlanningScoreService.explainSlot(
+        start: DateTime(2026, 7, 20, 10, 30),
+        end: DateTime(2026, 7, 20, 11, 30),
+        events: [event],
+        reasoning: const [],
+        location: 'la clinique Saint Jean',
+      );
+
+      expect(reason, contains('au même endroit'));
     });
 
     test('explains a slot that fits between two commitments', () {

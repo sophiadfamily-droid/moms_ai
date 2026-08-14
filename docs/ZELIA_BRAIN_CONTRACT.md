@@ -173,6 +173,12 @@ structurée certaine.
 La localisation sert au contexte et aux trajets. Elle ne crée pas un historique
 exhaustif des déplacements.
 
+Un lieu n'est utilisé pour classer un créneau que s'il a été donné clairement
+ou relié à une identité de lieu fiable. Deux lieux inconnus ou différents ne
+permettent pas de deviner une distance. Tant qu'aucun service de trajet fiable
+n'est raccordé, Zélia conserve les durées données par l'utilisatrice et peut
+seulement favoriser la continuité entre deux rendez-vous au même lieu connu.
+
 ## 4. Changements, annulations et exceptions
 
 Zélia distingue :
@@ -317,6 +323,8 @@ Le cerveau respecte ce contrat si, au minimum :
   sans bloquer toute la plage ;
 - une colocataire occupée ne bloque rien sans conséquence connue ;
 - un rendez-vous proposé tient compte du lieu, des trajets et de la journée ;
+- lorsque l'utilisatrice l'autorise, le trajet est calculé depuis le lieu utile
+  précédent et vers le lieu utile suivant, pas seulement depuis le domicile ;
 - une durée déjà donnée dans une recherche de créneau n'est jamais redemandée ;
 - une correction remplace l'ancienne information sans doublon ;
 - une annulation ponctuelle ne supprime pas toute une habitude ;
@@ -324,6 +332,19 @@ Le cerveau respecte ce contrat si, au minimum :
 - une information probable n'est jamais annoncée comme certaine ;
 - l'utilisatrice peut corriger ce que Zélia sait ;
 - une suggestion proactive reste rare, utile et personnalisée.
+
+### Calcul des trajets
+
+Le calcul automatique est facultatif et désactivé par défaut. Son activation
+demande un accord clair sur chaque appareil. Le réglage du profil ne suffit
+jamais à autoriser seul l'envoi d'un lieu.
+
+Quand il est activé, Zélia transmet à Apple Plans uniquement le départ et
+l'arrivée nécessaires au calcul en cours. Elle ne conserve pas d'historique de
+trajets. La recherche protège la durée aller, le rendez-vous, le retour et la
+marge, en partant du rendez-vous localisé précédent ou du domicile, puis en
+allant vers le rendez-vous localisé suivant ou le domicile. Si le calcul échoue,
+Zélia demande une estimation simple sans bloquer la conversation.
 
 ## 14. Articulation documentaire
 

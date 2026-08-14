@@ -15,10 +15,15 @@ void main() {
       proposed: current.profile.copyWith(
         planningStyle: 'Souple',
         wantsNotifications: false,
+        automaticTravelCalculationEnabled: true,
       ),
     )!;
 
-    expect(plan.changedFields, {'planningStyle', 'wantsNotifications'});
+    expect(plan.changedFields, {
+      'planningStyle',
+      'wantsNotifications',
+      'automaticTravelCalculationEnabled',
+    });
     expect(plan.result.expectedRevision, 4);
     expect(plan.result.nextRevision, 5);
     expect(plan.profile.planningStyle, 'Souple');

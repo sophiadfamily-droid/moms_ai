@@ -2,6 +2,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:moms_ai/services/zelia_response_builder.dart';
 
 void main() {
+  test('formats an ISO date as natural French', () {
+    expect(
+      ZeliaResponseBuilder.formatLongDateForUser('2026-08-20'),
+      'jeudi 20 août 2026',
+    );
+  });
+
   group('ZeliaResponseBuilder.eventCreated', () {
     test('describes outbound and return travel separately', () {
       final message = ZeliaResponseBuilder.eventCreated(

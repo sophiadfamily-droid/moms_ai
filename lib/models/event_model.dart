@@ -7,6 +7,8 @@ class EventModel {
   final String time;
   final String notes;
   final String category;
+  final String location;
+  final String? locationEntityId;
   final DateTime createdAt;
   final String startDateTimeIso;
 
@@ -56,6 +58,8 @@ class EventModel {
     required this.time,
     required this.notes,
     this.category = "Personnel",
+    this.location = "",
+    this.locationEntityId,
     required this.createdAt,
     required this.startDateTimeIso,
     this.endTime = "",
@@ -80,6 +84,11 @@ class EventModel {
             (participantIdentity == null ? 0 : 1) {
     if (eventRevision < 0) {
       throw const FormatException('invalid_event_revision');
+    }
+    if (location.length > 240 ||
+        locationEntityId?.trim().isEmpty == true ||
+        (locationEntityId?.length ?? 0) > 200) {
+      throw const FormatException('invalid_event_location');
     }
     if (this.participantIdentityRevision < 0 ||
         (participantIdentity != null && this.participantIdentityRevision < 1) ||
@@ -118,6 +127,9 @@ class EventModel {
     String? time,
     String? notes,
     String? category,
+    String? location,
+    String? locationEntityId,
+    bool clearLocationEntityId = false,
     DateTime? createdAt,
     String? startDateTimeIso,
     String? endTime,
@@ -154,6 +166,10 @@ class EventModel {
       time: time ?? this.time,
       notes: notes ?? this.notes,
       category: category ?? this.category,
+      location: location ?? this.location,
+      locationEntityId: clearLocationEntityId
+          ? null
+          : locationEntityId ?? this.locationEntityId,
       createdAt: createdAt ?? this.createdAt,
       startDateTimeIso: startDateTimeIso ?? this.startDateTimeIso,
       endTime: endTime ?? this.endTime,
@@ -186,6 +202,8 @@ class EventModel {
       "time": time,
       "notes": notes,
       "category": category,
+      "location": location,
+      if (locationEntityId != null) "locationEntityId": locationEntityId,
       "createdAt": createdAt.toIso8601String(),
       "startDateTimeIso": startDateTimeIso,
       "endTime": endTime,
@@ -231,6 +249,8 @@ class EventModel {
       time: json["time"] ?? "",
       notes: json["notes"] ?? "",
       category: json["category"] ?? "Personnel",
+      location: json["location"]?.toString() ?? "",
+      locationEntityId: _optionalText(json["locationEntityId"]),
       createdAt: DateTime.tryParse(json["createdAt"] ?? "") ?? DateTime.now(),
       startDateTimeIso: json["startDateTimeIso"] ?? "",
       endTime: json["endTime"] ?? "",
@@ -264,6 +284,11 @@ class EventModel {
       throw const FormatException('invalid_event_revision');
     }
     return revision;
+  }
+
+  static String? _optionalText(dynamic value) {
+    final text = value?.toString().trim() ?? '';
+    return text.isEmpty ? null : text;
   }
 
   static EventParticipantIdentityLink? _participantIdentityFromJson(

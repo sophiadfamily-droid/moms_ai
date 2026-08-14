@@ -550,6 +550,8 @@ final class EventLifeContextAdapter implements LifeContextDomainAdapter {
           syncStatus: syncStatuses[id] ?? 'unknown',
           participantEntityId: participant?.identity.entityId,
           parentRecurringId: _optional(event.parentRecurringId),
+          location: _optional(event.location),
+          locationEntityId: _optional(event.locationEntityId),
         );
       }).where((event) {
         final start = DateTime.tryParse(event.startDateTimeIso)?.toUtc();

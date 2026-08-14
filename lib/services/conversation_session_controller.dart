@@ -294,6 +294,7 @@ final class ConversationSessionController extends ChangeNotifier {
             SmartPlanningContinuationStep.planningConsent =>
               ProactiveInteractionSource.smartPlanningConsent,
             SmartPlanningContinuationStep.duration ||
+            SmartPlanningContinuationStep.location ||
             SmartPlanningContinuationStep.travelGo ||
             SmartPlanningContinuationStep.travelBack =>
               ProactiveInteractionSource.smartPlanningDuration,

@@ -18,6 +18,7 @@ enum SmartPlanningContinuationType {
 enum SmartPlanningContinuationStep {
   planningConsent,
   duration,
+  location,
   travelGo,
   travelBack,
   optionChoice,
@@ -78,6 +79,9 @@ final class SmartPlanningContinuation {
     this.travelGoMinutes = 0,
     this.travelBackMinutes = 0,
     this.marginMinutes = 0,
+    this.location = '',
+    this.departureContext = '',
+    this.arrivalContext = '',
     this.failedDate,
     this.startDate,
     this.proposal,
@@ -106,6 +110,9 @@ final class SmartPlanningContinuation {
         travelGoMinutes < 0 ||
         travelBackMinutes < 0 ||
         marginMinutes < 0 ||
+        location.length > 240 ||
+        departureContext.length > 40 ||
+        arrivalContext.length > 40 ||
         mutationId != null && mutationId!.trim().isEmpty ||
         logicalRequestId != null && logicalRequestId!.trim().isEmpty ||
         sourceSuggestionId != null && sourceSuggestionId!.trim().isEmpty) {
@@ -130,6 +137,9 @@ final class SmartPlanningContinuation {
   final int travelGoMinutes;
   final int travelBackMinutes;
   final int marginMinutes;
+  final String location;
+  final String departureContext;
+  final String arrivalContext;
   final DateTime? failedDate;
   final DateTime? startDate;
   final SmartPlanningProposal? proposal;
@@ -158,6 +168,9 @@ final class SmartPlanningContinuation {
     int? travelGoMinutes,
     int? travelBackMinutes,
     int? marginMinutes,
+    String? location,
+    String? departureContext,
+    String? arrivalContext,
     DateTime? failedDate,
     DateTime? startDate,
     SmartPlanningProposal? proposal,
@@ -190,6 +203,9 @@ final class SmartPlanningContinuation {
         travelGoMinutes: travelGoMinutes ?? this.travelGoMinutes,
         travelBackMinutes: travelBackMinutes ?? this.travelBackMinutes,
         marginMinutes: marginMinutes ?? this.marginMinutes,
+        location: location ?? this.location,
+        departureContext: departureContext ?? this.departureContext,
+        arrivalContext: arrivalContext ?? this.arrivalContext,
         failedDate: failedDate ?? this.failedDate,
         startDate: startDate ?? this.startDate,
         proposal: proposal ?? this.proposal,
