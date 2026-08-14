@@ -21,6 +21,7 @@ void main() {
 
       final uniqueDays = result.options.map((option) => option.dateIso).toSet();
       expect(uniqueDays.length, greaterThan(1));
+      expect(result.options.first.reason, isNotEmpty);
     });
 
     test(
@@ -253,6 +254,10 @@ void main() {
             },
           ),
           true,
+        );
+        expect(
+          result.options.first.reason,
+          contains('dépôt ou de récupération'),
         );
       },
     );

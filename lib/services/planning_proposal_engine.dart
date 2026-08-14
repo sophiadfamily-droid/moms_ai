@@ -12,6 +12,7 @@ class PlanningProposalOption {
   final String startTime;
   final String endTime;
   final String label;
+  final String reason;
 
   const PlanningProposalOption({
     required this.start,
@@ -21,6 +22,7 @@ class PlanningProposalOption {
     required this.startTime,
     required this.endTime,
     required this.label,
+    this.reason = '',
   });
 
   Map<String, dynamic> toJson() {
@@ -30,6 +32,7 @@ class PlanningProposalOption {
       "endTime": endTime,
       "score": score,
       "label": label,
+      "reason": reason,
       "start": start.toIso8601String(),
       "end": end.toIso8601String(),
     };
@@ -186,6 +189,14 @@ class PlanningProposalEngine {
           preferredStartHour: planningWindow.preferredStartHour,
           preferredEndHour: planningWindow.preferredEndHour,
         );
+        final reason = PlanningScoreService.explainSlot(
+          start: cursor,
+          end: slotEnd,
+          events: events,
+          reasoning: reasoning,
+          preferredStartHour: planningWindow.preferredStartHour,
+          preferredEndHour: planningWindow.preferredEndHour,
+        );
 
         options.add(
           PlanningProposalOption(
@@ -196,6 +207,7 @@ class PlanningProposalEngine {
             startTime: SmartPlanningService.formatIsoTime(cursor),
             endTime: SmartPlanningService.formatIsoTime(slotEnd),
             label: _humanOptionLabel(cursor, slotEnd),
+            reason: reason,
           ),
         );
       }

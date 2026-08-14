@@ -1948,6 +1948,14 @@ planning draft, so ZELIA moves directly to the next genuinely missing field.
 A start time (`à 15 heures`) and a time range (`de 15 heures à 16 heures`)
 remain temporal placement signals and are never converted into a duration.
 
+The third Stage 6 slice makes the first ranked option briefly explainable
+without exposing scores or internal reasoning. The explanation is derived only
+from the same confirmed inputs that produced the ranking: a comfortable child
+schedule window, a scoped appointment-period preference, or safe continuity
+with adjacent protected Events. When no stronger contextual signal exists, it
+states only that the complete protected time remains available. The other
+options stay concise, so the conversation does not become a technical report.
+
 ### Stage 7 — Broaden natural-language understanding
 
 - support spelling errors, voice-transcription variants, abbreviations, familiar language and bounded slang;

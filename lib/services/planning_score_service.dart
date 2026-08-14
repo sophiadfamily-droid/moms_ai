@@ -40,6 +40,44 @@ class PlanningScoreService {
     return score.clamp(0, 100);
   }
 
+  static String explainSlot({
+    required DateTime start,
+    required DateTime end,
+    required List<EventModel> events,
+    required List<Map<String, dynamic>> reasoning,
+    int? preferredStartHour,
+    int? preferredEndHour,
+  }) {
+    if (_fitsComfortablyInsideCareWindow(
+      start: start,
+      end: end,
+      reasoning: reasoning,
+    )) {
+      return 'Ce moment évite les horaires probables de dépôt ou de récupération.';
+    }
+
+    if (_matchesPreferredPeriod(
+      start: start,
+      preferredStartHour: preferredStartHour,
+      preferredEndHour: preferredEndHour,
+    )) {
+      final period = _periodLabel(
+        preferredStartHour!,
+        preferredEndHour!,
+      );
+      return 'Ce moment correspond à ta préférence pour $period.';
+    }
+
+    final continuityReason = _sameDayContinuityReason(
+      start: start,
+      end: end,
+      events: events,
+    );
+    if (continuityReason != null) return continuityReason;
+
+    return 'Ce créneau garde tout le temps prévu autour du rendez-vous.';
+  }
+
   /// Gives preference to an appointment that fits comfortably inside a
   /// dependent person's structured schedule, while avoiding the moments at
   /// which a hand-off, drop-off or pickup is likely. This is deliberately a
@@ -120,6 +158,57 @@ class PlanningScoreService {
     return bestComfortBonus;
   }
 
+  static bool _fitsComfortablyInsideCareWindow({
+    required DateTime start,
+    required DateTime end,
+    required List<Map<String, dynamic>> reasoning,
+  }) {
+    for (final item in reasoning) {
+      if (item['type'] != 'other_person_schedule' ||
+          item['planningEffect'] != 'potential_care_transition' ||
+          !RecurrenceDateMatchService.appliesToDate(item, start)) {
+        continue;
+      }
+
+      final rawStart = _dateTimeFromTime(
+        start,
+        item['startTime']?.toString(),
+      );
+      final rawEnd = _dateTimeFromTime(
+        start,
+        item['endTime']?.toString(),
+      );
+      if (rawStart == null || rawEnd == null || !rawEnd.isAfter(rawStart)) {
+        continue;
+      }
+
+      final comfortableStart = rawStart.add(
+        Duration(
+          minutes: _transitionMinutes(
+            item['transitionBeforeMinutes'],
+            minimum: 15,
+          ),
+        ),
+      );
+      final comfortableEnd = rawEnd.subtract(
+        Duration(
+          minutes: _transitionMinutes(
+            item['transitionAfterMinutes'],
+            minimum: 30,
+          ),
+        ),
+      );
+
+      if (comfortableEnd.isAfter(comfortableStart) &&
+          !start.isBefore(comfortableStart) &&
+          !end.isAfter(comfortableEnd)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   static int _transitionMinutes(dynamic value, {required int minimum}) {
     final parsed = int.tryParse(value?.toString() ?? '') ?? 0;
     return parsed > minimum ? parsed : minimum;
@@ -156,6 +245,63 @@ class PlanningScoreService {
     }
 
     return -10;
+  }
+
+  static bool _matchesPreferredPeriod({
+    required DateTime start,
+    int? preferredStartHour,
+    int? preferredEndHour,
+  }) {
+    if (preferredStartHour == null || preferredEndHour == null) return false;
+    return start.hour >= preferredStartHour && start.hour < preferredEndHour;
+  }
+
+  static String _periodLabel(int startHour, int endHour) {
+    if (endHour <= 12) return 'le matin';
+    if (startHour >= 18) return 'le soir';
+    return 'l’après-midi';
+  }
+
+  static String? _sameDayContinuityReason({
+    required DateTime start,
+    required DateTime end,
+    required List<EventModel> events,
+  }) {
+    DateTime? previousEnd;
+    DateTime? nextStart;
+
+    for (final event in events) {
+      final protectedStart = EventService.parseProtectedStart(event);
+      final protectedEnd = EventService.parseProtectedEnd(event);
+      if (protectedStart == null || protectedEnd == null) continue;
+      if (!_isSameCalendarDay(protectedStart, start) &&
+          !_isSameCalendarDay(protectedEnd, start)) {
+        continue;
+      }
+
+      if (!protectedEnd.isAfter(start) &&
+          (previousEnd == null || protectedEnd.isAfter(previousEnd))) {
+        previousEnd = protectedEnd;
+      }
+      if (!protectedStart.isBefore(end) &&
+          (nextStart == null || protectedStart.isBefore(nextStart))) {
+        nextStart = protectedStart;
+      }
+    }
+
+    final before =
+        previousEnd == null ? null : start.difference(previousEnd).inMinutes;
+    final after = nextStart?.difference(end).inMinutes;
+    final comfortableBefore = before != null && before >= 30 && before <= 120;
+    final comfortableAfter = after != null && after >= 30 && after <= 120;
+
+    if (comfortableBefore && comfortableAfter) {
+      return 'Ce créneau s’intègre entre deux engagements sans les coller.';
+    }
+    if (comfortableBefore || comfortableAfter) {
+      return 'Ce créneau reste proche d’un autre engagement tout en gardant une marge.';
+    }
+    return null;
   }
 
   static int _sameDayPlanningScore({

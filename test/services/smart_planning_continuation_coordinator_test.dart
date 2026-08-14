@@ -202,9 +202,12 @@ void main() {
 
     await coordinator.resolve('1 heure', sessionGeneration: 2);
     await coordinator.resolve('0', sessionGeneration: 2);
-    await coordinator.resolve('0', sessionGeneration: 2);
+    final optionsResult = await coordinator.resolve('0', sessionGeneration: 2);
     expect(
         coordinator.active!.step, SmartPlanningContinuationStep.optionChoice);
+    expect(
+        optionsResult!.reply, contains('Le premier me semble le plus adapté'));
+    expect(optionsResult.reply, contains('préférence pour le matin'));
   });
 
   test('explicit slot request reuses the duration stated initially', () async {
@@ -410,6 +413,7 @@ final class _FakeGateway implements SmartPlanningContinuationGateway {
       startTime: '09:00',
       endTime: '11:00',
       label: 'vendredi 24 juillet à 9 h',
+      reason: 'Ce moment correspond à ta préférence pour le matin.',
     ),
   ];
   final List<EventModel> addedEvents = [];

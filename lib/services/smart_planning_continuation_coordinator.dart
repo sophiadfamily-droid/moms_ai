@@ -1337,8 +1337,12 @@ final class SmartPlanningContinuationCoordinator {
     List<PlanningProposalOption> options,
     String title,
   ) {
+    final bestReason = options.firstOrNull?.reason.trim() ?? '';
     final lines = <String>[
       'Voici les créneaux disponibles que je peux te proposer pour « $title » 💕',
+      if (bestReason.isNotEmpty) '',
+      if (bestReason.isNotEmpty)
+        'Le premier me semble le plus adapté. $bestReason',
       '',
       for (var index = 0; index < options.length; index++)
         '${index + 1}. ${options[index].label}',

@@ -222,5 +222,59 @@ void main() {
 
       expect(score, 0);
     });
+
+    test('explains a comfortable slot around a child schedule', () {
+      final reason = PlanningScoreService.explainSlot(
+        start: DateTime(2026, 7, 20, 14),
+        end: DateTime(2026, 7, 20, 15),
+        events: const [],
+        reasoning: const [
+          {
+            'type': 'other_person_schedule',
+            'planningEffect': 'potential_care_transition',
+            'days': ['Lundi'],
+            'startTime': '13:30',
+            'endTime': '16:30',
+          },
+        ],
+      );
+
+      expect(reason, contains('dépôt ou de récupération'));
+    });
+
+    test('explains a confirmed appointment-period preference', () {
+      final reason = PlanningScoreService.explainSlot(
+        start: DateTime(2026, 7, 20, 9),
+        end: DateTime(2026, 7, 20, 10),
+        events: const [],
+        reasoning: const [],
+        preferredStartHour: 8,
+        preferredEndHour: 12,
+      );
+
+      expect(reason, 'Ce moment correspond à ta préférence pour le matin.');
+    });
+
+    test('explains a slot that fits between two commitments', () {
+      final reason = PlanningScoreService.explainSlot(
+        start: DateTime(2026, 7, 20, 10, 30),
+        end: DateTime(2026, 7, 20, 11, 30),
+        events: [
+          buildEvent(
+            title: 'Premier rendez-vous',
+            startIso: '2026-07-20T09:00:00',
+            endIso: '2026-07-20T10:00:00',
+          ),
+          buildEvent(
+            title: 'Deuxième rendez-vous',
+            startIso: '2026-07-20T12:00:00',
+            endIso: '2026-07-20T13:00:00',
+          ),
+        ],
+        reasoning: const [],
+      );
+
+      expect(reason, contains('entre deux engagements'));
+    });
   });
 }
