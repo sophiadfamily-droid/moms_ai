@@ -39,7 +39,8 @@ final class NaturalEventRequestService {
     ).hasMatch(normalized);
     if (startsWithCreationCommand && !hasEventLabel) return null;
 
-    final motif = _extractMotif(original);
+    final details = _extractDetails(original);
+    final motif = details.motif;
     final title = motif.isEmpty
         ? hasEventLabel
             ? 'Rendez-vous'
@@ -57,6 +58,7 @@ final class NaturalEventRequestService {
       'travelGoMinutes': 0,
       'travelBackMinutes': 0,
       'marginMinutes': 0,
+      if (details.location.isNotEmpty) 'location': details.location,
       'originalMessage': original,
     };
   }
@@ -99,10 +101,25 @@ final class NaturalEventRequestService {
     ).hasMatch(value);
   }
 
-  static String _extractMotif(String original) {
+  static _NaturalEventDetails _extractDetails(String original) {
     var value = original;
     for (final pattern in _temporalPatterns) {
       value = value.replaceAll(pattern, ' ');
+    }
+    final compact = value.replaceAll(RegExp(r'\s+'), ' ').trim();
+    final locationMatch = RegExp(
+      r'^(.+?)\s+(?:chez|au|aux|à\s+la|a\s+la|à\s+l[’\x27]|a\s+l[’\x27]|à|a)\s+(.+)$',
+      caseSensitive: false,
+    ).firstMatch(compact);
+    var location = '';
+    if (locationMatch != null) {
+      final candidate = locationMatch.group(2)?.trim() ?? '';
+      if (candidate.isNotEmpty &&
+          candidate.length <= 240 &&
+          !_looksLikeClock(candidate)) {
+        value = locationMatch.group(1)?.trim() ?? value;
+        location = candidate;
+      }
     }
     value = value
         .replaceFirst(
@@ -118,8 +135,16 @@ final class NaturalEventRequestService {
         .replaceAll(
             RegExp(r'^\s*(?:pour|le|la|un|une)\s+', caseSensitive: false), ' ')
         .trim();
-    return _stripDanglingTemporalConnector(value);
+    return _NaturalEventDetails(
+      motif: _stripDanglingTemporalConnector(value),
+      location: location,
+    );
   }
+
+  static bool _looksLikeClock(String value) => RegExp(
+        r'^\d{1,2}\s*(?:h(?:eur(?:es?)?)?|:)\s*\d{0,2}\b',
+        caseSensitive: false,
+      ).hasMatch(value.trim());
 
   static String _stripDanglingTemporalConnector(String input) {
     final value = input.trim();
@@ -145,7 +170,7 @@ final class NaturalEventRequestService {
 
   static final List<RegExp> _temporalPatterns = [
     RegExp(
-      r'\b(?:(?:[àa]|vers|environ|autour\s+de|aux\s+alentours\s+de)\s*)?\d{1,2}\s*(?:h(?:eur(?:es?)?|ure(?:s?)?|rs?)?|:)\s*\d{0,2}\b',
+      r'(?<![A-Za-zÀ-ÿ0-9])(?:(?:[àa]|vers|environ|autour\s+de|aux\s+alentours\s+de)\s*)?\d{1,2}\s*(?:h(?:eur(?:es?)?|ure(?:s?)?|rs?)?|:)\s*\d{0,2}\b',
       caseSensitive: false,
     ),
     RegExp(
@@ -153,7 +178,7 @@ final class NaturalEventRequestService {
       caseSensitive: false,
     ),
     RegExp(
-      r'\b(?:(?:[àa]|vers|environ|autour\s+de|aux\s+alentours\s+de)\s*)?'
+      r'(?<![A-Za-zÀ-ÿ0-9])(?:(?:[àa]|vers|environ|autour\s+de|aux\s+alentours\s+de)\s*)?'
       '$_spokenHourPattern\\s*(?:h(?:eur(?:es?)?|ure(?:s?)?|rs?))'
       r'(?:\s+(?:et\s+(?:quart|demi(?:e)?)|trente|\d{1,2}))?\b',
       caseSensitive: false,
@@ -192,4 +217,14 @@ final class NaturalEventRequestService {
 
   static const String _spokenHourPattern =
       r'\b(?:z[ée]ro|une?|deux|trois|quatre|cinq|six|sept|huit|neuf|dix|onze|douze|treize|quatorze|quinze|seize|dix\s+sept|dix\s+huit|dix\s+neuf|vingt(?:\s+et\s+un|\s+deux|\s+trois)?)';
+}
+
+final class _NaturalEventDetails {
+  const _NaturalEventDetails({
+    required this.motif,
+    required this.location,
+  });
+
+  final String motif;
+  final String location;
 }

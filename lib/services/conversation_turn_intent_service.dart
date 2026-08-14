@@ -1,4 +1,5 @@
 import 'natural_language_normalizer.dart';
+import 'natural_time_service.dart';
 
 enum ConversationTurnIntent {
   answerCurrentQuestion,
@@ -9,14 +10,28 @@ enum ConversationTurnIntent {
   ambiguousControl,
 }
 
+enum ConversationTurnSemanticField {
+  currentQuestion,
+  eventTitle,
+  date,
+  time,
+  dateAndTime,
+  duration,
+  travelGo,
+  travelBack,
+  margin,
+}
+
 final class ConversationTurnInterpretation {
   const ConversationTurnInterpretation({
     required this.intent,
     required this.semanticContent,
+    this.semanticField = ConversationTurnSemanticField.currentQuestion,
   });
 
   final ConversationTurnIntent intent;
   final String semanticContent;
+  final ConversationTurnSemanticField semanticField;
 }
 
 /// Interprète le rôle d'un message avant de le consommer comme une valeur.
@@ -64,6 +79,7 @@ final class ConversationTurnIntentService {
       return ConversationTurnInterpretation(
         intent: ConversationTurnIntent.reviseCurrentAnswer,
         semanticContent: revised,
+        semanticField: _semanticField(revised),
       );
     }
 
@@ -77,7 +93,55 @@ final class ConversationTurnIntentService {
     return ConversationTurnInterpretation(
       intent: ConversationTurnIntent.answerCurrentQuestion,
       semanticContent: normalized,
+      semanticField: _semanticField(normalized),
     );
+  }
+
+  static ConversationTurnSemanticField _semanticField(String value) {
+    if (RegExp(
+      r'\b(?:trajet\s+)?retour\b|\bpour\s+(?:le\s+)?retour\b|'
+      r'\bpour\s+revenir\b',
+    ).hasMatch(value)) {
+      return ConversationTurnSemanticField.travelBack;
+    }
+    if (RegExp(
+      r'\b(?:trajet\s+)?aller\b|\bpour\s+(?:l\s+)?aller\b|'
+      r'\bpour\s+y\s+aller\b',
+    ).hasMatch(value)) {
+      return ConversationTurnSemanticField.travelGo;
+    }
+    if (RegExp(r'\b(?:marge|temps\s+de\s+securite)\b').hasMatch(value)) {
+      return ConversationTurnSemanticField.margin;
+    }
+    if (RegExp(
+      r'\b(?:duree|dure|durera|pendant|combien\s+de\s+temps)\b',
+    ).hasMatch(value)) {
+      return ConversationTurnSemanticField.duration;
+    }
+
+    final hasDate = RegExp(
+      r'\b(?:aujourd\s+hui|demain|apres\s+demain|lundi|mardi|mercredi|'
+      r'jeudi|vendredi|samedi|dimanche|jour|date)\b|'
+      r'\b\d{1,2}[/.\-]\d{1,2}(?:[/.\-]\d{2,4})?\b|'
+      r'\b\d{1,2}\s+(?:janvier|fevrier|mars|avril|mai|juin|juillet|'
+      r'aout|septembre|octobre|novembre|decembre)\b',
+    ).hasMatch(value);
+    final parsedClock = NaturalTimeService.parseTime(value);
+    final parsedHour = int.tryParse(parsedClock.split(':').first);
+    final hasExplicitClockCue = RegExp(
+      r'\b(?:a|vers|horaire|l\s+heure|midi|minuit)\b',
+    ).hasMatch(value);
+    final hasTime = parsedClock.isNotEmpty &&
+        (hasDate || hasExplicitClockCue || (parsedHour ?? -1) >= 6);
+    if (hasDate && hasTime) {
+      return ConversationTurnSemanticField.dateAndTime;
+    }
+    if (hasDate) return ConversationTurnSemanticField.date;
+    if (hasTime) return ConversationTurnSemanticField.time;
+    if (RegExp(r'\b(?:motif|c\s+est\s+pour)\b').hasMatch(value)) {
+      return ConversationTurnSemanticField.eventTitle;
+    }
+    return ConversationTurnSemanticField.currentQuestion;
   }
 
   static bool _hasNegatedControl(String value) => RegExp(

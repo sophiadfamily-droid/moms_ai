@@ -233,6 +233,14 @@ ce qu'elle vient de dire, refuse une proposition, abandonne la demande ou
 change de sujet. Ce rôle conversationnel est prioritaire sur le champ attendu.
 Une négation ou une intention incertaine ne déclenche aucune action.
 
+Quand l'utilisatrice corrige une information précise, Zélia modifie le bon
+élément même si elle venait de poser une autre question. Elle distingue le
+motif, le jour, l'heure, la durée, les trajets et la marge, conserve le reste du
+brouillon et reprend seulement à l'information encore manquante. Une réponse
+courte dont le sens dépend de la question reste contextuelle : `une heure` est
+une durée lorsqu'une durée est demandée, tandis que `15 heures` désigne une
+heure de début lorsqu'elle est donnée comme correction.
+
 ## 7. Import de documents et d'images
 
 Toute image ou tout PDF contenant un planning, un rendez-vous, une activité ou
@@ -331,6 +339,9 @@ Le cerveau respecte ce contrat si, au minimum :
 - un rendez-vous proposé tient compte du lieu, des trajets et de la journée ;
 - lorsque l'utilisatrice l'autorise, le trajet est calculé depuis le lieu utile
   précédent et vers le lieu utile suivant, pas seulement depuis le domicile ;
+- pour un rendez-vous à heure fixe avec calcul automatique autorisé, Zélia ne
+  redemande ni durée ni estimation manuelle de trajet ; elle demande seulement
+  le lieu manquant et affiche son estimation de durée dans le récapitulatif ;
 - une durée déjà donnée dans une recherche de créneau n'est jamais redemandée ;
 - une correction remplace l'ancienne information sans doublon ;
 - une annulation ponctuelle ne supprime pas toute une habitude ;
@@ -350,7 +361,7 @@ l'arrivée nécessaires au calcul en cours. Elle ne conserve pas d'historique de
 trajets. La recherche protège la durée aller, le rendez-vous, le retour et la
 marge, en partant du rendez-vous localisé précédent ou du domicile, puis en
 allant vers le rendez-vous localisé suivant ou le domicile. Si le calcul échoue,
-Zélia demande une estimation simple sans bloquer la conversation.
+Zélia demande une adresse plus précise sans inventer de temps de trajet.
 
 ## 14. Articulation documentaire
 

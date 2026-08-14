@@ -75,4 +75,32 @@ void main() {
       );
     }
   });
+
+  test('identifies which Event field the user is talking about', () {
+    final cases = <String, ConversationTurnSemanticField>{
+      '15h': ConversationTurnSemanticField.time,
+      '15 heures': ConversationTurnSemanticField.time,
+      'seize heures': ConversationTurnSemanticField.time,
+      'à cinq heures': ConversationTurnSemanticField.time,
+      'mardi': ConversationTurnSemanticField.date,
+      'mardi à 15 heures': ConversationTurnSemanticField.dateAndTime,
+      'mardi à cinq heures': ConversationTurnSemanticField.dateAndTime,
+      'le rendez-vous dure 45 minutes': ConversationTurnSemanticField.duration,
+      "20 minutes pour l'aller": ConversationTurnSemanticField.travelGo,
+      '10 minutes pour le trajet retour':
+          ConversationTurnSemanticField.travelBack,
+      '5 minutes de marge': ConversationTurnSemanticField.margin,
+      "le motif c'est dentiste": ConversationTurnSemanticField.eventTitle,
+      '1h': ConversationTurnSemanticField.currentQuestion,
+      'une heure': ConversationTurnSemanticField.currentQuestion,
+    };
+
+    for (final entry in cases.entries) {
+      expect(
+        service.interpret(entry.key).semanticField,
+        entry.value,
+        reason: entry.key,
+      );
+    }
+  });
 }

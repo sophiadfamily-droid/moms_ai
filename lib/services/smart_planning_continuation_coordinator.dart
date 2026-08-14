@@ -75,6 +75,14 @@ abstract interface class SmartPlanningAutomaticTravelGateway {
   });
 }
 
+abstract interface class FixedEventAutomaticTravelGateway {
+  Future<AutomaticEventTravelEstimate?> estimateTravelForFixedEvent({
+    required DateTime appointmentStart,
+    required int actionMinutes,
+    required String location,
+  });
+}
+
 typedef SmartPlanningAutonomyPolicyLoader = Future<ActionAutonomyPolicy>
     Function();
 
@@ -92,7 +100,8 @@ RouteTravelConsentGateway _resolveTravelConsentGateway(
 final class ProductionSmartPlanningContinuationGateway
     implements
         SmartPlanningContinuationGateway,
-        SmartPlanningAutomaticTravelGateway {
+        SmartPlanningAutomaticTravelGateway,
+        FixedEventAutomaticTravelGateway {
   ProductionSmartPlanningContinuationGateway(
     UserProfile profile, {
     Future<LifeContextProduction> Function()? loadLifeContext,
@@ -144,6 +153,28 @@ final class ProductionSmartPlanningContinuationGateway
       homeAddress: _profile.homeAddress,
       events: input.events,
       reasoning: input.reasoning,
+      mode: _routeMode(_profile.transportInfo),
+    );
+  }
+
+  @override
+  Future<AutomaticEventTravelEstimate?> estimateTravelForFixedEvent({
+    required DateTime appointmentStart,
+    required int actionMinutes,
+    required String location,
+  }) async {
+    if (!await canCalculateTravelAutomatically()) return null;
+    final input = await _planningInput(
+      windowStart: appointmentStart,
+      windowDays: 1,
+    );
+    return AutomaticTravelPlanningService(routeGateway: _routeGateway)
+        .estimateForFixedEvent(
+      appointmentStart: appointmentStart,
+      actionMinutes: actionMinutes,
+      destination: location,
+      homeAddress: _profile.homeAddress,
+      events: input.events,
       mode: _routeMode(_profile.transportInfo),
     );
   }
@@ -494,6 +525,31 @@ final class SmartPlanningContinuationCoordinator {
 
   SmartPlanningContinuation? get active => _active;
   bool get hasActive => _active != null;
+
+  Future<bool> canCalculateTravelAutomatically() =>
+      _canCalculateTravelAutomatically();
+
+  Future<AutomaticEventTravelEstimate?> estimateTravelForFixedEvent({
+    required DateTime appointmentStart,
+    required int actionMinutes,
+    required String location,
+  }) async {
+    final gateway = _gateway;
+    if (gateway is! FixedEventAutomaticTravelGateway ||
+        !await _canCalculateTravelAutomatically()) {
+      return null;
+    }
+    final fixedEventGateway = gateway as FixedEventAutomaticTravelGateway;
+    try {
+      return await fixedEventGateway.estimateTravelForFixedEvent(
+        appointmentStart: appointmentStart,
+        actionMinutes: actionMinutes,
+        location: location,
+      );
+    } on Object {
+      return null;
+    }
+  }
 
   void invalidate() {
     final generation = _active?.sessionGeneration;

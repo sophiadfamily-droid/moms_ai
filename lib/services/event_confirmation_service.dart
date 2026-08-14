@@ -40,6 +40,7 @@ class EventConfirmationService {
       "",
       "• ${event.title}",
       "• Le $displayDate à ${event.time}",
+      if (event.location.trim().isNotEmpty) "• Lieu : ${event.location.trim()}",
       "• Durée : ${event.durationMinutes} min",
       "• Trajet aller : ${event.resolvedTravelGoMinutes} min",
       "• Trajet retour : ${event.resolvedTravelBackMinutes} min",

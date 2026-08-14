@@ -344,6 +344,30 @@ final class ConversationLegacyActionExecutor {
     }
 
     final action = Map<String, dynamic>.from(pending.action);
+    if (turn.semanticField == ConversationTurnSemanticField.dateAndTime &&
+        (pending.expectedField == _PendingEventField.date ||
+            pending.expectedField == _PendingEventField.time)) {
+      final revised = _applyDateOrTimeRevision(action, turn.semanticContent);
+      if (revised != null &&
+          (revised['date']?.toString() ?? '').isNotEmpty &&
+          (revised['time']?.toString() ?? '').isNotEmpty) {
+        final outcome =
+            await execute(revised, effectiveAnswer, sessionGeneration);
+        return ConversationOutcome(reply: outcome.message);
+      }
+    }
+    final semanticCorrection = _applySemanticFieldCorrection(
+      action: action,
+      expectedField: pending.expectedField,
+      turn: turn,
+    );
+    if (semanticCorrection != null) {
+      _pendingEventDraft = pending.copyWith(action: semanticCorrection);
+      return ConversationOutcome(
+        reply:
+            'C’est corrigé. ${_questionForEventField(pending.expectedField)}',
+      );
+    }
     switch (pending.expectedField) {
       case _PendingEventField.eventTitle:
         if (EventTitleService.shouldRouteIndependently(effectiveAnswer)) {
@@ -370,6 +394,16 @@ final class ConversationLegacyActionExecutor {
         final time = NaturalTimeService.parseTime(effectiveAnswer);
         if (time.isEmpty) return null;
         action['time'] = time;
+        break;
+      case _PendingEventField.location:
+        final location = _cleanLocationAnswer(effectiveAnswer);
+        if (location == null) {
+          return const ConversationOutcome(
+            reply: 'Où a lieu ce rendez-vous ? Tu peux me donner le nom du '
+                'lieu ou son adresse.',
+          );
+        }
+        action['location'] = location;
         break;
       case _PendingEventField.duration:
         final minutes = _contextualDurationMinutes(
@@ -481,6 +515,150 @@ final class ConversationLegacyActionExecutor {
     return ConversationOutcome(reply: outcome.message);
   }
 
+  Map<String, dynamic>? _applySemanticFieldCorrection({
+    required Map<String, dynamic> action,
+    required _PendingEventField expectedField,
+    required ConversationTurnInterpretation turn,
+  }) {
+    final semanticField = turn.semanticField;
+    if (semanticField == ConversationTurnSemanticField.currentQuestion ||
+        _semanticFieldAnswersExpected(semanticField, expectedField)) {
+      return null;
+    }
+    final content = turn.semanticContent;
+    switch (semanticField) {
+      case ConversationTurnSemanticField.currentQuestion:
+        return null;
+      case ConversationTurnSemanticField.eventTitle:
+        final title = EventTitleService.titleFromMotif(
+          _eventMotifContent(content),
+        );
+        if (title == null) return null;
+        action['title'] = title;
+        return action;
+      case ConversationTurnSemanticField.date:
+        final date = NaturalDateService.resolveDateFromText(
+          content,
+          now: _clock(),
+        );
+        if (date.isEmpty) return null;
+        action['date'] = date;
+        return action;
+      case ConversationTurnSemanticField.time:
+        final time = NaturalTimeService.parseTime(content);
+        if (time.isEmpty) return null;
+        action['time'] = time;
+        return action;
+      case ConversationTurnSemanticField.dateAndTime:
+        final date = NaturalDateService.resolveDateFromText(
+          content,
+          now: _clock(),
+        );
+        final time = NaturalTimeService.parseTime(content);
+        if (date.isEmpty || time.isEmpty) return null;
+        action['date'] = date;
+        action['time'] = time;
+        return action;
+      case ConversationTurnSemanticField.duration:
+        final minutes = _contextualDurationMinutes(
+          content,
+          NaturalDurationExpectedField.duration,
+        );
+        if (minutes <= 0) return null;
+        action['durationMinutes'] = minutes;
+        return action;
+      case ConversationTurnSemanticField.travelGo:
+        final minutes = _travelMinutes(
+          content,
+          NaturalDurationExpectedField.travelGo,
+        );
+        if (minutes == null) return null;
+        action['travelGoMinutes'] = minutes;
+        return action;
+      case ConversationTurnSemanticField.travelBack:
+        final minutes = _travelMinutes(
+          content,
+          NaturalDurationExpectedField.travelBack,
+        );
+        if (minutes == null) return null;
+        action['travelBackMinutes'] = minutes;
+        return action;
+      case ConversationTurnSemanticField.margin:
+        final minutes = _marginMinutes(content);
+        if (minutes == null) return null;
+        action['marginMinutes'] = minutes;
+        return action;
+    }
+  }
+
+  static bool _semanticFieldAnswersExpected(
+    ConversationTurnSemanticField semanticField,
+    _PendingEventField expectedField,
+  ) {
+    return switch (expectedField) {
+      _PendingEventField.eventTitle =>
+        semanticField == ConversationTurnSemanticField.eventTitle,
+      _PendingEventField.date =>
+        semanticField == ConversationTurnSemanticField.date ||
+            semanticField == ConversationTurnSemanticField.dateAndTime,
+      _PendingEventField.time =>
+        semanticField == ConversationTurnSemanticField.time ||
+            semanticField == ConversationTurnSemanticField.dateAndTime,
+      _PendingEventField.location =>
+        semanticField == ConversationTurnSemanticField.currentQuestion,
+      _PendingEventField.duration =>
+        semanticField == ConversationTurnSemanticField.duration,
+      _PendingEventField.travelGo =>
+        semanticField == ConversationTurnSemanticField.travelGo,
+      _PendingEventField.travelBack =>
+        semanticField == ConversationTurnSemanticField.travelBack,
+      _PendingEventField.margin =>
+        semanticField == ConversationTurnSemanticField.margin,
+      _PendingEventField.conflictAlternativeTime =>
+        semanticField == ConversationTurnSemanticField.time ||
+            semanticField == ConversationTurnSemanticField.date ||
+            semanticField == ConversationTurnSemanticField.dateAndTime,
+      _PendingEventField.conflictAlternativeDate =>
+        semanticField == ConversationTurnSemanticField.date ||
+            semanticField == ConversationTurnSemanticField.dateAndTime,
+      _PendingEventField.confirmation => false,
+    };
+  }
+
+  static String _eventMotifContent(String value) {
+    return value
+        .replaceFirst(
+          RegExp(r'^(?:(?:le|mon)\s+)?motif\s+(?:c\s+est|est)\s+'),
+          '',
+        )
+        .replaceFirst(RegExp(r'^c\s+est\s+pour\s+'), '')
+        .trim();
+  }
+
+  static String _questionForEventField(_PendingEventField field) {
+    return switch (field) {
+      _PendingEventField.eventTitle => EventTitleService.clarificationQuestion,
+      _PendingEventField.date => 'Quel jour est prévu ce rendez-vous ?',
+      _PendingEventField.time => 'À quelle heure est-il prévu ?',
+      _PendingEventField.location =>
+        'Où a lieu ce rendez-vous ? Tu peux me donner le nom du lieu ou son '
+            'adresse.',
+      _PendingEventField.duration =>
+        'Combien de temps faut-il prévoir pour ce rendez-vous ?',
+      _PendingEventField.travelGo =>
+        'Combien de temps faut-il prévoir pour le trajet aller ?',
+      _PendingEventField.travelBack =>
+        'Combien de temps faut-il prévoir pour le trajet retour ?',
+      _PendingEventField.margin =>
+        'Quelle marge veux-tu prévoir ? Tu peux répondre aucune.',
+      _PendingEventField.conflictAlternativeTime =>
+        'Quel autre horaire te conviendrait ?',
+      _PendingEventField.conflictAlternativeDate =>
+        'Quel autre jour te conviendrait ?',
+      _PendingEventField.confirmation => 'Veux-tu confirmer ce rendez-vous ?',
+    };
+  }
+
   Map<String, dynamic>? _applyDateOrTimeRevision(
     Map<String, dynamic> action,
     String answer,
@@ -564,11 +742,137 @@ final class ConversationLegacyActionExecutor {
     }.contains(value);
   }
 
+  static String? _cleanLocationAnswer(String value) {
+    final normalized = _normalized(value);
+    if (normalized.isEmpty ||
+        const {
+          'je ne sais pas',
+          'je sais pas',
+          'aucun',
+          'pas de lieu',
+          'inconnu',
+        }.contains(normalized)) {
+      return null;
+    }
+    final cleaned = value
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim()
+        .replaceFirst(
+          RegExp(
+            r'^(?:c[’\x27]est|chez|à|a|au)\s+',
+            caseSensitive: false,
+          ),
+          '',
+        )
+        .trim();
+    if (cleaned.isEmpty || cleaned.length > 240) return null;
+    return cleaned;
+  }
+
+  Future<ConversationActionOutcome?> _prepareAutomaticEventTravel(
+    Map<String, dynamic> action,
+    int sessionGeneration,
+  ) async {
+    final planning = smartPlanning;
+    if (planning == null || action['type']?.toString() != 'event') return null;
+    if (!await planning.canCalculateTravelAutomatically()) return null;
+
+    final title = action['title']?.toString().trim() ?? '';
+    final date = action['date']?.toString().trim() ?? '';
+    final time = ChatPlanningHelperService.normalizeTime(
+      action['time']?.toString() ?? '',
+    );
+    if (EventTitleService.isGeneric(title) || date.isEmpty || time.isEmpty) {
+      return null;
+    }
+
+    final startIso = ChatPlanningHelperService.buildStartDateTimeIso(
+      date: date,
+      time: time,
+    );
+    final appointmentStart = DateTime.tryParse(startIso);
+    if (appointmentStart == null) return null;
+
+    // Keep the already validated rule: a known conflict is explained before
+    // asking for any additional information.
+    if (await _eventStartConflictChecker(startDateTimeIso: startIso) != null) {
+      return null;
+    }
+
+    var durationMinutes = int.tryParse(
+          action['durationMinutes']?.toString() ?? '0',
+        ) ??
+        0;
+    if (durationMinutes <= 0) {
+      durationMinutes = 60;
+      action['durationMinutes'] = durationMinutes;
+    }
+
+    if (!_eventNeedsTravel(action)) {
+      action['travelGoMinutes'] = 0;
+      action['travelBackMinutes'] = 0;
+      action['usesSeparateTravelTimes'] = true;
+      return null;
+    }
+
+    final location = action['location']?.toString().trim() ?? '';
+    if (location.isEmpty) {
+      _setPendingLocationDraft(action, sessionGeneration);
+      return const ConversationActionOutcome(
+        message: 'Où a lieu ce rendez-vous ? Tu peux me donner le nom du lieu '
+            'ou son adresse.',
+      );
+    }
+
+    final estimate = await planning.estimateTravelForFixedEvent(
+      appointmentStart: appointmentStart,
+      actionMinutes: durationMinutes,
+      location: location,
+    );
+    if (estimate == null) {
+      _setPendingLocationDraft(action, sessionGeneration);
+      return const ConversationActionOutcome(
+        message: 'Je n’arrive pas encore à calculer précisément le trajet. '
+            'Peux-tu me donner l’adresse complète du rendez-vous ?',
+      );
+    }
+    action['travelGoMinutes'] = estimate.travelGoMinutes;
+    action['travelBackMinutes'] = estimate.travelBackMinutes;
+    action['usesSeparateTravelTimes'] = true;
+    action['departureContext'] = estimate.departureContext;
+    action['arrivalContext'] = estimate.arrivalContext;
+    return null;
+  }
+
+  void _setPendingLocationDraft(
+    Map<String, dynamic> action,
+    int sessionGeneration,
+  ) {
+    final current = _pendingEventDraft;
+    final preservesCurrentDraft =
+        current != null && current.sessionGeneration == sessionGeneration;
+    _pendingEventDraft = _PendingEventDraft(
+      draftId: preservesCurrentDraft
+          ? current.draftId
+          : 'local-event-$sessionGeneration-${_clock().microsecondsSinceEpoch}',
+      logicalRequestId: preservesCurrentDraft
+          ? current.logicalRequestId
+          : 'local-event-$sessionGeneration',
+      sessionGeneration: sessionGeneration,
+      expectedField: _PendingEventField.location,
+      action: action,
+      expiresAt: preservesCurrentDraft
+          ? current.expiresAt
+          : _clock().toUtc().add(const Duration(minutes: 15)),
+    );
+  }
+
   Future<ConversationActionOutcome> execute(
     Map<String, dynamic> action,
     String userMessage,
     int sessionGeneration,
   ) async {
+    action = Map<String, dynamic>.from(action);
     final effectiveUserMessage =
         action['originalMessage']?.toString() ?? userMessage;
     final policy =
@@ -577,6 +881,11 @@ final class ConversationLegacyActionExecutor {
       coordinator.observeAutonomyPolicyForLocalAction(policy);
       smartPlanning?.updateAutonomyPolicy(policy);
     }
+    final automaticTravel = await _prepareAutomaticEventTravel(
+      action,
+      sessionGeneration,
+    );
+    if (automaticTravel != null) return automaticTravel;
     final result = await ActionHandlerService.handleAction(
       action: action,
       currentUserMessage: effectiveUserMessage,
@@ -776,6 +1085,7 @@ enum _PendingEventField {
   eventTitle,
   date,
   time,
+  location,
   duration,
   travelGo,
   travelBack,

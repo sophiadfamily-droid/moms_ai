@@ -54,6 +54,19 @@ void main() {
       expect(action['time'], '14:00');
     });
 
+    test('separates an explicit place from the appointment motif', () {
+      final action = NaturalEventRequestService.parseAction(
+        'Dentiste demain à 9h30 au 45 avenue Pasteur, Tremblay-en-France',
+        now: now,
+      );
+
+      expect(action, isNotNull);
+      expect(action!['title'], 'Rendez-vous Dentiste');
+      expect(action['date'], '2026-08-12');
+      expect(action['time'], '09:30');
+      expect(action['location'], '45 avenue Pasteur, Tremblay-en-France');
+    });
+
     test('recognizes bounded spelling and dictation variants generally', () {
       final cases = <String, Map<String, String>>{
         'rendezvous dentiste dem1 a quatorze hure': {

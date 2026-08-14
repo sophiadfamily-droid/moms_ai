@@ -1978,9 +1978,21 @@ bounded same-day horizon, or the user's home, as the origin. It similarly uses
 the nearest located following Event, or home, as the destination after the
 appointment. The complete protected range is rechecked with both calculated
 journeys and the margin. A missing appointment place is requested once. A
-missing home place or a routing failure falls back to the existing manual
-travel estimate without claiming that a calculation succeeded. Android and
-unsupported platforms remain on that explicit fallback.
+missing home place or a routing failure keeps the calculation unresolved
+without claiming success. Android and unsupported platforms remain on the
+legacy explicit path.
+
+The same opt-in routing boundary serves fixed-time Event creation. Once title,
+date and clock are known, the executor checks an immediate conflict before
+requesting any additional field. With automatic travel authorized, it does not
+enter the legacy duration/travel/margin questionnaire: a missing appointment
+place is the only requested input, a missing duration receives a bounded
+60-minute working estimate shown in confirmation, and travel is routed from
+the nearest located preceding Event (or home) to the appointment and then to
+the nearest located following Event (or home). An explicit place is parsed
+separately from the title. A route failure requests a more precise address and
+never invents or asks the user to calculate journey minutes. The legacy manual
+path remains available when automatic travel is not authorized.
 
 ### Stage 7 — Broaden natural-language understanding
 
@@ -2011,6 +2023,16 @@ and preserve the draft. The same bounded cancellation understanding feeds the
 shared confirmation classifier. This establishes the ordering rule for future
 domains: understand what the user is doing in the conversation before parsing
 what value the current form expects.
+
+The third Stage 7 slice adds a typed semantic target to that turn role for
+Event continuations. The local executor distinguishes title, date, time,
+date-and-time, duration, outbound travel, return travel and margin. A value
+that clearly targets another field updates that field without consuming the
+question currently on screen, then resumes the same draft at the still-missing
+field. Short values whose meaning depends on the prompt remain contextual:
+`une heure` can answer a duration question, while an unambiguous clock such as
+`15 heures` can correct the start time. Conflict-date continuations retain
+their dedicated replacement flow.
 
 ### Stage 8 — Import structured schedules and documents
 

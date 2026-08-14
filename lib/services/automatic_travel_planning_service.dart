@@ -4,6 +4,20 @@ import 'planning_proposal_engine.dart';
 import 'route_travel_time_service.dart';
 import 'smart_planning_service.dart';
 
+final class AutomaticEventTravelEstimate {
+  const AutomaticEventTravelEstimate({
+    required this.travelGoMinutes,
+    required this.travelBackMinutes,
+    required this.departureContext,
+    required this.arrivalContext,
+  });
+
+  final int travelGoMinutes;
+  final int travelBackMinutes;
+  final String departureContext;
+  final String arrivalContext;
+}
+
 final class AutomaticTravelPlanningService {
   const AutomaticTravelPlanningService({
     required RouteTravelTimeGateway routeGateway,
@@ -13,6 +27,61 @@ final class AutomaticTravelPlanningService {
   static const int _maximumRoutedCandidates = 12;
 
   final RouteTravelTimeGateway _routeGateway;
+
+  /// Calculates travel for a rendez-vous whose start time is already fixed.
+  ///
+  /// The nearest located event is used when it is close enough; otherwise the
+  /// route starts from or returns to the user's home. `null` means that the
+  /// available places were not precise enough to obtain a reliable route.
+  Future<AutomaticEventTravelEstimate?> estimateForFixedEvent({
+    required DateTime appointmentStart,
+    required int actionMinutes,
+    required String destination,
+    required String homeAddress,
+    required List<EventModel> events,
+    RouteTravelMode mode = RouteTravelMode.automobile,
+  }) async {
+    final cleanDestination = _cleanPlace(destination);
+    if (cleanDestination == null || actionMinutes <= 0) return null;
+    final appointmentEnd = appointmentStart.add(
+      Duration(minutes: actionMinutes),
+    );
+    final origin = _originFor(
+      appointmentStart: appointmentStart,
+      events: events,
+      homeAddress: homeAddress,
+    );
+    final arrival = _arrivalFor(
+      appointmentEnd: appointmentEnd,
+      events: events,
+      homeAddress: homeAddress,
+    );
+    if (origin == null || arrival == null) return null;
+
+    final travelGo = await _routeGateway.estimateMinutes(
+      RouteTravelTimeRequest(
+        origin: origin.place,
+        destination: cleanDestination,
+        departureAt: appointmentStart,
+        mode: mode,
+      ),
+    );
+    final travelBack = await _routeGateway.estimateMinutes(
+      RouteTravelTimeRequest(
+        origin: cleanDestination,
+        destination: arrival.place,
+        departureAt: appointmentEnd,
+        mode: mode,
+      ),
+    );
+    if (travelGo == null || travelBack == null) return null;
+    return AutomaticEventTravelEstimate(
+      travelGoMinutes: travelGo,
+      travelBackMinutes: travelBack,
+      departureContext: origin.context,
+      arrivalContext: arrival.context,
+    );
+  }
 
   /// Returns `null` only when no reliable route could be calculated.
   /// An ordinary result with no options means routes worked but the calendar

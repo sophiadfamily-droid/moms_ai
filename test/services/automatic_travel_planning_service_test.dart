@@ -79,6 +79,46 @@ void main() {
       isTrue,
     );
   });
+
+  test('calcule un rendez-vous fixe depuis et vers les lieux voisins',
+      () async {
+    final routes = _FakeRouteGateway();
+    final service = AutomaticTravelPlanningService(routeGateway: routes);
+    final events = [
+      _event(
+        title: 'École',
+        date: '2026-08-17',
+        start: '08:00',
+        end: '08:30',
+        location: 'École du centre',
+      ),
+      _event(
+        title: 'Réunion',
+        date: '2026-08-17',
+        start: '11:00',
+        end: '12:00',
+        location: 'Bureau',
+      ),
+    ];
+
+    final estimate = await service.estimateForFixedEvent(
+      appointmentStart: DateTime(2026, 8, 17, 9, 30),
+      actionMinutes: 60,
+      destination: 'Cabinet dentaire',
+      homeAddress: 'Maison',
+      events: events,
+    );
+
+    expect(estimate, isNotNull);
+    expect(estimate!.travelGoMinutes, 15);
+    expect(estimate.travelBackMinutes, 15);
+    expect(estimate.departureContext, 'previous_event');
+    expect(estimate.arrivalContext, 'next_event');
+    expect(routes.requests.first.origin, 'École du centre');
+    expect(routes.requests.first.destination, 'Cabinet dentaire');
+    expect(routes.requests.last.origin, 'Cabinet dentaire');
+    expect(routes.requests.last.destination, 'Bureau');
+  });
 }
 
 EventModel _event({

@@ -14,6 +14,7 @@ import 'package:moms_ai/models/smart_planning_continuation.dart';
 import 'package:moms_ai/models/task_model.dart';
 import 'package:moms_ai/models/user_profile.dart';
 import 'package:moms_ai/services/action_handler_service.dart';
+import 'package:moms_ai/services/automatic_travel_planning_service.dart';
 import 'package:moms_ai/services/callable_chat_backend_client.dart';
 import 'package:moms_ai/services/chat_backend_client.dart';
 import 'package:moms_ai/services/conversation_context_service.dart';
@@ -697,6 +698,93 @@ void main() {
       expect(executor.hasPendingEventDraft, isTrue);
     });
 
+    test(
+        'automatic travel asks for the place and does not ask for duration or travel times',
+        () async {
+      final coordinator = _coordinator();
+      final smartPlanning = SmartPlanningContinuationCoordinator(
+        gateway: _FixedEventAutomaticTravelGateway(),
+      );
+      final executor = ConversationLegacyActionExecutor(
+        coordinator: coordinator,
+        smartPlanning: smartPlanning,
+        eventStartConflictChecker: ({required startDateTimeIso}) async => null,
+        eventConflictChecker: ({required candidate}) async => null,
+        clock: () => DateTime.utc(2026, 8, 14, 10),
+      );
+
+      final initial = await executor.execute(
+        const {
+          'type': 'event',
+          'title': 'Dentiste',
+          'date': '2026-08-15',
+          'time': '09:30',
+          'durationMinutes': 0,
+        },
+        'dentiste demain à 9h30',
+        0,
+      );
+
+      expect(initial.message, contains('Où a lieu'));
+      expect(initial.message, isNot(contains('Combien de temps')));
+      expect(executor.pendingEventExpectedFieldCode, 'location');
+
+      final completed = await executor.resolvePending(
+        'Cabinet dentaire du centre',
+        0,
+      );
+
+      expect(completed?.reply, contains('J’ai préparé ce rendez-vous'));
+      expect(completed?.reply, contains('Lieu : Cabinet dentaire du centre'));
+      expect(completed?.reply, contains('Durée : 60 min'));
+      expect(completed?.reply, contains('Trajet aller : 12 min'));
+      expect(completed?.reply, contains('Trajet retour : 18 min'));
+      expect(completed?.reply, isNot(contains('Combien de temps')));
+      final event = coordinator.state.pendingAction?.event;
+      expect(event?.location, 'Cabinet dentaire du centre');
+      expect(event?.durationMinutes, 60);
+      expect(event?.travelGoMinutes, 12);
+      expect(event?.travelBackMinutes, 18);
+      expect(event?.departureContext, 'previous_event');
+      expect(event?.arrivalContext, 'next_event');
+    });
+
+    test('automatic travel reuses a place already given in the request',
+        () async {
+      final coordinator = _coordinator();
+      final smartPlanning = SmartPlanningContinuationCoordinator(
+        gateway: _FixedEventAutomaticTravelGateway(),
+      );
+      final executor = ConversationLegacyActionExecutor(
+        coordinator: coordinator,
+        smartPlanning: smartPlanning,
+        eventStartConflictChecker: ({required startDateTimeIso}) async => null,
+        eventConflictChecker: ({required candidate}) async => null,
+        clock: () => DateTime.utc(2026, 8, 14, 10),
+      );
+
+      final outcome = await executor.execute(
+        const {
+          'type': 'event',
+          'title': 'Dentiste',
+          'date': '2026-08-15',
+          'time': '09:30',
+          'durationMinutes': 0,
+          'location': '45 avenue Pasteur',
+        },
+        'dentiste demain à 9h30 au 45 avenue Pasteur',
+        0,
+      );
+
+      expect(outcome.message, contains('J’ai préparé ce rendez-vous'));
+      expect(outcome.message, contains('Lieu : 45 avenue Pasteur'));
+      expect(outcome.message, isNot(contains('Combien de temps')));
+      expect(outcome.message, isNot(contains('Où a lieu')));
+      expect(coordinator.state.pendingAction?.event.durationMinutes, 60);
+      expect(coordinator.state.pendingAction?.event.travelGoMinutes, 12);
+      expect(coordinator.state.pendingAction?.event.travelBackMinutes, 18);
+    });
+
     test('slot search period is routed before classic Event creation',
         () async {
       final now = DateTime(2026, 8, 13, 14, 48);
@@ -819,6 +907,125 @@ void main() {
       expect(executor.pendingEventDraftId, 'generic-event-draft');
       expect(executor.pendingEventLogicalRequestId, 'logical-generic-event');
       expect(executor.pendingEventExpectedFieldCode, 'duration');
+    });
+
+    test('an hour answer corrects time instead of becoming the Event title',
+        () async {
+      final coordinator = _coordinator();
+      final executor = ConversationLegacyActionExecutor(
+        coordinator: coordinator,
+        clock: () => DateTime.utc(2026, 7, 29, 10),
+      );
+      final draft = ConversationClarificationDraft(
+        schemaVersion: 1,
+        draftType: ConversationClarificationDraftType.eventCreation,
+        logicalRequestId: 'logical-cross-field-time',
+        draftId: 'cross-field-time',
+        title: 'Rendez-vous',
+        date: '2026-07-30',
+        startTime: '15:00',
+        durationMinutes: null,
+        travelGoMinutes: null,
+        travelBackMinutes: null,
+        marginMinutes: null,
+        expectedField: ConversationEventDraftExpectedField.duration,
+        createdAt: DateTime.utc(2026, 7, 29, 10),
+        expiresAt: DateTime.utc(2026, 7, 29, 10, 15),
+        sessionGeneration: 0,
+      );
+      expect(executor.registerClarificationDraft(draft, 0), isTrue);
+
+      final correction =
+          await executor.resolvePending('en fait seize heures', 0);
+
+      expect(correction?.reply, contains('C’est corrigé'));
+      expect(correction?.reply, contains('motif du rendez-vous'));
+      expect(executor.pendingEventExpectedFieldCode, 'eventTitle');
+
+      expect(
+        (await executor.resolvePending('dentiste', 0))?.reply,
+        contains('Combien de temps'),
+      );
+      await executor.resolvePending('1h', 0);
+      await executor.resolvePending('0', 0);
+      await executor.resolvePending('0', 0);
+      await executor.resolvePending('0', 0);
+
+      expect(
+          coordinator.state.pendingAction?.event.title, 'Rendez-vous dentiste');
+      expect(coordinator.state.pendingAction?.event.time, '16:00');
+    });
+
+    test('a date and time correction preserves the missing duration', () async {
+      final coordinator = _coordinator();
+      final executor = ConversationLegacyActionExecutor(
+        coordinator: coordinator,
+        clock: () => DateTime.utc(2026, 7, 29, 10),
+      );
+
+      await executor.execute(
+        const {
+          'type': 'event',
+          'title': 'Dentiste',
+          'date': '2026-07-30',
+          'time': '15:00',
+          'durationMinutes': 0,
+        },
+        'dentiste demain à 15h',
+        0,
+      );
+
+      final correction =
+          await executor.resolvePending('finalement vendredi à 16h', 0);
+
+      expect(correction?.reply, contains('Combien de temps'));
+      expect(executor.pendingEventExpectedFieldCode, 'duration');
+
+      await executor.resolvePending('1h', 0);
+      await executor.resolvePending('0', 0);
+      await executor.resolvePending('0', 0);
+      await executor.resolvePending('0', 0);
+
+      expect(coordinator.state.pendingAction?.event.date, '2026-07-31');
+      expect(coordinator.state.pendingAction?.event.time, '16:00');
+    });
+
+    test('an explicit outbound travel correction updates the right field',
+        () async {
+      final coordinator = _coordinator();
+      final executor = ConversationLegacyActionExecutor(
+        coordinator: coordinator,
+        clock: () => DateTime.utc(2026, 7, 29, 10),
+      );
+
+      await executor.execute(
+        const {
+          'type': 'event',
+          'title': 'Dentiste',
+          'date': '2026-07-30',
+          'time': '15:00',
+          'durationMinutes': 60,
+        },
+        'dentiste demain à 15h pendant 1h',
+        0,
+      );
+      await executor.resolvePending('10', 0);
+      expect(executor.pendingEventExpectedFieldCode, 'travelBack');
+
+      final correction = await executor.resolvePending(
+        "je voulais dire 20 minutes pour l'aller",
+        0,
+      );
+
+      expect(correction?.reply, contains('C’est corrigé'));
+      expect(correction?.reply, contains('trajet retour'));
+      expect(executor.pendingEventExpectedFieldCode, 'travelBack');
+
+      await executor.resolvePending('5', 0);
+      await executor.resolvePending('0', 0);
+
+      expect(coordinator.state.pendingAction?.event.travelGoMinutes, 20);
+      expect(coordinator.state.pendingAction?.event.travelBackMinutes, 5);
     });
 
     test('a new explicit request supersedes a pending Event field', () async {
@@ -1986,6 +2193,91 @@ class _FakeContextProvider implements ConversationContextProvider {
 }
 
 final class _SlotSearchGateway implements SmartPlanningContinuationGateway {
+  @override
+  Future<void> addEvent(EventModel event, {String? mutationId}) async {}
+
+  @override
+  Future<SmartPlanningProposal> buildProposal({
+    required TaskModel task,
+    required String originalMessage,
+    required int actionMinutes,
+    required int travelGoMinutes,
+    required int travelBackMinutes,
+    required List<TaskModel> groupedTasks,
+  }) =>
+      throw UnimplementedError();
+
+  @override
+  Future<EventModel?> conflict(EventModel event) async => null;
+
+  @override
+  Future<PlanningProposalEngineResult> findOptions({
+    required DateTime startDate,
+    required int totalMinutes,
+    required int searchDays,
+    String location = '',
+  }) async =>
+      const PlanningProposalEngineResult(
+        hasOptions: false,
+        options: [],
+        explanation: '',
+      );
+
+  @override
+  Future<List<TaskModel>> relatedTasks(
+    TaskModel task,
+    String originalMessage,
+  ) async =>
+      [task];
+
+  @override
+  Future<SelectedSlotRevalidationResult> revalidate({
+    required EventModel event,
+    required DateTime protectedStart,
+    required int totalMinutes,
+  }) async =>
+      const SelectedSlotRevalidationResult(
+        isAvailable: true,
+        conflictEvent: null,
+        alternatives: PlanningProposalEngineResult(
+          hasOptions: false,
+          options: [],
+          explanation: '',
+        ),
+      );
+}
+
+final class _FixedEventAutomaticTravelGateway
+    implements
+        SmartPlanningContinuationGateway,
+        SmartPlanningAutomaticTravelGateway,
+        FixedEventAutomaticTravelGateway {
+  @override
+  Future<bool> canCalculateTravelAutomatically() async => true;
+
+  @override
+  Future<AutomaticEventTravelEstimate?> estimateTravelForFixedEvent({
+    required DateTime appointmentStart,
+    required int actionMinutes,
+    required String location,
+  }) async =>
+      const AutomaticEventTravelEstimate(
+        travelGoMinutes: 12,
+        travelBackMinutes: 18,
+        departureContext: 'previous_event',
+        arrivalContext: 'next_event',
+      );
+
+  @override
+  Future<PlanningProposalEngineResult?> findOptionsWithAutomaticTravel({
+    required DateTime startDate,
+    required int actionMinutes,
+    required int marginMinutes,
+    required int searchDays,
+    required String location,
+  }) async =>
+      null;
+
   @override
   Future<void> addEvent(EventModel event, {String? mutationId}) async {}
 

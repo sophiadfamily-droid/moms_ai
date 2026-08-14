@@ -73,6 +73,26 @@ non exécutable et ne supprime rien. Cette couche est prioritaire sur le type de
 champ attendu : Zélia comprend d'abord ce que fait l'utilisatrice dans la
 conversation, puis seulement la valeur qu'elle donne.
 
+Le même arbitre détermine ensuite de quel élément du rendez-vous l'utilisatrice
+parle : motif, jour, heure, durée, trajet aller, trajet retour ou marge. Si
+Zélia demande le motif et que l'utilisatrice répond `en fait 15 heures`, elle
+corrige l'heure et repose uniquement la question du motif. Une date et une
+heure données ensemble sont appliquées ensemble. Les réponses courtes qui
+dépendent réellement de la question, comme `une heure` pour une durée, restent
+interprétées dans ce contexte. Cette règle évite qu'une correction valide soit
+enregistrée dans le mauvais champ.
+
+Lorsque le calcul automatique des trajets est autorisé, une création Event à
+heure fixe ne suit plus le questionnaire manuel durée, trajet aller, trajet
+retour et marge. Zélia demande uniquement le lieu s'il manque. Une durée
+absente reçoit l'estimation de travail bornée de 60 minutes, visible dans le
+récapitulatif. Les trajets sont ensuite calculés depuis l'Event localisé
+précédent, ou le domicile, puis vers l'Event localisé suivant, ou le domicile.
+Un lieu déjà présent dans la phrase est conservé sans être ajouté au motif. Un
+échec de calcul redemande une adresse précise et ne revient pas aux questions
+manuelles de trajet. Sans autorisation de calcul, le parcours historique reste
+inchangé.
+
 ## Normalisations autorisées
 
 Sont autorisés : casse, accents, variantes d’apostrophes, tirets, espaces,
