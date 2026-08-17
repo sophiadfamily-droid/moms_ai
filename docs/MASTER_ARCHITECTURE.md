@@ -2148,6 +2148,17 @@ discarded before review.
 - limit noise and require personal, actionable evidence for every proactive suggestion;
 - formalize Priority, Task, Shopping and Notification lifecycles around this policy.
 
+The first Stage 9 slice establishes a read-only anticipation boundary for
+preparations explicitly linked to a future Event. It consumes only a confirmed
+structured dependency between an unfinished Task carrying an explicit deadline
+and a dated Event. It can identify that the preparation deserves attention
+before the Event, but it does not infer a checklist from an Event title, create
+a Task, schedule a notification or execute an action. Stale, incomplete,
+unavailable, completed, late or out-of-horizon evidence produces no candidate.
+This typed output is the safe foundation for later concise suggestions and
+preparation plans without adding noise or pretending to know an unexpressed
+need.
+
 ### Stage 10 — Extend connections and premium capabilities
 
 - add external calendar, mapping, health or service connections only behind explicit scope and ownership contracts;
