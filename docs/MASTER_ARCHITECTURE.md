@@ -2083,7 +2083,63 @@ memory and then execute the Shopping clause without either redundant `oui`.
 - read image and PDF schedules, appointments and time-related documents;
 - extract person, date, time, place, recurrence and uncertainty into typed proposals;
 - provide one global review with targeted line correction;
-- persist only validated structured information and discard the original document after processing.
+- persist only validated structured information, never retain or delete the
+  user's original document, and discard the app-owned processing copy.
+
+The first Stage 8 slice defines the closed client-side review contract without
+activating OCR or remote analysis. An extracted line carries
+only its target domain, subject reference, civil date or weekdays, local clock
+range, optional place, confidence and explicit uncertainty codes. The durable
+review shape can exist only after the app-owned processing copy was discarded
+and contains no path, bytes or raw OCR text. Clear complete lines may be
+accepted globally; uncertain lines stay pending until a targeted correction or
+explicit rejection. Only a fully reviewed non-empty set can cross the later
+application boundary. This slice performs no Event, Profile, Routine or
+Firestore write and does not treat document analysis as user authorization.
+
+The second Stage 8 slice fixes the person-scoped intake policy. The main profile
+has one strategic entry, `Importer un planning ou un document`; the product
+must not repeat import controls in every person, work, school and activity
+subsection. The user selects the concerned person before extraction.
+ZELIA then classifies each line into Event, work, school, activity or another
+schedule, while the global review lets the user correct both the person and the
+destination for a specific line. Camera, photo-library and PDF selection are
+now represented by a native picker seam. The selected source is copied into a
+unique app-owned temporary directory, the analyser receives only that copy,
+and the directory is deleted in `finally` on success or failure. The selected
+user file is never edited or deleted. A review is constructed only after this
+cleanup completes. The production analyser and the adapters that apply
+validated lines to Event/Profile/Routine remain deliberately inactive, so the
+profile entry is not exposed as a non-functional control.
+
+The third Stage 8 slice activates the protected production analyser while
+keeping durable writes closed. The authenticated Flutter client sends the
+short-lived app copy through an App Check protected Firebase callable. The
+server validates the declared type, binary signature and bounded size, reuses
+the account quota, and sends the document to OpenAI only for the duration of
+the extraction with `store: false` and a 45-second total deadline. Images are
+limited to JPEG, PNG and WebP; PDFs are accepted as PDF input. No account ID,
+profile identifier, document path, raw OCR text or document bytes are logged
+or returned. The subject selected in Zelia is added to typed proposals only
+after extraction. Empty or malformed results fail closed and cannot invent a
+schedule. The original user file remains untouched and the app-owned copy is
+deleted in `finally`. The review is available as a tested contract, but the
+visible profile entry remains closed until the separate, atomic adapters that
+apply approved lines to Event/Profile/Routine are implemented.
+
+The fourth Stage 8 slice opens that single strategic profile entry and closes
+the application boundary. A document is selected only after its person is
+known, analysed through the protected callable, and presented in one review.
+Nothing is written while a line still needs correction. One confirmed batch
+then stores the canonical person-scoped schedules in the Human Model. Compatible
+recurring work, personal activity and child school/activity ranges are also
+projected into the existing Profile fields so current planning views can use
+them; dated appointments become Events. Partners and additional household
+members retain their schedules in their own Human Person record rather than in
+the primary user's fields. A completed import is marked idempotently so retrying
+the same batch cannot duplicate schedules or events. The original document is
+never modified or retained, and the app-owned processing copy has already been
+discarded before review.
 
 ### Stage 9 — Anticipate mental load
 

@@ -10,6 +10,7 @@ import 'package:country_picker/country_picker.dart';
 
 import '../models/user_profile.dart';
 import '../models/human/human_model.dart';
+import '../models/structured_schedule_import.dart';
 import '../services/school_schedule_metadata_service.dart';
 import '../services/storage_service.dart';
 import '../services/auth_service.dart';
@@ -17,9 +18,14 @@ import '../services/app_diagnostics.dart';
 import '../services/app_error_classifier.dart';
 import '../services/notification_service.dart';
 import '../services/human/human_model_edit_service.dart';
+import '../services/structured_schedule_document_import_service.dart';
+import '../services/structured_schedule_import_application_service.dart';
+import '../services/structured_schedule_import_production_gateway.dart';
+import '../services/structured_schedule_profile_service.dart';
 import 'auth/auth_screen.dart';
 import 'human_profile_screen.dart';
 import 'memory_library_screen.dart';
+import 'structured_schedule_import_review_screen.dart';
 import 'notification_settings_screen.dart';
 import 'privacy_data_screen.dart';
 import 'help_information_screen.dart';
@@ -1655,6 +1661,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> showPartnerSheet() async {
+    final importedSchedules = await _profileSchedulesFor(
+      profile.partnerHumanPersonId,
+    );
+    if (!mounted) return;
     await _showAdultProfileSheet(
       title: 'Conjoint',
       nameController: partnerNameController,
@@ -1666,6 +1676,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       initialStatus: relationshipStatus,
       initialPhotoPath: profile.partnerPhotoPath,
       showCoupleStatus: true,
+      importedSchedules: importedSchedules,
       onSave: (status, photoPath) async {
         setState(() {
           relationshipStatus = status;
@@ -1688,6 +1699,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required String initialStatus,
     required String initialPhotoPath,
     required bool showCoupleStatus,
+    List<StructuredScheduleProfileEntry> importedSchedules = const [],
     required Future<void> Function(String status, String photoPath) onSave,
     required Future<void> Function() onDelete,
   }) async {
@@ -1772,6 +1784,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       hint: "Ex : du lundi au vendredi, 8 h à 17 h...",
                       maxLines: 3,
                     ),
+                    if (importedSchedules.isNotEmpty) ...[
+                      const SizedBox(height: 18),
+                      Text(
+                        'Planning enregistré',
+                        style: sectionLabelStyle(),
+                      ),
+                      const SizedBox(height: 10),
+                      ...importedSchedules.map(_buildProfileScheduleCard),
+                    ],
                     const SizedBox(height: 14),
                     buildTextField(
                       controller: notesController,
@@ -2897,6 +2918,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<ChildProfile?> showChildEditor({
     ChildProfile? child,
     int? index,
+    List<StructuredScheduleProfileEntry> importedSchedules = const [],
   }) async {
     final firstNameController =
         TextEditingController(text: child?.firstName ?? "");
@@ -3097,6 +3119,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         },
                       );
                     }),
+                    if (importedSchedules.isNotEmpty) ...[
+                      const SizedBox(height: 18),
+                      Text(
+                        'Planning enregistré',
+                        style: sectionLabelStyle(),
+                      ),
+                      const SizedBox(height: 10),
+                      ...importedSchedules.map(_buildProfileScheduleCard),
+                    ],
                     const SizedBox(height: 18),
                     Text(
                       "Santé",
@@ -3874,6 +3905,235 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  List<StructuredScheduleSubjectChoice> _scheduleImportSubjects() {
+    final values = <StructuredScheduleSubjectChoice>[];
+    void add(String id, String label) {
+      final cleanId = id.trim();
+      final cleanLabel = label.trim();
+      if (cleanId.isEmpty || cleanLabel.isEmpty) return;
+      if (values.any((item) => item.entityId == cleanId)) return;
+      values.add(
+        StructuredScheduleSubjectChoice(
+          entityId: cleanId,
+          label: cleanLabel,
+        ),
+      );
+    }
+
+    add(
+      profile.humanPersonId,
+      firstNameController.text.trim().isEmpty
+          ? 'Moi'
+          : firstNameController.text.trim(),
+    );
+    add(profile.partnerHumanPersonId, partnerNameController.text);
+    for (final child in children) {
+      add(child.humanPersonId, child.firstName);
+    }
+    for (final person in additionalProfiles) {
+      add(person.id, person.name);
+    }
+    return values;
+  }
+
+  Future<StructuredScheduleSubjectChoice?> _chooseScheduleImportSubject(
+    List<StructuredScheduleSubjectChoice> subjects,
+  ) {
+    if (subjects.length == 1) return Future.value(subjects.single);
+    return showModalBottomSheet<StructuredScheduleSubjectChoice>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => buildSheetContainer(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            buildSheetHandle(),
+            const SizedBox(height: 18),
+            buildSheetTitle(
+              title: 'À qui appartient ce document ?',
+              icon: Icons.person_search_outlined,
+            ),
+            const SizedBox(height: 12),
+            for (final subject in subjects)
+              ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: accent.withValues(alpha: 0.13),
+                  child: Text(
+                    initials(subject.label),
+                    style: TextStyle(
+                      color: accent,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                title: Text(
+                  subject.label,
+                  style: TextStyle(
+                    color: textDark,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.pop(sheetContext, subject),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<StructuredScheduleDocumentSourceAction?>
+      _chooseScheduleDocumentSource() =>
+          showModalBottomSheet<StructuredScheduleDocumentSourceAction>(
+            context: context,
+            backgroundColor: Colors.transparent,
+            builder: (sheetContext) => buildSheetContainer(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  buildSheetHandle(),
+                  const SizedBox(height: 18),
+                  buildSheetTitle(
+                    title: 'Importer un planning',
+                    icon: Icons.document_scanner_outlined,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Zelia analyse le document puis te laisse tout vérifier avant l’enregistrement.',
+                    style: TextStyle(color: textSoft, height: 1.4),
+                  ),
+                  const SizedBox(height: 12),
+                  ListTile(
+                    leading: Icon(Icons.photo_camera_outlined, color: accent),
+                    title: const Text('Prendre une photo'),
+                    onTap: () => Navigator.pop(
+                      sheetContext,
+                      StructuredScheduleDocumentSourceAction.camera,
+                    ),
+                  ),
+                  ListTile(
+                    leading: Icon(Icons.photo_library_outlined, color: accent),
+                    title: const Text('Choisir une photo'),
+                    onTap: () => Navigator.pop(
+                      sheetContext,
+                      StructuredScheduleDocumentSourceAction.photoLibrary,
+                    ),
+                  ),
+                  ListTile(
+                    leading: Icon(Icons.picture_as_pdf_outlined, color: accent),
+                    title: const Text('Choisir un PDF'),
+                    onTap: () => Navigator.pop(
+                      sheetContext,
+                      StructuredScheduleDocumentSourceAction.pdf,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+
+  Future<void> _startStructuredScheduleImport() async {
+    if (profile.humanPersonId.trim().isEmpty) {
+      await saveProfile(showSnack: false);
+    }
+    if (!mounted) return;
+    final subjects = _scheduleImportSubjects();
+    if (subjects.isEmpty) {
+      _showScheduleImportMessage(
+        'Ajoute d’abord un prénom au profil pour importer un planning.',
+      );
+      return;
+    }
+    final subject = await _chooseScheduleImportSubject(subjects);
+    if (subject == null || !mounted) return;
+    final source = await _chooseScheduleDocumentSource();
+    if (source == null || !mounted) return;
+    var loadingVisible = false;
+    try {
+      final selected = await DeviceStructuredScheduleDocumentPicker().select(
+        source,
+      );
+      if (selected == null || !mounted) return;
+      final scope = await AuthService.ensureAuthenticatedUid();
+      if (!mounted) return;
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(child: CircularProgressIndicator()),
+      );
+      loadingVisible = true;
+      final review = await StructuredScheduleDocumentImportCoordinator(
+        analyzer: CallableStructuredScheduleDocumentAnalyzer(),
+      ).prepareReview(
+        selected: selected,
+        context: StructuredScheduleImportRequestContext(
+          accountScopeId: scope,
+          subjectEntityId: subject.entityId,
+          subjectLabel: subject.label,
+        ),
+      );
+      if (!mounted) return;
+      Navigator.pop(context);
+      loadingVisible = false;
+      final result =
+          await Navigator.of(context).push<List<StructuredScheduleProposal>>(
+        MaterialPageRoute<List<StructuredScheduleProposal>>(
+          builder: (_) => StructuredScheduleImportReviewScreen(
+            initialReview: review,
+            subjects: subjects,
+            onValidated: (proposals) async {
+              final application =
+                  await StructuredScheduleImportApplicationService(
+                gateway: ProductionStructuredScheduleApplicationGateway(),
+              ).apply(
+                review: review.copyWith(proposals: proposals),
+                currentAccountScopeId: scope,
+              );
+              if (!application.isSuccess) {
+                throw const StructuredScheduleImportException(
+                  'schedule_application_failed',
+                );
+              }
+            },
+          ),
+        ),
+      );
+      if (result == null || !mounted) return;
+      final persisted = await StorageService.getUserProfile();
+      if (persisted != null && mounted) {
+        setState(() {
+          profile = persisted;
+          children = List.of(persisted.children);
+          workTimeRanges = List.of(persisted.workTimeRanges);
+          personalActivities = List.of(persisted.personalActivities);
+        });
+        widget.onSave?.call(persisted);
+      }
+      _showScheduleImportMessage(
+        result.length == 1
+            ? 'Le planning est enregistré.'
+            : '${result.length} informations sont enregistrées.',
+      );
+    } on Object {
+      if (!mounted) return;
+      if (loadingVisible) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+      _showScheduleImportMessage(
+        'Je n’ai pas pu analyser ce document. Tu peux réessayer dans un instant.',
+      );
+    }
+  }
+
+  void _showScheduleImportMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
   Widget buildIdentityCard() {
     final family =
         <({String name, String detail, String imagePath, VoidCallback tap})>[
@@ -4001,6 +4261,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
           ],
+          const SizedBox(height: 16),
+          Divider(color: accent.withValues(alpha: 0.10)),
+          ListTile(
+            key: const ValueKey('profile-import-schedule-document'),
+            contentPadding: EdgeInsets.zero,
+            leading: Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.10),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.document_scanner_outlined, color: accent),
+            ),
+            title: Text(
+              'Importer un planning ou un document',
+              style: TextStyle(
+                color: textDark,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            subtitle: Text(
+              'Choisis la personne, puis vérifie les horaires trouvés',
+              style: TextStyle(color: textSoft),
+            ),
+            trailing: Icon(Icons.chevron_right, color: textSoft),
+            onTap: _startStructuredScheduleImport,
+          ),
         ],
       ),
     );
@@ -4041,10 +4329,111 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  Future<List<StructuredScheduleProfileEntry>> _profileSchedulesFor(
+    String personId,
+  ) async {
+    if (personId.trim().isEmpty) return const [];
+    final scope = AuthService.currentUserId;
+    if (scope == null || scope.trim().isEmpty) return const [];
+    try {
+      final service = await HumanModelEditService.createProduction();
+      final state = await service.load(scope);
+      if (state == null) return const [];
+      final now = DateTime.now();
+      final cleaned = StructuredScheduleProfileService.pruneExpired(
+        state.model,
+        at: now,
+      );
+      if (!identical(cleaned, state.model)) {
+        await service.commit(
+          accountScopeId: scope,
+          transform: (latest) =>
+              StructuredScheduleProfileService.pruneExpired(latest, at: now),
+        );
+      }
+      final person = cleaned.personById(personId);
+      if (person == null) return const [];
+      return StructuredScheduleProfileService.entriesForPerson(person, at: now);
+    } on Object {
+      return const [];
+    }
+  }
+
+  Widget _buildProfileScheduleCard(StructuredScheduleProfileEntry entry) {
+    final subtitle = _profileScheduleLabel(entry);
+    final icon = switch (entry.target) {
+      'schoolSchedule' => Icons.school_outlined,
+      'activitySchedule' => Icons.self_improvement_outlined,
+      _ => Icons.work_outline,
+    };
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.88),
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: ListTile(
+        leading: Icon(icon, color: accent),
+        title: Text(
+          entry.title,
+          style: TextStyle(color: textDark, fontWeight: FontWeight.w800),
+        ),
+        subtitle: Text(subtitle, style: TextStyle(color: textSoft)),
+      ),
+    );
+  }
+
+  String _profileScheduleLabel(StructuredScheduleProfileEntry entry) {
+    final when = entry.isDated
+        ? _frenchScheduleDate(entry.dateIso!)
+        : entry.weekdays.map(_frenchWeekday).join(', ');
+    final endSuffix = entry.endsNextDay ? ' le lendemain' : '';
+    final place = entry.place?.trim();
+    return [
+      '$when · ${_frenchClock(entry.startTime)} – ${_frenchClock(entry.endTime)}$endSuffix',
+      if (place != null && place.isNotEmpty) place,
+    ].join(' · ');
+  }
+
+  String _frenchScheduleDate(String iso) {
+    final date = DateTime.tryParse(iso);
+    if (date == null) return iso;
+    return '${date.day.toString().padLeft(2, '0')}/'
+        '${date.month.toString().padLeft(2, '0')}/${date.year}';
+  }
+
+  String _frenchClock(String clock) {
+    final parts = clock.split(':');
+    if (parts.length != 2) return clock;
+    final hour = int.tryParse(parts[0]);
+    final minute = int.tryParse(parts[1]);
+    if (hour == null || minute == null) return clock;
+    return minute == 0
+        ? '$hour h'
+        : '$hour h ${minute.toString().padLeft(2, '0')}';
+  }
+
+  String _frenchWeekday(int weekday) =>
+      const {
+        DateTime.monday: 'Lundi',
+        DateTime.tuesday: 'Mardi',
+        DateTime.wednesday: 'Mercredi',
+        DateTime.thursday: 'Jeudi',
+        DateTime.friday: 'Vendredi',
+        DateTime.saturday: 'Samedi',
+        DateTime.sunday: 'Dimanche',
+      }[weekday] ??
+      '';
+
   Future<void> _openChildProfile(int index) async {
+    final importedSchedules = await _profileSchedulesFor(
+      children[index].humanPersonId,
+    );
+    if (!mounted) return;
     final updated = await showChildEditor(
       child: children[index],
       index: index,
+      importedSchedules: importedSchedules,
     );
     if (updated == null || !mounted) return;
     setState(() => children[index] = updated);
@@ -4193,6 +4582,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _openAdditionalProfile(String personId) async {
     final scope = AuthService.currentUserId;
     if (scope == null || scope.trim().isEmpty) return;
+    final importedSchedules = await _profileSchedulesFor(personId);
+    if (!mounted) return;
     final service = await HumanModelEditService.createProduction();
     final state = await service.load(scope);
     if (!mounted || state == null) return;
@@ -4239,6 +4630,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           person.customFields['relationshipStatus']?.toString() ?? 'En couple',
       initialPhotoPath: person.customFields['photoPath']?.toString() ?? '',
       showCoupleStatus: isPartner,
+      importedSchedules: importedSchedules,
       onSave: (status, photoPath) async {
         final birthday = parseFrenchDate(birth.text);
         await service.commit(

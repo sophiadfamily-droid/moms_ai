@@ -385,6 +385,50 @@ void main() {
       expect(section.toJson().toString(), isNot(contains('memory')));
     });
 
+    test('Routine exposes an imported dated schedule with its person',
+        () async {
+      final base = _humanState();
+      final persons = base.model.persons.map((person) {
+        if (person.id != 'person-b') return person;
+        return person.copyWith(
+          customFields: {
+            ...person.customFields,
+            'structuredSchedulesV1': [
+              {
+                'sourceKey': 'import-a:work-a',
+                'target': 'workSchedule',
+                'temporalKind': 'dated',
+                'title': 'Travail',
+                'dateIso': '2026-08-20',
+                'weekdays': const <int>[],
+                'startTime': '21:00',
+                'endTime': '09:00',
+                'endsNextDay': true,
+              },
+            ],
+          },
+        );
+      }).toList();
+      final enriched = base.copyWith(
+        model: base.model.copyWith(persons: persons),
+      );
+
+      final section = await RoutineLifeContextAdapter(
+        loadHuman: (_) async => enriched,
+      ).load(
+        LifeContextAdapterRequest(accountScopeId: 'account-a', readAt: now),
+      );
+
+      final imported = section.routines.singleWhere(
+        (item) => item.id == 'profileSchedule:import-a:work-a',
+      );
+      expect(imported.humanPersonId, 'person-b');
+      expect(imported.anchorDateIso, '2026-08-20');
+      expect(imported.startTime, '21:00');
+      expect(imported.endTime, '09:00');
+      expect(imported.source, 'humanModel.structuredSchedulesV1');
+    });
+
     test('Routine keeps unsynced legacy state stale and empty distinct',
         () async {
       final stale = await RoutineLifeContextAdapter(

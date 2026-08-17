@@ -10,6 +10,7 @@ import '../../models/routine_model.dart';
 import '../memory_sync_local_repository.dart';
 import '../memory_consumption_policy.dart';
 import '../school_schedule_metadata_service.dart';
+import '../structured_schedule_profile_service.dart';
 import 'life_context_adapter.dart';
 import 'life_context_memory_projection.dart';
 
@@ -789,6 +790,30 @@ final class RoutineLifeContextAdapter implements LifeContextDomainAdapter {
             humanPersonId: routine.humanPersonId,
           ),
         );
+      }
+      if (state != null) {
+        for (final person in state.model.persons) {
+          final imported = StructuredScheduleProfileService.entriesForPerson(
+            person,
+            at: request.readAt,
+          );
+          for (final entry in imported) {
+            routines.add(
+              RoutineContextItem(
+                id: 'profileSchedule:${entry.sourceKey}',
+                source: 'humanModel.structuredSchedulesV1',
+                label: entry.title,
+                days: entry.weekdays.map((day) => '$day').toList(),
+                startTime: entry.startTime,
+                endTime: entry.endTime,
+                travelMinutes: null,
+                recurrenceType: entry.isDated ? 'dated' : 'weekly',
+                anchorDateIso: entry.dateIso,
+                humanPersonId: person.id,
+              ),
+            );
+          }
+        }
       }
       for (var index = 0;
           index < (profile?.personalActivities.length ?? 0);

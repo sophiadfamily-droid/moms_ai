@@ -358,7 +358,7 @@ void main() {
     );
     expect(
       'httpsCallable'.allMatches(productionSources),
-      hasLength(1),
+      hasLength(2),
     );
   });
 }

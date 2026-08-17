@@ -17,6 +17,12 @@ const {
   zeliaEnforceAppCheck,
 } = require("./services/securityEnvironment");
 const {consumeChatQuota} = require("./services/chatQuotaService");
+const {
+  analyzeStructuredScheduleDocument,
+} = require("./services/structuredScheduleDocumentAnalysisService");
+const {
+  createCallableScheduleDocumentHandler,
+} = require("./services/structuredScheduleDocumentTransport");
 
 if (getApps().length === 0) {
   initializeApp();
@@ -34,6 +40,16 @@ exports.chatWithZeliaCallable = onCall(
     createCallableFunctionOptions(openaiApiKey, zeliaEnforceAppCheck),
     createCallableChatHandler({
       ...sharedDependencies,
+      appCheckEnforcement: zeliaEnforceAppCheck,
+      consumeQuota: ({uid}) => consumeChatQuota({firestore, uid}),
+    }),
+);
+
+exports.analyzeStructuredScheduleDocumentCallable = onCall(
+    createCallableFunctionOptions(openaiApiKey, zeliaEnforceAppCheck),
+    createCallableScheduleDocumentHandler({
+      analyzeDocument: analyzeStructuredScheduleDocument,
+      getApiKey: () => openaiApiKey.value(),
       appCheckEnforcement: zeliaEnforceAppCheck,
       consumeQuota: ({uid}) => consumeChatQuota({firestore, uid}),
     }),
