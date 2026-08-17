@@ -46,7 +46,7 @@ final class ConversationCompoundRequestService {
     if (normalization.preservedAmbiguities.contains(
           'critical_negation_scope',
         ) ||
-        NaturalLanguageNormalizer.hasNegation(original)) {
+        _hasUnsafeNegation(normalization.normalizedText)) {
       return null;
     }
 
@@ -78,13 +78,27 @@ final class ConversationCompoundRequestService {
 
   static final RegExp _separator = RegExp(
     r'\s*(?:;|\n+|\bpuis\b|\bensuite\b|\bet\s+aussi\b|'
-    r'\bet\b(?=\s+(?:(?:je\s+(?:veux|voudrais|souhaite)|tu\s+peux)\s+)?'
-    r'(?:ajout\w*|achet\w*|cree?\w*|note\w*|rappel\w*|souviens\w*|'
-    r'memoris\w*|retiens?\w*|planifi\w*|programm\w*|cale\w*|trouve\w*|'
-    r'cherche\w*|propose\w*|annul\w*|supprim\w*|deplac\w*|decal\w*|'
-    r'modifi\w*|change\w*)))\s*',
+    r'(?:\bet\b|[.!?])(?=\s+'
+    r'(?:(?:je\s+(?:veux|voudrais|souhaite)|tu\s+peux)\s+)?'
+    r'(?:ajout\w*|achet\w*|cr[eé]e?\w*|note\w*|rappel\w*|souviens\w*|'
+    r'm[eé]moris\w*|retiens?\w*|gard\w*|'
+    r"n(?:['’]|\s)?oubli\w*|"
+    r'[aà]\s+partir\s+de\s+maintenant|dor[eé]navant|'
+    r'planifi\w*|programm\w*|cale\w*|trouve\w*|cherche\w*|propose\w*|'
+    r'annul\w*|supprim\w*|d[eé]plac\w*|d[eé]cal\w*|modifi\w*|'
+    r'change\w*)))\s*',
     caseSensitive: false,
   );
+
+  static bool _hasUnsafeNegation(String normalizedText) {
+    final withoutExplicitMemoryDirective = normalizedText.replaceAll(
+      RegExp(r'\bn\s+oublie\s+pas\s+que\b'),
+      ' ',
+    );
+    return NaturalLanguageNormalizer.hasNegation(
+      withoutExplicitMemoryDirective,
+    );
+  }
 
   static ConversationRequestDomain? _domain(
     String part,

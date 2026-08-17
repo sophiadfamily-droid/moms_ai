@@ -204,7 +204,10 @@ final class ActionAutonomyPolicyEngine {
     final suggestionsConfirmation =
         policy.mode == ActionAutonomyMode.suggestions;
     final confirmationIsValid = request.hasFreshExplicitConfirmation &&
-        request.origin == ActionOrigin.explicitUserConfirmation;
+        (request.origin == ActionOrigin.explicitUserConfirmation ||
+            (request.origin == ActionOrigin.explicitUserRequest &&
+                risk == ActionRiskLevel.reversibleLowRisk &&
+                !request.domainConfirmationRequired));
     if ((alwaysConfirm || suggestionsConfirmation) && !confirmationIsValid) {
       return _decision(
         request,

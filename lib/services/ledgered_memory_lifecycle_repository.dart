@@ -11,6 +11,7 @@ import 'memory_lifecycle_repository.dart';
 final class LedgeredMemoryLifecycleRepository
     implements
         MemoryLifecycleRepository,
+        MemoryLifecycleDirectActivationRepository,
         MemoryLifecycleReceiptReader,
         MemoryReplacementPendingRepository {
   const LedgeredMemoryLifecycleRepository({
@@ -124,6 +125,44 @@ final class LedgeredMemoryLifecycleRepository
       resultRevision: 1,
       autonomy: autonomy,
       dispatch: () => _delegate.createProposal(proposal, mutation),
+    );
+  }
+
+  @override
+  Future<void> createActiveMemory(
+    MemoryProposal proposal,
+    MemoryLifecycleMutation proposalMutation,
+    List<MemoryLifecycleMutation> activationMutations,
+  ) async {
+    if (activationMutations.isEmpty) {
+      throw const FormatException('memory_direct_activation_empty');
+    }
+    final delegate = _delegate;
+    if (delegate is! MemoryLifecycleDirectActivationRepository) {
+      throw const FormatException(
+        'memory_direct_activation_repository_unsupported',
+      );
+    }
+    final autonomy = await _loadAutonomyPolicy();
+    final memoryPolicy = await _loadMemoryPolicy();
+    if (!_allows(
+      autonomy: autonomy,
+      memoryPolicy: memoryPolicy,
+      isHealth: _isHealthProposal(proposal),
+    )) {
+      throw const FormatException('memory_mutation_blocked_by_policy');
+    }
+    await _trace(
+      mutation: activationMutations.last,
+      expectedRevision: 0,
+      resultRevision: 1,
+      autonomy: autonomy,
+      dispatch: () => (delegate as MemoryLifecycleDirectActivationRepository)
+          .createActiveMemory(
+        proposal,
+        proposalMutation,
+        activationMutations,
+      ),
     );
   }
 

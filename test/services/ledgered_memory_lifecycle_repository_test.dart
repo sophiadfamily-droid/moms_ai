@@ -95,6 +95,38 @@ void main() {
     expect(entries.first.resultRevision, 2);
   });
 
+  test('direct activation dispatches one atomic domain write', () async {
+    final proposalMutation = _mutation(
+      action: MemoryLifecycleAction.propose,
+      previous: null,
+      next: MemoryLifecycleState.proposed,
+    );
+    final confirmation = _mutation(
+      action: MemoryLifecycleAction.confirm,
+      previous: MemoryLifecycleState.proposed,
+      next: MemoryLifecycleState.confirmed,
+    );
+    final activation = _mutation(
+      action: MemoryLifecycleAction.activate,
+      previous: MemoryLifecycleState.confirmed,
+      next: MemoryLifecycleState.active,
+    );
+
+    await repository.createActiveMemory(
+      _proposal(),
+      proposalMutation,
+      [confirmation, activation],
+    );
+
+    expect(delegate.directActivationCalls, 1);
+    expect(delegate.createCalls, 0);
+    expect(delegate.applyCalls, 0);
+    final entries = (await ledger.history()).entries;
+    expect(entries, hasLength(1));
+    expect(entries.single.mutationId, activation.record.idempotencyKey);
+    expect(entries.single.resultRevision, 1);
+  });
+
   test('duplicate mutation never dispatches twice', () async {
     final mutation = _mutation(
       action: MemoryLifecycleAction.propose,
@@ -205,9 +237,13 @@ MemoryLifecycleMutation _mutation({
     );
 
 final class _FakeLifecycleRepository
-    implements MemoryLifecycleRepository, MemoryLifecycleReceiptReader {
+    implements
+        MemoryLifecycleRepository,
+        MemoryLifecycleDirectActivationRepository,
+        MemoryLifecycleReceiptReader {
   int createCalls = 0;
   int applyCalls = 0;
+  int directActivationCalls = 0;
   int? revision;
   String? lastMutationId;
   MemoryLifecycleState state = MemoryLifecycleState.proposed;
@@ -228,6 +264,18 @@ final class _FakeLifecycleRepository
     revision = 1;
     lastMutationId = mutation.record.idempotencyKey;
     state = mutation.newState;
+  }
+
+  @override
+  Future<void> createActiveMemory(
+    MemoryProposal proposal,
+    MemoryLifecycleMutation proposalMutation,
+    List<MemoryLifecycleMutation> activationMutations,
+  ) async {
+    directActivationCalls++;
+    revision = 1;
+    lastMutationId = activationMutations.last.record.idempotencyKey;
+    state = activationMutations.last.newState;
   }
 
   @override

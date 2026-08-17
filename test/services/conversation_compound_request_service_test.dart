@@ -37,6 +37,38 @@ void main() {
       ]);
     });
 
+    test('recognizes accented memory commands after et', () {
+      final result = service.split(
+        'Ajoute du lait aux courses et mémorise que je préfère les '
+        'rendez-vous le matin',
+        referenceDate: referenceDate,
+      );
+
+      expect(result, isNotNull);
+      expect(result!.parts, [
+        'Ajoute du lait aux courses',
+        'mémorise que je préfère les rendez-vous le matin',
+      ]);
+      expect(result.domains, [
+        ConversationRequestDomain.shopping,
+        ConversationRequestDomain.memory,
+      ]);
+    });
+
+    test('recognizes natural memory commands after a sentence', () {
+      final result = service.split(
+        'Crée une tâche appeler maman. N’oublie pas que je préfère être '
+        'prévenue le matin',
+        referenceDate: referenceDate,
+      );
+
+      expect(result, isNotNull);
+      expect(result!.domains, [
+        ConversationRequestDomain.task,
+        ConversationRequestDomain.memory,
+      ]);
+    });
+
     test('allows a contextual first answer only during an active request', () {
       final result = service.split(
         'dentiste et ajoute du lait aux courses',
@@ -72,6 +104,15 @@ void main() {
     test('refuses to segment a request containing a negation', () {
       final result = service.split(
         "n'ajoute pas de lait puis crée une tâche appeler maman",
+        referenceDate: referenceDate,
+      );
+
+      expect(result, isNull);
+    });
+
+    test('does not mistake an unsafe cancellation for a memory directive', () {
+      final result = service.split(
+        'Ajoute du lait aux courses et n’oublie pas d’annuler le dentiste',
         referenceDate: referenceDate,
       );
 

@@ -50,6 +50,17 @@ abstract interface class MemoryLifecycleRepository {
   Future<void> applyMutations(List<MemoryLifecycleMutation> mutations);
 }
 
+/// Capability used when the user explicitly asks Zelia to remember a clear,
+/// ordinary fact. The proposal and its activation are persisted as one
+/// revision so a half-created, invisible proposal cannot remain behind.
+abstract interface class MemoryLifecycleDirectActivationRepository {
+  Future<void> createActiveMemory(
+    MemoryProposal proposal,
+    MemoryLifecycleMutation proposalMutation,
+    List<MemoryLifecycleMutation> activationMutations,
+  );
+}
+
 final class MemoryReplacementPersistenceResult {
   const MemoryReplacementPersistenceResult({
     required this.action,
@@ -102,6 +113,7 @@ abstract interface class MemoryReplacementPendingRepository {
 final class FirestoreMemoryLifecycleRepository
     implements
         MemoryLifecycleRepository,
+        MemoryLifecycleDirectActivationRepository,
         MemoryLifecycleReceiptReader,
         MemoryReplacementPendingRepository {
   final FirebaseFirestore _firestore;
@@ -237,6 +249,36 @@ final class FirestoreMemoryLifecycleRepository
         MemoryLifecycleFirestoreSerializer.proposal(
           proposal,
           mutation,
+          accountScopeId: uid,
+        ),
+      );
+    });
+    MemoryService.notifyMemoriesChanged();
+  }
+
+  @override
+  Future<void> createActiveMemory(
+    MemoryProposal proposal,
+    MemoryLifecycleMutation proposalMutation,
+    List<MemoryLifecycleMutation> activationMutations,
+  ) async {
+    final ref = _memoriesRef();
+    if (ref == null || activationMutations.isEmpty) return;
+    final uid = AuthService.currentUserId!;
+    final reference = ref.doc(proposal.id);
+    final mutationId = activationMutations.last.record.idempotencyKey;
+    await _firestore.runTransaction((transaction) async {
+      final current = await transaction.get(reference);
+      if (current.exists) {
+        if (current.data()?['lastMutationId'] == mutationId) return;
+        throw StateError('memory_revision_conflict');
+      }
+      transaction.set(
+        reference,
+        MemoryLifecycleFirestoreSerializer.activeProposal(
+          proposal,
+          proposalMutation,
+          activationMutations,
           accountScopeId: uid,
         ),
       );
@@ -846,6 +888,38 @@ final class MemoryLifecycleFirestoreSerializer {
         if (proposal.expiresAt != null) 'expiresAt': proposal.expiresAt,
         'lifecycleHistory': [mutation.record.toJson()],
       };
+
+  static Map<String, dynamic> activeProposal(
+    MemoryProposal proposal,
+    MemoryLifecycleMutation proposalMutation,
+    List<MemoryLifecycleMutation> activationMutations, {
+    String accountScopeId = 'test-scope',
+  }) {
+    if (activationMutations.isEmpty ||
+        activationMutations.last.newState != MemoryLifecycleState.active) {
+      throw const FormatException('memory_direct_activation_invalid');
+    }
+    final confirmedAt = activationMutations
+        .map((mutation) => mutation.confirmedAt)
+        .whereType<DateTime>()
+        .firstOrNull;
+    return {
+      ...MemoryLifecycleFirestoreSerializer.proposal(
+        proposal,
+        proposalMutation,
+        accountScopeId: accountScopeId,
+      ),
+      'lifecycleState': MemoryLifecycleState.active.name,
+      'lifecycleStatus': MemoryLifecycleState.active.name,
+      'confirmationStatus': 'confirmed',
+      if (confirmedAt != null) 'confirmedAt': confirmedAt,
+      'lastMutationId': activationMutations.last.record.idempotencyKey,
+      'lifecycleHistory': [
+        proposalMutation.record.toJson(),
+        ...activationMutations.map((mutation) => mutation.record.toJson()),
+      ],
+    };
+  }
 
   static Map<String, dynamic> mutation(MemoryLifecycleMutation mutation) => {
         'lifecycleState': mutation.newState.name,

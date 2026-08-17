@@ -9,6 +9,7 @@ import 'package:moms_ai/models/memory_semantic_identity.dart';
 import 'package:moms_ai/models/life_context/life_context_domains.dart';
 import 'package:moms_ai/models/life_context/life_context_graph.dart';
 import 'package:moms_ai/models/life_context/life_context_projection.dart';
+import 'package:moms_ai/models/life_context/life_context_provenance.dart';
 import 'package:moms_ai/services/conversation_context_service.dart';
 import 'package:moms_ai/services/memory_lifecycle_repository.dart';
 
@@ -191,6 +192,95 @@ void main() {
     expect(request, isNotNull);
     expect(provider.lastMemoryProposalWasActivated, isFalse);
     expect(repository.applied, isEmpty);
+  });
+
+  test('une commande explicite avec j’aime est activée sans second accord',
+      () async {
+    final repository = _FakeLifecycleRepository();
+    final provider = DefaultConversationContextProvider(
+      memoryLifecycleRepository: repository,
+      loadMemoryPolicy: () async => _policyWith(
+        MemoryGeneralMode.askEveryTime,
+      ),
+    );
+
+    final request = await provider.proposeUserMemory(
+      'Souviens-toi que j’aime préparer mes affaires la veille',
+    );
+
+    expect(request, isNull);
+    expect(provider.lastMemoryProposalWasActivated, isTrue);
+    expect(repository.proposals, hasLength(1));
+    expect(
+      repository.applied.map((mutation) => mutation.newState.name),
+      ['confirmed', 'active'],
+    );
+  });
+
+  test('une commande explicite utilise un seul enregistrement actif', () async {
+    final repository = _DirectLifecycleRepository();
+    final provider = DefaultConversationContextProvider(
+      memoryLifecycleRepository: repository,
+      loadMemoryPolicy: () async => _policyWith(
+        MemoryGeneralMode.askEveryTime,
+      ),
+    );
+
+    final request = await provider.proposeUserMemory(
+      'Souviens-toi que j’aime préparer mes affaires la veille',
+    );
+
+    expect(request, isNull);
+    expect(provider.lastMemoryProposalWasPersistedOrPending, isTrue);
+    expect(provider.lastMemoryProposalWasActivated, isTrue);
+    expect(repository.directActivations, hasLength(1));
+    expect(repository.proposals, isEmpty);
+    expect(repository.applied, isEmpty);
+    expect(
+      repository.directActivations.single.activationMutations
+          .map((mutation) => mutation.newState.name),
+      ['confirmed', 'active'],
+    );
+  });
+
+  test('une commande explicite déjà active réussit sans créer de doublon',
+      () async {
+    final repository = _FakeLifecycleRepository();
+    final provider = DefaultConversationContextProvider(
+      memoryLifecycleRepository: repository,
+      loadMemoryPolicy: () async => _policyWith(
+        MemoryGeneralMode.askEveryTime,
+      ),
+    );
+    const command = 'Souviens-toi que j’aime préparer mes affaires la veille';
+
+    expect(await provider.proposeUserMemory(command), isNull);
+    final originalProposal = repository.proposals.single;
+    repository.candidates.add(
+      LifeMemoryFact(
+        id: originalProposal.id,
+        text: originalProposal.text,
+        normalizedText: originalProposal.normalizedText,
+        semanticType: originalProposal.semanticType,
+        category: originalProposal.category,
+        importance: originalProposal.importance,
+        sourceType: LifeContextSourceType.memory,
+        confirmationStatus: MemoryConfirmationStatus.confirmed,
+        sensitivity: originalProposal.sensitivity,
+        evidenceType: LifeContextEvidenceType.explicit,
+        lifecycleState: MemoryLifecycleState.active,
+        lifecycleStateIsExplicit: true,
+      ),
+    );
+
+    final duplicateRequest = await provider.proposeUserMemory(command);
+
+    expect(duplicateRequest, isNull);
+    expect(provider.lastMemoryProposalWasAttempted, isTrue);
+    expect(provider.lastMemoryProposalWasPersistedOrPending, isTrue);
+    expect(provider.lastMemoryProposalWasActivated, isTrue);
+    expect(repository.proposals, hasLength(1));
+    expect(repository.applied, hasLength(2));
   });
 
   test('une commande explicite ambiguë demande encore un accord', () async {
@@ -560,6 +650,7 @@ final class _FakeLifecycleRepository implements MemoryLifecycleRepository {
   final List<MemoryProposal> proposals = [];
   final List<MemoryLifecycleMutation> mutations = [];
   final List<MemoryLifecycleMutation> applied = [];
+  final List<LifeMemoryFact> candidates = [];
 
   @override
   Future<String?> allocateProposalId() async => 'proposal-1';
@@ -569,7 +660,7 @@ final class _FakeLifecycleRepository implements MemoryLifecycleRepository {
     MemoryProposal proposal, {
     int limit = 25,
   }) async =>
-      const [];
+      candidates.take(limit).toList(growable: false);
 
   @override
   Future<void> createProposal(
@@ -586,6 +677,38 @@ final class _FakeLifecycleRepository implements MemoryLifecycleRepository {
   @override
   Future<void> applyMutations(List<MemoryLifecycleMutation> mutations) async {
     applied.addAll(mutations);
+  }
+}
+
+final class _DirectActivationCall {
+  const _DirectActivationCall({
+    required this.proposal,
+    required this.proposalMutation,
+    required this.activationMutations,
+  });
+
+  final MemoryProposal proposal;
+  final MemoryLifecycleMutation proposalMutation;
+  final List<MemoryLifecycleMutation> activationMutations;
+}
+
+final class _DirectLifecycleRepository extends _FakeLifecycleRepository
+    implements MemoryLifecycleDirectActivationRepository {
+  final List<_DirectActivationCall> directActivations = [];
+
+  @override
+  Future<void> createActiveMemory(
+    MemoryProposal proposal,
+    MemoryLifecycleMutation proposalMutation,
+    List<MemoryLifecycleMutation> activationMutations,
+  ) async {
+    directActivations.add(
+      _DirectActivationCall(
+        proposal: proposal,
+        proposalMutation: proposalMutation,
+        activationMutations: List.unmodifiable(activationMutations),
+      ),
+    );
   }
 }
 

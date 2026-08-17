@@ -116,11 +116,13 @@ pas être séparée sans risque.
 
 La session peut séparer au maximum trois demandes autonomes reliées par une
 ponctuation ou un connecteur explicite (`puis`, `ensuite`, `et aussi`, ou `et`
-devant une nouvelle commande). Chaque fragment suivant doit porter sa propre
-commande et être reconnu de manière déterministe comme Event, Task, Shopping
-ou Memory. Une liste d'articles ou plusieurs éléments d'un même domaine restent
-intacts pour leur parseur spécialisé. Une négation, un fragment incertain ou
-un message trop long n'est jamais découpé arbitrairement.
+devant une nouvelle commande). Les commandes conservent leurs variantes
+accentuées et naturelles, y compris `mémorise`, `n’oublie pas`, `garde en
+mémoire` et `à partir de maintenant`. Chaque fragment suivant doit porter sa
+propre commande et être reconnu de manière déterministe comme Event, Task,
+Shopping ou Memory. Une liste d'articles ou plusieurs éléments d'un même
+domaine restent intacts pour leur parseur spécialisé. Une négation, un fragment
+incertain ou un message trop long n'est jamais découpé arbitrairement.
 
 Le message original est affiché une seule fois. Les demandes reconnues sont
 traitées dans leur ordre, avec une identité logique distincte. Si la première
@@ -128,7 +130,13 @@ demande nécessite une précision ou un accord, les suivantes attendent. Une
 réponse contextuelle peut terminer la question en cours avant qu'une nouvelle
 commande explicite du même message soit exécutée. Cette file ne confirme, ne
 persiste et n'exécute rien elle-même : chaque domaine conserve ses validations,
-son récapitulatif, son accord et son écriture idempotente.
+son écriture idempotente et ses règles d'autorisation. Une consigne de mémoire
+explicite et immédiatement enregistrée libère la file sans demander un second
+accord. Une commande Shopping directe, complète et non ambiguë (`ajoute … aux
+courses`) vaut également autorisation fraîche pour cet ajout réversible et
+s'exécute sans un second `oui`. Un constat de rupture de stock, une ambiguïté,
+une négation, une contradiction ou une action plus risquée conserve sa
+clarification ou sa confirmation propre.
 
 ## Entités
 

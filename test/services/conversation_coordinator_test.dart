@@ -1822,18 +1822,12 @@ void main() {
         backend: _FakeBackend(),
         contextProvider: _FakeContextProvider(_request()),
       );
-      await coordinator.send(
-        input: ConversationInput(
-          message: 'Ajoute du lait aux courses',
-          profile: _profile(),
-        ),
-        executeAction: (_) async => const ConversationActionOutcome(),
-      );
-
       await expectLater(
-        coordinator.resolvePendingAutonomyConfirmation(
-          answer: 'oui',
-          sessionGeneration: 0,
+        coordinator.send(
+          input: ConversationInput(
+            message: 'Ajoute du lait aux courses',
+            profile: _profile(),
+          ),
           executeAction: (_) => throw StateError('synthetic storage failure'),
         ),
         throwsA(
@@ -1848,6 +1842,56 @@ void main() {
         coordinator.state.pendingAction?.autonomyPending?.state,
         ActionPendingState.pendingSync,
       );
+
+      var retries = 0;
+      final retried = await coordinator.resolvePendingAutonomyConfirmation(
+        answer: 'oui',
+        sessionGeneration: 0,
+        executeAction: (action) async {
+          retries++;
+          expect(action['type'], 'shopping');
+          expect(action['items'], ['lait']);
+          return const ConversationActionOutcome(
+            message: 'Lait ajouté aux courses.',
+          );
+        },
+      );
+
+      expect(retried?.message, 'Lait ajouté aux courses.');
+      expect(retries, 1);
+      expect(coordinator.state.pendingAction, isNull);
+    });
+
+    test('a clear Shopping command is executed without a second agreement',
+        () async {
+      final backend = _FakeBackend();
+      final coordinator = ConversationCoordinator(
+        backend: backend,
+        contextProvider: _FakeContextProvider(_request()),
+      );
+      Map<String, dynamic>? executed;
+
+      final result = await coordinator.send(
+        input: ConversationInput(
+          message: 'Ajoute des fraises aux courses',
+          profile: _profile(),
+          logicalRequestId: 'shopping-direct-1',
+        ),
+        executeAction: (action) async {
+          executed = action;
+          return const ConversationActionOutcome(
+            message: 'Fraises ajoutées aux courses.',
+          );
+        },
+      );
+
+      expect(result?.reply, 'Fraises ajoutées aux courses.');
+      expect(result?.responseKind, ConversationResponseKind.actionResult);
+      expect(executed?['type'], 'shopping');
+      expect(executed?['items'], ['fraises']);
+      expect(executed?['mutationId'], 'shopping-direct-1');
+      expect(coordinator.state.pendingAction, isNull);
+      expect(backend.requests, isEmpty);
     });
 
     test('simple stock-out confirmation persists one Shopping item', () async {
@@ -1922,24 +1966,19 @@ void main() {
         backend: _FakeBackend(),
         contextProvider: _FakeContextProvider(_request()),
       );
-      await coordinator.send(
+      final result = await coordinator.send(
         input: ConversationInput(
           message: 'Ajoute du lait aux courses',
           profile: _profile(),
         ),
-        executeAction: (_) async => const ConversationActionOutcome(),
-      );
-      final result = await coordinator.resolvePendingAutonomyConfirmation(
-        answer: 'oui',
-        sessionGeneration: 0,
         executeAction: _shoppingExecutor(
           stored: [],
           mutationIds: [],
           persistenceStatus: ShoppingPersistenceStatus.synchronizationPending,
         ),
       );
-      expect(result?.message, contains('sur cet appareil'));
-      expect(result?.message, contains('synchronisation'));
+      expect(result?.reply, contains('sur cet appareil'));
+      expect(result?.reply, contains('synchronisation'));
       expect(coordinator.state.pendingAction, isNull);
     });
 

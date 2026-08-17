@@ -129,6 +129,49 @@ void main() {
     expect(retry.mayExecute, isFalse);
   });
 
+  test('a fresh authorization carried by a direct request is executable', () {
+    final directAuthorization = engine.evaluate(
+      policy: policy(ActionAutonomyMode.suggestions),
+      request: request(
+        ActionType.addShoppingItem,
+        origin: ActionOrigin.explicitUserRequest,
+        confirmation: true,
+      ),
+      evaluatedAt: now,
+    );
+
+    expect(directAuthorization.mayExecute, isTrue);
+    expect(
+      directAuthorization.decision,
+      ActionAuthorizationDecisionType.allowExecution,
+    );
+  });
+
+  test('a direct request never bypasses sensitive or domain confirmation', () {
+    final sensitive = engine.evaluate(
+      policy: policy(ActionAutonomyMode.suggestions),
+      request: request(
+        ActionType.updateProfile,
+        origin: ActionOrigin.explicitUserRequest,
+        confirmation: true,
+      ),
+      evaluatedAt: now,
+    );
+    final domainConfirmation = engine.evaluate(
+      policy: policy(ActionAutonomyMode.suggestions),
+      request: request(
+        ActionType.createTask,
+        origin: ActionOrigin.explicitUserRequest,
+        confirmation: true,
+        domainConfirmation: true,
+      ),
+      evaluatedAt: now,
+    );
+
+    expect(sensitive.requiresConfirmation, isTrue);
+    expect(domainConfirmation.requiresConfirmation, isTrue);
+  });
+
   test('paused allows reads and blocks mutations confirmations and retry', () {
     final read = engine.evaluate(
       policy: policy(ActionAutonomyMode.paused),

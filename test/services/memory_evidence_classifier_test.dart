@@ -8,6 +8,7 @@ void main() {
   group('direct evidence', () {
     for (final message in const [
       'Je préfère mes rendez-vous le matin.',
+      'Souviens-toi que j’aime préparer mes affaires la veille.',
       'Je ne suis jamais disponible le mardi après 18 h.',
       'Tous les mercredis, je vais au sport de 9 h à 10 h.',
       'Mon bureau actuel est à Lyon.',

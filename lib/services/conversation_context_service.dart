@@ -408,7 +408,9 @@ class DefaultConversationContextProvider
         ),
       );
       if (policyDecision.type == MemoryPolicyDecisionType.paused ||
-          policyDecision.type.name.startsWith('reject')) {
+          (policyDecision.type.name.startsWith('reject') &&
+              policyDecision.type !=
+                  MemoryPolicyDecisionType.rejectDuplicate)) {
         return null;
       }
       final decision = _memoryLifecycleEngine.evaluateProposal(
@@ -421,6 +423,22 @@ class DefaultConversationContextProvider
           MemoryLifecycleDecisionType.confirmExistingProposal) {
         _lastMemoryProposalWasPersistedOrPending = true;
         return decision.confirmationRequest;
+      }
+      if (decision.type == MemoryLifecycleDecisionType.noChange &&
+          decision.memoryIds.isNotEmpty) {
+        LifeMemoryFact? existingDuplicate;
+        for (final candidate in existing) {
+          if (decision.memoryIds.contains(candidate.id)) {
+            existingDuplicate = candidate;
+            break;
+          }
+        }
+        if (existingDuplicate != null) {
+          _lastMemoryProposalWasPersistedOrPending = true;
+          _lastMemoryProposalWasActivated =
+              existingDuplicate.lifecycleState == MemoryLifecycleState.active;
+          return null;
+        }
       }
       if ((decision.type != MemoryLifecycleDecisionType.createProposal &&
               decision.contradictionMatch == null) ||
@@ -464,10 +482,36 @@ class DefaultConversationContextProvider
           replacementPendingAction: persisted.action,
         );
       }
+      if (policyDecision.type == MemoryPolicyDecisionType.saveAutomatically) {
+        final activationMutations = _automaticActivationMutations(
+          effectiveProposal,
+          proposedAt,
+          actor: explicitMemoryRequest
+              ? MemoryLifecycleActor.user
+              : MemoryLifecycleActor.system,
+          source: explicitMemoryRequest
+              ? 'explicit_user_memory_directive'
+              : 'memory_policy_v1',
+        );
+        if (activationMutations != null &&
+            repository is MemoryLifecycleDirectActivationRepository) {
+          persistenceStep = 'direct_activation_write';
+          await (repository as MemoryLifecycleDirectActivationRepository)
+              .createActiveMemory(
+            effectiveProposal,
+            proposalMutation,
+            activationMutations,
+          );
+          _lastMemoryProposalWasPersistedOrPending = true;
+          _lastMemoryProposalWasActivated = true;
+          return null;
+        }
+      }
       persistenceStep = 'proposal_write';
       await repository.createProposal(effectiveProposal, proposalMutation);
       _lastMemoryProposalWasPersistedOrPending = true;
       if (policyDecision.type == MemoryPolicyDecisionType.saveAutomatically) {
+        persistenceStep = 'activation_write';
         final activated = await _activateAutomatically(
           repository,
           effectiveProposal,
@@ -512,6 +556,23 @@ class DefaultConversationContextProvider
     required MemoryLifecycleActor actor,
     required String source,
   }) async {
+    final mutations = _automaticActivationMutations(
+      proposal,
+      referenceDate,
+      actor: actor,
+      source: source,
+    );
+    if (mutations == null) return false;
+    await repository.applyMutations(mutations);
+    return true;
+  }
+
+  List<MemoryLifecycleMutation>? _automaticActivationMutations(
+    MemoryProposal proposal,
+    DateTime referenceDate, {
+    required MemoryLifecycleActor actor,
+    required String source,
+  }) {
     var fact = _factFromProposal(proposal, MemoryLifecycleState.proposed);
     final confirmed = _memoryLifecycleEngine.evaluate(
       MemoryLifecycleCommand(
@@ -522,7 +583,7 @@ class DefaultConversationContextProvider
         target: fact,
       ),
     );
-    if (!confirmed.hasMutations) return false;
+    if (!confirmed.hasMutations) return null;
     fact = _factFromProposal(proposal, MemoryLifecycleState.confirmed);
     final active = _memoryLifecycleEngine.evaluate(
       MemoryLifecycleCommand(
@@ -533,12 +594,11 @@ class DefaultConversationContextProvider
         target: fact,
       ),
     );
-    if (!active.hasMutations) return false;
-    await repository.applyMutations([
+    if (!active.hasMutations) return null;
+    return [
       ...confirmed.mutations,
       ...active.mutations,
-    ]);
-    return true;
+    ];
   }
 
   LifeMemoryFact _factFromProposal(

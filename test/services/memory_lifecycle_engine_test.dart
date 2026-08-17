@@ -608,6 +608,55 @@ void main() {
       expect(json['lifecycleHistory'], isNotNull);
     });
 
+    test('explicit memory is created active in one Firestore revision', () {
+      final proposal = _proposal(id: 'direct-memory');
+      final proposalDecision = engine.evaluateProposal(
+        proposal: proposal,
+        existingMemories: const [],
+        referenceDate: now,
+      );
+      var target = _fact(
+        id: proposal.id,
+        state: MemoryLifecycleState.proposed,
+        lifecycleStateIsExplicit: true,
+      );
+      final confirmation = engine.evaluate(
+        _command(
+          action: MemoryLifecycleAction.confirm,
+          target: target,
+          state: MemoryLifecycleState.proposed,
+          now: now,
+        ),
+      );
+      target = _fact(
+        id: proposal.id,
+        state: MemoryLifecycleState.confirmed,
+        lifecycleStateIsExplicit: true,
+      );
+      final activation = engine.evaluate(
+        _command(
+          action: MemoryLifecycleAction.activate,
+          target: target,
+          state: MemoryLifecycleState.confirmed,
+          now: now,
+        ),
+      );
+
+      final json = MemoryLifecycleFirestoreSerializer.activeProposal(
+        proposal,
+        proposalDecision.mutations.single,
+        [...confirmation.mutations, ...activation.mutations],
+      );
+
+      expect(json['memoryRevision'], 1);
+      expect(json['lifecycleState'], 'active');
+      expect(json['lifecycleStatus'], 'active');
+      expect(json['confirmationStatus'], 'confirmed');
+      expect(json['lastMutationId'],
+          activation.mutations.single.record.idempotencyKey);
+      expect(json['lifecycleHistory'], hasLength(3));
+    });
+
     test('repository contract can be replaced by a fake', () async {
       final fake = _FakeMemoryLifecycleRepository();
       final proposal = _proposal(id: 'fake-id');

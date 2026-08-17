@@ -2187,6 +2187,33 @@ class ConversationCoordinator {
           diagnosticCode: 'autonomy_pending_retry_ambiguous',
         );
       }
+      if (canonical.state == ActionConfirmationState.awaitingResponse) {
+        final consumed = await _confirmationCoordinator.respond(
+          response: ActionConfirmationResponse(
+            responseId: _confirmationResponseId(
+              canonical,
+              ActionConfirmationResponseChoice.accept,
+            ),
+            confirmationId: canonical.confirmationId,
+            sessionGeneration: sessionGeneration,
+            respondedAt: _clock().toUtc(),
+            choice: ActionConfirmationResponseChoice.accept,
+            actionFingerprint: canonical.actionFingerprint,
+          ),
+          currentSessionGeneration: sessionGeneration,
+          c3Validator: (_) => pending.wasGrounded && pending.wasComplete,
+          domainValidator: (_) => true,
+          revisionValidator: (_) =>
+              pending.state == ActionPendingState.pendingSync,
+        );
+        if (!consumed.dispatchAllowed) {
+          return PendingConversationResolution(
+            'Cette relance n’est plus valide. Reformule ta demande.',
+            diagnosticCode: consumed.reasonCode,
+          );
+        }
+        canonical = consumed.confirmation;
+      }
       pending = pending.copyWith(
         state: ActionPendingState.executing,
         hasFreshConfirmation: true,
@@ -2628,6 +2655,7 @@ class ConversationCoordinator {
       if (shoppingClassification.isActionable) {
         return _beginShoppingIntent(
           input: input,
+          executeAction: executeAction,
           intent: ShoppingConversationIntent(
             items: shoppingClassification.items,
             isStockOut: shoppingClassification.kind ==
@@ -3102,6 +3130,7 @@ class ConversationCoordinator {
 
   Future<ConversationOutcome> _beginShoppingIntent({
     required ConversationInput input,
+    required ConversationActionExecutor executeAction,
     required ShoppingConversationIntent intent,
   }) =>
       _beginShoppingProposal(
@@ -3109,6 +3138,7 @@ class ConversationCoordinator {
         logicalRequestId: input.logicalRequestId,
         originalInstruction: input.message,
         intent: intent,
+        executeAction: executeAction,
       );
 
   Future<ConversationOutcome> _beginShoppingProposal({
@@ -3116,6 +3146,7 @@ class ConversationCoordinator {
     required String? logicalRequestId,
     required String originalInstruction,
     required ShoppingConversationIntent intent,
+    ConversationActionExecutor? executeAction,
   }) async {
     final policy = await _canonicalPolicy();
     _lastAutonomyPolicy = policy;
@@ -3130,6 +3161,8 @@ class ConversationCoordinator {
         policyVersionObserved: policy.schemaVersion,
         isGrounded: true,
         isComplete: true,
+        hasFreshExplicitConfirmation:
+            !intent.isStockOut && executeAction != null,
       ),
       evaluatedAt: _clock(),
     );
@@ -3159,6 +3192,44 @@ class ConversationCoordinator {
       createdAt: now,
       expiresAt: now.add(const Duration(minutes: 15)),
     )..validate();
+    if (!intent.isStockOut && executeAction != null && decision.mayExecute) {
+      final executing = pending.copyWith(
+        state: ActionPendingState.executing,
+        hasFreshConfirmation: true,
+        attemptCount: 1,
+      );
+      _state = _state.copyWith(
+        phase: ConversationPhase.executingAction,
+        clearPendingAction: true,
+      );
+      try {
+        final outcome = await executeAction(_legacyAction(executing));
+        _clearPendingAction();
+        return ConversationOutcome(
+          reply: outcome.message.isEmpty
+              ? 'C’est ajouté à ta liste de courses.'
+              : outcome.message,
+          responseKind: ConversationResponseKind.actionResult,
+        );
+      } catch (error) {
+        final issued = _confirmationCoordinator.issueWithPolicy(
+          _confirmationProposalForPending(pending),
+          policy: policy,
+        );
+        _state = _state.copyWith(
+          phase: ConversationPhase.awaitingActionConfirmation,
+          pendingAction: PendingConversationAction.autonomyConfirmation(
+            executing.copyWith(state: ActionPendingState.pendingSync),
+            issued.confirmation,
+          ),
+        );
+        throw ConversationShoppingPersistenceException(
+          error is ShoppingPersistenceException
+              ? error.code
+              : 'shopping_local_persist_failed',
+        );
+      }
+    }
     final issued = _confirmationCoordinator.issueWithPolicy(
       _confirmationProposalForPending(pending),
       policy: policy,

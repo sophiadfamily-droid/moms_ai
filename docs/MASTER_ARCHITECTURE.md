@@ -1047,8 +1047,10 @@ Interaction rules:
 `ActionAutonomyPolicyEngine` is the single deterministic authorization matrix
 for the three account-scoped modes. `normal` allows explicit, grounded and
 complete requests while preserving every domain confirmation. `suggestions`
-allows reads and proposals but requires a fresh explicit confirmation before
-every mutation. `paused` keeps conversation and permitted reads available,
+allows reads and proposals but requires fresh explicit user authorization
+before every mutation; for a closed reversible low-risk action, the direct
+command may carry that authorization without a redundant second message.
+`paused` keeps conversation and permitted reads available,
 while blocking proposals intended for execution, confirmations, mutation
 retries and pending execution. The restrictive default is `suggestions`.
 
@@ -2056,6 +2058,25 @@ result directly instead of asking for `oui`. Inferred preferences and routines
 continue to follow `MemoryPolicy`; ambiguity, unresolved third parties,
 contradictions, health consent, sensitivity, duplicates, pause and structured
 domain ownership remain fail-closed.
+
+The sixth Stage 7 slice closes the interaction between explicit memory consent
+and compound requests. Natural accented directives such as `mémorise`,
+`n’oublie pas`, `garde en mémoire`, `à partir de maintenant` and their bounded
+variants are recognized after a connector or a sentence boundary. Once a
+clear ordinary memory is activated, the canonical session advances to the
+next independently recognized request without a redundant confirmation,
+without duplicating the visible user message and without weakening the
+existing queue, negation or domain-specific safety boundaries.
+
+The seventh Stage 7 slice gives the same no-double-consent treatment to a
+clear, complete and directly requested low-risk Shopping add. `Ajoute … aux
+courses` carries fresh user authorization and is persisted immediately through
+the existing Shopping executor and mutation identity; a success message reports
+the actual result. Stock-out observations, ambiguous `plus`, negation, paused
+actions and persistence failures retain their confirmation, clarification or
+recoverable retry boundary. Explicit ordinary memory evidence also recognizes
+natural first-person forms such as `j’aime`, so a compound request can save the
+memory and then execute the Shopping clause without either redundant `oui`.
 
 ### Stage 8 — Import structured schedules and documents
 

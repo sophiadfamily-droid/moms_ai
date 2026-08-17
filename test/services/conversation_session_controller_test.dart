@@ -98,6 +98,56 @@ void main() {
       harness.dispose();
     });
 
+    test('continues after an explicitly saved memory without another yes',
+        () async {
+      final handled = <String>[];
+      final harness = _Harness(
+        resolveLocalRequest: (message, _) async {
+          handled.add(message);
+          if (message.startsWith('Souviens-toi')) {
+            return const ConversationOutcome(
+              reply: 'C’est noté, cette information est mémorisée.',
+            );
+          }
+          return const ConversationOutcome(
+            reply: 'Fraises ajoutées aux courses.',
+          );
+        },
+      );
+
+      await harness.controller.submitText(
+        'Souviens-toi que j’aime préparer mes affaires la veille et ajoute '
+        'des fraises aux courses',
+      );
+
+      expect(handled, [
+        'Souviens-toi que j’aime préparer mes affaires la veille',
+        'ajoute des fraises aux courses',
+      ]);
+      expect(
+        harness.controller.state.messages
+            .where((message) => message.role == ConversationMessageRole.user)
+            .map((message) => message.text),
+        [
+          'Souviens-toi que j’aime préparer mes affaires la veille et ajoute '
+              'des fraises aux courses',
+        ],
+      );
+      expect(
+        harness.controller.state.messages
+            .where(
+              (message) => message.role == ConversationMessageRole.assistant,
+            )
+            .map((message) => message.text),
+        [
+          'C’est noté, cette information est mémorisée.',
+          'Fraises ajoutées aux courses.',
+        ],
+      );
+      expect(harness.controller.state.phase, ConversationSessionPhase.ready);
+      harness.dispose();
+    });
+
     test('waits for the first confirmation before running the next request',
         () async {
       var awaitingConfirmation = false;

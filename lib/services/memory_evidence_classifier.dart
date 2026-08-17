@@ -388,8 +388,10 @@ final class MemoryEvidenceClassifier {
 
   bool _isRecognizedDirectStatement(String value) {
     if (_isDurableRelationshipFact(value)) return true;
-    if (RegExp(r'\b(?:je|nous)\s+(?:prefere|aimons?|veux|voulons)\s+\S+')
-        .hasMatch(value)) {
+    if (RegExp(
+      r'\b(?:je\s+(?:prefere|aime|veux)|j\s+aime|'
+      r'nous\s+(?:preferons|aimons|voulons))\s+\S+',
+    ).hasMatch(value)) {
       return true;
     }
     if (RegExp(r'\b(?:prefere|aime|deteste)\s+\S+').hasMatch(value) &&
