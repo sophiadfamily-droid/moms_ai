@@ -8,6 +8,7 @@ class TaskModel {
   final bool isImportant;
   final String dueDate;
   final String notes;
+  final int? durationMinutes;
 
   // Premium organisation
   // Exemples : Aujourd’hui, Cette semaine, Ce mois-ci, Plus tard
@@ -23,9 +24,15 @@ class TaskModel {
     this.isImportant = false,
     this.dueDate = "",
     this.notes = "",
+    this.durationMinutes,
     this.planning = "Cette semaine",
     this.priority = "Normale",
-  });
+  }) {
+    if (durationMinutes != null &&
+        (durationMinutes! <= 0 || durationMinutes! > 10080)) {
+      throw const FormatException('invalid_task_duration');
+    }
+  }
 
   TaskModel copyWith({
     String? id,
@@ -36,6 +43,7 @@ class TaskModel {
     bool? isImportant,
     String? dueDate,
     String? notes,
+    int? durationMinutes,
     String? planning,
     String? priority,
   }) {
@@ -48,6 +56,7 @@ class TaskModel {
       isImportant: isImportant ?? this.isImportant,
       dueDate: dueDate ?? this.dueDate,
       notes: notes ?? this.notes,
+      durationMinutes: durationMinutes ?? this.durationMinutes,
       planning: planning ?? this.planning,
       priority: priority ?? this.priority,
     );
@@ -63,6 +72,7 @@ class TaskModel {
       "isImportant": isImportant,
       "dueDate": dueDate,
       "notes": notes,
+      if (durationMinutes != null) "durationMinutes": durationMinutes,
       "planning": planning,
       "priority": priority,
     };
@@ -71,6 +81,14 @@ class TaskModel {
   factory TaskModel.fromJson(
     Map<String, dynamic> json,
   ) {
+    final rawDuration = json["durationMinutes"];
+    final parsedDuration = rawDuration is num
+        ? rawDuration.toInt()
+        : int.tryParse(rawDuration?.toString() ?? '');
+    final durationMinutes =
+        parsedDuration != null && parsedDuration > 0 && parsedDuration <= 10080
+            ? parsedDuration
+            : null;
     return TaskModel(
       id: json["id"] is String ? json["id"] as String : null,
       title: json["title"] ?? "",
@@ -83,6 +101,7 @@ class TaskModel {
       isImportant: json["isImportant"] ?? false,
       dueDate: json["dueDate"] ?? "",
       notes: json["notes"] ?? "",
+      durationMinutes: durationMinutes,
       planning: json["planning"] ?? "Cette semaine",
       priority: json["priority"] ?? "Normale",
     );

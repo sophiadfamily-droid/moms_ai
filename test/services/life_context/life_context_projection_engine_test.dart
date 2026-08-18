@@ -165,6 +165,28 @@ void main() {
       expect(overflow.state, LifeContextProjectionState.partial);
     });
 
+    test('Priority proactive receives normalized structured Task signals', () {
+      final projection = _build(
+        _snapshot(now, taskCount: 1, structuredTaskPriority: true),
+        LifeContextConsumerPurpose.proactivePriority,
+      );
+      final task = _section(
+        projection,
+        LifeContextProjectionSectionType.task,
+      ).items.single;
+      final facts = {for (final fact in task.facts) fact.key: fact.value};
+
+      expect(facts[LifeContextProjectionFactKeys.dueDate], '2026-07-25');
+      expect(facts[LifeContextProjectionFactKeys.importance], '1.0');
+      expect(facts[LifeContextProjectionFactKeys.urgency], '0.9');
+      expect(facts[LifeContextProjectionFactKeys.category], 'personal');
+      expect(
+        facts[LifeContextProjectionFactKeys.createdAt],
+        '2026-07-20T00:00:00.000Z',
+      );
+      expect(facts, isNot(contains(LifeContextProjectionFactKeys.title)));
+    });
+
     test('texte libre est nettoyé et borné', () {
       final projection = _build(
         _snapshot(now, eventTitle: '${'A' * 100}\nsecret'),
@@ -808,6 +830,7 @@ LifeContextSnapshot _snapshot(
   String? planningConsequenceEndTime,
   bool blocksResponsiblePerson = false,
   String? eventLocation,
+  bool structuredTaskPriority = false,
 }) {
   final events = <EventContextItem>[
     for (var index = 0; index < eventCount; index++)
@@ -1039,6 +1062,12 @@ LifeContextSnapshot _snapshot(
                   dueDate: !allTasksActive && index == 1 ? null : '2026-07-25',
                   durationMinutes: null,
                   syncStatus: 'synced',
+                  importance: structuredTaskPriority ? 1 : null,
+                  urgency: structuredTaskPriority ? .9 : null,
+                  category: structuredTaskPriority ? 'personal' : null,
+                  createdAt: structuredTaskPriority
+                      ? '2026-07-20T00:00:00.000Z'
+                      : null,
                 ),
             ]
           : const [],

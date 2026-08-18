@@ -5,12 +5,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:moms_ai/models/life_context/life_context_domains.dart';
 import 'package:moms_ai/models/life_context/life_context_graph.dart';
 import 'package:moms_ai/models/life_context/life_context_projection.dart';
+import 'package:moms_ai/models/mental_load_anticipation.dart';
 import 'package:moms_ai/models/priority/proactive_priority_models.dart';
 import 'package:moms_ai/models/priority/priority_suggestion_models.dart';
+import 'package:moms_ai/models/proactive_detection.dart';
 import 'package:moms_ai/models/task_model.dart';
 import 'package:moms_ai/models/conversation_models.dart';
 import 'package:moms_ai/models/reasoning/reasoning_input.dart';
 import 'package:moms_ai/screens/tasks_screen.dart';
+import 'package:moms_ai/services/mental_load_anticipation_suggestion_service.dart';
 import 'package:moms_ai/services/priority/proactive_priority_service.dart';
 import 'package:moms_ai/services/priority/proactive_interaction_registry.dart';
 import 'package:moms_ai/services/priority/proactive_suggestion_presentation_builder.dart';
@@ -22,7 +25,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   final now = DateTime(2026, 7, 27, 10);
 
-  test('zero candidates and incomplete context fail closed', () async {
+  test(
+      'zero candidates fail closed but unrelated partial context does not '
+      'hide trusted local task priority', () async {
     final repository = _History();
     final empty = _service(repository, _projection(now, const []), now);
     expect(
@@ -38,14 +43,15 @@ void main() {
       _projection(now, [_task(now, 'task-1')], complete: false),
       now,
     );
-    expect(
-      (await partial.evaluate(
-        dashboardReady: true,
-        interactionActive: false,
-      ))
-          .type,
-      ProactiveSuggestionDecisionType.noSuggestion,
+    final partialDecision = await partial.evaluate(
+      dashboardReady: true,
+      interactionActive: false,
     );
+    expect(
+      partialDecision.type,
+      ProactiveSuggestionDecisionType.showSuggestion,
+    );
+    expect(partialDecision.suggestion, isNotNull);
   });
 
   test('shows only the first official suggestion and never reranks', () async {
@@ -487,6 +493,28 @@ void main() {
     expect(decision.code, 'suggestion_selected');
   });
 
+  test('unavailable optional reasoning does not hide local task priority',
+      () async {
+    final service = ProactivePriorityService(
+      accountScopeId: 'account',
+      loadProjection: () async => _projection(
+        now,
+        [_task(now, 'task-1')],
+      ),
+      loadReasoning: (_) async => throw StateError('reasoning unavailable'),
+      history: _History(),
+      clock: () => now,
+    );
+
+    final decision = await service.evaluate(
+      dashboardReady: true,
+      interactionActive: false,
+    );
+
+    expect(decision.suggestion, isNotNull);
+    expect(decision.code, 'suggestion_selected');
+  });
+
   test(
       'closing Smart Planning reevaluates the latest canonical projection '
       'without consuming noSuggestion', () async {
@@ -626,10 +654,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(find.byKey(const Key('contextual-support-message')), findsOneWidget);
     expect(
-      find.text('Tout est sous contrôle pour le moment.'),
-      findsOneWidget,
-    );
+        find.text('Je n’ai rien à te suggérer pour le moment.'), findsNothing);
     expect(history.values, isEmpty);
 
     registry.deactivate(
@@ -731,6 +758,32 @@ void main() {
   });
 
   testWidgets(
+      'a suggestion whose source task disappeared cannot blank the dashboard',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({TaskService.tasksKey: <String>[]});
+    final history = _History();
+    final service = _service(
+      history,
+      _projection(
+        now,
+        [_task(now, 'deleted-task', includeDuration: false)],
+      ),
+      now,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(home: TasksScreen(proactivePriorityService: service)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('To-do list'), findsOneWidget);
+    expect(find.byKey(const Key('contextual-support-message')), findsOneWidget);
+    expect(
+        find.text('Je n’ai rien à te suggérer pour le moment.'), findsNothing);
+  });
+
+  testWidgets(
       'transition missed offscreen is reevaluated from current state '
       'on tab activation', (tester) async {
     _seedTask('offscreen-task', 'Une tâche au titre suffisamment long', now);
@@ -776,6 +829,50 @@ void main() {
 
     expect(find.byIcon(Icons.close), findsOneWidget);
     expect(history.values, hasLength(1));
+  });
+
+  testWidgets(
+      'mental-load anticipation reuses the single suggestion card and opens '
+      'the proven preparation task', (tester) async {
+    _seedTask('prepare-task', 'Préparer les documents', now);
+    final history = _History();
+    final priority = _service(history, _projection(now, const []), now);
+    final mentalLoad = MentalLoadAnticipationSuggestionService(
+      accountScopeId: 'account',
+      loadSuggestions: () async => [_mentalSuggestion(now)],
+      history: history,
+      clock: () => now,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: TasksScreen(
+          proactivePriorityService: priority,
+          mentalLoadSuggestionService: mentalLoad,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('À prévoir bientôt'), findsOneWidget);
+    expect(
+      find.text(
+        'Avant « Inscription à l’école », pense à '
+        '« Préparer les documents ».',
+      ),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('proactive-priority-card')), findsOneWidget);
+    expect(history.values, hasLength(1));
+
+    await tester.tap(find.text('Voir la préparation'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Modifier la tâche'), findsOneWidget);
+    expect(
+      history.values.single.state,
+      ProactiveSuggestionHistoryState.actedOn,
+    );
   });
 
   test('history persistence failure is fail-closed for the session', () async {
@@ -841,6 +938,35 @@ ProactivePriorityService _service(
       loadProjection: () async => projection,
       history: history,
       clock: () => now,
+    );
+
+MentalLoadAnticipationSuggestion _mentalSuggestion(DateTime now) =>
+    MentalLoadAnticipationSuggestion(
+      anticipation: MentalLoadAnticipation(
+        id: 'mental-load-test',
+        accountScopeId: 'account',
+        reason: MentalLoadAnticipationReason.explicitPreparationBeforeEvent,
+        priority: MentalLoadAnticipationPriority.urgent,
+        preparationSourceId: 'prepare-task',
+        eventSourceId: 'school-registration',
+        preparationDeadline: now.add(const Duration(hours: 8)),
+        eventStart: now.add(const Duration(hours: 20)),
+        evidence: [
+          DetectionEvidence(
+            sourceType: DetectionEvidenceSource.explicitDeadline,
+            domain: LifeContextDomain.task,
+            sourceId: 'prepare-task',
+            revision: 1,
+            freshness: LifeContextFreshness.current,
+            availability: LifeContextAvailability.available,
+            certainty: DetectionEvidenceLevel.explicit,
+            instant: now.add(const Duration(hours: 8)),
+            confirmed: true,
+          ),
+        ],
+      ),
+      preparationLabel: 'Préparer les documents',
+      eventLabel: 'Inscription à l’école',
     );
 
 LifeContextProjection _projection(

@@ -25,6 +25,7 @@ void main() {
       isImportant: true,
       dueDate: '2026-07-22',
       notes: 'Demander les horaires',
+      durationMinutes: 60,
       planning: 'Cette semaine',
       priority: 'Haute',
     );
@@ -48,6 +49,7 @@ void main() {
       expect(updated.notes, 'Nouvelle description');
       expect(updated.dueDate, '2026-08-01');
       expect(updated.priority, 'Basse');
+      expect(updated.durationMinutes, 60);
     });
 
     test('JSON round trip preserves an existing ID', () {
@@ -55,6 +57,7 @@ void main() {
 
       expect(task.toJson()['id'], 'task-1');
       expect(TaskModel.fromJson(task.toJson()).id, 'task-1');
+      expect(TaskModel.fromJson(task.toJson()).durationMinutes, 60);
     });
 
     test('legacy JSON remains readable without inventing an ID', () {
@@ -64,6 +67,25 @@ void main() {
       expect(json, isNot(containsPair('id', anything)));
       expect(restored.id, isNull);
       expect(restored.title, 'Appeler l’école');
+    });
+
+    test('legacy invalid durations are treated as missing information', () {
+      for (final rawDuration in [0, -1, 10081, '0', 'inconnue']) {
+        final json = buildTask(id: 'task-1').toJson()
+          ..['durationMinutes'] = rawDuration;
+
+        expect(
+          TaskModel.fromJson(json).durationMinutes,
+          isNull,
+          reason: '$rawDuration',
+        );
+      }
+    });
+
+    test('legacy numeric string duration remains readable', () {
+      final json = buildTask(id: 'task-1').toJson()..['durationMinutes'] = '60';
+
+      expect(TaskModel.fromJson(json).durationMinutes, 60);
     });
   });
 

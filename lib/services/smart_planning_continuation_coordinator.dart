@@ -31,6 +31,7 @@ import 'selected_slot_schedule_service.dart';
 import 'route_travel_time_service.dart';
 import 'smart_planning_response_builder.dart';
 import 'smart_planning_service.dart';
+import 'task_service.dart';
 import 'zelia_response_builder.dart';
 
 abstract interface class SmartPlanningContinuationGateway {
@@ -61,6 +62,8 @@ abstract interface class SmartPlanningContinuationGateway {
   Future<EventModel?> conflict(EventModel event);
 
   Future<void> addEvent(EventModel event, {String? mutationId});
+
+  Future<void> updateTaskDuration(TaskModel task, int durationMinutes);
 }
 
 abstract interface class SmartPlanningAutomaticTravelGateway {
@@ -128,6 +131,23 @@ final class ProductionSmartPlanningContinuationGateway
   Future<bool> canCalculateTravelAutomatically() async =>
       _profile.automaticTravelCalculationEnabled &&
       await _travelConsentGateway.isAuthorized();
+
+  @override
+  Future<void> updateTaskDuration(
+    TaskModel task,
+    int durationMinutes,
+  ) async {
+    final targetId = task.id;
+    if (targetId == null || targetId.trim().isEmpty) {
+      throw const FormatException('missing_task_duration_target');
+    }
+    final tasks = await TaskService.getTasks();
+    final index = tasks.indexWhere((candidate) => candidate.id == targetId);
+    if (index < 0) throw StateError('task_duration_target_not_found');
+    final updated = List<TaskModel>.of(tasks);
+    updated[index] = updated[index].copyWith(durationMinutes: durationMinutes);
+    await TaskService.updateTasks(updated);
+  }
 
   @override
   Future<PlanningProposalEngineResult?> findOptionsWithAutomaticTravel({
@@ -794,6 +814,23 @@ final class SmartPlanningContinuationCoordinator {
       return _result(
         SmartPlanningContinuationResultStatus.invalidAnswer,
         SmartPlanningResponseBuilder.askDurationExample(),
+      );
+    }
+    if (continuation.sourceSuggestionId != null) {
+      try {
+        await _gateway.updateTaskDuration(continuation.task, minutes);
+      } on Object {
+        return _result(
+          SmartPlanningContinuationResultStatus.recoverableFailure,
+          'Je n’ai pas pu enregistrer cette durée pour le moment. '
+          'Tu peux réessayer dans un instant.',
+        );
+      }
+      _active = null;
+      return _result(
+        SmartPlanningContinuationResultStatus.success,
+        'C’est noté 💕 La durée de « ${continuation.task.title} » est maintenant '
+        'de ${SmartPlanningService.durationLabel(minutes)}.',
       );
     }
     final updated = continuation.copyWith(

@@ -207,7 +207,11 @@ final class LifeContextConsumerContract {
           includeUncertain: true,
           allowStale: true,
           allowPartial: true,
-          requiredDomains: const {LifeContextDomain.human},
+          // A local Task or Event can safely justify its own suggestion even
+          // when an unrelated profile, memory or relation source is
+          // temporarily unavailable. Source-specific eligibility is checked
+          // again by the proactive policy.
+          requiredDomains: const {},
           maxRelationDepth: 1,
           maxRelations: 12,
           maxItems: 40,

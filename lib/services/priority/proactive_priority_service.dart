@@ -101,7 +101,23 @@ final class ProactivePriorityService {
         );
       }
       final now = _clock();
-      final reasoning = await _loadReasoning?.call(interactionGeneration);
+      ReasoningResult? reasoning;
+      if (_loadReasoning != null) {
+        try {
+          reasoning = await _loadReasoning(interactionGeneration);
+        } on Object catch (error) {
+          AppDiagnostics.record(
+            component: 'proactive_priority',
+            step: 'optional_reasoning',
+            code: AppErrorCode.dependencyUnavailable,
+            severity: AppErrorSeverity.warning,
+            sourceExceptionType: error.runtimeType.toString(),
+            metadata: const {
+              'result': 'local_priority_preserved',
+            },
+          );
+        }
+      }
       final candidates = const PriorityCandidateAdapter().fromProjection(
         projection,
         evaluatedAt: now.toUtc(),

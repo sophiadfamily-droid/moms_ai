@@ -317,7 +317,7 @@ void main() {
       expect(syncReadCalls, 1);
     });
 
-    test('Task preserves completion and optional due date without priority',
+    test('Task normalizes French dates and preserves structured priority',
         () async {
       final section = await TaskLifeContextAdapter(
         load: (_) async => _tasks(),
@@ -336,11 +336,15 @@ void main() {
       expect(section.tasks, hasLength(2));
       expect(section.tasks.first.dueDate, '2026-07-30');
       expect(section.tasks.last.dueDate, isNull);
+      expect(section.tasks.first.importance, 1);
+      expect(section.tasks.first.urgency, 1);
+      expect(section.tasks.first.category, 'personal');
+      expect(section.tasks.first.createdAt, '2026-07-20T00:00:00.000Z');
+      expect(section.tasks.first.durationMinutes, 60);
       expect(section.metadata.revision, 7);
       expect(section.metadata.syncStatus, 'pending');
       expect(section.tasks.first.syncStatus, 'queued');
       expect(section.toJson().toString(), isNot(contains('priority')));
-      expect(section.toJson().toString(), isNot(contains('important')));
     });
 
     test('Routine uses only explicit legacy structures, never memory text',
@@ -872,9 +876,10 @@ List<TaskModel> _tasks() => [
         category: 'Perso',
         isDone: false,
         createdAt: DateTime.utc(2026, 7, 20),
-        dueDate: '2026-07-30',
+        dueDate: '30/07/2026',
         priority: 'Urgente',
         isImportant: true,
+        durationMinutes: 60,
       ),
     ];
 

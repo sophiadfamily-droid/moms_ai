@@ -2159,6 +2159,33 @@ This typed output is the safe foundation for later concise suggestions and
 preparation plans without adding noise or pretending to know an unexpressed
 need.
 
+The first presentation slice reuses the single proactive suggestion card on
+the Tasks screen. A mental-load anticipation is eligible only when the normal
+priority engine has no stronger suggestion to show. Its copy names the proven
+Event and its already-existing preparation Task, and its action opens that
+Task; it never creates work on the user's behalf. The shared durable receipt
+history records display, dismissal and action so the same unchanged suggestion
+does not repeatedly interrupt the user. Presentation remains limited to one
+card at a time and is suppressed while another guided interaction is active.
+Optional cross-domain reasoning may refine whether a suggestion is suitable,
+but its temporary unavailability never invalidates a priority already proven
+from the local canonical Task projection. Suggestion failures remain internal:
+the optional card degrades to a neutral empty state instead of asking the user
+to retry a background calculation.
+
+The canonical Task projection keeps the structured signals already entered by
+the user (`importance`, `urgency`, `category` and `createdAt`) and normalizes
+French calendar dates such as `28/07/2026` to the internal ISO format before
+priority evaluation. Presentation labels and localized storage formats must
+therefore never make an urgent or important Task disappear from suggestion
+eligibility.
+
+Completing a missing field from a proactive suggestion is a targeted update
+of the existing canonical entity. Completing a Task duration preserves its
+stable identity, persists the duration on that Task and closes the
+clarification. It must not create a duplicate Task, launch slot search or ask
+for travel. Scheduling a Task remains a separate explicit user intention.
+
 ### Stage 10 — Extend connections and premium capabilities
 
 - add external calendar, mapping, health or service connections only behind explicit scope and ownership contracts;

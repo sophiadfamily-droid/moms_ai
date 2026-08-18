@@ -6,17 +6,22 @@ import '../models/task_model.dart';
 import '../services/auth_service.dart';
 import '../services/ai_priority_service.dart';
 import '../services/app_diagnostics.dart';
+import '../services/contextual_support_card_service.dart';
+import '../services/mental_load_anticipation_production.dart';
+import '../services/mental_load_anticipation_suggestion_service.dart';
 import '../services/priority/proactive_interaction_registry.dart';
 import '../services/priority/proactive_priority_service.dart';
 import '../services/priority/proactive_priority_production.dart';
 import '../services/priority/proactive_suggestion_presentation_builder.dart';
 import '../services/task_service.dart';
+import '../widgets/compact_contextual_support_card.dart';
 
 class TasksScreen extends StatefulWidget {
   final ValueChanged<ProactiveTaskDurationHandoff>? onOpenZeliaSuggestion;
   final ValueChanged<int>? onNavigate;
   final bool isDashboardActive;
   final ProactivePriorityService? proactivePriorityService;
+  final MentalLoadAnticipationSuggestionService? mentalLoadSuggestionService;
   final String? highlightedTaskId;
   final ProactiveInteractionRegistry? _proactiveInteractionRegistry;
   ProactiveInteractionRegistry get proactiveInteractionRegistry =>
@@ -28,6 +33,7 @@ class TasksScreen extends StatefulWidget {
     this.onNavigate,
     this.isDashboardActive = true,
     this.proactivePriorityService,
+    this.mentalLoadSuggestionService,
     this.highlightedTaskId,
     ProactiveInteractionRegistry? proactiveInteractionRegistry,
   }) : _proactiveInteractionRegistry = proactiveInteractionRegistry;
@@ -53,7 +59,9 @@ class _TasksScreenState extends State<TasksScreen> {
   bool proactiveLoading = true;
   bool proactiveError = false;
   ProactiveSuggestion? proactiveSuggestion;
+  MentalLoadAnticipationSuggestion? mentalLoadSuggestion;
   ProactivePriorityService? _proactiveService;
+  MentalLoadAnticipationSuggestionService? _mentalLoadService;
   bool _proactiveEvaluationInFlight = false;
   bool _proactiveReevaluationQueued = false;
 
@@ -186,6 +194,7 @@ class _TasksScreenState extends State<TasksScreen> {
     if (!widget.isDashboardActive) {
       setState(() {
         proactiveSuggestion = null;
+        mentalLoadSuggestion = null;
         proactiveLoading = false;
         proactiveError = false;
       });
@@ -202,6 +211,7 @@ class _TasksScreenState extends State<TasksScreen> {
         if (!mounted) return;
         setState(() {
           proactiveSuggestion = null;
+          mentalLoadSuggestion = null;
           proactiveLoading = false;
         });
         return;
@@ -225,11 +235,32 @@ class _TasksScreenState extends State<TasksScreen> {
         lastInteractionTransition: interactionSnapshot.lastTransition,
         interactionGeneration: interactionSnapshot.generation,
       );
+      final prioritySuggestion =
+          decision.suggestion ?? _proactiveService!.currentVisibleSuggestion;
+      MentalLoadAnticipationSuggestion? anticipation;
+      if (prioritySuggestion == null) {
+        try {
+          _mentalLoadService ??= widget.mentalLoadSuggestionService ??
+              await MentalLoadAnticipationSuggestionService.create(
+                accountScopeId: scope,
+                loadSuggestions: () =>
+                    MentalLoadAnticipationProduction.load(scope),
+              );
+          anticipation = await _mentalLoadService!.evaluate(
+            dashboardReady: true,
+            interactionActive: interactionSnapshot.isActive,
+          );
+        } on Object {
+          // Anticipation is an optional, fail-closed fallback. A missing
+          // cross-domain proof must never hide the regular task dashboard.
+          anticipation = null;
+        }
+      }
       if (!mounted) return;
       setState(() {
-        proactiveSuggestion =
-            decision.suggestion ?? _proactiveService!.currentVisibleSuggestion;
-        proactiveError = decision.code == 'local_failure';
+        proactiveSuggestion = prioritySuggestion;
+        mentalLoadSuggestion = anticipation;
+        proactiveError = false;
         proactiveLoading = false;
       });
       if (decision.suggestion case final suggestion?) {
@@ -253,12 +284,29 @@ class _TasksScreenState extends State<TasksScreen> {
             });
           }
         });
+      } else if (anticipation case final suggestion?) {
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
+          if (!mounted ||
+              mentalLoadSuggestion?.suggestionId != suggestion.suggestionId) {
+            return;
+          }
+          try {
+            final confirmed =
+                await _mentalLoadService!.confirmShown(suggestion);
+            if (mounted && !confirmed) {
+              setState(() => mentalLoadSuggestion = null);
+            }
+          } on Object {
+            if (mounted) setState(() => mentalLoadSuggestion = null);
+          }
+        });
       }
     } on Object {
       if (!mounted) return;
       setState(() {
         proactiveSuggestion = null;
-        proactiveError = true;
+        mentalLoadSuggestion = null;
+        proactiveError = false;
         proactiveLoading = false;
       });
     }
@@ -266,10 +314,18 @@ class _TasksScreenState extends State<TasksScreen> {
 
   Future<void> _dismissProactiveSuggestion() async {
     final suggestion = proactiveSuggestion;
-    if (suggestion == null) return;
-    setState(() => proactiveSuggestion = null);
+    final anticipation = mentalLoadSuggestion;
+    if (suggestion == null && anticipation == null) return;
+    setState(() {
+      proactiveSuggestion = null;
+      mentalLoadSuggestion = null;
+    });
     try {
-      await _proactiveService?.dismiss(suggestion);
+      if (suggestion != null) {
+        await _proactiveService?.dismiss(suggestion);
+      } else if (anticipation != null) {
+        await _mentalLoadService?.dismiss(anticipation);
+      }
     } on Object {
       if (!mounted) return;
       setState(() => proactiveError = true);
@@ -278,16 +334,29 @@ class _TasksScreenState extends State<TasksScreen> {
 
   Future<void> _openProactiveSuggestion() async {
     final suggestion = proactiveSuggestion;
-    if (suggestion == null) return;
-    final sourceTask = _taskForSuggestion(suggestion);
+    final anticipation = mentalLoadSuggestion;
+    if (suggestion == null && anticipation == null) return;
+    if (anticipation != null) {
+      final matches = tasks.where(
+        (task) => task.id == anticipation.anticipation.preparationSourceId,
+      );
+      if (matches.isNotEmpty && mounted) {
+        await _mentalLoadService?.markActedOn(anticipation);
+        setState(() => mentalLoadSuggestion = null);
+        await showTaskSheet(task: matches.first);
+      }
+      return;
+    }
+    final activeSuggestion = suggestion!;
+    final sourceTask = _taskForSuggestion(activeSuggestion);
     final presentation = sourceTask == null
         ? null
         : const ProactiveSuggestionPresentationBuilder().build(
-            suggestion: suggestion,
+            suggestion: activeSuggestion,
             sourceLabel: sourceTask.title,
           );
-    await _proactiveService?.markActedOn(suggestion);
-    if (suggestion.callToAction ==
+    await _proactiveService?.markActedOn(activeSuggestion);
+    if (activeSuggestion.callToAction ==
             ProactiveSuggestionCallToActionType.completeInformation &&
         presentation != null &&
         sourceTask?.id != null &&
@@ -296,9 +365,9 @@ class _TasksScreenState extends State<TasksScreen> {
         ProactiveTaskDurationHandoff(
           taskId: sourceTask!.id!,
           logicalRequestId:
-              'proactive-duration:${suggestion.suggestionId}:${sourceTask.id}',
-          sourceSuggestionId: suggestion.suggestionId,
-          sourceEntityReference: suggestion.sourceEntityReferences.first,
+              'proactive-duration:${activeSuggestion.suggestionId}:${sourceTask.id}',
+          sourceSuggestionId: activeSuggestion.suggestionId,
+          sourceEntityReference: activeSuggestion.sourceEntityReferences.first,
           taskTitle: sourceTask.title,
           question: presentation.assistantPrompt,
           createdAt: DateTime.now().toUtc(),
@@ -307,10 +376,11 @@ class _TasksScreenState extends State<TasksScreen> {
       );
       return;
     }
-    final sourceId = suggestion.sourceEntityReferences.first.split(':').last;
-    if (suggestion.callToAction ==
+    final sourceId =
+        activeSuggestion.sourceEntityReferences.first.split(':').last;
+    if (activeSuggestion.callToAction ==
             ProactiveSuggestionCallToActionType.openTask ||
-        suggestion.callToAction ==
+        activeSuggestion.callToAction ==
             ProactiveSuggestionCallToActionType.completeInformation) {
       final matches = tasks.where((task) => task.id == sourceId);
       if (matches.isNotEmpty && mounted) {
@@ -967,6 +1037,7 @@ class _TasksScreenState extends State<TasksScreen> {
 
   Widget buildZeliaSuggestionCard() {
     final suggestion = proactiveSuggestion;
+    final anticipation = mentalLoadSuggestion;
     final sourceTask =
         suggestion == null ? null : _taskForSuggestion(suggestion);
     final presentation = suggestion == null || sourceTask == null
@@ -975,6 +1046,26 @@ class _TasksScreenState extends State<TasksScreen> {
             suggestion: suggestion,
             sourceLabel: sourceTask.title,
           );
+    final anticipationPresentation = anticipation?.presentation;
+    final hasDisplayableSuggestion =
+        presentation != null || anticipationPresentation != null;
+    final supportMessage = const ContextualSupportCardService().forTasks(
+      openCount: tasks.where((task) => !task.isDone).length,
+      completedCount: tasks.where((task) => task.isDone).length,
+      now: DateTime.now(),
+    );
+    if (!proactiveLoading &&
+        !hasDisplayableSuggestion &&
+        !_priorityDiagnosticsEnabled) {
+      return CompactContextualSupportCard(
+        key: const Key('proactive-priority-card'),
+        contentKey: const Key('contextual-support-message'),
+        supportMessage: supportMessage,
+        accent: accent,
+        textColor: textDark,
+        secondaryTextColor: textSoft,
+      );
+    }
     final content = proactiveLoading
         ? Row(
             children: [
@@ -990,94 +1081,111 @@ class _TasksScreenState extends State<TasksScreen> {
               ),
             ],
           )
-        : proactiveError
+        : !hasDisplayableSuggestion
             ? Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Expanded(
-                    child: Text(
-                      'Je n’arrive pas à préparer une suggestion pour le moment.',
-                      style: TextStyle(color: textSoft),
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
                     ),
+                    child: Icon(Icons.auto_awesome, color: accent, size: 23),
                   ),
-                  TextButton(
-                    onPressed: _loadProactiveSuggestion,
-                    child: const Text('Réessayer'),
-                  ),
-                ],
-              )
-            : suggestion == null || presentation == null
-                ? Row(
-                    children: [
-                      Icon(Icons.auto_awesome, color: textSoft),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Text(
-                          'Tout est sous contrôle pour le moment.',
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      key: const Key('contextual-support-message'),
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          supportMessage.title,
+                          style: TextStyle(
+                            color: textDark,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          supportMessage.message,
+                          key: Key(supportMessage.semanticKey),
                           style: TextStyle(
                             color: textSoft,
+                            fontSize: 13,
+                            height: 1.25,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
-                      ),
-                    ],
-                  )
-                : Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        width: 46,
-                        height: 46,
-                        decoration: BoxDecoration(
-                          color: accent.withValues(alpha: 0.12),
-                          shape: BoxShape.circle,
+                      ],
+                    ),
+                  ),
+                ],
+              )
+            : Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.auto_awesome,
+                      color: accent,
+                      size: 23,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          presentation?.title ??
+                              anticipationPresentation!.title,
+                          style: TextStyle(
+                            color: textDark,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
+                          ),
                         ),
-                        child: Icon(
-                          Icons.auto_awesome,
-                          color: accent,
-                          size: 23,
+                        const SizedBox(height: 4),
+                        Text(
+                          presentation?.message ??
+                              anticipationPresentation!.message,
+                          style: TextStyle(
+                            color: textSoft,
+                            fontSize: 13,
+                            height: 1.25,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              presentation.title,
-                              style: TextStyle(
-                                color: textDark,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              presentation.message,
-                              style: TextStyle(
-                                color: textSoft,
-                                fontSize: 13,
-                                height: 1.25,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            FilledButton.tonal(
-                              key: const Key(
-                                'proactive-priority-call-to-action',
-                              ),
-                              onPressed: _openProactiveSuggestion,
-                              child: Text(presentation.callToActionLabel),
-                            ),
-                          ],
+                        const SizedBox(height: 10),
+                        FilledButton.tonal(
+                          key: const Key(
+                            'proactive-priority-call-to-action',
+                          ),
+                          onPressed: _openProactiveSuggestion,
+                          child: Text(
+                            presentation?.callToActionLabel ??
+                                anticipationPresentation!.callToActionLabel,
+                          ),
                         ),
-                      ),
-                      IconButton(
-                        tooltip: 'Masquer cette suggestion',
-                        onPressed: _dismissProactiveSuggestion,
-                        icon: const Icon(Icons.close),
-                      ),
-                    ],
-                  );
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Masquer cette suggestion',
+                    onPressed: _dismissProactiveSuggestion,
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              );
     return Container(
       key: const Key('proactive-priority-card'),
       constraints: const BoxConstraints(minHeight: 112),

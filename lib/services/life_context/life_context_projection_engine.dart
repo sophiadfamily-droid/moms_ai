@@ -550,6 +550,30 @@ final class LifeContextProjectionEngine {
             task.dueDate!,
             LifeContextSensitivityLevel.publicTechnical,
           ),
+        if (task.importance != null)
+          _fact(
+            LifeContextProjectionFactKeys.importance,
+            task.importance!.toString(),
+            LifeContextSensitivityLevel.publicTechnical,
+          ),
+        if (task.urgency != null)
+          _fact(
+            LifeContextProjectionFactKeys.urgency,
+            task.urgency!.toString(),
+            LifeContextSensitivityLevel.publicTechnical,
+          ),
+        if (task.category != null)
+          _fact(
+            LifeContextProjectionFactKeys.category,
+            task.category!,
+            LifeContextSensitivityLevel.publicTechnical,
+          ),
+        if (task.createdAt != null)
+          _fact(
+            LifeContextProjectionFactKeys.createdAt,
+            task.createdAt!,
+            LifeContextSensitivityLevel.publicTechnical,
+          ),
         if (contract.maxTextLength > 0)
           _fact(
             LifeContextProjectionFactKeys.title,

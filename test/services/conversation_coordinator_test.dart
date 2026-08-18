@@ -2236,6 +2236,12 @@ final class _SlotSearchGateway implements SmartPlanningContinuationGateway {
   Future<void> addEvent(EventModel event, {String? mutationId}) async {}
 
   @override
+  Future<void> updateTaskDuration(
+    TaskModel task,
+    int durationMinutes,
+  ) async {}
+
+  @override
   Future<SmartPlanningProposal> buildProposal({
     required TaskModel task,
     required String originalMessage,
@@ -2319,6 +2325,12 @@ final class _FixedEventAutomaticTravelGateway
 
   @override
   Future<void> addEvent(EventModel event, {String? mutationId}) async {}
+
+  @override
+  Future<void> updateTaskDuration(
+    TaskModel task,
+    int durationMinutes,
+  ) async {}
 
   @override
   Future<SmartPlanningProposal> buildProposal({

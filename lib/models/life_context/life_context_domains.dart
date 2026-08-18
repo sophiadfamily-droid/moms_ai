@@ -398,6 +398,10 @@ final class TaskContextItem {
     required this.dueDate,
     required this.durationMinutes,
     required this.syncStatus,
+    this.importance,
+    this.urgency,
+    this.category,
+    this.createdAt,
   });
 
   final String id;
@@ -406,6 +410,10 @@ final class TaskContextItem {
   final String? dueDate;
   final int? durationMinutes;
   final String syncStatus;
+  final double? importance;
+  final double? urgency;
+  final String? category;
+  final String? createdAt;
 
   Map<String, Object?> toJson() => {
         'id': id,
@@ -414,6 +422,10 @@ final class TaskContextItem {
         if (dueDate != null) 'dueDate': dueDate,
         if (durationMinutes != null) 'durationMinutes': durationMinutes,
         'syncStatus': syncStatus,
+        if (importance != null) 'importance': importance,
+        if (urgency != null) 'urgency': urgency,
+        if (category != null) 'category': category,
+        if (createdAt != null) 'createdAt': createdAt,
       };
 }
 

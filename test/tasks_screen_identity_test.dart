@@ -79,6 +79,21 @@ void main() {
     expect(stored.single.title, 'Titre modifié');
     expect(stored.single.id, 'task-interface');
   });
+
+  testWidgets('contextual task card uses the shared compact height',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+
+    await tester.pumpWidget(
+      const MaterialApp(home: TasksScreen()),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.getSize(find.byKey(const Key('proactive-priority-card'))).height,
+      106,
+    );
+  });
 }
 
 final Finder _titleField = find.byWidgetPredicate(

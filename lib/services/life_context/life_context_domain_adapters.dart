@@ -654,9 +654,13 @@ final class TaskLifeContextAdapter implements LifeContextDomainAdapter {
           id: id,
           title: task.title,
           isCompleted: task.isDone,
-          dueDate: _optional(task.dueDate),
-          durationMinutes: null,
+          dueDate: _normalizeTaskDueDate(task.dueDate),
+          durationMinutes: task.durationMinutes,
           syncStatus: syncMetadata?.itemSyncStatuses[id] ?? 'unknown',
+          importance: _taskImportance(task),
+          urgency: _taskUrgency(task),
+          category: _taskCategory(task.category),
+          createdAt: task.createdAt.toUtc().toIso8601String(),
         );
       }).toList()
         ..sort((a, b) => a.id.compareTo(b.id));
@@ -710,6 +714,65 @@ final class TaskLifeContextAdapter implements LifeContextDomainAdapter {
         ),
       );
     }
+  }
+
+  static String? _normalizeTaskDueDate(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return null;
+    final parsedIso = DateTime.tryParse(trimmed);
+    if (parsedIso != null) return trimmed;
+    final french =
+        RegExp(r'^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$').firstMatch(trimmed);
+    if (french == null) return trimmed;
+    final day = int.parse(french.group(1)!);
+    final month = int.parse(french.group(2)!);
+    final year = int.parse(french.group(3)!);
+    final date = DateTime.utc(year, month, day);
+    if (date.year != year || date.month != month || date.day != day) {
+      return trimmed;
+    }
+    return '${year.toString().padLeft(4, '0')}-'
+        '${month.toString().padLeft(2, '0')}-'
+        '${day.toString().padLeft(2, '0')}';
+  }
+
+  static double? _taskImportance(TaskModel task) {
+    final priority = task.priority.trim().toLowerCase();
+    if (task.isImportant ||
+        const {'haute', 'urgent', 'urgente', 'important', 'importante'}
+            .contains(priority)) {
+      return 1;
+    }
+    return null;
+  }
+
+  static double? _taskUrgency(TaskModel task) {
+    final priority = task.priority.trim().toLowerCase();
+    if (const {'urgent', 'urgente'}.contains(priority)) return 1;
+    final planning = task.planning.trim().toLowerCase();
+    if (planning == 'aujourd’hui' || planning == "aujourd'hui") return .9;
+    return null;
+  }
+
+  static String _taskCategory(String value) {
+    final normalized = value.trim().toLowerCase();
+    if (normalized.contains('sant') || normalized.contains('médic')) {
+      return 'health';
+    }
+    if (normalized.contains('administr')) return 'administrative';
+    if (normalized.contains('financ') || normalized.contains('budget')) {
+      return 'financial';
+    }
+    if (normalized.contains('travail') || normalized.contains('pro')) {
+      return 'work';
+    }
+    if (normalized.contains('logist') || normalized.contains('course')) {
+      return 'logistics';
+    }
+    if (normalized.contains('perso') || normalized.contains('famille')) {
+      return 'personal';
+    }
+    return normalized.isEmpty ? 'unknown' : 'other';
   }
 }
 

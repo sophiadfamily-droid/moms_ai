@@ -142,9 +142,13 @@ void main() {
 
     final result = await coordinator.resolve('une heure', sessionGeneration: 8);
 
-    expect(result!.reply, isNot(contains('quelle activité')));
-    expect(coordinator.active!.task.id, 'task-stable');
-    expect(coordinator.active!.actionMinutes, 60);
+    expect(result!.reply, contains('durée'));
+    expect(result.reply, contains('1h'));
+    expect(result.reply, isNot(contains('créneau')));
+    expect(result.reply, isNot(contains('trajet')));
+    expect(gateway.updatedTask?.id, 'task-stable');
+    expect(gateway.updatedDurationMinutes, 60);
+    expect(coordinator.active, isNull);
   });
 
   test('proactive duration handoff accepts canonical French durations',
@@ -167,9 +171,11 @@ void main() {
         sourceSuggestionId: 'suggestion-${entry.value}',
       );
 
-      await coordinator.resolve(entry.key, sessionGeneration: 9);
+      final result = await coordinator.resolve(entry.key, sessionGeneration: 9);
 
-      expect(coordinator.active!.actionMinutes, entry.value, reason: entry.key);
+      expect(result!.reply, isNot(contains('trajet')), reason: entry.key);
+      expect(gateway.updatedDurationMinutes, entry.value, reason: entry.key);
+      expect(coordinator.active, isNull, reason: entry.key);
     }
   });
 
@@ -526,6 +532,8 @@ final class _FakeGateway
     ),
   ];
   final List<EventModel> addedEvents = [];
+  TaskModel? updatedTask;
+  int? updatedDurationMinutes;
   EventModel? conflictEvent;
   bool revalidationConflict = false;
   int proposalCalls = 0;
@@ -562,6 +570,15 @@ final class _FakeGateway
   @override
   Future<void> addEvent(EventModel event, {String? mutationId}) async =>
       addedEvents.add(event);
+
+  @override
+  Future<void> updateTaskDuration(
+    TaskModel task,
+    int durationMinutes,
+  ) async {
+    updatedTask = task.copyWith(durationMinutes: durationMinutes);
+    updatedDurationMinutes = durationMinutes;
+  }
 
   @override
   Future<SmartPlanningProposal> buildProposal({

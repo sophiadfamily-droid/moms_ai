@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/shopping_item_model.dart';
+import '../services/contextual_support_card_service.dart';
 import '../services/shopping_service.dart';
+import '../widgets/compact_contextual_support_card.dart';
 
 class ShoppingScreen extends StatefulWidget {
   const ShoppingScreen({super.key});
@@ -677,65 +679,19 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
   }
 
   Widget buildSmartShoppingCard() {
-    String message = "Ajoute les produits au fur et à mesure.";
-    if (urgentItems.isNotEmpty) {
-      message = "${urgentItems.length} produit(s) urgent(s) à acheter.";
-    } else if (toBuyItems.isNotEmpty) {
-      message = "${toBuyItems.length} produit(s) encore à acheter.";
-    } else if (items.isNotEmpty) {
-      message = "Tout est coché, tu peux nettoyer la liste.";
-    }
+    final supportMessage = const ContextualSupportCardService().forShopping(
+      pendingCount: toBuyItems.length,
+      boughtCount: boughtItems.length,
+      urgentCount: urgentItems.length,
+      now: DateTime.now(),
+    );
 
-    return Container(
-      margin: const EdgeInsets.fromLTRB(24, 10, 24, 0),
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            Colors.white.withValues(alpha: 0.90),
-            accent.withValues(alpha: 0.08)
-          ],
-        ),
-        borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.65)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 46,
-            height: 46,
-            decoration: BoxDecoration(
-                color: accent.withValues(alpha: 0.12), shape: BoxShape.circle),
-            child: Icon(Icons.auto_awesome, color: accent, size: 23),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  "Courses intelligentes",
-                  style: TextStyle(
-                      color: textDark,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w900),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  message,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      color: textSoft,
-                      fontSize: 13,
-                      height: 1.25,
-                      fontWeight: FontWeight.w600),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+    return CompactContextualSupportCard(
+      key: const Key('shopping-contextual-support-card'),
+      supportMessage: supportMessage,
+      accent: accent,
+      textColor: textDark,
+      secondaryTextColor: textSoft,
     );
   }
 

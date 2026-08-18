@@ -79,6 +79,56 @@ void main() {
     expect(stored.single.title, 'Pommes modifiées');
     expect(stored.single.id, 'shopping-interface');
   });
+
+  testWidgets('empty shopping list keeps a positive contextual card',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+
+    await tester.pumpWidget(
+      const MaterialApp(home: ShoppingScreen()),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('shopping-contextual-support-card')),
+      findsOneWidget,
+    );
+    expect(find.text('Courses intelligentes'), findsNothing);
+    expect(find.textContaining('produit(s)'), findsNothing);
+    expect(
+      tester
+          .getSize(
+            find.byKey(const Key('shopping-contextual-support-card')),
+          )
+          .height,
+      106,
+    );
+  });
+
+  testWidgets('urgent shopping evidence stays visible in the compact card',
+      (tester) async {
+    final urgent = ShoppingItemModel(
+      id: 'urgent-shopping-item',
+      title: 'Lait',
+      isBought: false,
+      isUrgent: true,
+      createdAt: DateTime(2026, 8, 18),
+    );
+    SharedPreferences.setMockInitialValues({
+      ShoppingService.shoppingKey: [jsonEncode(urgent.toJson())],
+    });
+
+    await tester.pumpWidget(
+      const MaterialApp(home: ShoppingScreen()),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('À ne pas oublier'), findsOneWidget);
+    expect(
+      find.text('Un produit est urgent dans ta liste.'),
+      findsOneWidget,
+    );
+  });
 }
 
 final Finder _articleField = find.byWidgetPredicate(

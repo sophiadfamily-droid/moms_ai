@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 
+import '../../models/life_context/life_context_domains.dart';
+import '../../models/life_context/life_context_graph.dart';
 import '../../models/life_context/life_context_projection.dart';
 import '../../models/priority/priority_models.dart';
 import '../../models/priority/priority_suggestion_models.dart';
@@ -49,7 +51,12 @@ final class ProactiveSuggestionPolicy {
         inputSuggestionCount: inputSuggestionCount,
       );
     }
-    if (projection.state != LifeContextProjectionState.complete) {
+    if (projection.state != LifeContextProjectionState.complete &&
+        !_hasTrustedLocalSuggestionEvidence(
+          suggestions: suggestions,
+          ranking: ranking,
+          projection: projection,
+        )) {
       return ProactiveSuggestionDecision.noSuggestion(
         'context_blocked',
         inputSuggestionCount: inputSuggestionCount,
@@ -226,6 +233,54 @@ final class ProactiveSuggestionPolicy {
       skippedCompletedCount: skippedCompletedCount,
       skippedIneligibleCount: skippedIneligibleCount,
     );
+  }
+
+  bool _hasTrustedLocalSuggestionEvidence({
+    required PrioritySuggestionResult suggestions,
+    required PriorityRanking ranking,
+    required LifeContextProjection projection,
+  }) {
+    if (suggestions.suggestions.isEmpty) return false;
+    for (final suggestion in suggestions.suggestions) {
+      final ranked = ranking.items
+          .where(
+            (item) => item.candidate.id == suggestion.primaryCandidateId,
+          )
+          .firstOrNull;
+      if (ranked == null) continue;
+      final sectionType = switch (ranked.candidate.sourceDomain) {
+        PrioritySourceDomain.task => LifeContextProjectionSectionType.task,
+        PrioritySourceDomain.event => LifeContextProjectionSectionType.event,
+        PrioritySourceDomain.routine =>
+          LifeContextProjectionSectionType.routine,
+        PrioritySourceDomain.constraint =>
+          LifeContextProjectionSectionType.memory,
+      };
+      final section = projection.sections
+          .where((value) => value.type == sectionType)
+          .firstOrNull;
+      if (section == null ||
+          !section.accountScopeMatch ||
+          section.freshness != LifeContextFreshness.current ||
+          {
+            LifeContextAvailability.unavailable,
+            LifeContextAvailability.corrupted,
+            LifeContextAvailability.unsupported,
+            LifeContextAvailability.accountMismatch,
+          }.contains(section.availability)) {
+        continue;
+      }
+      final sourceItemId = ranked.candidate.provenance.sourceItemId;
+      if (section.items.any(
+        (item) =>
+            item.id == sourceItemId &&
+            item.confirmation == LifeContextConfirmation.confirmed &&
+            item.freshness == LifeContextFreshness.current,
+      )) {
+        return true;
+      }
+    }
+    return false;
   }
 
   ProactiveSuggestionCallToActionType? _callToAction(
