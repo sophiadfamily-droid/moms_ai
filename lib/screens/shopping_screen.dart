@@ -17,6 +17,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
   List<ShoppingItemModel> items = [];
   bool loading = true;
   String selectedFilter = "À acheter";
+  final Set<String> _recentlyCompletedItemKeys = <String>{};
 
   final Color bg = const Color(0xFFF8EFEA);
   final Color accent = const Color(0xFFE95D5D);
@@ -26,9 +27,6 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
   final List<String> filters = [
     "À acheter",
     "Urgent",
-    "Catégories",
-    "Organisation",
-    "Acheté",
   ];
 
   final List<String> categories = [
@@ -112,8 +110,25 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
     final index = indexOfItem(item);
     if (index == -1) return;
 
-    items[index] = item.copyWith(isBought: !item.isBought);
+    final itemKey = _itemVisualKey(item);
+    final willBeBought = !item.isBought;
+    setState(() {
+      if (willBeBought) {
+        _recentlyCompletedItemKeys.add(itemKey);
+      } else {
+        _recentlyCompletedItemKeys.remove(itemKey);
+      }
+      items[index] = item.copyWith(isBought: willBeBought);
+    });
     await ShoppingService.updateItems(items);
+    if (!willBeBought) return;
+    await Future<void>.delayed(const Duration(milliseconds: 750));
+    if (!mounted) return;
+    setState(() => _recentlyCompletedItemKeys.remove(itemKey));
+  }
+
+  String _itemVisualKey(ShoppingItemModel item) {
+    return item.id ?? '${item.title}-${item.createdAt.toIso8601String()}';
   }
 
   Future<void> toggleUrgent(ShoppingItemModel item) async {
@@ -218,9 +233,13 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
   }
 
   List<ShoppingItemModel> filteredItems() {
-    if (selectedFilter == "Urgent") return urgentItems;
-    if (selectedFilter == "Acheté") return boughtItems;
-    return toBuyItems;
+    return items.where((item) {
+      final remainsVisible = !item.isBought ||
+          _recentlyCompletedItemKeys.contains(_itemVisualKey(item));
+      if (!remainsVisible) return false;
+      if (selectedFilter == "Urgent") return item.isUrgent;
+      return true;
+    }).toList();
   }
 
   Map<String, List<ShoppingItemModel>> groupedByCategory(
@@ -683,6 +702,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
       pendingCount: toBuyItems.length,
       boughtCount: boughtItems.length,
       urgentCount: urgentItems.length,
+      urgentItemTitle: urgentItems.isEmpty ? null : urgentItems.first.title,
       now: DateTime.now(),
     );
 
@@ -927,7 +947,10 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
         child: Row(
           children: [
             buildCheckCircle(
-                checked: item.isBought, onTap: () => toggleItem(item)),
+              key: Key('shopping-check-${_itemVisualKey(item)}'),
+              checked: item.isBought,
+              onTap: () => toggleItem(item),
+            ),
             const SizedBox(width: 16),
             CircleAvatar(
               radius: 24,
@@ -1043,10 +1066,12 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
   }
 
   Widget buildCheckCircle({
+    Key? key,
     required bool checked,
     required VoidCallback onTap,
   }) {
     return GestureDetector(
+      key: key,
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
@@ -1086,52 +1111,8 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
   }
 
   Widget buildGroupedContent() {
-    if (selectedFilter == "Catégories") {
-      final grouped = groupedByCategory(toBuyItems);
-      if (grouped.isEmpty) return buildEmptyState();
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: grouped.entries.map((entry) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              buildSectionTitle(entry.key),
-              buildShoppingSection(entry.value, boughtSection: false),
-            ],
-          );
-        }).toList(),
-      );
-    }
-
-    if (selectedFilter == "Organisation") {
-      final grouped = groupedBySection(toBuyItems);
-      if (grouped.isEmpty) return buildEmptyState();
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: grouped.entries.map((entry) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              buildSectionTitle(entry.key),
-              buildShoppingSection(entry.value, boughtSection: false),
-            ],
-          );
-        }).toList(),
-      );
-    }
-
     final list = filteredItems();
     if (list.isEmpty) return buildEmptyState();
-
-    if (selectedFilter == "Acheté") {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          buildSectionTitle("Déjà acheté"),
-          buildShoppingSection(list, boughtSection: true),
-        ],
-      );
-    }
 
     final grouped = groupedBySection(list);
     return Column(

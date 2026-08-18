@@ -141,6 +141,7 @@ final class ContextualSupportCardService {
     required int boughtCount,
     required int urgentCount,
     required DateTime now,
+    String? urgentItemTitle,
     ContextualCommunicationStyle style = const ContextualCommunicationStyle(),
   }) {
     final pending = pendingCount < 0 ? 0 : pendingCount;
@@ -148,11 +149,16 @@ final class ContextualSupportCardService {
     final urgent = urgentCount < 0 ? 0 : urgentCount;
 
     if (urgent > 0) {
+      final itemTitle = _safeItemTitle(urgentItemTitle);
       return ContextualSupportCardMessage(
         title: 'À ne pas oublier',
-        message: urgent == 1
-            ? 'Un produit est urgent dans ta liste.'
-            : '$urgent produits sont urgents dans ta liste.',
+        message: itemTitle == null
+            ? urgent == 1
+                ? 'Un produit est urgent dans ta liste.'
+                : '$urgent produits sont urgents dans ta liste.'
+            : urgent == 1
+                ? 'Pense à acheter « $itemTitle » en priorité.'
+                : '« $itemTitle » et ${urgent - 1} autre(s) sont urgents.',
         semanticKey: 'shopping_urgent',
       );
     }
@@ -229,6 +235,13 @@ final class ContextualSupportCardService {
         ),
       ],
     );
+  }
+
+  String? _safeItemTitle(String? value) {
+    final title = value?.trim();
+    if (title == null || title.isEmpty || title.length > 40) return null;
+    if (title.contains('\n') || title.contains('\r')) return null;
+    return title;
   }
 
   String _positiveTitle(

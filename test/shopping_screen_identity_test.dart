@@ -125,9 +125,81 @@ void main() {
 
     expect(find.text('À ne pas oublier'), findsOneWidget);
     expect(
-      find.text('Un produit est urgent dans ta liste.'),
+      find.text('Pense à acheter « Lait » en priorité.'),
       findsOneWidget,
     );
+    expect(find.byIcon(Icons.arrow_forward_ios_rounded), findsNothing);
+  });
+
+  testWidgets('urgent shopping card is informative and does not filter',
+      (tester) async {
+    final urgent = ShoppingItemModel(
+      id: 'urgent-shopping-item',
+      title: 'Lait',
+      isBought: false,
+      isUrgent: true,
+      createdAt: DateTime(2026, 8, 18),
+    );
+    final ordinary = ShoppingItemModel(
+      id: 'ordinary-shopping-item',
+      title: 'Pain',
+      isBought: false,
+      createdAt: DateTime(2026, 8, 18),
+    );
+    SharedPreferences.setMockInitialValues({
+      ShoppingService.shoppingKey: [
+        jsonEncode(urgent.toJson()),
+        jsonEncode(ordinary.toJson()),
+      ],
+    });
+
+    await tester.pumpWidget(
+      const MaterialApp(home: ShoppingScreen()),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Lait'), findsOneWidget);
+    expect(find.text('Pain'), findsOneWidget);
+    expect(find.text('Catégories'), findsNothing);
+    expect(find.text('Organisation'), findsNothing);
+    expect(find.text('Acheté'), findsNothing);
+
+    await tester.tap(
+      find.byKey(const Key('shopping-contextual-support-card')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Lait'), findsOneWidget);
+    expect(find.text('Pain'), findsOneWidget);
+  });
+
+  testWidgets('checking an item shows completion before removing its row',
+      (tester) async {
+    final item = ShoppingItemModel(
+      id: 'shopping-check-feedback',
+      title: 'Kiwis',
+      isBought: false,
+      createdAt: DateTime(2026, 8, 18),
+    );
+    SharedPreferences.setMockInitialValues({
+      ShoppingService.shoppingKey: [jsonEncode(item.toJson())],
+    });
+
+    await tester.pumpWidget(
+      const MaterialApp(home: ShoppingScreen()),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const Key('shopping-check-shopping-check-feedback')),
+    );
+    await tester.pump(const Duration(milliseconds: 250));
+
+    expect(find.text('Kiwis'), findsOneWidget);
+    expect(find.byIcon(Icons.check), findsOneWidget);
+
+    await tester.pump(const Duration(milliseconds: 750));
+    expect(find.text('Kiwis'), findsNothing);
   });
 }
 

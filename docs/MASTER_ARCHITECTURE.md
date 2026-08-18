@@ -2186,6 +2186,16 @@ stable identity, persists the duration on that Task and closes the
 clarification. It must not create a duplicate Task, launch slot search or ask
 for travel. Scheduling a Task remains a separate explicit user intention.
 
+The Shopping surface follows the same single-card restraint. When the canonical
+list already contains an explicit unbought urgent item, the compact card names
+that product in its short message so the useful information is visible without
+opening another view. The card itself remains informative and performs no
+navigation or mutation. Without that evidence, it remains a short reassuring
+status. It never infers urgency from a product name, category, quantity or age.
+The visible shopping filters remain limited to the two useful views, pending
+and urgent. Marking an item bought gives immediate checked feedback before the
+row leaves the pending list; the disappearance is never the only feedback.
+
 ### Stage 10 — Extend connections and premium capabilities
 
 - add external calendar, mapping, health or service connections only behind explicit scope and ownership contracts;
