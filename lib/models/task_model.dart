@@ -44,6 +44,7 @@ class TaskModel {
     String? dueDate,
     String? notes,
     int? durationMinutes,
+    bool clearDuration = false,
     String? planning,
     String? priority,
   }) {
@@ -56,7 +57,8 @@ class TaskModel {
       isImportant: isImportant ?? this.isImportant,
       dueDate: dueDate ?? this.dueDate,
       notes: notes ?? this.notes,
-      durationMinutes: durationMinutes ?? this.durationMinutes,
+      durationMinutes:
+          clearDuration ? null : durationMinutes ?? this.durationMinutes,
       planning: planning ?? this.planning,
       priority: priority ?? this.priority,
     );

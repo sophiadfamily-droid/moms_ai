@@ -30,15 +30,32 @@ final class ProactiveSuggestionPresentationBuilder {
     }
     final quotedLabel = '“$label”';
     if (suggestion.reasonCodes.contains(
+      PrioritySuggestionReason.missingDeadlineBlocksAssessment,
+    )) {
+      return ProactiveSuggestionPresentation(
+        title: 'Pour ne pas l’oublier',
+        message: 'Tu dois faire $quotedLabel avant quand ?',
+        callToActionLabel: 'Ajouter une date',
+        assistantPrompt: 'Tu dois faire $quotedLabel avant quand ?',
+      );
+    }
+    if (suggestion.reasonCodes.contains(
       PrioritySuggestionReason.missingDurationBlocksAssessment,
     )) {
       return ProactiveSuggestionPresentation(
-        title: 'Durée à préciser',
-        message: 'Il manque la durée de $quotedLabel. '
-            'Ajoute une durée pour que je puisse vérifier si cette tâche '
-            'est réalisable avant son échéance.',
-        callToActionLabel: 'Ajouter une durée',
-        assistantPrompt: 'Combien de temps veux-tu prévoir pour $quotedLabel ?',
+        title: 'Combien de temps prévoir ?',
+        message: 'Dis-moi combien de temps prend $quotedLabel et je pourrai '
+            'te proposer un bon moment.',
+        callToActionLabel: 'Ajouter le temps',
+        assistantPrompt: 'Combien de temps te faut-il pour $quotedLabel ?',
+      );
+    }
+    if (suggestion.reasonCodes.contains(PrioritySuggestionReason.overdue)) {
+      return ProactiveSuggestionPresentation(
+        title: 'Toujours d’actualité ?',
+        message: '$quotedLabel a une ancienne date. C’est toujours à faire ?',
+        callToActionLabel: 'Vérifier la tâche',
+        assistantPrompt: '$quotedLabel est-il toujours à faire ?',
       );
     }
     return ProactiveSuggestionPresentation(

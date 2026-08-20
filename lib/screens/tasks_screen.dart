@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/priority/proactive_priority_models.dart';
+import '../models/priority/priority_suggestion_models.dart';
 import '../models/task_model.dart';
 import '../services/auth_service.dart';
 import '../services/ai_priority_service.dart';
@@ -9,11 +10,14 @@ import '../services/app_diagnostics.dart';
 import '../services/contextual_support_card_service.dart';
 import '../services/mental_load_anticipation_production.dart';
 import '../services/mental_load_anticipation_suggestion_service.dart';
+import '../services/natural_date_service.dart';
+import '../services/natural_duration_service.dart';
 import '../services/priority/proactive_interaction_registry.dart';
 import '../services/priority/proactive_priority_service.dart';
 import '../services/priority/proactive_priority_production.dart';
 import '../services/priority/proactive_suggestion_presentation_builder.dart';
 import '../services/task_service.dart';
+import '../services/zelia_response_builder.dart';
 import '../widgets/compact_contextual_support_card.dart';
 
 class TasksScreen extends StatefulWidget {
@@ -72,32 +76,7 @@ class _TasksScreenState extends State<TasksScreen> {
 
   final List<String> filters = [
     "Toutes",
-    "Aujourd’hui",
-    "Semaine",
-    "Important",
-    "Terminé",
-  ];
-
-  final List<String> categories = [
-    "Perso",
-    "Maison",
-    "Admin",
-    "Famille",
-    "Travail",
-    "Santé",
-  ];
-
-  final List<String> plannings = [
-    "Aujourd’hui",
-    "Cette semaine",
-    "Ce mois-ci",
-    "Plus tard",
-  ];
-
-  final List<String> priorities = [
-    "Basse",
-    "Normale",
-    "Haute",
+    "Urgentes",
   ];
 
   @override
@@ -358,6 +337,9 @@ class _TasksScreenState extends State<TasksScreen> {
     await _proactiveService?.markActedOn(activeSuggestion);
     if (activeSuggestion.callToAction ==
             ProactiveSuggestionCallToActionType.completeInformation &&
+        activeSuggestion.reasonCodes.contains(
+          PrioritySuggestionReason.missingDurationBlocksAssessment,
+        ) &&
         presentation != null &&
         sourceTask?.id != null &&
         widget.onOpenZeliaSuggestion != null) {
@@ -407,40 +389,15 @@ class _TasksScreenState extends State<TasksScreen> {
   }
 
   List<TaskModel> get filteredTasks {
-    if (selectedFilter == "Aujourd’hui") {
-      return tasks.where((task) {
-        return !task.isDone && task.planning == "Aujourd’hui";
-      }).toList();
-    }
-
-    if (selectedFilter == "Semaine") {
-      return tasks.where((task) {
-        return !task.isDone && task.planning == "Cette semaine";
-      }).toList();
-    }
-
-    if (selectedFilter == "Important") {
-      return tasks.where((task) {
-        return !task.isDone && task.isImportant;
-      }).toList();
-    }
-
-    if (selectedFilter == "Terminé") {
-      return tasks.where((task) => task.isDone).toList();
+    if (selectedFilter == "Urgentes") {
+      return tasks.where((task) => !task.isDone && _isUrgent(task)).toList();
     }
 
     return tasks;
   }
 
-  List<TaskModel> sectionTasks(String planning) {
-    return filteredTasks.where((task) {
-      return !task.isDone && task.planning == planning;
-    }).toList();
-  }
-
-  List<TaskModel> get doneTasks {
-    return filteredTasks.where((task) => task.isDone).toList();
-  }
+  bool _isUrgent(TaskModel task) =>
+      task.isImportant || task.priority.trim().toLowerCase() == "haute";
 
   int openCount() {
     return tasks.where((task) => !task.isDone).length;
@@ -472,13 +429,14 @@ class _TasksScreenState extends State<TasksScreen> {
     await loadTasks();
   }
 
-  Future<void> toggleImportant(TaskModel task) async {
+  Future<void> toggleUrgent(TaskModel task) async {
     final index = indexOfTask(task);
     if (index == -1) return;
 
+    final urgent = !_isUrgent(task);
     tasks[index] = task.copyWith(
-      isImportant: !task.isImportant,
-      priority: !task.isImportant ? "Haute" : "Normale",
+      isImportant: urgent,
+      priority: urgent ? "Haute" : "Normale",
     );
 
     tasks = AiPriorityService.sortTasks(tasks);
@@ -497,72 +455,25 @@ class _TasksScreenState extends State<TasksScreen> {
     await saveCurrentTasks();
   }
 
-  String visiblePriorityLabel(TaskModel task) {
-    final score = AiPriorityService.calculatePriority(task);
-
-    if (score >= 85) return "Urgent";
-    if (score >= 70) return "Important";
-    if (task.isImportant) return "Important";
-    return "Normal";
-  }
-
-  Color visiblePriorityColor(TaskModel task) {
-    final label = visiblePriorityLabel(task);
-
-    if (label == "Urgent") return const Color(0xFFE95D5D);
-    if (label == "Important") return const Color(0xFFE99D5D);
-    return const Color(0xFF65B891);
-  }
-
-  String priorityReason(TaskModel task) {
-    final title = task.title.toLowerCase();
-    final notes = task.notes.toLowerCase();
-    final dueDate = task.dueDate.toLowerCase();
-    final text = "$title $notes $dueDate";
-
-    if (dueDate.trim().isNotEmpty) {
-      return "Échéance à surveiller.";
-    }
-
-    if (task.isImportant || task.priority == "Haute") {
-      return "Impact important sur ton organisation.";
-    }
-
-    if (text.contains("urgent") ||
-        text.contains("demain") ||
-        text.contains("avant") ||
-        text.contains("deadline")) {
-      return "À traiter rapidement.";
-    }
-
-    if (task.planning == "Aujourd’hui") {
-      return "À faire aujourd’hui.";
-    }
-
-    if (task.planning == "Plus tard") {
-      return "Peut attendre.";
-    }
-
-    return "À organiser simplement.";
-  }
-
   Future<void> showTaskSheet({TaskModel? task}) async {
     final isEdit = task != null;
 
     final titleController = TextEditingController(text: task?.title ?? "");
     final notesController = TextEditingController(text: task?.notes ?? "");
-    final dueDateController = TextEditingController(text: task?.dueDate ?? "");
+    final dueDateController = TextEditingController(
+      text: _formatDueDateForDisplay(task?.dueDate ?? ""),
+    );
+    final durationController = TextEditingController(
+      text: _formatDuration(task?.durationMinutes),
+    );
 
-    String category =
+    final category =
         task?.category.isNotEmpty == true ? task!.category : "Perso";
-
-    String planning =
+    final planning =
         task?.planning.isNotEmpty == true ? task!.planning : "Aujourd’hui";
-
-    String priority =
-        task?.priority.isNotEmpty == true ? task!.priority : "Normale";
-
-    bool important = task?.isImportant ?? false;
+    bool urgent = task == null ? false : _isUrgent(task);
+    String? dueDateError;
+    String? durationError;
 
     await showModalBottomSheet(
       context: context,
@@ -602,56 +513,32 @@ class _TasksScreenState extends State<TasksScreen> {
                     buildSheetTextField(
                       controller: dueDateController,
                       label: "Date limite",
-                      hint: "Ex : vendredi, 12/06, avant fin juin...",
+                      hint: "Ex : 01/10/2026",
+                      keyboardType: TextInputType.number,
+                      inputFormatters: const [_FrenchDateInputFormatter()],
+                      errorText: dueDateError,
                     ),
-                    const SizedBox(height: 18),
-                    buildChoiceSection(
-                      title: "À faire",
-                      items: plannings,
-                      selected: planning,
-                      onTap: (value) {
-                        setModalState(() {
-                          planning = value;
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    buildChoiceSection(
-                      title: "Priorité",
-                      items: priorities,
-                      selected: priority,
-                      onTap: (value) {
-                        setModalState(() {
-                          priority = value;
-                          important = value == "Haute";
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    buildChoiceSection(
-                      title: "Catégorie",
-                      items: categories,
-                      selected: category,
-                      onTap: (value) {
-                        setModalState(() {
-                          category = value;
-                        });
-                      },
+                    const SizedBox(height: 14),
+                    buildSheetTextField(
+                      controller: durationController,
+                      label: "Temps nécessaire",
+                      hint: "Ex : 30 min ou 1 h",
+                      keyboardType: TextInputType.text,
+                      errorText: durationError,
                     ),
                     const SizedBox(height: 16),
                     GestureDetector(
                       onTap: () {
                         setModalState(() {
-                          important = !important;
-                          priority = important ? "Haute" : "Normale";
+                          urgent = !urgent;
                         });
                       },
                       child: buildPremiumToggle(
-                        icon: important
-                            ? Icons.star_rounded
-                            : Icons.star_outline_rounded,
-                        title: "Marquer comme important",
-                        active: important,
+                        icon: urgent
+                            ? Icons.priority_high_rounded
+                            : Icons.priority_high_outlined,
+                        title: "Urgent",
+                        active: urgent,
                       ),
                     ),
                     const SizedBox(height: 22),
@@ -662,26 +549,55 @@ class _TasksScreenState extends State<TasksScreen> {
 
                         final title = titleController.text.trim();
                         if (title.isEmpty) return;
+                        final dueDateText = dueDateController.text.trim();
+                        final dueDate = _normalizeDueDateForStorage(
+                          dueDateText,
+                        );
+                        if (dueDateText.isNotEmpty && dueDate == null) {
+                          setModalState(() {
+                            dueDateError =
+                                "Écris une date complète : 01/10/2026.";
+                          });
+                          return;
+                        }
+                        final durationText = durationController.text.trim();
+                        final durationMinutes = durationText.isEmpty
+                            ? null
+                            : NaturalDurationService.parseMinutes(
+                                durationText,
+                                expectedField:
+                                    NaturalDurationExpectedField.duration,
+                              );
+                        if (durationText.isNotEmpty &&
+                            (durationMinutes == null || durationMinutes <= 0)) {
+                          setModalState(() {
+                            durationError = "Écris par exemple 30 min ou 1 h.";
+                          });
+                          return;
+                        }
 
                         final updated = task?.copyWith(
                               title: title,
                               category: category,
-                              isImportant: important,
-                              dueDate: dueDateController.text.trim(),
+                              isImportant: urgent,
+                              dueDate: dueDate ?? "",
                               notes: notesController.text.trim(),
+                              durationMinutes: durationMinutes,
+                              clearDuration: durationText.isEmpty,
                               planning: planning,
-                              priority: priority,
+                              priority: urgent ? "Haute" : "Normale",
                             ) ??
                             TaskModel(
                               title: title,
                               category: category,
                               isDone: false,
                               createdAt: DateTime.now(),
-                              isImportant: important,
-                              dueDate: dueDateController.text.trim(),
+                              isImportant: urgent,
+                              dueDate: dueDate ?? "",
                               notes: notesController.text.trim(),
+                              durationMinutes: durationMinutes,
                               planning: planning,
-                              priority: priority,
+                              priority: urgent ? "Haute" : "Normale",
                             );
 
                         if (isEdit) {
@@ -732,6 +648,35 @@ class _TasksScreenState extends State<TasksScreen> {
       ),
       child: SingleChildScrollView(child: child),
     );
+  }
+
+  String _formatDueDateForDisplay(String value) =>
+      ZeliaResponseBuilder.formatDateForUser(value);
+
+  String? _normalizeDueDateForStorage(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return "";
+
+    final explicitFrench =
+        RegExp(r'^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$').firstMatch(trimmed);
+    if (explicitFrench != null) {
+      final day = int.parse(explicitFrench.group(1)!);
+      final month = int.parse(explicitFrench.group(2)!);
+      final year = int.parse(explicitFrench.group(3)!);
+      final parsed = DateTime(year, month, day);
+      if (parsed.year != year || parsed.month != month || parsed.day != day) {
+        return null;
+      }
+      return '${year.toString().padLeft(4, '0')}-'
+          '${month.toString().padLeft(2, '0')}-'
+          '${day.toString().padLeft(2, '0')}';
+    }
+
+    final resolved = NaturalDateService.resolveDateFromText(
+      trimmed,
+      now: DateTime.now(),
+    );
+    return resolved.isEmpty ? null : resolved;
   }
 
   Widget buildSheetHandle() {
@@ -805,6 +750,9 @@ class _TasksScreenState extends State<TasksScreen> {
     required String label,
     required String hint,
     int maxLines = 1,
+    TextInputType? keyboardType,
+    List<TextInputFormatter>? inputFormatters,
+    String? errorText,
   }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -816,68 +764,16 @@ class _TasksScreenState extends State<TasksScreen> {
       child: TextField(
         controller: controller,
         maxLines: maxLines,
+        keyboardType: keyboardType,
+        inputFormatters: inputFormatters,
         decoration: InputDecoration(
           border: InputBorder.none,
           labelText: label,
           labelStyle: TextStyle(color: textSoft),
           hintText: hint,
+          errorText: errorText,
         ),
       ),
-    );
-  }
-
-  Widget buildChoiceSection({
-    required String title,
-    required List<String> items,
-    required String selected,
-    required Function(String) onTap,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: TextStyle(
-            color: textDark,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        const SizedBox(height: 10),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: items.map((item) {
-            final isSelected = selected == item;
-
-            return GestureDetector(
-              onTap: () => onTap(item),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 10,
-                ),
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? accent.withValues(alpha: 0.16)
-                      : Colors.white.withValues(alpha: 0.88),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: isSelected ? accent : accent.withValues(alpha: 0.10),
-                  ),
-                ),
-                child: Text(
-                  item,
-                  style: TextStyle(
-                    color: isSelected ? accent : textDark,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            );
-          }).toList(),
-        ),
-      ],
     );
   }
 
@@ -1047,15 +943,24 @@ class _TasksScreenState extends State<TasksScreen> {
             sourceLabel: sourceTask.title,
           );
     final anticipationPresentation = anticipation?.presentation;
-    final hasDisplayableSuggestion =
-        presentation != null || anticipationPresentation != null;
+    final openTasks = tasks.where((task) => !task.isDone).toList();
+    // If the official engines have no current card, a real urgent task still
+    // remains visible instead of being replaced by generic encouragement.
+    final urgentFallbackTask =
+        presentation == null && anticipationPresentation == null
+            ? _firstUrgentOpenTask()
+            : null;
+    final hasDisplayableSuggestion = presentation != null ||
+        anticipationPresentation != null ||
+        urgentFallbackTask != null;
     final supportMessage = const ContextualSupportCardService().forTasks(
-      openCount: tasks.where((task) => !task.isDone).length,
+      openCount: openTasks.length,
       completedCount: tasks.where((task) => task.isDone).length,
       now: DateTime.now(),
     );
     if (!proactiveLoading &&
         !hasDisplayableSuggestion &&
+        urgentFallbackTask == null &&
         !_priorityDiagnosticsEnabled) {
       return CompactContextualSupportCard(
         key: const Key('proactive-priority-card'),
@@ -1081,7 +986,7 @@ class _TasksScreenState extends State<TasksScreen> {
               ),
             ],
           )
-        : !hasDisplayableSuggestion
+        : !hasDisplayableSuggestion && urgentFallbackTask == null
             ? Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
@@ -1143,11 +1048,13 @@ class _TasksScreenState extends State<TasksScreen> {
                   const SizedBox(width: 14),
                   Expanded(
                     child: Column(
+                      key: const Key('contextual-support-message'),
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
                           presentation?.title ??
-                              anticipationPresentation!.title,
+                              anticipationPresentation?.title ??
+                              'À ne pas oublier',
                           style: TextStyle(
                             color: textDark,
                             fontSize: 16,
@@ -1157,7 +1064,8 @@ class _TasksScreenState extends State<TasksScreen> {
                         const SizedBox(height: 4),
                         Text(
                           presentation?.message ??
-                              anticipationPresentation!.message,
+                              anticipationPresentation?.message ??
+                              'Pense à « ${urgentFallbackTask!.title} » en priorité.',
                           style: TextStyle(
                             color: textSoft,
                             fontSize: 13,
@@ -1170,20 +1078,24 @@ class _TasksScreenState extends State<TasksScreen> {
                           key: const Key(
                             'proactive-priority-call-to-action',
                           ),
-                          onPressed: _openProactiveSuggestion,
+                          onPressed: urgentFallbackTask == null
+                              ? _openProactiveSuggestion
+                              : () => showTaskSheet(task: urgentFallbackTask),
                           child: Text(
                             presentation?.callToActionLabel ??
-                                anticipationPresentation!.callToActionLabel,
+                                anticipationPresentation?.callToActionLabel ??
+                                'Voir la tâche',
                           ),
                         ),
                       ],
                     ),
                   ),
-                  IconButton(
-                    tooltip: 'Masquer cette suggestion',
-                    onPressed: _dismissProactiveSuggestion,
-                    icon: const Icon(Icons.close),
-                  ),
+                  if (urgentFallbackTask == null)
+                    IconButton(
+                      tooltip: 'Masquer cette suggestion',
+                      onPressed: _dismissProactiveSuggestion,
+                      icon: const Icon(Icons.close),
+                    ),
                 ],
               );
     return Container(
@@ -1212,6 +1124,13 @@ class _TasksScreenState extends State<TasksScreen> {
         ],
       ),
     );
+  }
+
+  TaskModel? _firstUrgentOpenTask() {
+    for (final task in tasks) {
+      if (!task.isDone && _isUrgent(task)) return task;
+    }
+    return null;
   }
 
   Widget _buildPriorityDiagnosticPanel() {
@@ -1255,93 +1174,55 @@ class _TasksScreenState extends State<TasksScreen> {
   }
 
   Widget buildFilters() {
-    return SizedBox(
-      height: 70,
-      child: ListView.separated(
-        padding: const EdgeInsets.fromLTRB(24, 18, 24, 0),
-        scrollDirection: Axis.horizontal,
-        itemBuilder: (context, index) {
-          final filter = filters[index];
-          final selected = selectedFilter == filter;
-
-          return GestureDetector(
-            onTap: () {
-              setState(() {
-                selectedFilter = filter;
-              });
-            },
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.symmetric(
-                horizontal: 22,
-                vertical: 12,
-              ),
-              decoration: BoxDecoration(
-                color: selected
-                    ? accent.withValues(alpha: 0.86)
-                    : Colors.white.withValues(alpha: 0.72),
-                borderRadius: BorderRadius.circular(28),
-              ),
-              child: Center(
-                child: Text(
-                  filter,
-                  style: TextStyle(
-                    color: selected ? Colors.white : textDark,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 18, 24, 0),
+      child: Row(
+        children: [
+          for (var index = 0; index < filters.length; index++) ...[
+            if (index > 0) const SizedBox(width: 10),
+            Expanded(
+              child: GestureDetector(
+                onTap: () => setState(() => selectedFilter = filters[index]),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  height: 50,
+                  decoration: BoxDecoration(
+                    color: selectedFilter == filters[index]
+                        ? accent.withValues(alpha: 0.86)
+                        : Colors.white.withValues(alpha: 0.72),
+                    borderRadius: BorderRadius.circular(25),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    filters[index],
+                    style: TextStyle(
+                      color: selectedFilter == filters[index]
+                          ? Colors.white
+                          : textDark,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
               ),
             ),
-          );
-        },
-        separatorBuilder: (_, __) => const SizedBox(width: 10),
-        itemCount: filters.length,
-      ),
-    );
-  }
-
-  Widget buildSectionTitle(String title) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(28, 26, 28, 14),
-      child: Row(
-        children: [
-          Text(
-            title,
-            style: TextStyle(
-              color: textDark,
-              fontSize: 23,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.85),
-              shape: BoxShape.circle,
-            ),
-          ),
+          ],
         ],
       ),
     );
   }
 
-  Widget buildPriorityBadge(TaskModel task) {
-    final label = visiblePriorityLabel(task);
-    final color = visiblePriorityColor(task);
-
+  Widget buildUrgentBadge() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
+        color: accent.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(100),
       ),
       child: Text(
-        label,
+        "Urgent",
         style: TextStyle(
-          color: color,
+          color: accent,
           fontSize: 11,
           fontWeight: FontWeight.w800,
         ),
@@ -1466,19 +1347,17 @@ class _TasksScreenState extends State<TasksScreen> {
                 ),
                 ListTile(
                   leading: Icon(
-                    task.isImportant
-                        ? Icons.star_rounded
-                        : Icons.star_outline_rounded,
-                    color: const Color(0xFFFFB000),
+                    _isUrgent(task)
+                        ? Icons.priority_high_rounded
+                        : Icons.priority_high_outlined,
+                    color: accent,
                   ),
                   title: Text(
-                    task.isImportant
-                        ? "Retirer des importantes"
-                        : "Marquer important",
+                    _isUrgent(task) ? "Retirer l’urgence" : "Marquer urgent",
                   ),
                   onTap: () async {
                     Navigator.pop(context);
-                    await toggleImportant(task);
+                    await toggleUrgent(task);
                   },
                 ),
                 ListTile(
@@ -1551,22 +1430,12 @@ class _TasksScreenState extends State<TasksScreen> {
                         spacing: 6,
                         runSpacing: 6,
                         children: [
-                          buildPriorityBadge(task),
-                          buildTag(task.category),
+                          if (_isUrgent(task)) buildUrgentBadge(),
                           if (task.dueDate.trim().isNotEmpty)
-                            buildTag(task.dueDate),
+                            buildTag(_formatDueDateForDisplay(task.dueDate)),
+                          if (task.durationMinutes case final minutes?)
+                            buildTag(_formatDuration(minutes)),
                         ],
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        priorityReason(task),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: textSoft,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
                       ),
                       if (task.notes.trim().isNotEmpty)
                         Padding(
@@ -1618,6 +1487,15 @@ class _TasksScreenState extends State<TasksScreen> {
     );
   }
 
+  String _formatDuration(int? minutes) {
+    if (minutes == null || minutes <= 0) return '';
+    final hours = minutes ~/ 60;
+    final remainingMinutes = minutes % 60;
+    if (hours == 0) return '$remainingMinutes min';
+    if (remainingMinutes == 0) return '$hours h';
+    return '$hours h $remainingMinutes';
+  }
+
   Widget buildCheckCircle({
     required bool checked,
     required VoidCallback onTap,
@@ -1648,7 +1526,9 @@ class _TasksScreenState extends State<TasksScreen> {
   }
 
   Widget buildClearCompleted() {
-    if (doneTasks.isEmpty) return const SizedBox.shrink();
+    if (selectedFilter != "Toutes" || !tasks.any((task) => task.isDone)) {
+      return const SizedBox.shrink();
+    }
 
     return GestureDetector(
       onTap: clearCompleted,
@@ -1711,11 +1591,7 @@ class _TasksScreenState extends State<TasksScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final hasContent = sectionTasks("Aujourd’hui").isNotEmpty ||
-        sectionTasks("Cette semaine").isNotEmpty ||
-        sectionTasks("Ce mois-ci").isNotEmpty ||
-        sectionTasks("Plus tard").isNotEmpty ||
-        doneTasks.isNotEmpty;
+    final hasContent = filteredTasks.isNotEmpty;
 
     return Scaffold(
       backgroundColor: bg,
@@ -1735,25 +1611,9 @@ class _TasksScreenState extends State<TasksScreen> {
                       buildZeliaSuggestionCard(),
                       buildFilters(),
                       if (!hasContent) buildEmptyState(),
-                      if (sectionTasks("Aujourd’hui").isNotEmpty) ...[
-                        buildSectionTitle("Aujourd’hui"),
-                        buildTaskSection(sectionTasks("Aujourd’hui")),
-                      ],
-                      if (sectionTasks("Cette semaine").isNotEmpty) ...[
-                        buildSectionTitle("Cette semaine"),
-                        buildTaskSection(sectionTasks("Cette semaine")),
-                      ],
-                      if (sectionTasks("Ce mois-ci").isNotEmpty) ...[
-                        buildSectionTitle("Ce mois-ci"),
-                        buildTaskSection(sectionTasks("Ce mois-ci")),
-                      ],
-                      if (sectionTasks("Plus tard").isNotEmpty) ...[
-                        buildSectionTitle("Plus tard"),
-                        buildTaskSection(sectionTasks("Plus tard")),
-                      ],
-                      if (doneTasks.isNotEmpty) ...[
-                        buildSectionTitle("Terminé"),
-                        buildTaskSection(doneTasks),
+                      if (hasContent) ...[
+                        const SizedBox(height: 22),
+                        buildTaskSection(filteredTasks),
                       ],
                       buildClearCompleted(),
                       const SizedBox(height: 110),
@@ -1762,6 +1622,31 @@ class _TasksScreenState extends State<TasksScreen> {
                 ),
               ),
             ),
+    );
+  }
+}
+
+final class _FrenchDateInputFormatter extends TextInputFormatter {
+  const _FrenchDateInputFormatter();
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final digits = newValue.text.replaceAll(RegExp(r'\D'), '');
+    final limited = digits.length > 8 ? digits.substring(0, 8) : digits;
+    final buffer = StringBuffer();
+
+    for (var index = 0; index < limited.length; index++) {
+      if (index == 2 || index == 4) buffer.write('/');
+      buffer.write(limited[index]);
+    }
+
+    final formatted = buffer.toString();
+    return TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
     );
   }
 }

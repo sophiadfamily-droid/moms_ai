@@ -52,6 +52,15 @@ void main() {
       expect(updated.durationMinutes, 60);
     });
 
+    test('copyWith can explicitly clear the optional duration', () {
+      final task = buildTask(id: 'task-1');
+
+      final updated = task.copyWith(clearDuration: true);
+
+      expect(updated.durationMinutes, isNull);
+      expect(updated.id, 'task-1');
+    });
+
     test('JSON round trip preserves an existing ID', () {
       final task = buildTask(id: 'task-1');
 

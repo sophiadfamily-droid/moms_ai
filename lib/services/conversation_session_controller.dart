@@ -33,6 +33,8 @@ import 'routine_conversation_service.dart';
 import 'human/human_model_edit_service.dart';
 import 'human/recurring_responsibility_conversation_service.dart';
 import 'identity/identity_production_services.dart';
+import 'mental_load/mental_load_consultation_service.dart';
+import 'mental_load_anticipation_production.dart';
 import 'priority/proactive_interaction_registry.dart';
 import 'smart_planning_continuation_coordinator.dart';
 
@@ -225,6 +227,13 @@ final class ConversationSessionController extends ChangeNotifier {
         currentAccountScopeId: () => resolvedAccountScopeId,
         loadEditor: HumanModelEditService.createProduction,
       ),
+      mentalLoadConsultationService: resolvedAccountScopeId == null
+          ? null
+          : MentalLoadConsultationService(
+              loadSuggestions: () => MentalLoadAnticipationProduction.load(
+                resolvedAccountScopeId,
+              ),
+            ),
       clock: clock,
     );
     final smartPlanningGateway =

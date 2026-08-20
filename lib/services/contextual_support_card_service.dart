@@ -94,18 +94,18 @@ final class ContextualSupportCardService {
         fingerprint: 'mixed:$open:$completed',
         messages: [
           ContextualSupportCardMessage(
-            title: _positiveTitle('Bien avancé', style),
-            message: 'Tu as déjà avancé. Le reste peut attendre son tour.',
+            title: _positiveTitle('La suite est claire', style),
+            message: 'Choisis simplement la prochaine tâche.',
             semanticKey: 'tasks_mixed_progress',
           ),
           ContextualSupportCardMessage(
-            title: _positiveTitle('Ça avance', style),
-            message: 'Continue à ton rythme.',
+            title: _positiveTitle('On continue', style),
+            message: 'Prends la prochaine quand tu es prête.',
             semanticKey: 'tasks_mixed_step',
           ),
           ContextualSupportCardMessage(
-            title: _positiveTitle('Petit à petit', style),
-            message: 'Une partie est déjà derrière toi.',
+            title: _positiveTitle('C’est bien parti', style),
+            message: 'Le reste est prêt quand tu veux.',
             semanticKey: 'tasks_mixed_momentum',
           ),
         ],

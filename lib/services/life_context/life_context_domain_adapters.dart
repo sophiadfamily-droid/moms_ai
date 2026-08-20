@@ -748,7 +748,14 @@ final class TaskLifeContextAdapter implements LifeContextDomainAdapter {
 
   static double? _taskUrgency(TaskModel task) {
     final priority = task.priority.trim().toLowerCase();
-    if (const {'urgent', 'urgente'}.contains(priority)) return 1;
+    // The task UI exposes one "Urgent" switch. Historical and current
+    // persistence can represent that same user choice as `isImportant`,
+    // `Haute`, `Urgent` or `Urgente`. They must all project the same fact for
+    // Zelia's canonical reasoning layer.
+    if (task.isImportant ||
+        const {'haute', 'high', 'urgent', 'urgente'}.contains(priority)) {
+      return 1;
+    }
     final planning = task.planning.trim().toLowerCase();
     if (planning == 'aujourd’hui' || planning == "aujourd'hui") return .9;
     return null;

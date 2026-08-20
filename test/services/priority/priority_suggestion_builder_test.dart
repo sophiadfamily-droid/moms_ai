@@ -222,7 +222,7 @@ void main() {
       expect(suggestion.toJson().toString(), isNot(contains('travelBack')));
     });
 
-    test('overdue requires a structured consequence', () {
+    test('overdue task is reviewed even without a structured consequence', () {
       final result = builder.build(
         ranking: _ranking(
           now,
@@ -253,7 +253,11 @@ void main() {
       );
       expect(
         result.suggestions.last.suggestionType,
-        PrioritySuggestionType.clarifyMissingInformation,
+        PrioritySuggestionType.reviewOverdueItem,
+      );
+      expect(
+        result.suggestions.last.primaryCandidateId,
+        'overdue-unknown',
       );
     });
 
@@ -373,9 +377,7 @@ void main() {
       );
     });
 
-    test(
-        'urgent missing duration clarifies, ordinary missing deadline does not',
-        () {
+    test('urgent task asks for deadline before duration', () {
       final result = builder.build(
         ranking: _ranking(
           now,
@@ -394,7 +396,11 @@ void main() {
       );
       expect(
         result.suggestions.single.proposedNextStep,
-        PrioritySuggestionNextStep.provideDuration,
+        PrioritySuggestionNextStep.provideDeadline,
+      );
+      expect(
+        result.suggestions.single.reasonCodes,
+        contains(PrioritySuggestionReason.missingDeadlineBlocksAssessment),
       );
     });
   });

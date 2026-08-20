@@ -286,6 +286,31 @@ l'encadré ne disparaît pas et n'affiche pas une formule négative répétitive
 devient un message de respiration : encouragement, progression factuelle,
 liste légère ou permission de souffler, selon les données réellement visibles.
 
+La carte `Tâches` est la partie du second cerveau qui garde le fil des choses à
+faire dans le futur. Ce n'est ni un agenda quotidien, ni une simple répétition
+du badge `Urgent`. Avant de choisir une pensée, Zélia doit consulter la
+projection globale autorisée : profil et personnes, responsabilités, agenda,
+tâches et leurs détails, courses, habitudes et mémoire. Cette vue commune doit
+aussi guider les réponses et suggestions sur les autres surfaces de
+l'application.
+
+L'ordre de réflexion pour les tâches est :
+
+1. échéance réellement imminente ;
+2. tâche bloquée ou information indispensable manquante ;
+3. préparation utile à anticiper, sans la créer automatiquement ;
+4. ancienne tâche dont la pertinence doit être vérifiée ;
+5. message rassurant et personnalisé si aucune pensée actionnable nouvelle
+   n'existe.
+
+Une question peut être posée occasionnellement si sa réponse améliore vraiment
+l'organisation, par exemple une date ou une durée manquante. Elle reste courte,
+non intrusive et ne redemande pas une information déjà disponible ailleurs.
+Une même pensée inchangée est mémorisée par son empreinte matérielle : elle ne
+réapparaît pas simplement parce que l'utilisatrice revient sur l'écran. Le
+petit message de respiration ne doit jamais contourner cette mémoire pour
+répéter localement qu'une tâche est urgente.
+
 Ces messages :
 
 - varient avec le temps et un changement matériel de la liste, sans changer
@@ -302,6 +327,11 @@ actionnables. Un changement de sujet, une correction, un refus, une question ou
 une nouvelle demande doit être compris avant la réponse attendue par un
 parcours en cours ; le parcours peut être mis en attente sans détourner la
 nouvelle intention.
+
+L'utilisatrice peut aussi demander explicitement ce qu'elle doit anticiper ou
+préparer. Zélia lui répond alors à partir des liens déjà prouvés entre ses
+éléments de vie, sans déclencher cette réponse à l'ouverture de l'application,
+sans créer une action et sans transformer la consultation en notification.
 
 Zélia ne doit pas seulement répondre. Elle anticipe les étapes qu'une personne
 peut oublier lorsqu'elle porte une forte charge personnelle, familiale, sociale

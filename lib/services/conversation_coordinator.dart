@@ -44,6 +44,8 @@ import 'zelia_action_guard_service.dart';
 import 'zelia_response_builder.dart';
 import 'priority/priority_consultation_intent_detector.dart';
 import 'priority/priority_consultation_service.dart';
+import 'mental_load/mental_load_consultation_intent_detector.dart';
+import 'mental_load/mental_load_consultation_service.dart';
 import 'task_creation_draft_service.dart';
 import 'shopping_conversation_intent_detector.dart';
 import 'shopping_service.dart';
@@ -91,6 +93,9 @@ class ConversationCoordinator {
       recurringResponsibilityConversationService;
   final PriorityConsultationIntentDetector priorityConsultationIntentDetector;
   final PriorityConsultationService? priorityConsultationService;
+  final MentalLoadConsultationIntentDetector
+      mentalLoadConsultationIntentDetector;
+  final MentalLoadConsultationService? mentalLoadConsultationService;
   final TaskCreationDraftService taskCreationDraftService;
   final ShoppingConversationIntentDetector shoppingIntentDetector;
   late final ActionConfirmationCoordinator _confirmationCoordinator;
@@ -134,6 +139,9 @@ class ConversationCoordinator {
     this.priorityConsultationIntentDetector =
         const PriorityConsultationIntentDetector(),
     PriorityConsultationService? priorityConsultationService,
+    this.mentalLoadConsultationIntentDetector =
+        const MentalLoadConsultationIntentDetector(),
+    this.mentalLoadConsultationService,
     this.taskCreationDraftService = const TaskCreationDraftService(),
     this.shoppingIntentDetector = const ShoppingConversationIntentDetector(),
     ActionConfirmationCoordinator? confirmationCoordinator,
@@ -2666,6 +2674,15 @@ class ConversationCoordinator {
     }
     if (priorityConsultationIntentDetector.matches(input.message)) {
       final consultation = await priorityConsultationService?.respond();
+      if (consultation != null) {
+        return ConversationOutcome(
+          reply: consultation.reply,
+          responseKind: ConversationResponseKind.answer,
+        );
+      }
+    }
+    if (mentalLoadConsultationIntentDetector.matches(input.message)) {
+      final consultation = await mentalLoadConsultationService?.respond();
       if (consultation != null) {
         return ConversationOutcome(
           reply: consultation.reply,

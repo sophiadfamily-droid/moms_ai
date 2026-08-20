@@ -977,6 +977,15 @@ contract while the established journal, ledger, cloud protocol and UI remain
 unchanged. The legacy tombstone payload is retained only at the persistence
 adapter boundary.
 
+The visible Tasks experience is intentionally compact. Its list exposes only
+`Toutes` and `Urgentes`; its editor exposes only a title, notes, an optional
+deadline, an optional expected duration and an urgent switch. A missing
+duration never blocks task creation: it is requested later only when it helps
+Zelia assess the task or propose a suitable time. Legacy planning, category and
+priority fields remain readable at compatibility boundaries so existing data
+is not lost, but they must not fragment the user-facing workflow or recreate
+duplicate urgency controls.
+
 **Planned architecture:** The Task Engine owns task lifecycle, state transitions, scheduling intent, priority projections, and stable persistence semantics. A task is not a calendar reservation until planning and confirmation convert it into one.
 
 ### 7.10 Shopping Engine
@@ -2172,6 +2181,31 @@ but its temporary unavailability never invalidates a priority already proven
 from the local canonical Task projection. Suggestion failures remain internal:
 the optional card degrades to a neutral empty state instead of asking the user
 to retry a background calculation.
+
+The Tasks card is a future-task second-brain surface, not a day planner and not
+a local urgency echo. Its actionable thought must always come from the
+canonical priority path after loading the bounded cross-domain Life Context
+projection. The selection order is: imminent proven deadline, blocking or
+missing information, proven preparation, stale task relevance review, then a
+non-actionable personalized reassurance. A missing deadline is clarified before
+duration when urgency makes the deadline necessary to reason safely. An
+overdue Task may be surfaced for a relevance check even when no structured
+consequence was entered. Inferred preparation remains a proposal and never
+creates a Task automatically.
+
+The compact fallback owns only neutral support. It cannot inspect a local
+`urgent` flag or missing duration to manufacture a second actionable message;
+otherwise it would bypass the durable receipt history and repeat an unchanged
+thought. Actionable thoughts keep a material fingerprint and are suppressed
+after display, dismissal or completion until their canonical inputs change.
+
+The same proven anticipations are also available through an explicit, read-only
+conversation consultation. Questions such as `Qu'est-ce que je dois
+anticiper ?` return at most three existing preparation/Event links in plain
+French. This consultation never appears automatically when the app opens,
+never records a proactive display receipt and never creates, edits or schedules
+anything. An empty result is a calm answer, while an unavailable source is
+reported honestly rather than presented as proof that nothing needs attention.
 
 The canonical Task projection keeps the structured signals already entered by
 the user (`importance`, `urgency`, `category` and `createdAt`) and normalizes

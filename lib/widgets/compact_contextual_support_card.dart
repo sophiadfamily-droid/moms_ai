@@ -24,6 +24,7 @@ final class CompactContextualSupportCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasTitle = supportMessage.title.trim().isNotEmpty;
     return Container(
       height: visualHeight,
       margin: const EdgeInsets.fromLTRB(24, 10, 24, 0),
@@ -58,27 +59,28 @@ final class CompactContextualSupportCard extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  supportMessage.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: textColor,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
+                if (hasTitle) ...[
+                  Text(
+                    supportMessage.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: textColor,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 3),
+                  const SizedBox(height: 3),
+                ],
                 Text(
                   supportMessage.message,
                   key: Key(supportMessage.semanticKey),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  maxLines: 2,
                   style: TextStyle(
-                    color: secondaryTextColor,
-                    fontSize: 13,
+                    color: hasTitle ? secondaryTextColor : textColor,
+                    fontSize: hasTitle ? 13 : 16,
                     height: 1.2,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: hasTitle ? FontWeight.w600 : FontWeight.w800,
                   ),
                 ),
               ],

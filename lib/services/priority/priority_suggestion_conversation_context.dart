@@ -70,13 +70,17 @@ final class PrioritySuggestionConversationContextBuilder {
         PrioritySuggestionType.prepare =>
           'Cet engagement fixe commence bientôt et le trajet aller est renseigné.',
         PrioritySuggestionType.clarifyMissingInformation =>
-          'La durée manque pour évaluer si cet élément reste réalisable à temps.',
+          suggestion.reasonCodes.contains(
+            PrioritySuggestionReason.missingDeadlineBlocksAssessment,
+          )
+              ? 'Une date manque pour savoir quand cette tâche doit être faite.'
+              : 'La durée manque pour trouver un moment adapté.',
         PrioritySuggestionType.reviewConflict =>
           'Deux engagements confirmés se chevauchent. Vérifie-les avant de modifier ton planning.',
         PrioritySuggestionType.protectFixedCommitment =>
           'Cet engagement commence bientôt et son horaire est fixe.',
         PrioritySuggestionType.reviewOverdueItem =>
-          'Cette échéance est dépassée et comporte une conséquence structurée.',
+          'Cette tâche a une ancienne date et peut avoir besoin d’être vérifiée.',
         PrioritySuggestionType.monitorDeadline =>
           'Une échéance significative approche dans les prochains jours.',
       };

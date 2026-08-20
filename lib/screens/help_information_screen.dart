@@ -461,8 +461,8 @@ const _faq = <_FaqItem>[
       'Demande simplement à Zelia, par exemple « rappelle-moi d’appeler le médecin demain », ou utilise le bouton d’ajout dans Tâches.'),
   _FaqItem(
       'Tâches, courses et routines',
-      'À quoi servent les priorités des tâches ?',
-      'Elles aident Zelia à faire ressortir ce qui mérite ton attention en premier, sans cacher le reste.'),
+      'À quoi sert le bouton Urgent dans une tâche ?',
+      'Il fait ressortir une tâche qui ne peut pas attendre. Toutes les autres restent simplement visibles dans Toutes.'),
   _FaqItem(
       'Tâches, courses et routines',
       'Comment ajouter un produit à ma liste de courses ?',

@@ -43,6 +43,7 @@ enum PrioritySuggestionReason {
   overdue,
   fixedCommitment,
   structuredConsequence,
+  missingDeadlineBlocksAssessment,
   missingDurationBlocksAssessment,
   canonicalConflict,
   structuredOutboundTravel,

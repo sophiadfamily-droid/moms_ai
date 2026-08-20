@@ -284,8 +284,7 @@ final class PrioritySuggestionBuilder {
       );
     }
     if (candidate.type == PriorityCandidateType.task &&
-        reasons.contains('deadline_overdue') &&
-        candidate.consequenceLevel != PriorityConsequenceLevel.unknown) {
+        reasons.contains('deadline_overdue')) {
       return _SuggestionProposal(
         ranked: ranked,
         type: PrioritySuggestionType.reviewOverdueItem,
@@ -293,7 +292,6 @@ final class PrioritySuggestionBuilder {
         severity: PrioritySuggestionSeverity.important,
         reasons: const [
           PrioritySuggestionReason.overdue,
-          PrioritySuggestionReason.structuredConsequence,
         ],
         missing: ranked.score.missingData,
         nextStep: PrioritySuggestionNextStep.openItem,
@@ -328,6 +326,24 @@ final class PrioritySuggestionBuilder {
         candidate.explicitUrgency != null && candidate.explicitUrgency! >= .7 ||
             deadline != null &&
                 !deadline.isAfter(now.add(const Duration(hours: 24)));
+    if (candidate.type == PriorityCandidateType.task &&
+        urgent &&
+        ranked.score.missingData.contains(PriorityMissingData.deadline)) {
+      return _SuggestionProposal(
+        ranked: ranked,
+        type: PrioritySuggestionType.clarifyMissingInformation,
+        horizon: PrioritySuggestionHorizon.now,
+        severity: PrioritySuggestionSeverity.attention,
+        reasons: const [
+          PrioritySuggestionReason.missingDeadlineBlocksAssessment,
+        ],
+        missing: const [PriorityMissingData.deadline],
+        nextStep: PrioritySuggestionNextStep.provideDeadline,
+        confirmationRequired: false,
+        confidence: PrioritySuggestionConfidence.strong,
+        supportingCandidateIds: const [],
+      );
+    }
     if (candidate.type == PriorityCandidateType.task &&
         urgent &&
         ranked.score.missingData.contains(PriorityMissingData.effort)) {

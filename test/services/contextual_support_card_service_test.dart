@@ -28,6 +28,18 @@ void main() {
     expect(message.message.length, lessThan(75));
   });
 
+  test('actionable task thoughts do not bypass the canonical engine', () {
+    final message = service.forTasks(
+      openCount: 2,
+      completedCount: 1,
+      now: monday,
+    );
+
+    expect(message.semanticKey, startsWith('tasks_mixed_'));
+    expect(message.message, isNot(contains('prioritaire')));
+    expect(message.message, isNot(contains('combien de temps')));
+  });
+
   test('shopping urgent state is never replaced by false reassurance', () {
     final message = service.forShopping(
       pendingCount: 5,

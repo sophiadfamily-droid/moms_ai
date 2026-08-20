@@ -877,7 +877,9 @@ List<TaskModel> _tasks() => [
         isDone: false,
         createdAt: DateTime.utc(2026, 7, 20),
         dueDate: '30/07/2026',
-        priority: 'Urgente',
+        // This is the exact value persisted by the task screen's "Urgent"
+        // switch. The canonical context must not lose that user intent.
+        priority: 'Haute',
         isImportant: true,
         durationMinutes: 60,
       ),

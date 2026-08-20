@@ -106,6 +106,19 @@ final class ProactiveSuggestionPolicy {
     var skippedDismissedCount = 0;
     var skippedCompletedCount = 0;
     var skippedIneligibleCount = 0;
+    final latestResolvedAt = history
+        .expand<DateTime>(
+          (receipt) => [
+            receipt.dismissedAt,
+            receipt.actedOnAt,
+            receipt.completedAt,
+          ].whereType<DateTime>(),
+        )
+        .fold<DateTime?>(
+          null,
+          (latest, value) =>
+              latest == null || value.isAfter(latest) ? value : latest,
+        );
     for (var rank = 0; rank < suggestions.suggestions.length; rank++) {
       evaluatedCandidateCount++;
       final source = suggestions.suggestions[rank];
@@ -157,8 +170,11 @@ final class ProactiveSuggestionPolicy {
       final duplicateReceipt = history
           .where(
             (receipt) =>
-                receipt.materialFingerprint == materialFingerprint &&
-                    _sameCivilDay(receipt.lastShownAt.toLocal(), localNow) ||
+                receipt.state == ProactiveSuggestionHistoryState.shown &&
+                    receipt.materialFingerprint == materialFingerprint &&
+                    _sameCivilDay(receipt.lastShownAt.toLocal(), localNow) &&
+                    (latestResolvedAt == null ||
+                        !latestResolvedAt.isAfter(receipt.lastShownAt)) ||
                 receipt.canonicalSuggestionKey == canonicalKey &&
                     receipt.materialFingerprint == materialFingerprint &&
                     {

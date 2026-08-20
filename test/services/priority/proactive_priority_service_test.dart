@@ -192,6 +192,64 @@ void main() {
     );
   });
 
+  test(
+      'an unresolved urgent task can return after another suggestion was acted on',
+      () async {
+    final repository = _History();
+    final projection = _projection(now, [
+      _task(now, 'dentist', dueAfter: const Duration(hours: 1)),
+      _task(now, 'suitcase', dueAfter: const Duration(hours: 2)),
+    ]);
+
+    final firstService = _service(repository, projection, now);
+    final dentist = await firstService.evaluate(
+      dashboardReady: true,
+      interactionActive: false,
+    );
+    expect(dentist.suggestion, isNotNull);
+    expect(dentist.suggestion!.priorityRank, 0);
+    expect(await firstService.confirmShown(dentist.suggestion!), isTrue);
+
+    final secondService = _service(
+      repository,
+      projection,
+      now.add(const Duration(minutes: 1)),
+    );
+    final suitcase = await secondService.evaluate(
+      dashboardReady: true,
+      interactionActive: false,
+    );
+    expect(suitcase.suggestion, isNotNull);
+    expect(suitcase.suggestion!.priorityRank, 1);
+    expect(await secondService.confirmShown(suitcase.suggestion!), isTrue);
+    await secondService.markActedOn(suitcase.suggestion!);
+
+    final afterAction = _service(
+      repository,
+      projection,
+      now.add(const Duration(minutes: 2)),
+    );
+    final returned = await afterAction.evaluate(
+      dashboardReady: true,
+      interactionActive: false,
+    );
+
+    expect(returned.suggestion, isNotNull);
+    expect(returned.suggestion!.priorityRank, 0);
+    expect(
+      returned.suggestion!.sourceEntityReferences,
+      contains('priority:task:dentist'),
+    );
+    expect(await afterAction.confirmShown(returned.suggestion!), isTrue);
+    expect(
+      repository.values
+          .where((receipt) =>
+              receipt.suggestionId == returned.suggestion!.suggestionId)
+          .length,
+      1,
+    );
+  });
+
   test('material revision change allows a new suggestion', () async {
     final repository = _History();
     final first = _service(
@@ -278,17 +336,16 @@ void main() {
       sourceLabel: 'Préparer les documents pour la banque',
     );
 
-    expect(presentation.title, 'Durée à préciser');
+    expect(presentation.title, 'Combien de temps prévoir ?');
     expect(
       presentation.message,
-      'Il manque la durée de “Préparer les documents pour la banque”. '
-      'Ajoute une durée pour que je puisse vérifier si cette tâche est '
-      'réalisable avant son échéance.',
+      'Dis-moi combien de temps prend “Préparer les documents pour la banque” '
+      'et je pourrai te proposer un bon moment.',
     );
-    expect(presentation.callToActionLabel, 'Ajouter une durée');
+    expect(presentation.callToActionLabel, 'Ajouter le temps');
     expect(
       presentation.assistantPrompt,
-      'Combien de temps veux-tu prévoir pour '
+      'Combien de temps te faut-il pour '
       '“Préparer les documents pour la banque” ?',
     );
   });
@@ -730,24 +787,23 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Durée à préciser'), findsOneWidget);
-    final expectedMessage = 'Il manque la durée de “$longTitle”. '
-        'Ajoute une durée pour que je puisse vérifier si cette tâche est '
-        'réalisable avant son échéance.';
+    expect(find.text('Combien de temps prévoir ?'), findsOneWidget);
+    final expectedMessage = 'Dis-moi combien de temps prend “$longTitle” '
+        'et je pourrai te proposer un bon moment.';
     expect(find.text(expectedMessage), findsOneWidget);
-    expect(find.text('Ajouter une durée'), findsOneWidget);
+    expect(find.text('Ajouter le temps'), findsOneWidget);
     final message = tester.widget<Text>(find.text(expectedMessage));
     expect(message.maxLines, isNull);
     expect(message.overflow, isNull);
 
-    await tester.ensureVisible(find.text('Ajouter une durée'));
-    await tester.tap(find.text('Ajouter une durée'));
+    await tester.ensureVisible(find.text('Ajouter le temps'));
+    await tester.tap(find.text('Ajouter le temps'));
     await tester.pumpAndSettle();
 
     expect(find.text('Modifier la tâche'), findsNothing);
     expect(
       openedHandoff?.question,
-      'Combien de temps veux-tu prévoir pour “$longTitle” ?',
+      'Combien de temps te faut-il pour “$longTitle” ?',
     );
     expect(openedHandoff?.taskId, 'duration-task');
     expect(openedHandoff?.sourceSuggestionId, isNotEmpty);

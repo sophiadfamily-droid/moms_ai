@@ -321,7 +321,12 @@ final class ProactivePriorityService {
     try {
       await _history.save(
         accountScopeId,
-        [...history, receipt].take(128).toList(),
+        [
+          ...history.where(
+            (value) => value.suggestionId != suggestion.suggestionId,
+          ),
+          receipt,
+        ].take(128).toList(),
       );
       _presentedThisSession = true;
       _visibleSuggestion = suggestion;
