@@ -2245,6 +2245,39 @@ row leaves the pending list; the disappearance is never the only feedback.
 
 Major new engines should not bypass unfinished identity, persistence, or source-of-truth foundations.
 
+### Approved execution checkpoint — 21 August 2026
+
+The visible product surfaces are now sufficiently mature to freeze their
+target responsibilities before adding more isolated behavior. The approved
+surface and unified-brain contract is recorded in section 15 of
+`ZELIA_BRAIN_CONTRACT.md`. It requires one bounded Life Context projection to
+make profile, people, memory, Agenda, Tasks, Shopping, validated imports and
+conversation facts eligible to all relevant reasoning without copying every
+raw datum into every consumer.
+
+The next implementation order is therefore:
+
+1. audit every participating datum for authoritative owner, subject, time,
+   place, certainty, consequence, visibility and deletion behavior;
+2. simplify Event editing and complete independent outbound/return routing,
+   automatic margin policy and per-source Agenda visibility;
+3. make the bounded shared context projection the only cross-domain input for
+   planning, conversation and proactive assistance;
+4. finish Task and Shopping thoughts, then implement the single cross-domain
+   Dashboard anticipation;
+5. broaden conversational understanding and personalization against that same
+   projection instead of adding phrase-specific patches;
+6. add weather, Android routing and later external connections behind explicit
+   permission and ownership contracts;
+7. complete localization infrastructure before English activation, then carry
+   out the final shared visual-system, accessibility and store-readiness pass.
+
+No screen may infer a second local priority, availability or travel truth for
+presentation convenience. Hidden schedule entries remain eligible context;
+visibility never changes domain consequence. External connectivity and visual
+polish must not precede the source-of-truth audit or bypass the unified context
+boundary.
+
 ## 21. Documentation architecture
 
 Documentation has explicit levels of authority and scope.

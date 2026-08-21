@@ -1,8 +1,8 @@
 # Contrat du cerveau de Zélia
 
 Statut : référence produit et architecture  
-Version : 1.0  
-Date de validation : 12 août 2026
+Version : 1.1
+Date de validation : 21 août 2026
 
 Ce document fixe le comportement cible de Zélia. Il complète
 `MASTER_ARCHITECTURE.md` et s'impose aux moteurs spécialisés, aux parcours de
@@ -465,3 +465,92 @@ Zélia demande une adresse plus précise sans inventer de temps de trajet.
   contexte de vie.
 - Les documents de moteur précisent leur domaine, mais ne peuvent pas contredire
   le présent contrat produit.
+
+## 15. Projection commune et contrat des surfaces
+
+### 15.1 Un seul cerveau pour toutes les pages
+
+Le profil principal, les personnes connues, la mémoire, l'Agenda, les Tâches,
+les Courses, les imports validés et la conversation alimentent une même
+projection bornée du contexte de vie. Tous ces domaines sont éligibles au
+raisonnement, mais un consommateur reçoit uniquement les faits pertinents pour
+sa question ou sa décision. Une page ne reconstruit jamais localement une
+seconde vérité métier.
+
+Le chemin de décision commun est : comprendre le rôle du message, sélectionner
+les faits utiles, vérifier leur certitude et leur fraîcheur, mesurer les
+conséquences pour l'utilisatrice, choisir une réponse ou une action autorisée,
+puis présenter le résultat dans la surface adaptée. Le modèle de langage aide
+à comprendre et formuler; il ne devient jamais propriétaire des données ni de
+la décision persistée.
+
+### 15.2 Dashboard et conversation
+
+Le Dashboard présente un accès au Chat, la date et la météo, des résumés
+compacts de Tâches et Courses, les prochains éléments visibles de l'Agenda et,
+à terme, une seule anticipation transversale réellement prioritaire. Il ne
+duplique pas les pages détaillées. La météo utilise la localisation autorisée,
+sinon la ville du profil, sinon un choix manuel, et sa défaillance ne bloque
+jamais le Dashboard.
+
+Le Chat reste la surface des réponses développées, des demandes multi-domaines
+et des anticipations reliant plusieurs aspects de la vie. Son contexte est une
+sélection pertinente de la projection commune et non une copie brute de toutes
+les données personnelles.
+
+### 15.3 Agenda, lieux et visibilité
+
+Le formulaire Event grand public contient seulement : titre, date, heure,
+durée obligatoire, lieu, catégorie et notes. Les trajets aller/retour et la
+marge ne sont pas des champs principaux saisis manuellement lorsque le calcul
+automatique est autorisé.
+
+Le trajet aller et le trajet retour sont deux calculs indépendants. L'aller
+part du dernier Event localisé, d'un engagement structuré pertinent, d'un lieu
+explicitement indiqué ou du domicile; en dernier recours Zélia demande le lieu
+de départ. Le retour vise le prochain Event ou engagement localisé, un autre
+lieu prévu ou le domicile; en dernier recours Zélia demande la destination.
+L'aller ne peut jamais servir de valeur de substitution au retour. Chaque
+calcul utilise son propre horaire de départ et les conditions disponibles pour
+cet horaire.
+
+La marge est automatique par défaut et comprise entre cinq et quinze minutes
+selon le contexte. Le profil permet de choisir automatique, aucune, cinq, dix
+ou quinze minutes. L'interface privilégie une information simple telle que
+`Départ conseillé à …` plutôt que l'exposition des calculs internes.
+
+Les Events créés, les activités de l'utilisatrice et les activités des enfants
+sont visibles par défaut. Travail, routines, école et plannings des autres
+adultes restent cachés par défaut tout en demeurant disponibles au raisonnement.
+Chaque source structurée possède une préférence d'affichage modifiable. Masquer
+un élément ne l'efface pas et ne change pas sa conséquence réelle. Après un
+import, Zélia demande une seule fois si le planning validé doit apparaître dans
+l'Agenda.
+
+### 15.4 Tâches et Courses
+
+La surface Tâches conserve titre, notes, date éventuelle, durée éventuelle et
+urgence, avec seulement les vues Toutes et Urgentes. Sa suggestion suit l'ordre
+de réflexion défini en section 8 et ne devient ni un programme de journée ni
+une répétition locale du badge urgent.
+
+La surface Courses affiche principalement le nombre de produits restant à
+acheter. Un article contient un nom, une quantité libre facultative, une note,
+un moment d'achat éventuel et une urgence explicite. Quand il est coché acheté,
+il donne un retour visuel puis disparaît immédiatement de la liste. Son nom, sa
+quantité et sa date d'achat peuvent rester dans l'historique propre au domaine
+Shopping pour comprendre les habitudes; ils ne deviennent pas une mémoire
+personnelle et sont supprimables avec les données de courses.
+
+### 15.5 Réglages et langues
+
+Le profil expose un groupe simple `Organisation et agenda` pour le calcul des
+trajets, la marge et les préférences générales de visibilité. Le réglage propre
+à une activité ou un planning reste également modifiable sur cet élément.
+
+La V1 s'adresse aux femmes et reste disponible en français. Les textes
+d'interface doivent néanmoins être externalisés dans une structure de
+localisation dès maintenant. Les valeurs temporelles et métier utilisent un
+format interne indépendant de la langue, puis sont rendues au format français.
+L'anglais peut être affiché comme bientôt disponible sans devenir sélectionnable
+avant que l'expérience complète soit traduite et testée.
