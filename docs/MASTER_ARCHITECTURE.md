@@ -2193,6 +2193,12 @@ overdue Task may be surfaced for a relevance check even when no structured
 consequence was entered. Inferred preparation remains a proposal and never
 creates a Task automatically.
 
+An unfinished Task without a deadline may receive one relevance check when its
+confirmed creation date is at least thirty days old. This does not infer
+urgency, lateness or a due date: the thought only asks whether the Task still
+belongs in the list. A recent Task, a future creation timestamp or an item
+without a trustworthy creation date remains silent.
+
 The compact fallback owns only neutral support. It cannot inspect a local
 `urgent` flag or missing duration to manufacture a second actionable message;
 otherwise it would bypass the durable receipt history and repeat an unchanged

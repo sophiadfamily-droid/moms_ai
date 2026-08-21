@@ -41,6 +41,7 @@ enum PrioritySuggestionReason {
   dueWithin24Hours,
   dueWithinThreeDays,
   overdue,
+  staleOpenTask,
   fixedCommitment,
   structuredConsequence,
   missingDeadlineBlocksAssessment,

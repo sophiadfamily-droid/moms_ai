@@ -303,6 +303,12 @@ L'ordre de réflexion pour les tâches est :
 5. message rassurant et personnalisé si aucune pensée actionnable nouvelle
    n'existe.
 
+Une tâche ouverte sans date entre dans le quatrième cas seulement lorsque sa
+date de création confirmée remonte à au moins trente jours. Zélia ne la déclare
+ni urgente ni en retard : elle demande simplement si elle est toujours à
+faire. Une tâche récente ou sans date de création fiable ne déclenche pas cette
+pensée.
+
 Une question peut être posée occasionnellement si sa réponse améliore vraiment
 l'organisation, par exemple une date ou une durée manquante. Elle reste courte,
 non intrusive et ne redemande pas une information déjà disponible ailleurs.

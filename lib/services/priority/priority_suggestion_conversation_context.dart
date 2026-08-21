@@ -80,7 +80,11 @@ final class PrioritySuggestionConversationContextBuilder {
         PrioritySuggestionType.protectFixedCommitment =>
           'Cet engagement commence bientôt et son horaire est fixe.',
         PrioritySuggestionType.reviewOverdueItem =>
-          'Cette tâche a une ancienne date et peut avoir besoin d’être vérifiée.',
+          suggestion.reasonCodes.contains(
+            PrioritySuggestionReason.staleOpenTask,
+          )
+              ? 'Cette tâche est dans la liste depuis un moment et peut avoir besoin d’être vérifiée.'
+              : 'Cette tâche a une ancienne date et peut avoir besoin d’être vérifiée.',
         PrioritySuggestionType.monitorDeadline =>
           'Une échéance significative approche dans les prochains jours.',
       };

@@ -12,6 +12,7 @@ final class PrioritySuggestionBuilder {
   static const calculationVersion = 1;
   static const rankingValidity = Duration(minutes: 15);
   static const suggestionValidity = Duration(minutes: 15);
+  static const staleOpenTaskAge = Duration(days: 30);
 
   const PrioritySuggestionBuilder();
 
@@ -396,6 +397,25 @@ final class PrioritySuggestionBuilder {
           supportingCandidateIds: const [],
         );
       }
+    }
+    final createdAt = candidate.createdAt?.toUtc();
+    if (candidate.type == PriorityCandidateType.task &&
+        deadline == null &&
+        createdAt != null &&
+        !createdAt.isAfter(now) &&
+        now.difference(createdAt) >= staleOpenTaskAge) {
+      return _SuggestionProposal(
+        ranked: ranked,
+        type: PrioritySuggestionType.reviewOverdueItem,
+        horizon: PrioritySuggestionHorizon.now,
+        severity: PrioritySuggestionSeverity.information,
+        reasons: const [PrioritySuggestionReason.staleOpenTask],
+        missing: const [],
+        nextStep: PrioritySuggestionNextStep.openItem,
+        confirmationRequired: false,
+        confidence: PrioritySuggestionConfidence.certain,
+        supportingCandidateIds: const [],
+      );
     }
     return null;
   }

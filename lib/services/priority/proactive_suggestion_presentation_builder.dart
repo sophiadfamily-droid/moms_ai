@@ -58,6 +58,16 @@ final class ProactiveSuggestionPresentationBuilder {
         assistantPrompt: '$quotedLabel est-il toujours à faire ?',
       );
     }
+    if (suggestion.reasonCodes.contains(
+      PrioritySuggestionReason.staleOpenTask,
+    )) {
+      return ProactiveSuggestionPresentation(
+        title: 'Toujours à faire ?',
+        message: '$quotedLabel est dans ta liste depuis un moment.',
+        callToActionLabel: 'Vérifier la tâche',
+        assistantPrompt: '$quotedLabel est-il toujours à faire ?',
+      );
+    }
     return ProactiveSuggestionPresentation(
       title: 'Priorité à vérifier',
       message: '${suggestion.message} Ouvre $quotedLabel pour agir.',

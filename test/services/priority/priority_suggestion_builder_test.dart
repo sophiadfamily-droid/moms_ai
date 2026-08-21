@@ -403,6 +403,53 @@ void main() {
         contains(PrioritySuggestionReason.missingDeadlineBlocksAssessment),
       );
     });
+
+    test('old open task without a date is proposed for a relevance check', () {
+      final result = builder.build(
+        ranking: _ranking(
+          now,
+          [
+            _candidate(
+              id: 'old-open-task',
+              createdAt: now.subtract(const Duration(days: 31)),
+            ),
+          ],
+        ),
+        accountScopeId: 'account',
+        referenceDate: now,
+      );
+
+      expect(result.suggestions, hasLength(1));
+      expect(
+        result.suggestions.single.suggestionType,
+        PrioritySuggestionType.reviewOverdueItem,
+      );
+      expect(
+        result.suggestions.single.reasonCodes,
+        contains(PrioritySuggestionReason.staleOpenTask),
+      );
+      expect(
+        result.suggestions.single.proposedNextStep,
+        PrioritySuggestionNextStep.openItem,
+      );
+    });
+
+    test('recent or future-created undated task does not become stale', () {
+      for (final createdAt in [
+        now.subtract(const Duration(days: 29)),
+        now.add(const Duration(minutes: 1)),
+      ]) {
+        final result = builder.build(
+          ranking: _ranking(
+            now,
+            [_candidate(id: 'task', createdAt: createdAt)],
+          ),
+          accountScopeId: 'account',
+          referenceDate: now,
+        );
+        expect(result.suggestions, isEmpty);
+      }
+    });
   });
 
   group('admissibility, conflict and identity', () {
@@ -714,6 +761,7 @@ PriorityCandidate _candidate({
   PriorityCandidateType type = PriorityCandidateType.task,
   DateTime? deadline,
   DateTime? start,
+  DateTime? createdAt,
   int? effortMinutes,
   int? travelGoMinutes,
   int? marginMinutes,
@@ -732,6 +780,7 @@ PriorityCandidate _candidate({
       status: PriorityCandidateStatus.active,
       deadline: deadline,
       temporalStart: start,
+      createdAt: createdAt,
       effortMinutes: effortMinutes,
       travelGoMinutes: travelGoMinutes,
       marginMinutes: marginMinutes,

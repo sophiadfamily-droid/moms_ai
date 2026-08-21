@@ -350,6 +350,35 @@ void main() {
     );
   });
 
+  test('stale open task presentation asks one plain relevance question', () {
+    final presentation = const ProactiveSuggestionPresentationBuilder().build(
+      suggestion: ProactiveSuggestion(
+        suggestionId: 'stale-suggestion',
+        canonicalSuggestionKey: 'stale-canonical',
+        materialFingerprint: 'stale-fingerprint',
+        suggestionType: PrioritySuggestionType.reviewOverdueItem,
+        message: 'generic',
+        reasonCodes: const [PrioritySuggestionReason.staleOpenTask],
+        sourceEntityReferences: const ['priority:task:old-task'],
+        generatedAt: now,
+        expiresAt: now.add(const Duration(minutes: 15)),
+        validityState: ProactiveSuggestionValidityState.valid,
+        callToAction: ProactiveSuggestionCallToActionType.openTask,
+        requiresConfirmation: false,
+        priorityRank: 0,
+        sourceRevision: '1:1',
+      ),
+      sourceLabel: 'Trier les papiers',
+    );
+
+    expect(presentation.title, 'Toujours à faire ?');
+    expect(
+      presentation.message,
+      '“Trier les papiers” est dans ta liste depuis un moment.',
+    );
+    expect(presentation.callToActionLabel, 'Vérifier la tâche');
+  });
+
   test(
       'sixteen ordered candidates skip two shown and one completed '
       'and select rank four after restart', () async {
