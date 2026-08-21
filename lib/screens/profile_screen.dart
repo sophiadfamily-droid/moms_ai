@@ -18,6 +18,7 @@ import '../services/app_diagnostics.dart';
 import '../services/app_error_classifier.dart';
 import '../services/notification_service.dart';
 import '../services/human/human_model_edit_service.dart';
+import '../services/human/human_model_user_profile_projection_service.dart';
 import '../services/structured_schedule_document_import_service.dart';
 import '../services/structured_schedule_import_application_service.dart';
 import '../services/structured_schedule_import_production_gateway.dart';
@@ -952,17 +953,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
       goals: profile.goals,
     );
 
-    final persistedProfile =
-        await StorageService.saveUserProfile(updatedProfile);
+    final preparedProfile =
+        StorageService.prepareCompatibilityProfile(updatedProfile);
     final accountScopeId = AuthService.currentUserId;
     HumanModelEditResult? humanResult;
+    UserProfile? persistedProfile;
     if (accountScopeId != null && accountScopeId.trim().isNotEmpty) {
       try {
         final editor = await HumanModelEditService.createProduction();
         humanResult = await editor.commitLegacyProfile(
           accountScopeId: accountScopeId,
-          profile: persistedProfile,
+          profile: preparedProfile,
         );
+        if ((humanResult.status == HumanModelEditStatus.success ||
+                humanResult.status == HumanModelEditStatus.pendingSync) &&
+            humanResult.state != null) {
+          final projected =
+              const HumanModelUserProfileProjectionService().project(
+            model: humanResult.state!.model,
+            legacy: preparedProfile,
+          );
+          persistedProfile = await StorageService.saveUserProfile(projected);
+        }
       } on Object catch (error) {
         final descriptor = AppErrorClassifier.classify(
           error,
@@ -982,26 +994,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
           status: HumanModelEditStatus.storageFailure,
         );
       }
+    } else {
+      persistedProfile = await StorageService.saveUserProfile(preparedProfile);
     }
 
     if (!mounted) {
       return;
     }
 
-    setState(() {
-      profile = persistedProfile;
-    });
-
-    if (widget.onSave != null) {
-      widget.onSave!(persistedProfile);
+    if (persistedProfile != null) {
+      setState(() {
+        profile = persistedProfile!;
+      });
+      widget.onSave?.call(persistedProfile);
     }
 
     if (showSnack) {
       final message = switch (humanResult?.status) {
         null || HumanModelEditStatus.success => 'Profil sauvegardé',
-        HumanModelEditStatus.pendingSync ||
-        HumanModelEditStatus.networkUnavailable =>
+        HumanModelEditStatus.pendingSync =>
           'Profil sauvegardé sur cet appareil. La synchronisation reprendra dès que possible.',
+        HumanModelEditStatus.networkUnavailable =>
+          'La connexion semble indisponible. Réessaie dans un instant.',
         HumanModelEditStatus.revisionConflict =>
           'Le profil a changé ailleurs. Recharge-le avant de réessayer.',
         _ => 'La sauvegarde du profil n’a pas pu être terminée.',

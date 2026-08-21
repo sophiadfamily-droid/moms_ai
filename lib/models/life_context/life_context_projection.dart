@@ -29,6 +29,7 @@ enum LifeContextProjectionSectionType {
   task,
   routine,
   memory,
+  shopping,
   relation,
 }
 
@@ -79,6 +80,9 @@ abstract final class LifeContextProjectionFactKeys {
   static const relationshipStatus = 'relationshipStatus';
   static const marriageDate = 'marriageDate';
   static const engagementDate = 'engagementDate';
+  static const quantity = 'quantity';
+  static const profileFactKey = 'profileFactKey';
+  static const profileFactValue = 'profileFactValue';
 
   static const all = {
     displayName,
@@ -127,6 +131,9 @@ abstract final class LifeContextProjectionFactKeys {
     relationshipStatus,
     marriageDate,
     engagementDate,
+    quantity,
+    profileFactKey,
+    profileFactValue,
   };
 }
 
@@ -190,7 +197,7 @@ final class LifeContextConsumerContract {
             LifeContextSensitivityLevel.ordinaryPersonal,
             LifeContextSensitivityLevel.privatePersonal,
           },
-          globalBudget: 305,
+          globalBudget: 330,
           sectionBudgets: const {
             LifeContextProjectionSectionType.human: 55,
             LifeContextProjectionSectionType.identity: 10,
@@ -198,6 +205,7 @@ final class LifeContextConsumerContract {
             LifeContextProjectionSectionType.task: 30,
             LifeContextProjectionSectionType.routine: 80,
             LifeContextProjectionSectionType.memory: 30,
+            LifeContextProjectionSectionType.shopping: 25,
             LifeContextProjectionSectionType.relation: 50,
           },
           pastWindow: const Duration(days: 7),
@@ -296,7 +304,7 @@ final class LifeContextConsumerContract {
           allowedSensitivities: const {
             LifeContextSensitivityLevel.publicTechnical,
           },
-          globalBudget: 515,
+          globalBudget: 540,
           sectionBudgets: const {
             LifeContextProjectionSectionType.human: 55,
             LifeContextProjectionSectionType.identity: 10,
@@ -304,6 +312,7 @@ final class LifeContextConsumerContract {
             LifeContextProjectionSectionType.task: 300,
             LifeContextProjectionSectionType.routine: 20,
             LifeContextProjectionSectionType.memory: 30,
+            LifeContextProjectionSectionType.shopping: 25,
             LifeContextProjectionSectionType.relation: 50,
           },
           pastWindow: const Duration(days: 7),

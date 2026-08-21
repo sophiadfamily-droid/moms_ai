@@ -9,6 +9,7 @@ import '../models/memory_sync.dart';
 import 'memory_sync_cloud_repository.dart';
 import 'memory_sync_local_repository.dart';
 import 'memory_sync_service.dart';
+import 'settings_context_version.dart';
 
 enum MemoryPolicySaveStatus { synced, pendingSync, conflict }
 
@@ -114,6 +115,7 @@ final class MemoryPolicyService {
       throw const MemoryPolicyException('memory_policy_account_mismatch');
     }
     await repository.save(policy);
+    SettingsContextVersion.notifyChanged();
     final sync = _syncService;
     if (sync == null) return MemoryPolicySaveStatus.pendingSync;
     await sync.bootstrap();

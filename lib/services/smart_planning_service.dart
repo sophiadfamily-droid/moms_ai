@@ -856,9 +856,8 @@ class SmartPlanningService {
     int travelBackMinutes = 0,
     int? actionMinutesOverride,
     List<Map<String, dynamic>> memoryReasoning = const [],
-    List<EventModel>? contextEvents,
+    required List<EventModel> contextEvents,
   }) async {
-    final events = contextEvents ?? await EventService.getEvents();
     final safeTasks = groupedTasks.isEmpty ? [mainTask] : groupedTasks;
 
     final type = detectTaskType(originalMessage, mainTask);
@@ -877,7 +876,7 @@ class SmartPlanningService {
     final slot = findBestSlot(
       targetDate: targetDate,
       totalMinutes: totalMinutes,
-      events: events,
+      events: contextEvents,
       avoidMorning: planningWindow.avoidMorning,
       preferredStartHour: planningWindow.preferredStartHour,
       preferredEndHour: planningWindow.preferredEndHour,
@@ -945,10 +944,8 @@ class SmartPlanningService {
     int travelBackMinutes = 0,
     int? actionMinutesOverride,
     List<Map<String, dynamic>> memoryReasoning = const [],
-    List<EventModel>? contextEvents,
+    required List<EventModel> contextEvents,
   }) async {
-    final events = contextEvents ?? await EventService.getEvents();
-
     final type = detectTaskType(originalMessage, task);
     final outside = isOutsideTask(
       type: type,
@@ -970,7 +967,7 @@ class SmartPlanningService {
     final slot = findBestSlot(
       targetDate: targetDate,
       totalMinutes: totalMinutes,
-      events: events,
+      events: contextEvents,
       avoidMorning: planningWindow.avoidMorning,
       preferredStartHour: planningWindow.preferredStartHour,
       preferredEndHour: planningWindow.preferredEndHour,

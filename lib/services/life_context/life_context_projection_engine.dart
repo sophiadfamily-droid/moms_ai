@@ -4,6 +4,7 @@ import '../../models/life_context/life_context_domains.dart';
 import '../../models/life_context/life_context_graph.dart';
 import '../../models/life_context/life_context_projection.dart';
 import '../../models/life_context/life_context_snapshot.dart';
+import '../human/human_profile_facts_service.dart';
 
 /// The only LC.3 construction boundary.
 ///
@@ -41,6 +42,7 @@ final class LifeContextProjectionEngine {
       LifeContextDomain.task: snapshot.taskDomain!.metadata,
       LifeContextDomain.routine: snapshot.routineDomain!.metadata,
       LifeContextDomain.memory: snapshot.memoryDomain!.metadata,
+      LifeContextDomain.shopping: snapshot.shoppingDomain!.metadata,
     };
     _validateRequiredDomains(sourceMetadata, contract);
     _validateFreshness(sourceMetadata, contract);
@@ -59,6 +61,8 @@ final class LifeContextProjectionEngine {
           _routineCandidates(snapshot, contract),
       LifeContextProjectionSectionType.memory:
           _memoryCandidates(snapshot, contract),
+      LifeContextProjectionSectionType.shopping:
+          _shoppingCandidates(snapshot, contract),
       LifeContextProjectionSectionType.relation:
           _relationCandidates(snapshot, graph, contract),
     };
@@ -218,6 +222,9 @@ final class LifeContextProjectionEngine {
       if (contract.allowedSections
           .contains(LifeContextProjectionSectionType.memory))
         LifeContextDomain.memory,
+      if (contract.allowedSections
+          .contains(LifeContextProjectionSectionType.shopping))
+        LifeContextDomain.shopping,
     };
     for (final domain in allowedDomains) {
       final source = metadata[domain]!;
@@ -321,6 +328,44 @@ final class LifeContextProjectionEngine {
           ),
           contract,
         );
+        for (final profileFact in person.profileFacts) {
+          final sensitivity = _humanProfileFactSensitivity(profileFact.key);
+          if (sensitivity == null) continue;
+          _addAllowed(
+            result,
+            _item(
+              snapshot,
+              section.metadata,
+              '${person.id}:${profileFact.key}',
+              LifeContextDomain.human,
+              'personProfileFact',
+              [
+                _fact(
+                  LifeContextProjectionFactKeys.subjectNodeId,
+                  LifeContextGraphNode.deterministicId(
+                    LifeContextDomain.human,
+                    LifeContextNodeType.person,
+                    person.id,
+                  ),
+                  LifeContextSensitivityLevel.publicTechnical,
+                ),
+                _fact(
+                  LifeContextProjectionFactKeys.profileFactKey,
+                  profileFact.key,
+                  LifeContextSensitivityLevel.publicTechnical,
+                ),
+                _fact(
+                  LifeContextProjectionFactKeys.profileFactValue,
+                  profileFact.value,
+                  sensitivity,
+                  contract: contract,
+                ),
+              ],
+              _confirmation(profileFact.confirmation),
+            ),
+            contract,
+          );
+        }
       }
       for (final household in includeConversationPeople
           ? section.households
@@ -392,6 +437,15 @@ final class LifeContextProjectionEngine {
     }
     return result;
   }
+
+  LifeContextSensitivityLevel? _humanProfileFactSensitivity(String field) =>
+      switch (HumanProfileFactsV1.contextClassFor(field)) {
+        HumanProfileFactContextClass.ordinaryPersonal =>
+          LifeContextSensitivityLevel.ordinaryPersonal,
+        HumanProfileFactContextClass.privatePersonal =>
+          LifeContextSensitivityLevel.privatePersonal,
+        HumanProfileFactContextClass.excluded => null,
+      };
 
   List<LifeContextProjectionItem> _identityCandidates(
     LifeContextSnapshot snapshot,
@@ -698,6 +752,65 @@ final class LifeContextProjectionEngine {
           routine.id,
           LifeContextDomain.routine,
           'routine',
+          facts,
+          LifeContextConfirmation.confirmed,
+        ),
+        contract,
+      );
+    }
+    return result;
+  }
+
+  List<LifeContextProjectionItem> _shoppingCandidates(
+    LifeContextSnapshot snapshot,
+    LifeContextConsumerContract contract,
+  ) {
+    if (contract.purpose != LifeContextConsumerPurpose.conversation &&
+        contract.purpose != LifeContextConsumerPurpose.proactivePriority) {
+      return const [];
+    }
+    final section = snapshot.shoppingDomain!;
+    final result = <LifeContextProjectionItem>[];
+    for (final item in section.activeItems) {
+      final facts = <LifeContextProjectionFact>[
+        _fact(
+          LifeContextProjectionFactKeys.status,
+          'active',
+          LifeContextSensitivityLevel.publicTechnical,
+        ),
+        _fact(
+          LifeContextProjectionFactKeys.urgency,
+          item.isUrgent ? '1' : '0',
+          LifeContextSensitivityLevel.publicTechnical,
+        ),
+        _fact(
+          LifeContextProjectionFactKeys.createdAt,
+          item.createdAt,
+          LifeContextSensitivityLevel.publicTechnical,
+        ),
+        if (item.quantity != null)
+          _fact(
+            LifeContextProjectionFactKeys.quantity,
+            item.quantity!,
+            LifeContextSensitivityLevel.ordinaryPersonal,
+            contract: contract,
+          ),
+        if (contract.maxTextLength > 0)
+          _fact(
+            LifeContextProjectionFactKeys.title,
+            item.title,
+            LifeContextSensitivityLevel.ordinaryPersonal,
+            contract: contract,
+          ),
+      ];
+      _addAllowed(
+        result,
+        _item(
+          snapshot,
+          section.metadata,
+          item.id,
+          LifeContextDomain.shopping,
+          'shoppingItem',
           facts,
           LifeContextConfirmation.confirmed,
         ),
@@ -1131,6 +1244,8 @@ final class LifeContextProjectionEngine {
           metadata[LifeContextDomain.routine],
         LifeContextProjectionSectionType.memory =>
           metadata[LifeContextDomain.memory],
+        LifeContextProjectionSectionType.shopping =>
+          metadata[LifeContextDomain.shopping],
         LifeContextProjectionSectionType.relation =>
           graph == null ? null : metadata[LifeContextDomain.human],
       };

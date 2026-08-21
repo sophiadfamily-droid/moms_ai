@@ -365,6 +365,7 @@ final class HistoricalMemoryContextProjection
       case 'preferences':
         return LifeMemorySemanticType.preference;
       case 'routine':
+      case 'habit':
         return LifeMemorySemanticType.routine;
       case 'constraint':
       case 'constraints':

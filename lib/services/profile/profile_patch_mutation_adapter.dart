@@ -52,19 +52,9 @@ final class ProfilePatchMutationAdapter {
     UserProfile profile,
     Object? jsonValue,
   ) =>
-      switch (field) {
-        ProfileOwnedField.wantsNotifications => profile.wantsNotifications,
-        ProfileOwnedField.automaticTravelCalculationEnabled =>
-          profile.automaticTravelCalculationEnabled,
-        ProfileOwnedField.workDays => List<String>.of(profile.workDays),
-        ProfileOwnedField.workTimeRanges =>
-          List<TimeRangeModel>.of(profile.workTimeRanges),
-        ProfileOwnedField.personalActivities =>
-          List<ActivityModel>.of(profile.personalActivities),
-        _ => jsonValue is String
-            ? jsonValue
-            : throw const ProfilePatchException(
-                'invalid_profile_patch_value',
-              ),
-      };
+      jsonValue is String
+          ? jsonValue
+          : throw const ProfilePatchException(
+              'invalid_profile_patch_value',
+            );
 }

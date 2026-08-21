@@ -88,7 +88,8 @@ final class HumanModelEditService {
       model: model,
       legacy: legacy,
     );
-    return StorageService.saveUserProfile(projected);
+    await StorageService.saveCompatibilityProfile(projected);
+    return projected;
   }
 
   Future<HumanModelEditResult> commitLegacyProfile({

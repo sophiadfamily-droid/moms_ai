@@ -21,6 +21,8 @@ abstract final class LifeContextFreshnessPolicy {
     LifeContextDomain.task: Duration(minutes: 2),
     LifeContextDomain.routine: Duration(minutes: 5),
     LifeContextDomain.memory: Duration(minutes: 5),
+    LifeContextDomain.settings: Duration(minutes: 5),
+    LifeContextDomain.shopping: Duration(minutes: 2),
   };
 
   static bool requiresRefresh(
@@ -327,6 +329,8 @@ final class LifeContextProduction {
         LifeContextDomain.task: snapshot.taskDomain!.metadata,
         LifeContextDomain.routine: snapshot.routineDomain!.metadata,
         LifeContextDomain.memory: snapshot.memoryDomain!.metadata,
+        LifeContextDomain.settings: snapshot.settingsDomain!.metadata,
+        LifeContextDomain.shopping: snapshot.shoppingDomain!.metadata,
       };
 
   void _record({

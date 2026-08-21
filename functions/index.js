@@ -23,6 +23,9 @@ const {
 const {
   createCallableScheduleDocumentHandler,
 } = require("./services/structuredScheduleDocumentTransport");
+const {
+  createCallableAccountDataHandler,
+} = require("./services/accountDataLifecycleService");
 
 if (getApps().length === 0) {
   initializeApp();
@@ -53,4 +56,13 @@ exports.analyzeStructuredScheduleDocumentCallable = onCall(
       appCheckEnforcement: zeliaEnforceAppCheck,
       consumeQuota: ({uid}) => consumeChatQuota({firestore, uid}),
     }),
+);
+
+exports.manageAccountDataCallable = onCall(
+    {
+      region: "us-central1",
+      timeoutSeconds: 120,
+      enforceAppCheck: zeliaEnforceAppCheck,
+    },
+    createCallableAccountDataHandler({firestore}),
 );

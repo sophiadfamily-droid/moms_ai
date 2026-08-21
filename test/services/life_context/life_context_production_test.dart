@@ -315,6 +315,8 @@ final class _Adapter implements LifeContextDomainAdapter {
         LifeContextDomain.task => LifeContextSourceKind.taskService,
         LifeContextDomain.routine => LifeContextSourceKind.legacyProfileRoutine,
         LifeContextDomain.memory => LifeContextSourceKind.memoryFirestore,
+        LifeContextDomain.settings => LifeContextSourceKind.settingsRegistry,
+        LifeContextDomain.shopping => LifeContextSourceKind.shoppingService,
       },
       readAt: request.readAt,
       availability: availability,
@@ -342,6 +344,18 @@ final class _Adapter implements LifeContextDomainAdapter {
           policyHealthMode: 'disabled',
           policyConfigured: false,
         ),
+      LifeContextDomain.settings => SettingsContextSection(
+          metadata: metadata,
+          automaticTravelCalculationEnabled: false,
+          notificationsEnabled: false,
+          notificationSoundEnabled: false,
+          notificationVibrationEnabled: false,
+          notificationBadgeEnabled: false,
+          actionAutonomyMode: 'suggestions',
+          memoryGeneralMode: 'askEveryTime',
+          memoryHealthMode: 'disabled',
+        ),
+      LifeContextDomain.shopping => ShoppingDomainSection(metadata: metadata),
     };
   }
 }

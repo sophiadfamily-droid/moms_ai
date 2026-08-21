@@ -3,8 +3,7 @@ import 'package:moms_ai/models/user_profile.dart';
 import 'package:moms_ai/services/storage_service.dart';
 
 void main() {
-  test('reconnecting keeps human details while refreshing profile settings',
-      () {
+  test('legacy cloud merge cannot overwrite human facts or app settings', () {
     final local = UserProfile(
       firstName: 'Sophia',
       age: '39',
@@ -46,9 +45,11 @@ void main() {
     expect(restored.familyStatus, 'Je vis en couple');
     expect(restored.partnerName, 'Alex');
     expect(restored.children.single.firstName, 'Camille');
-    expect(restored.workStatus, 'Nouveau travail');
-    expect(restored.planningStyle, 'Organisation souple');
-    expect(restored.wantsNotifications, isTrue);
+    // Le statut professionnel appartient désormais au HumanModel. Une ancienne
+    // copie Profile distante ne doit plus pouvoir remplacer la vue canonique.
+    expect(restored.workStatus, 'Ancien travail');
+    expect(restored.planningStyle, 'Ancienne organisation');
+    expect(restored.wantsNotifications, isFalse);
   });
 
   test('a first connection without a local profile uses the cloud profile', () {

@@ -15,30 +15,13 @@ void main() {
         accountScopeId: 'account-a',
         expectedRevision: 4,
         changes: const {
-          ProfileOwnedField.planningStyle: 'Souple',
-          ProfileOwnedField.wantsNotifications: false,
-          ProfileOwnedField.automaticTravelCalculationEnabled: true,
-          ProfileOwnedField.workDays: ['lundi', 'mardi'],
-          ProfileOwnedField.partnerNotes: 'Disponible pour la garde le jeudi',
-          ProfileOwnedField.partnerWorkSchedule:
-              'Du lundi au vendredi, 8 h à 17 h',
+          ProfileOwnedField.mainLifePriority: 'Famille',
         },
       ),
     );
 
     expect(result.nextRevision, 5);
-    expect(result.profile.planningStyle, 'Souple');
-    expect(result.profile.wantsNotifications, isFalse);
-    expect(result.profile.automaticTravelCalculationEnabled, isTrue);
-    expect(result.profile.workDays, ['lundi', 'mardi']);
-    expect(
-      result.profile.partnerNotes,
-      'Disponible pour la garde le jeudi',
-    );
-    expect(
-      result.profile.partnerWorkSchedule,
-      'Du lundi au vendredi, 8 h à 17 h',
-    );
+    expect(result.profile.mainLifePriority, 'Famille');
   });
 
   test('preserves Human-owned identity and family fields exactly', () {
@@ -62,7 +45,7 @@ void main() {
     final patch = ProfilePatch(
       accountScopeId: 'account-a',
       expectedRevision: 1,
-      changes: const {ProfileOwnedField.workStatus: true},
+      changes: const {ProfileOwnedField.mainLifePriority: true},
     );
     expect(
       () => engine.apply(
@@ -92,6 +75,38 @@ void main() {
     expect(
       ProfileOwnedField.values.map((field) => field.name).toSet(),
       ProfileFieldOwnership.profileOwnedFields,
+    );
+  });
+
+  test('durable human facts cannot be patched through legacy Profile', () {
+    expect(
+      () => ProfileFieldOwnership.validatePatch(const {
+        'workStatus',
+        'homeAddress',
+        'partnerNotes',
+      }),
+      throwsFormatException,
+    );
+  });
+
+  test('application settings cannot be patched through legacy Profile', () {
+    expect(
+      () => ProfileFieldOwnership.validatePatch(const {
+        'planningStyle',
+        'automaticTravelCalculationEnabled',
+        'spokenLanguage',
+      }),
+      throwsFormatException,
+    );
+  });
+
+  test('person schedules cannot be patched through legacy Profile', () {
+    expect(
+      () => ProfileFieldOwnership.validatePatch(const {
+        'workTimeRanges',
+        'personalActivities',
+      }),
+      throwsFormatException,
     );
   });
 }

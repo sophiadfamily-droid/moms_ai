@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/local_notification_models.dart';
+import 'settings_context_version.dart';
 
 abstract interface class NotificationSettingsRepository {
   Future<NotificationSettings?> load(String accountScopeId);
@@ -112,7 +113,9 @@ final class NotificationSettingsService {
       policyRevision: current.policyRevision + 1,
     );
     await repository.save(updated);
-    return await repository.load(updated.accountScopeId) ?? updated;
+    final persisted = await repository.load(updated.accountScopeId) ?? updated;
+    SettingsContextVersion.notifyChanged();
+    return persisted;
   }
 
   String _scope() {

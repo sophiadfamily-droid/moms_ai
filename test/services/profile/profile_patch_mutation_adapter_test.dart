@@ -13,20 +13,15 @@ void main() {
       accountScopeId: 'account-a',
       current: current,
       proposed: current.profile.copyWith(
-        planningStyle: 'Souple',
-        wantsNotifications: false,
-        automaticTravelCalculationEnabled: true,
+        mainLifePriority: 'Famille',
+        workHours: '08:00-16:00',
       ),
     )!;
 
-    expect(plan.changedFields, {
-      'planningStyle',
-      'wantsNotifications',
-      'automaticTravelCalculationEnabled',
-    });
+    expect(plan.changedFields, {'mainLifePriority'});
     expect(plan.result.expectedRevision, 4);
     expect(plan.result.nextRevision, 5);
-    expect(plan.profile.planningStyle, 'Souple');
+    expect(plan.profile.mainLifePriority, 'Famille');
   });
 
   test('ignores Human-owned-only changes at the Profile boundary', () {
@@ -42,22 +37,37 @@ void main() {
     );
   });
 
-  test('preserves Human-owned fields while applying typed list changes', () {
+  test('ignores Settings-owned-only changes at the Profile boundary', () {
     final current = _state(_profile());
-    final plan = adapter.plan(
-      accountScopeId: 'account-a',
-      current: current,
-      proposed: current.profile.copyWith(
-        workDays: const ['lundi', 'mardi'],
-        workTimeRanges: [
-          TimeRangeModel(startTime: '09:00', endTime: '17:00'),
-        ],
-      ),
-    )!;
 
-    expect(plan.profile.firstName, current.profile.firstName);
-    expect(plan.profile.workDays, ['lundi', 'mardi']);
-    expect(plan.changedFields, {'workDays', 'workTimeRanges'});
+    expect(
+      adapter.plan(
+        accountScopeId: 'account-a',
+        current: current,
+        proposed: current.profile.copyWith(
+          planningStyle: 'Souple',
+          automaticTravelCalculationEnabled: true,
+        ),
+      ),
+      isNull,
+    );
+  });
+
+  test('ignores schedule-owned changes at the Profile boundary', () {
+    final current = _state(_profile());
+    expect(
+      adapter.plan(
+        accountScopeId: 'account-a',
+        current: current,
+        proposed: current.profile.copyWith(
+          workDays: const ['lundi', 'mardi'],
+          workTimeRanges: [
+            TimeRangeModel(startTime: '09:00', endTime: '17:00'),
+          ],
+        ),
+      ),
+      isNull,
+    );
   });
 }
 

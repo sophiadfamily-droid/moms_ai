@@ -160,6 +160,10 @@ final class LifeContextEngine {
           sectionByDomain[LifeContextDomain.routine]! as RoutineDomainSection,
       memoryDomain:
           sectionByDomain[LifeContextDomain.memory]! as MemoryDomainSection,
+      settingsDomain: sectionByDomain[LifeContextDomain.settings]!
+          as SettingsContextSection,
+      shoppingDomain:
+          sectionByDomain[LifeContextDomain.shopping]! as ShoppingDomainSection,
     );
     snapshot.validateCanonical();
     return snapshot;
@@ -175,6 +179,8 @@ final class LifeContextEngine {
         LifeContextDomain.task: snapshot.taskDomain!,
         LifeContextDomain.routine: snapshot.routineDomain!,
         LifeContextDomain.memory: snapshot.memoryDomain!,
+        LifeContextDomain.settings: snapshot.settingsDomain!,
+        LifeContextDomain.shopping: snapshot.shoppingDomain!,
       };
 
   void _validateSharedHumanRevision(
@@ -253,13 +259,16 @@ final class LifeContextEngine {
         LifeContextDomain.task => LifeContextSourceKind.taskService,
         LifeContextDomain.routine => LifeContextSourceKind.legacyProfileRoutine,
         LifeContextDomain.memory => LifeContextSourceKind.memoryFirestore,
+        LifeContextDomain.settings => LifeContextSourceKind.settingsRegistry,
+        LifeContextDomain.shopping => LifeContextSourceKind.shoppingService,
       },
       readAt: request.readAt,
       availability: LifeContextAvailability.unavailable,
       freshness: LifeContextFreshness.unknown,
       isLocal: domain == LifeContextDomain.human ||
           domain == LifeContextDomain.identity ||
-          domain == LifeContextDomain.routine,
+          domain == LifeContextDomain.routine ||
+          domain == LifeContextDomain.settings,
       itemCount: 0,
       errorCode: errorCode,
     );
@@ -276,6 +285,18 @@ final class LifeContextEngine {
           policyHealthMode: 'disabled',
           policyConfigured: false,
         ),
+      LifeContextDomain.settings => SettingsContextSection(
+          metadata: metadata,
+          automaticTravelCalculationEnabled: false,
+          notificationsEnabled: false,
+          notificationSoundEnabled: false,
+          notificationVibrationEnabled: false,
+          notificationBadgeEnabled: false,
+          actionAutonomyMode: 'suggestions',
+          memoryGeneralMode: 'askEveryTime',
+          memoryHealthMode: 'disabled',
+        ),
+      LifeContextDomain.shopping => ShoppingDomainSection(metadata: metadata),
     };
   }
 }

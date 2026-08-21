@@ -78,4 +78,23 @@ void main() {
       'retained',
     );
   });
+
+  test('preparing compatibility identifiers does not persist a profile',
+      () async {
+    SharedPreferences.setMockInitialValues({});
+    final prepared = StorageService.prepareCompatibilityProfile(
+      UserProfile(
+        firstName: 'Profil préparé',
+        familyStatus: '',
+        workStatus: '',
+        partnerName: '',
+        wantsNotifications: true,
+        children: const [],
+      ),
+    );
+
+    expect(prepared.humanPersonId, isNotEmpty);
+    final preferences = await SharedPreferences.getInstance();
+    expect(preferences.getString(StorageService.userProfileKey), isNull);
+  });
 }

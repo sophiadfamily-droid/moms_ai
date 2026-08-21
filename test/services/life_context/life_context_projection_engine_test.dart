@@ -187,6 +187,35 @@ void main() {
       expect(facts, isNot(contains(LifeContextProjectionFactKeys.title)));
     });
 
+    test('Courses projette seulement les achats actifs utiles au but', () {
+      final projection = _build(
+        _snapshot(
+          now,
+          shoppingItems: const [
+            ShoppingContextItem(
+              id: 'shopping-urgent',
+              title: 'Fraises',
+              isUrgent: true,
+              createdAt: '2026-07-20T00:00:00.000Z',
+              quantity: '2 barquettes',
+            ),
+          ],
+        ),
+        LifeContextConsumerPurpose.conversation,
+      );
+      final shopping = _section(
+        projection,
+        LifeContextProjectionSectionType.shopping,
+      );
+      final item = shopping.items.single;
+      final facts = {for (final fact in item.facts) fact.key: fact.value};
+
+      expect(item.id, contains('shopping-urgent'));
+      expect(facts[LifeContextProjectionFactKeys.title], 'Fraises');
+      expect(facts[LifeContextProjectionFactKeys.quantity], '2 barquettes');
+      expect(facts[LifeContextProjectionFactKeys.urgency], '1');
+    });
+
     test('texte libre est nettoyé et borné', () {
       final projection = _build(
         _snapshot(now, eventTitle: '${'A' * 100}\nsecret'),
@@ -276,6 +305,31 @@ void main() {
         'primary',
       );
     });
+
+    test('projette séparément les faits de profil utiles et non sensibles', () {
+      final projection = _build(
+        _snapshot(now),
+        LifeContextConsumerPurpose.conversation,
+      );
+      final profileFacts = _section(
+        projection,
+        LifeContextProjectionSectionType.human,
+      ).items.where((item) => item.type == 'personProfileFact');
+      final valuesByKey = <String, String>{};
+      for (final item in profileFacts) {
+        final facts = {for (final fact in item.facts) fact.key: fact.value};
+        valuesByKey[facts[LifeContextProjectionFactKeys.profileFactKey]!] =
+            facts[LifeContextProjectionFactKeys.profileFactValue]!;
+      }
+
+      expect(valuesByKey['city'], 'Paris');
+      expect(valuesByKey['homeAddress'], '10 rue des Lilas');
+      expect(valuesByKey['school'], 'École des Fleurs');
+      expect(valuesByKey['notes'], 'Préfère la sortie nord');
+      expect(valuesByKey, isNot(contains('allergies')));
+      expect(valuesByKey, isNot(contains('photoPath')));
+      expect(valuesByKey, isNot(contains('medicalNotes')));
+    });
   });
 
   group('projection Conversation', () {
@@ -347,6 +401,7 @@ void main() {
         constraints: snapshot.constraints,
         notes: snapshot.notes,
         memory: snapshot.memory,
+        settingsDomain: snapshot.settingsDomain,
         accountScopeId: snapshot.accountScopeId,
         snapshotId: snapshot.snapshotId,
         globalState: snapshot.globalState,
@@ -502,6 +557,27 @@ void main() {
   });
 
   group('projection Planning', () {
+    test('peut utiliser une adresse utile sans exposer le profil sensible', () {
+      final projection = _build(
+        _snapshot(now),
+        LifeContextConsumerPurpose.planning,
+      );
+      final profileFacts = _section(
+        projection,
+        LifeContextProjectionSectionType.human,
+      ).items.where((item) => item.type == 'personProfileFact');
+      final valuesByKey = <String, String>{};
+      for (final item in profileFacts) {
+        final facts = {for (final fact in item.facts) fact.key: fact.value};
+        valuesByKey[facts[LifeContextProjectionFactKeys.profileFactKey]!] =
+            facts[LifeContextProjectionFactKeys.profileFactValue]!;
+      }
+
+      expect(valuesByKey['homeAddress'], '10 rue des Lilas');
+      expect(valuesByKey, isNot(contains('city')));
+      expect(projection.toJson().toString(), isNot(contains('allergy-secret')));
+    });
+
     test('inclut temps, trajets, marges, récurrence, conflit et révision', () {
       final projection = _build(
         _snapshot(now, eventLocation: 'Clinique Saint-Jean'),
@@ -831,6 +907,7 @@ LifeContextSnapshot _snapshot(
   bool blocksResponsiblePerson = false,
   String? eventLocation,
   bool structuredTaskPriority = false,
+  List<ShoppingContextItem> shoppingItems = const [],
 }) {
   final events = <EventContextItem>[
     for (var index = 0; index < eventCount; index++)
@@ -893,6 +970,22 @@ LifeContextSnapshot _snapshot(
     accountScopeId: 'account-a',
     snapshotId: 'snapshot-a',
     globalState: LifeContextGlobalState.complete,
+    settingsDomain: SettingsContextSection(
+      metadata: _metadata(
+        LifeContextDomain.settings,
+        LifeContextSourceKind.settingsRegistry,
+        now,
+        LifeContextAvailability.available,
+      ),
+      automaticTravelCalculationEnabled: false,
+      notificationsEnabled: false,
+      notificationSoundEnabled: false,
+      notificationVibrationEnabled: false,
+      notificationBadgeEnabled: false,
+      actionAutonomyMode: 'suggestions',
+      memoryGeneralMode: 'askEveryTime',
+      memoryHealthMode: 'disabled',
+    ),
     human: HumanContextSection(
       metadata: _metadata(
         LifeContextDomain.human,
@@ -909,6 +1002,32 @@ LifeContextSnapshot _snapshot(
           confirmation: 'confirmed',
           familyStatus: 'Je vis en couple',
           workStatus: 'Je suis salariée',
+          profileFacts: [
+            HumanContextProfileFact(
+              key: 'city',
+              value: 'Paris',
+              source: 'explicitUserInput',
+              confirmation: 'confirmed',
+            ),
+            HumanContextProfileFact(
+              key: 'homeAddress',
+              value: '10 rue des Lilas',
+              source: 'explicitUserInput',
+              confirmation: 'confirmed',
+            ),
+            HumanContextProfileFact(
+              key: 'allergies',
+              value: 'allergy-secret',
+              source: 'explicitUserInput',
+              confirmation: 'confirmed',
+            ),
+            HumanContextProfileFact(
+              key: 'profilePhotoPath',
+              value: '/private/photo-secret.jpg',
+              source: 'explicitUserInput',
+              confirmation: 'confirmed',
+            ),
+          ],
         ),
         HumanContextPerson(
           id: 'person-child',
@@ -917,6 +1036,26 @@ LifeContextSnapshot _snapshot(
           confirmation: 'confirmed',
           identityEntityId: 'identity-child',
           birthDate: '2018-06-05',
+          profileFacts: [
+            HumanContextProfileFact(
+              key: 'school',
+              value: 'École des Fleurs',
+              source: 'explicitUserInput',
+              confirmation: 'confirmed',
+            ),
+            HumanContextProfileFact(
+              key: 'notes',
+              value: 'Préfère la sortie nord',
+              source: 'explicitUserInput',
+              confirmation: 'confirmed',
+            ),
+            HumanContextProfileFact(
+              key: 'medicalNotes',
+              value: 'medical-secret',
+              source: 'explicitUserInput',
+              confirmation: 'confirmed',
+            ),
+          ],
         ),
       ],
       relationships: [
@@ -1071,6 +1210,17 @@ LifeContextSnapshot _snapshot(
                 ),
             ]
           : const [],
+    ),
+    shoppingDomain: ShoppingDomainSection(
+      metadata: _metadata(
+        LifeContextDomain.shopping,
+        LifeContextSourceKind.shoppingService,
+        now,
+        shoppingItems.isEmpty
+            ? LifeContextAvailability.empty
+            : LifeContextAvailability.available,
+      ),
+      activeItems: shoppingItems,
     ),
     routineDomain: RoutineDomainSection(
       metadata: LifeContextSourceMetadata(

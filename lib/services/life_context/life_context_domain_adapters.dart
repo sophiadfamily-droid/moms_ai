@@ -1,14 +1,19 @@
 import '../../models/event_model.dart';
+import '../../models/action_autonomy_policy.dart';
+import '../../models/app_settings.dart';
 import '../../models/human/human_model.dart';
 import '../../models/human/human_model_persistence.dart';
 import '../../models/life_context/life_context_domains.dart';
 import '../../models/task_model.dart';
+import '../../models/local_notification_models.dart';
 import '../../models/user_profile.dart';
 import '../../models/memory_policy.dart';
 import '../../models/memory_sync.dart';
 import '../../models/routine_model.dart';
+import '../../models/shopping_item_model.dart';
 import '../memory_sync_local_repository.dart';
 import '../memory_consumption_policy.dart';
+import '../human/human_profile_facts_service.dart';
 import '../school_schedule_metadata_service.dart';
 import '../structured_schedule_profile_service.dart';
 import 'life_context_adapter.dart';
@@ -41,12 +46,24 @@ typedef MemorySyncStateLoader = Future<MemorySyncLocalState?> Function(
 typedef RoutineContextLoader = Future<List<RoutineModel>> Function(
   String accountScopeId,
 );
+typedef AppSettingsContextLoader = Future<AppSettings> Function(
+  String accountScopeId,
+);
+typedef NotificationSettingsContextLoader = Future<NotificationSettings>
+    Function(String accountScopeId);
+typedef ActionAutonomyContextLoader = Future<ActionAutonomyPolicy> Function(
+  String accountScopeId,
+);
+typedef ShoppingContextLoader = Future<List<ShoppingItemModel>> Function(
+  String accountScopeId,
+);
 
 abstract final class LifeContextSourceBudgets {
   static const int events = 200;
   static const int tasks = 200;
   static const int routines = 200;
   static const int memories = 500;
+  static const int shoppingItems = 100;
 }
 
 final class HumanModelLifeContextAdapter implements LifeContextDomainAdapter {
@@ -130,14 +147,9 @@ final class HumanModelLifeContextAdapter implements LifeContextDomainAdapter {
                 confirmation: person.evidence.confirmation.name,
                 identityEntityId: person.identityLink?.entityId,
                 birthDate: _humanBirthDate(person),
-                familyStatus: _humanTextField(person, 'familyStatus') ??
-                    (person.id == model.primaryPersonId
-                        ? _legacyProfileText(model, 'familyStatus')
-                        : null),
-                workStatus: _humanTextField(person, 'workStatus') ??
-                    (person.id == model.primaryPersonId
-                        ? _legacyProfileText(model, 'workStatus')
-                        : null),
+                familyStatus: _humanTextField(person, 'familyStatus'),
+                workStatus: _humanTextField(person, 'workStatus'),
+                profileFacts: _humanProfileFacts(person),
               ),
             )
             .toList(),
@@ -334,6 +346,33 @@ final class HumanModelLifeContextAdapter implements LifeContextDomainAdapter {
       );
 }
 
+List<HumanContextProfileFact> _humanProfileFacts(HumanPerson person) {
+  final facts = <HumanContextProfileFact>[];
+  for (final entry in HumanProfileFactsV1.contextClasses.entries) {
+    if (entry.value == HumanProfileFactContextClass.excluded) continue;
+    final rawValue = person.customFields[entry.key];
+    final value = switch (rawValue) {
+      String text when text.trim().isNotEmpty => text.trim(),
+      num number => number.toString(),
+      bool flag => flag.toString(),
+      _ => null,
+    };
+    if (value == null) continue;
+    final evidence =
+        HumanProfileFactsV1.evidenceFor(person, entry.key) ?? person.evidence;
+    facts.add(
+      HumanContextProfileFact(
+        key: entry.key,
+        value: value,
+        source: evidence.source.name,
+        confirmation: evidence.confirmation.name,
+      ),
+    );
+  }
+  facts.sort((first, second) => first.key.compareTo(second.key));
+  return facts;
+}
+
 String? _structuredString(Map<String, Object?> values, String key) {
   final value = values[key];
   if (value is! String || value.trim().isEmpty) return null;
@@ -403,13 +442,6 @@ String? _humanBirthDate(HumanPerson person) {
 
 String? _humanTextField(HumanPerson person, String key) {
   final value = person.customFields[key];
-  if (value is! String) return null;
-  final normalized = value.trim();
-  return normalized.isEmpty ? null : normalized;
-}
-
-String? _legacyProfileText(HumanModel model, String key) {
-  final value = model.legacyProfile[key];
   if (value is! String) return null;
   final normalized = value.trim();
   return normalized.isEmpty ? null : normalized;
@@ -1039,6 +1071,19 @@ final class RoutineLifeContextAdapter implements LifeContextDomainAdapter {
           }
         }
       }
+      final canonicalProfileScheduleKeys = routines
+          .where(
+            (item) => item.source == 'humanModel.structuredSchedulesV1',
+          )
+          .map(_routineScheduleIdentity)
+          .toSet();
+      routines.removeWhere(
+        (item) =>
+            item.source.startsWith('legacyProfile.') &&
+            canonicalProfileScheduleKeys.contains(
+              _routineScheduleIdentity(item),
+            ),
+      );
       routines.sort((a, b) => a.id.compareTo(b.id));
       final sourceCount = routines.length;
       final legacyRoutineCount = sourceCount - canonical.length;
@@ -1247,6 +1292,211 @@ final class MemoryLifeContextAdapter implements LifeContextDomainAdapter {
       );
 }
 
+final class SettingsLifeContextAdapter implements LifeContextDomainAdapter {
+  const SettingsLifeContextAdapter({
+    required AppSettingsContextLoader loadAppSettings,
+    required NotificationSettingsContextLoader loadNotifications,
+    required ActionAutonomyContextLoader loadActionAutonomy,
+    required MemoryPolicyContextLoader loadMemoryPolicy,
+  })  : _loadAppSettings = loadAppSettings,
+        _loadNotifications = loadNotifications,
+        _loadActionAutonomy = loadActionAutonomy,
+        _loadMemoryPolicy = loadMemoryPolicy;
+
+  final AppSettingsContextLoader _loadAppSettings;
+  final NotificationSettingsContextLoader _loadNotifications;
+  final ActionAutonomyContextLoader _loadActionAutonomy;
+  final MemoryPolicyContextLoader _loadMemoryPolicy;
+
+  @override
+  LifeContextDomain get domain => LifeContextDomain.settings;
+
+  @override
+  Future<SettingsContextSection> load(
+    LifeContextAdapterRequest request,
+  ) async {
+    try {
+      final results = await Future.wait<Object?>([
+        _loadAppSettings(request.accountScopeId),
+        _loadNotifications(request.accountScopeId),
+        _loadActionAutonomy(request.accountScopeId),
+        _loadMemoryPolicy(request.accountScopeId),
+      ]);
+      final appSettings = results[0] as AppSettings;
+      final notifications = results[1] as NotificationSettings;
+      final autonomy = results[2] as ActionAutonomyPolicy;
+      final memory = results[3] as MemoryPolicy;
+      if (appSettings.accountScopeId != request.accountScopeId ||
+          notifications.accountScopeId != request.accountScopeId ||
+          autonomy.accountScopeId != request.accountScopeId ||
+          memory.accountScopeId != request.accountScopeId) {
+        return _empty(
+          request,
+          LifeContextAvailability.accountMismatch,
+          'settings_account_mismatch',
+        );
+      }
+      appSettings.validate();
+      notifications.validate();
+      autonomy.validate();
+      memory.validate();
+      return SettingsContextSection(
+        metadata: _metadata(
+          request,
+          domain,
+          LifeContextSourceKind.settingsRegistry,
+          LifeContextAvailability.available,
+          LifeContextFreshness.current,
+          true,
+          4,
+          syncStatus: 'aggregated',
+          revision: appSettings.revision,
+        ),
+        automaticTravelCalculationEnabled:
+            appSettings.automaticTravelCalculationEnabled,
+        notificationsEnabled: notifications.enabled,
+        notificationSoundEnabled: notifications.soundEnabled,
+        notificationVibrationEnabled: notifications.vibrationEnabled,
+        notificationBadgeEnabled: notifications.badgeEnabled,
+        actionAutonomyMode: autonomy.mode.name,
+        memoryGeneralMode: memory.generalMode.name,
+        memoryHealthMode: memory.healthMode.name,
+        planningStyle: _optional(appSettings.planningStyle),
+        notificationLevel: _optional(appSettings.notificationLevel),
+        spokenLanguage: _optional(appSettings.spokenLanguage),
+        country: _optional(appSettings.country),
+        timeZone: _optional(appSettings.timeZone),
+      );
+    } on Object {
+      return _empty(
+        request,
+        LifeContextAvailability.unavailable,
+        'settings_domain_unavailable',
+      );
+    }
+  }
+
+  SettingsContextSection _empty(
+    LifeContextAdapterRequest request,
+    LifeContextAvailability availability,
+    String errorCode,
+  ) =>
+      SettingsContextSection(
+        metadata: _metadata(
+          request,
+          domain,
+          LifeContextSourceKind.settingsRegistry,
+          availability,
+          LifeContextFreshness.unknown,
+          true,
+          0,
+          errorCode: errorCode,
+        ),
+        automaticTravelCalculationEnabled: false,
+        notificationsEnabled: false,
+        notificationSoundEnabled: false,
+        notificationVibrationEnabled: false,
+        notificationBadgeEnabled: false,
+        actionAutonomyMode: ActionAutonomyMode.suggestions.name,
+        memoryGeneralMode: MemoryGeneralMode.askEveryTime.name,
+        memoryHealthMode: MemoryHealthMode.disabled.name,
+      );
+}
+
+final class ShoppingLifeContextAdapter implements LifeContextDomainAdapter {
+  const ShoppingLifeContextAdapter({required ShoppingContextLoader load})
+      : _load = load;
+
+  final ShoppingContextLoader _load;
+
+  @override
+  LifeContextDomain get domain => LifeContextDomain.shopping;
+
+  @override
+  Future<ShoppingDomainSection> load(
+    LifeContextAdapterRequest request,
+  ) async {
+    try {
+      final source = await _load(request.accountScopeId);
+      final active = source.where((item) => !item.isBought).map((item) {
+        final id = item.id?.trim();
+        if (id == null || id.isEmpty) {
+          throw const FormatException('shopping_item_missing_stable_id');
+        }
+        return ShoppingContextItem(
+          id: id,
+          title: item.title.trim(),
+          isUrgent: item.isUrgent,
+          createdAt: item.createdAt.toUtc().toIso8601String(),
+          quantity: _optional(item.quantity),
+          notes: _optional(item.notes),
+        );
+      }).toList()
+        ..sort((first, second) {
+          if (first.isUrgent != second.isUrgent) {
+            return first.isUrgent ? -1 : 1;
+          }
+          final created = first.createdAt.compareTo(second.createdAt);
+          return created != 0 ? created : first.id.compareTo(second.id);
+        });
+      final truncated = active.length > LifeContextSourceBudgets.shoppingItems;
+      final items = active
+          .take(LifeContextSourceBudgets.shoppingItems)
+          .toList(growable: false);
+      return ShoppingDomainSection(
+        metadata: _metadata(
+          request,
+          domain,
+          LifeContextSourceKind.shoppingService,
+          items.isEmpty
+              ? LifeContextAvailability.empty
+              : LifeContextAvailability.available,
+          LifeContextFreshness.current,
+          false,
+          items.length,
+          syncStatus: 'activeOnly',
+          truncationState: truncated
+              ? LifeContextTruncationState.truncated
+              : LifeContextTruncationState.complete,
+          warningCodes:
+              truncated ? const ['shopping_source_truncated'] : const [],
+        ),
+        activeItems: items,
+      );
+    } on FormatException {
+      return _empty(
+        request,
+        LifeContextAvailability.corrupted,
+        'invalid_shopping_domain',
+      );
+    } on Object {
+      return _empty(
+        request,
+        LifeContextAvailability.unavailable,
+        'shopping_domain_unavailable',
+      );
+    }
+  }
+
+  ShoppingDomainSection _empty(
+    LifeContextAdapterRequest request,
+    LifeContextAvailability availability,
+    String errorCode,
+  ) =>
+      ShoppingDomainSection(
+        metadata: _metadata(
+          request,
+          domain,
+          LifeContextSourceKind.shoppingService,
+          availability,
+          LifeContextFreshness.unknown,
+          false,
+          0,
+          errorCode: errorCode,
+        ),
+      );
+}
+
 LifeContextSourceMetadata _metadata(
   LifeContextAdapterRequest request,
   LifeContextDomain domain,
@@ -1281,6 +1531,46 @@ String? _optional(String? value) {
   final trimmed = value?.trim();
   return trimmed == null || trimmed.isEmpty ? null : trimmed;
 }
+
+String _routineScheduleIdentity(RoutineContextItem item) {
+  final days = item.days.map(_routineWeekday).whereType<int>().toSet().toList()
+    ..sort();
+  final recurrence = item.recurrenceType == 'dated' ? 'dated' : 'weekly';
+  return [
+    item.humanPersonId?.trim() ?? '',
+    _normalizedScheduleText(item.label),
+    days.join(','),
+    item.startTime?.trim() ?? '',
+    item.endTime?.trim() ?? '',
+    recurrence,
+    if (recurrence == 'dated') item.anchorDateIso?.trim() ?? '',
+  ].join('|');
+}
+
+int? _routineWeekday(String value) => switch (_normalizedScheduleText(value)) {
+      '1' || 'lundi' => DateTime.monday,
+      '2' || 'mardi' => DateTime.tuesday,
+      '3' || 'mercredi' => DateTime.wednesday,
+      '4' || 'jeudi' => DateTime.thursday,
+      '5' || 'vendredi' => DateTime.friday,
+      '6' || 'samedi' => DateTime.saturday,
+      '7' || 'dimanche' => DateTime.sunday,
+      _ => null,
+    };
+
+String _normalizedScheduleText(String? value) => (value ?? '')
+    .trim()
+    .toLowerCase()
+    .replaceAll('é', 'e')
+    .replaceAll('è', 'e')
+    .replaceAll('ê', 'e')
+    .replaceAll('à', 'a')
+    .replaceAll('â', 'a')
+    .replaceAll('î', 'i')
+    .replaceAll('ï', 'i')
+    .replaceAll('ô', 'o')
+    .replaceAll('ù', 'u')
+    .replaceAll('û', 'u');
 
 LifeContextAvailability _humanAvailability(HumanModelSyncStatus status) =>
     switch (status) {

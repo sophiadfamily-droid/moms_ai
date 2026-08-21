@@ -5,6 +5,7 @@ import 'package:moms_ai/models/human/human_model.dart';
 import 'package:moms_ai/models/user_profile.dart';
 import 'package:moms_ai/services/human/human_model_local_repository.dart';
 import 'package:moms_ai/services/human/human_model_service.dart';
+import 'package:moms_ai/services/human/human_profile_facts_service.dart';
 import 'package:moms_ai/services/human/legacy_user_profile_human_adapter.dart';
 import 'package:moms_ai/services/human/legacy_user_profile_reconciliation_service.dart';
 import 'package:moms_ai/services/human/human_model_user_profile_projection_service.dart';
@@ -322,6 +323,195 @@ void main() {
         result.proposed.personById('person-alex')?.customFields,
         isNot(contains('usefulNotes')),
       );
+    });
+
+    test('migre les faits durables de chaque personne avec leur provenance',
+        () {
+      final child = _child('Lou', birthDate: '2018-03-04').copyWith(
+        humanPersonId: 'person-lou',
+        gender: 'Fille',
+        className: 'CE2',
+        allergies: 'Arachides',
+        doctor: 'Docteure Martin',
+      );
+      final profile = _profile(partnerName: 'Alex', children: [child]).copyWith(
+        humanPersonId: 'person-main',
+        partnerHumanPersonId: 'person-alex',
+        city: 'Trondheim',
+        homeAddress: '1 rue du Test',
+        workAddress: '2 avenue du Travail',
+        vehicleInfo: 'Voiture familiale',
+        allergies: 'Pollen',
+        doctorName: 'Docteure Dupont',
+        emergencyContactName: 'Sam',
+        partnerNotes: 'Travaille parfois de nuit',
+        partnerWorkSchedule: 'Planning variable',
+      );
+
+      final model = const LegacyUserProfileHumanAdapter().migrate(
+        profile: profile,
+        legacyProfile: profile.toJson(),
+        accountScopeId: 'account-a',
+        idGenerator: FakeEntityIdGenerator([
+          'relation-alex',
+          'relation-lou',
+        ]),
+      );
+
+      final primary = model.personById('person-main')!;
+      final partner = model.personById('person-alex')!;
+      final lou = model.personById('person-lou')!;
+      expect(primary.customFields, containsPair('city', 'Trondheim'));
+      expect(
+          primary.customFields, containsPair('homeAddress', '1 rue du Test'));
+      expect(primary.customFields, containsPair('allergies', 'Pollen'));
+      expect(partner.customFields,
+          containsPair('usefulNotes', 'Travaille parfois de nuit'));
+      expect(lou.customFields, containsPair('className', 'CE2'));
+      expect(lou.customFields, containsPair('allergies', 'Arachides'));
+      expect(
+        HumanProfileFactsV1.evidenceFor(primary, 'city'),
+        isA<HumanEvidence>()
+            .having((value) => value.source, 'source',
+                HumanInformationSource.legacyProfile)
+            .having((value) => value.confirmation, 'confirmation',
+                HumanConfirmationStatus.needsConfirmation),
+      );
+
+      final restored = const HumanModelUserProfileProjectionService().project(
+        model: model,
+        legacy: _profile(),
+      );
+      expect(restored.city, 'Trondheim');
+      expect(restored.homeAddress, '1 rue du Test');
+      expect(restored.partnerNotes, 'Travaille parfois de nuit');
+      expect(restored.partnerWorkSchedule, 'Planning variable');
+      expect(restored.children.single.className, 'CE2');
+      expect(restored.children.single.allergies, 'Arachides');
+    });
+
+    test('une édition explicite remplace le fait et confirme sa provenance',
+        () {
+      final initial = _profile().copyWith(
+        humanPersonId: 'person-main',
+        city: 'Ancienne ville',
+        allergies: 'Ancienne allergie',
+      );
+      final current = const LegacyUserProfileHumanAdapter().migrate(
+        profile: initial,
+        legacyProfile: initial.toJson(),
+        accountScopeId: 'account-a',
+        idGenerator: FakeEntityIdGenerator(const []),
+      );
+      final edited = initial.copyWith(
+        city: 'Nouvelle ville',
+        allergies: '',
+      );
+
+      final updated = const LegacyUserProfileReconciliationService()
+          .applyExplicitProfileEdit(
+        current: current,
+        profile: edited,
+        idGenerator: FakeEntityIdGenerator(const []),
+      );
+      final primary = updated.personById('person-main')!;
+      expect(primary.customFields, containsPair('city', 'Nouvelle ville'));
+      expect(primary.customFields, isNot(contains('allergies')));
+      expect(HumanProfileFactsV1.evidenceFor(primary, 'allergies'), isNull);
+      expect(
+        HumanProfileFactsV1.evidenceFor(primary, 'city'),
+        isA<HumanEvidence>()
+            .having((value) => value.source, 'source',
+                HumanInformationSource.explicitUserInput)
+            .having((value) => value.confirmation, 'confirmation',
+                HumanConfirmationStatus.confirmed),
+      );
+    });
+
+    test(
+        'une ancienne copie du profil ne remplace pas un fait confirmé ensuite',
+        () {
+      final initial = _profile().copyWith(
+        humanPersonId: 'person-main',
+        city: 'Ancienne ville',
+      );
+      final migrated = const LegacyUserProfileHumanAdapter().migrate(
+        profile: initial,
+        legacyProfile: initial.toJson(),
+        accountScopeId: 'account-a',
+        idGenerator: FakeEntityIdGenerator(const []),
+      );
+      final confirmed = const LegacyUserProfileReconciliationService()
+          .applyExplicitProfileEdit(
+        current: migrated,
+        profile: initial.copyWith(city: 'Ville confirmée'),
+        idGenerator: FakeEntityIdGenerator(const []),
+      );
+
+      final result = const LegacyUserProfileReconciliationService().reconcile(
+        current: confirmed,
+        legacyProfile: initial,
+        rawLegacyProfile: initial.toJson(),
+      );
+
+      final primary = result.proposed.personById('person-main')!;
+      expect(primary.customFields, containsPair('city', 'Ville confirmée'));
+      expect(
+        HumanProfileFactsV1.evidenceFor(primary, 'city'),
+        isA<HumanEvidence>()
+            .having((value) => value.source, 'source',
+                HumanInformationSource.explicitUserInput)
+            .having((value) => value.confirmation, 'confirmation',
+                HumanConfirmationStatus.confirmed),
+      );
+    });
+
+    test('une personne ajoutée par réconciliation reçoit aussi ses faits', () {
+      final initial = _profile().copyWith(humanPersonId: 'person-main');
+      final migrated = const LegacyUserProfileHumanAdapter().migrate(
+        profile: initial,
+        legacyProfile: initial.toJson(),
+        accountScopeId: 'account-a',
+        idGenerator: FakeEntityIdGenerator(const []),
+      );
+      final partnerAndChild = initial.copyWith(
+        partnerHumanPersonId: 'person-alex',
+        partnerName: 'Alex',
+        partnerNotes: 'Travail de nuit',
+        children: [
+          _child('Lou').copyWith(
+            humanPersonId: 'person-lou',
+            className: 'CE2',
+          ),
+        ],
+      );
+
+      final result = const LegacyUserProfileReconciliationService().reconcile(
+        current: migrated,
+        legacyProfile: partnerAndChild,
+        idGenerator: FakeEntityIdGenerator(['relation-alex', 'relation-lou']),
+      );
+
+      expect(
+        result.proposed.personById('person-alex')?.customFields,
+        containsPair('usefulNotes', 'Travail de nuit'),
+      );
+      expect(
+        result.proposed.personById('person-lou')?.customFields,
+        containsPair('className', 'CE2'),
+      );
+    });
+
+    test('tous les champs V1 connus ont une destination de migration', () {
+      final fields = _profile().toJson().keys.toSet();
+      final classified = <String>{
+        ...HumanProfileFactsV1.coreHumanFields,
+        ...HumanProfileFactsV1.relationshipFields,
+        ...HumanProfileFactsV1.settingsFields,
+        ...HumanProfileFactsV1.memoryFields,
+        ...HumanProfileFactsV1.scheduleFields,
+      };
+      expect(fields.difference(classified), isEmpty);
     });
   });
 

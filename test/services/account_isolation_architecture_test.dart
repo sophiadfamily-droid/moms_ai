@@ -3,6 +3,21 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('obsolete unscoped application storage cannot return', () {
+    expect(File('lib/services/app_data_service.dart').existsSync(), isFalse);
+
+    for (final entity in Directory('lib').listSync(recursive: true)) {
+      if (entity is! File || !entity.path.endsWith('.dart')) continue;
+      final source = entity.readAsStringSync();
+      expect(source, isNot(contains('AppDataService')), reason: entity.path);
+      expect(
+        source,
+        isNot(contains("import 'services/app_data_service.dart'")),
+        reason: entity.path,
+      );
+    }
+  });
+
   test('account changes rebuild visible state and invalidate session state',
       () {
     final app = File('lib/main.dart').readAsStringSync();
@@ -37,6 +52,23 @@ void main() {
     expect(journal, contains("scope ?? guestScopeKey"));
     expect(journal, contains('event_sync_account_scope_mismatch'));
     expect(dashboard, contains(r"'$familyPhotosKey:"));
+  });
+
+  test('authenticated Task and Shopping never read the guest cache', () {
+    final tasks = File('lib/services/task_service.dart').readAsStringSync();
+    final shopping =
+        File('lib/services/shopping_service.dart').readAsStringSync();
+
+    expect(
+      tasks,
+      contains('scope == null ? prefs.getStringList(tasksKey) : null'),
+    );
+    expect(
+      shopping,
+      contains('scope == null ? prefs.getStringList(shoppingKey) : null'),
+    );
+    expect(tasks, contains('await _sync.bootstrap(scope)'));
+    expect(shopping, contains('await _sync.bootstrap(scope)'));
   });
 
   test('Firestore has no permissive user-descendant fallback', () {

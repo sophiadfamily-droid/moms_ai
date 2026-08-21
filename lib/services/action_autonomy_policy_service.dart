@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/action_autonomy_policy.dart';
+import 'settings_context_version.dart';
 
 abstract interface class ActionAutonomyPolicyRepository {
   Future<ActionAutonomyPolicy?> load(String accountScopeId);
@@ -110,6 +111,7 @@ final class ActionAutonomyPolicyService {
         'action_autonomy_policy_verification_failed',
       );
     }
+    SettingsContextVersion.notifyChanged();
     return persisted;
   }
 

@@ -427,6 +427,22 @@ LifeContextSnapshot _snapshot(
     accountScopeId: 'account-a',
     snapshotId: 'snapshot-a',
     globalState: LifeContextGlobalState.complete,
+    settingsDomain: SettingsContextSection(
+      metadata: _metadata(
+        LifeContextDomain.settings,
+        LifeContextSourceKind.settingsRegistry,
+        at,
+        1,
+      ),
+      automaticTravelCalculationEnabled: false,
+      notificationsEnabled: false,
+      notificationSoundEnabled: false,
+      notificationVibrationEnabled: false,
+      notificationBadgeEnabled: false,
+      actionAutonomyMode: 'suggestions',
+      memoryGeneralMode: 'askEveryTime',
+      memoryHealthMode: 'disabled',
+    ),
     human: humanSection,
     identityDomain: IdentityDomainSection(
       metadata: _metadata(

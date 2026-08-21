@@ -3,6 +3,8 @@ import 'dart:convert';
 import '../../core/identity/entity_id_generator.dart';
 import '../../models/human/human_model.dart';
 import '../../models/user_profile.dart';
+import 'human_profile_facts_service.dart';
+import '../structured_schedule_profile_service.dart';
 
 enum LegacyHumanReconciliationStatus {
   unchanged,
@@ -57,6 +59,8 @@ final class LegacyUserProfileReconciliationService {
       String birthDate, {
       String? familyStatus,
       String? workStatus,
+      Map<String, Object?> profileFacts = const {},
+      Set<String> managedProfileFields = const {},
     }) {
       if (id.trim().isEmpty) return;
       final index = persons.indexWhere((person) => person.id == id);
@@ -79,20 +83,26 @@ final class LegacyUserProfileReconciliationService {
       if (workStatus != null && workStatus.trim().isEmpty) {
         fields.remove('workStatus');
       }
+      final canonicalFields = HumanProfileFactsV1.merge(
+        current: fields,
+        incoming: profileFacts,
+        managedFields: managedProfileFields,
+        evidence: _explicitEvidence,
+      );
       final person = existing == null
           ? HumanPerson(
               id: id,
               accountScopeId: current.accountScopeId,
               displayName: _optional(name),
               evidence: _explicitEvidence,
-              customFields: fields,
+              customFields: canonicalFields,
             )
           : existing.copyWith(
               displayName: _optional(name),
               clearDisplayName: name.trim().isEmpty,
               status: HumanPersonStatus.active,
               evidence: _explicitEvidence,
-              customFields: fields,
+              customFields: canonicalFields,
             );
       if (index < 0) {
         persons.add(person);
@@ -139,10 +149,18 @@ final class LegacyUserProfileReconciliationService {
       profile.birthDate,
       familyStatus: profile.familyStatus,
       workStatus: profile.workStatus,
+      profileFacts: HumanProfileFactsV1.primaryValues(profile),
+      managedProfileFields: HumanProfileFactsV1.primaryFields,
     );
     final partnerId = profile.partnerHumanPersonId.trim();
     if (partnerId.isNotEmpty && profile.partnerName.trim().isNotEmpty) {
-      upsertPerson(partnerId, profile.partnerName, profile.partnerBirthDate);
+      upsertPerson(
+        partnerId,
+        profile.partnerName,
+        profile.partnerBirthDate,
+        profileFacts: HumanProfileFactsV1.partnerValues(profile),
+        managedProfileFields: HumanProfileFactsV1.partnerFields,
+      );
       ensureRelationship(
         partnerId,
         HumanRelationshipTypes.partner,
@@ -152,7 +170,13 @@ final class LegacyUserProfileReconciliationService {
     for (final child in profile.children) {
       final childId = child.humanPersonId.trim();
       if (childId.isEmpty) continue;
-      upsertPerson(childId, child.firstName, child.birthDate);
+      upsertPerson(
+        childId,
+        child.firstName,
+        child.birthDate,
+        profileFacts: HumanProfileFactsV1.childValues(child),
+        managedProfileFields: HumanProfileFactsV1.childFields,
+      );
       ensureRelationship(childId, HumanRelationshipTypes.child);
     }
 
@@ -177,10 +201,14 @@ final class LegacyUserProfileReconciliationService {
 
     final legacy = Map<String, Object?>.from(profile.toJson())
       ..['humanPersonId'] = current.primaryPersonId;
-    return current.copyWith(
+    final updated = current.copyWith(
       persons: persons,
       relationships: relationships,
       legacyProfile: legacy,
+    );
+    return StructuredScheduleProfileService.reconcileCompatibilitySchedules(
+      model: updated,
+      profile: profile.copyWith(humanPersonId: current.primaryPersonId),
     );
   }
 
@@ -212,8 +240,10 @@ final class LegacyUserProfileReconciliationService {
 
     void syncProfileFields(
       String personId,
-      Map<String, String> managedFields,
-    ) {
+      Map<String, String> managedFields, {
+      Map<String, Object?> profileFacts = const {},
+      Set<String> managedProfileFactFields = const {},
+    }) {
       final index = nextPersons.indexWhere((person) => person.id == personId);
       if (index < 0) return;
       final person = nextPersons[index];
@@ -227,7 +257,19 @@ final class LegacyUserProfileReconciliationService {
           fields[entry.key] = value;
         }
       }
-      nextPersons[index] = person.copyWith(customFields: fields);
+      nextPersons[index] = person.copyWith(
+        customFields: HumanProfileFactsV1.merge(
+          current: fields,
+          incoming: profileFacts,
+          managedFields: managedProfileFactFields,
+          evidence: const HumanEvidence(
+            source: HumanInformationSource.legacyProfile,
+            confirmation: HumanConfirmationStatus.needsConfirmation,
+          ),
+          clearEmpty: false,
+          preserveConfirmed: true,
+        ),
+      );
     }
 
     next['humanPersonId'] = current.primaryPersonId;
@@ -238,6 +280,8 @@ final class LegacyUserProfileReconciliationService {
         'familyStatus': legacyProfile.familyStatus,
         'workStatus': legacyProfile.workStatus,
       },
+      profileFacts: HumanProfileFactsV1.primaryValues(legacyProfile),
+      managedProfileFactFields: HumanProfileFactsV1.primaryFields,
     );
     final nextFirstName = legacyProfile.firstName.trim();
     if (nextFirstName.isNotEmpty &&
@@ -272,10 +316,18 @@ final class LegacyUserProfileReconciliationService {
             source: HumanInformationSource.legacyProfile,
             confirmation: HumanConfirmationStatus.needsConfirmation,
           ),
-          customFields: {
-            if (legacyProfile.partnerBirthDate.trim().isNotEmpty)
-              'birthDate': legacyProfile.partnerBirthDate.trim(),
-          },
+          customFields: HumanProfileFactsV1.merge(
+            current: {
+              if (legacyProfile.partnerBirthDate.trim().isNotEmpty)
+                'birthDate': legacyProfile.partnerBirthDate.trim(),
+            },
+            incoming: HumanProfileFactsV1.partnerValues(legacyProfile),
+            managedFields: HumanProfileFactsV1.partnerFields,
+            evidence: const HumanEvidence(
+              source: HumanInformationSource.legacyProfile,
+              confirmation: HumanConfirmationStatus.needsConfirmation,
+            ),
+          ),
         ),
       );
       nextRelationships.add(
@@ -303,6 +355,8 @@ final class LegacyUserProfileReconciliationService {
       syncProfileFields(
         effectivePartnerId,
         {'birthDate': legacyProfile.partnerBirthDate},
+        profileFacts: HumanProfileFactsV1.partnerValues(legacyProfile),
+        managedProfileFactFields: HumanProfileFactsV1.partnerFields,
       );
       final relationshipIndex = nextRelationships.indexWhere(
         (relation) =>
@@ -344,10 +398,20 @@ final class LegacyUserProfileReconciliationService {
                 source: HumanInformationSource.legacyProfile,
                 confirmation: HumanConfirmationStatus.needsConfirmation,
               ),
-              customFields: {
-                if (_string(child['birthDate']) case final birthDate?)
-                  'birthDate': birthDate,
-              },
+              customFields: HumanProfileFactsV1.merge(
+                current: {
+                  if (_string(child['birthDate']) case final birthDate?)
+                    'birthDate': birthDate,
+                },
+                incoming: HumanProfileFactsV1.childValues(
+                  ChildProfile.fromJson(Map<String, dynamic>.from(child)),
+                ),
+                managedFields: HumanProfileFactsV1.childFields,
+                evidence: const HumanEvidence(
+                  source: HumanInformationSource.legacyProfile,
+                  confirmation: HumanConfirmationStatus.needsConfirmation,
+                ),
+              ),
             ),
           );
           nextRelationships.add(
@@ -379,6 +443,10 @@ final class LegacyUserProfileReconciliationService {
       syncProfileFields(
         id,
         {'birthDate': _string(child['birthDate']) ?? ''},
+        profileFacts: HumanProfileFactsV1.childValues(
+          ChildProfile.fromJson(Map<String, dynamic>.from(child)),
+        ),
+        managedProfileFactFields: HumanProfileFactsV1.childFields,
       );
       enrichedChildren.add({...matched, ...child, 'humanPersonId': id});
     }
@@ -387,10 +455,14 @@ final class LegacyUserProfileReconciliationService {
     }
     next['children'] = enrichedChildren;
 
-    final proposed = current.copyWith(
-      persons: nextPersons,
-      relationships: nextRelationships,
-      legacyProfile: next,
+    final proposed =
+        StructuredScheduleProfileService.reconcileCompatibilitySchedules(
+      model: current.copyWith(
+        persons: nextPersons,
+        relationships: nextRelationships,
+        legacyProfile: next,
+      ),
+      profile: UserProfile.fromJson(Map<String, dynamic>.from(next)),
     );
     final rejectedMarker =
         _string(current.legacyProfile[HumanLegacyReconciliationMarker.field]);

@@ -1,6 +1,15 @@
 import 'dart:collection';
 
-enum LifeContextDomain { human, identity, event, task, routine, memory }
+enum LifeContextDomain {
+  human,
+  identity,
+  event,
+  task,
+  routine,
+  memory,
+  settings,
+  shopping,
+}
 
 enum LifeContextAvailability {
   available,
@@ -23,6 +32,8 @@ enum LifeContextSourceKind {
   taskService,
   legacyProfileRoutine,
   memoryFirestore,
+  settingsRegistry,
+  shoppingService,
 }
 
 enum LifeContextGlobalState { complete, partial, unavailable }
@@ -41,6 +52,60 @@ final class TaskLifeContextSyncMetadata {
   final int pendingCount;
   final bool hasConflict;
   final Map<String, String> itemSyncStatuses;
+}
+
+/// Read-only view of the account-scoped settings that can influence Zelia's
+/// reasoning. The specialized settings repositories remain authoritative.
+final class SettingsContextSection extends LifeContextDomainSection {
+  const SettingsContextSection({
+    required super.metadata,
+    required this.automaticTravelCalculationEnabled,
+    required this.notificationsEnabled,
+    required this.notificationSoundEnabled,
+    required this.notificationVibrationEnabled,
+    required this.notificationBadgeEnabled,
+    required this.actionAutonomyMode,
+    required this.memoryGeneralMode,
+    required this.memoryHealthMode,
+    this.planningStyle,
+    this.notificationLevel,
+    this.spokenLanguage,
+    this.country,
+    this.timeZone,
+  });
+
+  final bool automaticTravelCalculationEnabled;
+  final bool notificationsEnabled;
+  final bool notificationSoundEnabled;
+  final bool notificationVibrationEnabled;
+  final bool notificationBadgeEnabled;
+  final String actionAutonomyMode;
+  final String memoryGeneralMode;
+  final String memoryHealthMode;
+  final String? planningStyle;
+  final String? notificationLevel;
+  final String? spokenLanguage;
+  final String? country;
+  final String? timeZone;
+
+  @override
+  Map<String, Object?> toJson() => {
+        'schemaVersion': LifeContextDomainSection.currentSchemaVersion,
+        'metadata': metadata.toJson(),
+        'automaticTravelCalculationEnabled': automaticTravelCalculationEnabled,
+        'notificationsEnabled': notificationsEnabled,
+        'notificationSoundEnabled': notificationSoundEnabled,
+        'notificationVibrationEnabled': notificationVibrationEnabled,
+        'notificationBadgeEnabled': notificationBadgeEnabled,
+        'actionAutonomyMode': actionAutonomyMode,
+        'memoryGeneralMode': memoryGeneralMode,
+        'memoryHealthMode': memoryHealthMode,
+        if (planningStyle != null) 'planningStyle': planningStyle,
+        if (notificationLevel != null) 'notificationLevel': notificationLevel,
+        if (spokenLanguage != null) 'spokenLanguage': spokenLanguage,
+        if (country != null) 'country': country,
+        if (timeZone != null) 'timeZone': timeZone,
+      };
 }
 
 final class LifeContextSourceMetadata {
@@ -121,6 +186,7 @@ final class HumanContextPerson {
     this.birthDate,
     this.familyStatus,
     this.workStatus,
+    this.profileFacts = const [],
   });
 
   final String id;
@@ -131,6 +197,7 @@ final class HumanContextPerson {
   final String? birthDate;
   final String? familyStatus;
   final String? workStatus;
+  final List<HumanContextProfileFact> profileFacts;
 
   Map<String, Object?> toJson() => {
         'id': id,
@@ -141,6 +208,29 @@ final class HumanContextPerson {
         if (birthDate != null) 'birthDate': birthDate,
         if (familyStatus != null) 'familyStatus': familyStatus,
         if (workStatus != null) 'workStatus': workStatus,
+        if (profileFacts.isNotEmpty)
+          'profileFacts': profileFacts.map((fact) => fact.toJson()).toList(),
+      };
+}
+
+final class HumanContextProfileFact {
+  const HumanContextProfileFact({
+    required this.key,
+    required this.value,
+    required this.source,
+    required this.confirmation,
+  });
+
+  final String key;
+  final String value;
+  final String source;
+  final String confirmation;
+
+  Map<String, Object?> toJson() => {
+        'key': key,
+        'value': value,
+        'source': source,
+        'confirmation': confirmation,
       };
 }
 
@@ -442,6 +532,52 @@ final class TaskDomainSection extends LifeContextDomainSection {
         'schemaVersion': LifeContextDomainSection.currentSchemaVersion,
         'metadata': metadata.toJson(),
         'tasks': tasks.map((item) => item.toJson()).toList(),
+      };
+}
+
+/// Bounded, read-only view of products that still need to be purchased.
+/// Shopping remains the authoritative owner; bought history is deliberately
+/// excluded from Life Context and never becomes a memory.
+final class ShoppingContextItem {
+  const ShoppingContextItem({
+    required this.id,
+    required this.title,
+    required this.isUrgent,
+    required this.createdAt,
+    this.quantity,
+    this.notes,
+  });
+
+  final String id;
+  final String title;
+  final bool isUrgent;
+  final String createdAt;
+  final String? quantity;
+  final String? notes;
+
+  Map<String, Object?> toJson() => {
+        'id': id,
+        'title': title,
+        'isUrgent': isUrgent,
+        'createdAt': createdAt,
+        if (quantity != null) 'quantity': quantity,
+        if (notes != null) 'notes': notes,
+      };
+}
+
+final class ShoppingDomainSection extends LifeContextDomainSection {
+  ShoppingDomainSection({
+    required super.metadata,
+    List<ShoppingContextItem> activeItems = const [],
+  }) : activeItems = UnmodifiableListView(activeItems);
+
+  final List<ShoppingContextItem> activeItems;
+
+  @override
+  Map<String, Object?> toJson() => {
+        'schemaVersion': LifeContextDomainSection.currentSchemaVersion,
+        'metadata': metadata.toJson(),
+        'activeItems': activeItems.map((item) => item.toJson()).toList(),
       };
 }
 

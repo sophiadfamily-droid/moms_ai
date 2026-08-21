@@ -7,8 +7,8 @@ class PlanningProposalService {
     required TaskModel task,
     required String originalMessage,
     required int actionMinutes,
+    required List<EventModel> contextEvents,
     List<Map<String, dynamic>> memoryReasoning = const [],
-    List<EventModel>? contextEvents,
   }) async {
     return SmartPlanningService.buildProposal(
       task: task,
@@ -26,8 +26,8 @@ class PlanningProposalService {
     required int travelGoMinutes,
     required int travelBackMinutes,
     required List<TaskModel> groupedTasks,
+    required List<EventModel> contextEvents,
     List<Map<String, dynamic>> memoryReasoning = const [],
-    List<EventModel>? contextEvents,
   }) async {
     if (groupedTasks.length > 1) {
       return SmartPlanningService.buildGroupedProposal(

@@ -658,6 +658,18 @@ final class _SectionAdapter implements LifeContextDomainAdapter {
           policyConfigured: true,
           memories: memories,
         ),
+      LifeContextDomain.settings => SettingsContextSection(
+          metadata: metadata,
+          automaticTravelCalculationEnabled: false,
+          notificationsEnabled: false,
+          notificationSoundEnabled: false,
+          notificationVibrationEnabled: false,
+          notificationBadgeEnabled: false,
+          actionAutonomyMode: 'suggestions',
+          memoryGeneralMode: 'askEveryTime',
+          memoryHealthMode: 'disabled',
+        ),
+      LifeContextDomain.shopping => ShoppingDomainSection(metadata: metadata),
     };
   }
 }
@@ -737,6 +749,8 @@ LifeContextSourceMetadata _metadata(
         LifeContextDomain.task => LifeContextSourceKind.taskService,
         LifeContextDomain.routine => LifeContextSourceKind.legacyProfileRoutine,
         LifeContextDomain.memory => LifeContextSourceKind.memoryFirestore,
+        LifeContextDomain.settings => LifeContextSourceKind.settingsRegistry,
+        LifeContextDomain.shopping => LifeContextSourceKind.shoppingService,
       },
       readAt: at,
       availability: availability,

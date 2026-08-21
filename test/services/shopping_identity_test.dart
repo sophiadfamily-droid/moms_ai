@@ -22,6 +22,7 @@ void main() {
       createdAt: createdAt ?? DateTime(2026, 7, 20, 9, 30),
       category: 'Frais',
       notes: 'Deux bouteilles, magasin du quartier',
+      quantity: '2 bouteilles',
       isUrgent: true,
       section: 'Aujourd’hui',
     );
@@ -35,6 +36,7 @@ void main() {
         title: 'Lait entier x3',
         category: 'Autre',
         notes: 'Trois bouteilles, autre magasin',
+        quantity: '3 bouteilles',
         isBought: true,
         isUrgent: false,
         section: 'Plus tard',
@@ -44,6 +46,7 @@ void main() {
       expect(updated.title, 'Lait entier x3');
       expect(updated.category, 'Autre');
       expect(updated.notes, 'Trois bouteilles, autre magasin');
+      expect(updated.quantity, '3 bouteilles');
       expect(updated.isBought, isTrue);
       expect(updated.isUrgent, isFalse);
       expect(updated.section, 'Plus tard');
@@ -54,6 +57,10 @@ void main() {
 
       expect(item.toJson()['id'], 'shopping-1');
       expect(ShoppingItemModel.fromJson(item.toJson()).id, 'shopping-1');
+      expect(
+        ShoppingItemModel.fromJson(item.toJson()).quantity,
+        '2 bouteilles',
+      );
     });
 
     test('legacy JSON remains readable without inventing an ID', () {
@@ -63,6 +70,13 @@ void main() {
       expect(json, isNot(containsPair('id', anything)));
       expect(restored.id, isNull);
       expect(restored.title, 'Lait');
+      expect(restored.quantity, '2 bouteilles');
+    });
+
+    test('older JSON without quantity remains readable', () {
+      final json = buildItem(id: 'shopping-1').toJson()..remove('quantity');
+
+      expect(ShoppingItemModel.fromJson(json).quantity, isEmpty);
     });
 
     test('a newly constructed non-persisted item has no identity', () {

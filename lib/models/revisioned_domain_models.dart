@@ -205,6 +205,7 @@ abstract final class ProfileFieldOwnership {
     'partnerHumanPersonId',
     'firstName',
     'familyStatus',
+    'workStatus',
     'partnerName',
     'children',
     'age',
@@ -213,12 +214,42 @@ abstract final class ProfileFieldOwnership {
     'relationshipStatus',
     'marriageDate',
     'engagementDate',
+    'profilePhotoPath',
+    'city',
+    'currentCountry',
+    'homeAddress',
+    'workAddress',
+    'vehicleInfo',
+    'petsInfo',
+    'transportInfo',
+    'childcareInfo',
+    'importantPlaces',
+    'allergies',
+    'medicalNotes',
+    'bloodType',
+    'doctorName',
+    'emergencyContactName',
+    'emergencyContactPhone',
+    'partnerPhotoPath',
+    'partnerNotes',
+    'partnerWorkSchedule',
   };
 
   static const profileOwnedFields = {
-    'workStatus',
-    'wantsNotifications',
-    'automaticTravelCalculationEnabled',
+    'habits',
+    'personalNotes',
+    'preferences',
+    'goals',
+    'mainLifePriority',
+    'personalGoals',
+    'businessGoals',
+    'familyGoals',
+    'foodPreferences',
+    'adminNotes',
+    'budgetNotes',
+  };
+
+  static const scheduleOwnedFields = {
     'workHours',
     'workScheduleType',
     'workDays',
@@ -229,37 +260,30 @@ abstract final class ProfileFieldOwnership {
     'variableWorkDetails',
     'workTimeRanges',
     'workTravelMinutes',
-    'habits',
-    'personalNotes',
-    'preferences',
-    'goals',
+    'personalActivities',
+  };
+
+  static const settingsOwnedFields = {
+    'wantsNotifications',
+    'automaticTravelCalculationEnabled',
     'aiTone',
     'planningStyle',
     'notificationLevel',
-    'mainLifePriority',
     'spokenLanguage',
     'country',
     'timeZone',
-    'personalGoals',
-    'businessGoals',
-    'familyGoals',
-    'vehicleInfo',
-    'petsInfo',
-    'transportInfo',
-    'childcareInfo',
-    'foodPreferences',
-    'adminNotes',
-    'budgetNotes',
-    'importantPlaces',
-    'personalActivities',
-    'partnerNotes',
-    'partnerWorkSchedule',
   };
 
   static void validatePatch(Iterable<String> fields) {
     for (final field in fields) {
       if (humanModelFields.contains(field)) {
         throw const FormatException('profile_canonical_ownership_conflict');
+      }
+      if (settingsOwnedFields.contains(field)) {
+        throw const FormatException('profile_settings_ownership_conflict');
+      }
+      if (scheduleOwnedFields.contains(field)) {
+        throw const FormatException('profile_schedule_ownership_conflict');
       }
       if (!profileOwnedFields.contains(field)) {
         throw const FormatException('profile_field_not_owned');

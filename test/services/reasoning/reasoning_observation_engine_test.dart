@@ -215,6 +215,7 @@ LifeContextDomain _domain(LifeContextProjectionSectionType type) =>
       LifeContextProjectionSectionType.memory => LifeContextDomain.memory,
       LifeContextProjectionSectionType.human => LifeContextDomain.human,
       LifeContextProjectionSectionType.identity => LifeContextDomain.identity,
+      LifeContextProjectionSectionType.shopping => LifeContextDomain.shopping,
       LifeContextProjectionSectionType.relation => LifeContextDomain.human,
     };
 
@@ -232,6 +233,8 @@ LifeContextSourceKind _sourceKind(LifeContextProjectionSectionType type) =>
         LifeContextSourceKind.humanModelLocal,
       LifeContextProjectionSectionType.identity =>
         LifeContextSourceKind.identityLinks,
+      LifeContextProjectionSectionType.shopping =>
+        LifeContextSourceKind.shoppingService,
       LifeContextProjectionSectionType.relation =>
         LifeContextSourceKind.humanModelLocal,
     };

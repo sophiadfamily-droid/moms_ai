@@ -1,6 +1,8 @@
 import '../../core/identity/entity_id_generator.dart';
 import '../../models/human/human_model.dart';
 import '../../models/user_profile.dart';
+import '../structured_schedule_profile_service.dart';
+import 'human_profile_facts_service.dart';
 
 final class LegacyUserProfileHumanAdapter {
   const LegacyUserProfileHumanAdapter();
@@ -36,6 +38,12 @@ final class LegacyUserProfileHumanAdapter {
             'familyStatus': profile.familyStatus.trim(),
           if (profile.workStatus.trim().isNotEmpty)
             'workStatus': profile.workStatus.trim(),
+          ...HumanProfileFactsV1.merge(
+            current: const {},
+            incoming: HumanProfileFactsV1.primaryValues(profile),
+            managedFields: HumanProfileFactsV1.primaryFields,
+            evidence: evidence,
+          ),
         },
       ),
     ];
@@ -53,10 +61,15 @@ final class LegacyUserProfileHumanAdapter {
           accountScopeId: accountScopeId,
           displayName: partnerName,
           evidence: evidence,
-          customFields: {
-            if (profile.partnerBirthDate.trim().isNotEmpty)
-              'birthDate': profile.partnerBirthDate.trim(),
-          },
+          customFields: HumanProfileFactsV1.merge(
+            current: {
+              if (profile.partnerBirthDate.trim().isNotEmpty)
+                'birthDate': profile.partnerBirthDate.trim(),
+            },
+            incoming: HumanProfileFactsV1.partnerValues(profile),
+            managedFields: HumanProfileFactsV1.partnerFields,
+            evidence: evidence,
+          ),
         ),
       );
       relationships.add(
@@ -80,10 +93,15 @@ final class LegacyUserProfileHumanAdapter {
           accountScopeId: accountScopeId,
           displayName: _optional(child.firstName),
           evidence: evidence,
-          customFields: {
-            if (child.birthDate.trim().isNotEmpty)
-              'birthDate': child.birthDate.trim(),
-          },
+          customFields: HumanProfileFactsV1.merge(
+            current: {
+              if (child.birthDate.trim().isNotEmpty)
+                'birthDate': child.birthDate.trim(),
+            },
+            incoming: HumanProfileFactsV1.childValues(child),
+            managedFields: HumanProfileFactsV1.childFields,
+            evidence: evidence,
+          ),
         ),
       );
       relationships.add(
@@ -98,7 +116,7 @@ final class LegacyUserProfileHumanAdapter {
       );
     }
 
-    return HumanModel(
+    final migrated = HumanModel(
       accountScopeId: accountScopeId,
       primaryPersonId: primaryPersonId,
       persons: persons,
@@ -113,6 +131,22 @@ final class LegacyUserProfileHumanAdapter {
             .skip(partnerName.isNotEmpty ? 2 : 1)
             .map((person) => person.id)
             .toList(growable: false),
+      ),
+    );
+    return StructuredScheduleProfileService.reconcileCompatibilitySchedules(
+      model: migrated,
+      profile: profile.copyWith(
+        humanPersonId: primaryPersonId,
+        partnerHumanPersonId: persons.length > profile.children.length + 1
+            ? persons[1].id
+            : profile.partnerHumanPersonId,
+        children: [
+          for (var index = 0; index < profile.children.length; index++)
+            profile.children[index].copyWith(
+              humanPersonId:
+                  persons[index + (partnerName.isNotEmpty ? 2 : 1)].id,
+            ),
+        ],
       ),
     );
   }

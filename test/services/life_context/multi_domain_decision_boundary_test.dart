@@ -1,0 +1,44 @@
+import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  test('Smart Planning cannot rebuild a decision from a separate Agenda read',
+      () {
+    final smartPlanning =
+        File('lib/services/smart_planning_service.dart').readAsStringSync();
+    final proposal =
+        File('lib/services/planning_proposal_service.dart').readAsStringSync();
+    final production = File(
+      'lib/services/smart_planning_continuation_coordinator.dart',
+    ).readAsStringSync();
+
+    expect(smartPlanning, isNot(contains('await EventService.getEvents()')));
+    expect(
+      smartPlanning,
+      contains('required List<EventModel> contextEvents'),
+    );
+    expect(proposal, contains('required List<EventModel> contextEvents'));
+    expect(production, contains('final input = await _planningInput()'));
+    expect(production, contains('contextEvents: input.events'));
+  });
+
+  test('cross-domain suggestion engines use canonical Life Context production',
+      () {
+    final priority = File(
+      'lib/services/priority/proactive_priority_production.dart',
+    ).readAsStringSync();
+    final anticipation = File(
+      'lib/services/mental_load_anticipation_production.dart',
+    ).readAsStringSync();
+
+    expect(priority, contains('LifeContextProductionFactory.production'));
+    expect(priority, contains('getCurrentProjection'));
+    expect(anticipation, contains('LifeContextProductionFactory.production'));
+    expect(anticipation, contains('production.refreshIfNeeded()'));
+    expect(priority, isNot(contains('TaskService.')));
+    expect(priority, isNot(contains('EventService.')));
+    expect(anticipation, isNot(contains('TaskService.')));
+    expect(anticipation, isNot(contains('EventService.')));
+  });
+}

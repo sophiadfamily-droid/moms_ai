@@ -5,17 +5,21 @@ import 'package:moms_ai/core/identity/entity_id_generator.dart';
 import 'package:moms_ai/core/identity/entity_types.dart';
 import 'package:moms_ai/core/identity/persisted_identity_link.dart';
 import 'package:moms_ai/models/event_model.dart';
+import 'package:moms_ai/models/action_autonomy_policy.dart';
+import 'package:moms_ai/models/app_settings.dart';
 import 'package:moms_ai/models/human/human_model.dart';
 import 'package:moms_ai/models/human/human_model_persistence.dart';
 import 'package:moms_ai/models/life_context/life_context_domains.dart';
 import 'package:moms_ai/models/life_context/life_context_snapshot.dart';
 import 'package:moms_ai/models/memory_policy.dart';
+import 'package:moms_ai/models/local_notification_models.dart';
 import 'package:moms_ai/models/task_model.dart';
 import 'package:moms_ai/models/user_profile.dart';
 import 'package:moms_ai/services/life_context/life_context_adapter.dart';
 import 'package:moms_ai/services/life_context/life_context_domain_adapters.dart';
 import 'package:moms_ai/services/life_context/life_context_engine.dart';
 import 'package:moms_ai/services/life_context/user_profile_life_context_mapper.dart';
+import 'package:moms_ai/services/structured_schedule_profile_service.dart';
 
 void main() {
   final now = DateTime.utc(2026, 7, 23, 12);
@@ -153,7 +157,54 @@ void main() {
       expect(section.persons.first.birthDate, '1990-02-01');
       expect(section.persons.first.familyStatus, 'Je vis en couple');
       expect(section.persons.first.workStatus, 'Je suis salariée');
+      expect(
+        {
+          for (final fact in section.persons.first.profileFacts)
+            fact.key: fact.value,
+        },
+        containsPair('homeAddress', '10 rue des Lilas'),
+      );
+      expect(
+        section.persons.first.profileFacts.map((fact) => fact.key),
+        isNot(contains('allergies')),
+      );
+      expect(
+        section.persons.first.profileFacts
+            .singleWhere((fact) => fact.key == 'city')
+            .confirmation,
+        'confirmed',
+      );
       expect(section.metadata.revision, 3);
+    });
+
+    test('Human ignores family and work status left only in legacy profile',
+        () async {
+      final base = _humanState();
+      final persons = base.model.persons
+          .map(
+            (person) => person.id != base.model.primaryPersonId
+                ? person
+                : person.copyWith(
+                    customFields: Map<String, Object?>.from(
+                      person.customFields,
+                    )
+                      ..remove('familyStatus')
+                      ..remove('workStatus'),
+                  ),
+          )
+          .toList(growable: false);
+      final state = base.copyWith(
+        model: base.model.copyWith(persons: persons),
+      );
+
+      final section = await HumanModelLifeContextAdapter(
+        load: (_) async => state,
+      ).load(
+        LifeContextAdapterRequest(accountScopeId: 'account-a', readAt: now),
+      );
+
+      expect(section.persons.first.familyStatus, isNull);
+      expect(section.persons.first.workStatus, isNull);
     });
 
     test('Human distinguishes stale local state from unavailable', () async {
@@ -433,6 +484,32 @@ void main() {
       expect(imported.source, 'humanModel.structuredSchedulesV1');
     });
 
+    test('Routine does not duplicate schedules mirrored from the old profile',
+        () async {
+      final base = _humanState();
+      final profile = UserProfile.fromJson(
+        Map<String, dynamic>.from(base.model.legacyProfile),
+      );
+      final reconciled = base.copyWith(
+        model: StructuredScheduleProfileService.reconcileCompatibilitySchedules(
+          model: base.model,
+          profile: profile,
+        ),
+      );
+
+      final section = await RoutineLifeContextAdapter(
+        loadHuman: (_) async => reconciled,
+      ).load(
+        LifeContextAdapterRequest(accountScopeId: 'account-a', readAt: now),
+      );
+
+      expect(section.routines, hasLength(4));
+      expect(
+        section.routines.map((item) => item.source).toSet(),
+        {'humanModel.structuredSchedulesV1'},
+      );
+    });
+
     test('Routine keeps unsynced legacy state stale and empty distinct',
         () async {
       final stale = await RoutineLifeContextAdapter(
@@ -634,6 +711,37 @@ LifeContextEngine _engine({
           changedAt: now,
         ),
       ),
+      SettingsLifeContextAdapter(
+        loadAppSettings: (scope) async => AppSettings(
+          accountScopeId: scope,
+          automaticTravelCalculationEnabled: false,
+          aiTone: '',
+          planningStyle: '',
+          notificationLevel: '',
+          spokenLanguage: 'Français',
+          country: 'France',
+          timeZone: 'Europe/Paris',
+          changedAt: now,
+          source: AppSettingsSource.legacyProfileMigration,
+          revision: 1,
+        ),
+        loadNotifications: (scope) async =>
+            NotificationSettings.restrictiveDefault(
+          accountScopeId: scope,
+          timezoneId: 'Europe/Paris',
+          changedAt: now,
+        ),
+        loadActionAutonomy: (scope) async =>
+            ActionAutonomyPolicy.restrictiveDefault(
+          accountScopeId: scope,
+          changedAt: now,
+        ),
+        loadMemoryPolicy: (scope) async => MemoryPolicy.restrictiveDefault(
+          accountScopeId: scope,
+          changedAt: now,
+        ),
+      ),
+      ShoppingLifeContextAdapter(load: (_) async => const []),
     ],
   );
 }
@@ -677,6 +785,25 @@ HumanModelLocalState _humanState({
         evidence: confirmed,
         customFields: const {
           'birthDate': '01/02/1990',
+          'familyStatus': 'Je vis en couple',
+          'workStatus': 'Je suis salariée',
+          'city': 'Paris',
+          'homeAddress': '10 rue des Lilas',
+          'allergies': 'secret medical value',
+          'profileFactEvidenceV1': {
+            'city': {
+              'source': 'explicitUserInput',
+              'confirmation': 'confirmed',
+            },
+            'homeAddress': {
+              'source': 'legacyProfile',
+              'confirmation': 'needsConfirmation',
+            },
+            'allergies': {
+              'source': 'explicitUserInput',
+              'confirmation': 'confirmed',
+            },
+          },
         },
       ),
     ],

@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../services/account_data_lifecycle_service.dart';
+import '../services/auth_service.dart';
 import '../services/route_travel_time_service.dart';
 
 typedef AutomaticTravelSettingChanged = Future<void> Function(bool enabled);
+typedef AccountDataDeleted = Future<void> Function();
 
 class PrivacyDataScreen extends StatefulWidget {
   const PrivacyDataScreen({
@@ -11,11 +14,17 @@ class PrivacyDataScreen extends StatefulWidget {
     this.automaticTravelCalculationEnabled = false,
     this.onAutomaticTravelSettingChanged,
     this.travelConsentGateway = const AppleMapsRouteTravelTimeGateway(),
+    this.accountDataLifecycleGateway,
+    this.accountDataExportPresenter,
+    this.onAccountDataDeleted,
   });
 
   final bool automaticTravelCalculationEnabled;
   final AutomaticTravelSettingChanged? onAutomaticTravelSettingChanged;
   final RouteTravelConsentGateway travelConsentGateway;
+  final AccountDataLifecycleGateway? accountDataLifecycleGateway;
+  final AccountDataExportPresenter? accountDataExportPresenter;
+  final AccountDataDeleted? onAccountDataDeleted;
 
   @override
   State<PrivacyDataScreen> createState() => _PrivacyDataScreenState();
@@ -29,6 +38,16 @@ class _PrivacyDataScreenState extends State<PrivacyDataScreen> {
   Map<String, PermissionStatus> _statuses = const {};
   late bool _automaticTravelCalculationEnabled;
   bool _savingTravelSetting = false;
+  bool _exportingData = false;
+  bool _deletingData = false;
+
+  AccountDataLifecycleGateway get _accountDataLifecycle =>
+      widget.accountDataLifecycleGateway ??
+      CallableAccountDataLifecycleService();
+
+  AccountDataExportPresenter get _exportPresenter =>
+      widget.accountDataExportPresenter ??
+      const SharePlusAccountDataExportPresenter();
 
   @override
   void initState() {
@@ -77,56 +96,6 @@ class _PrivacyDataScreenState extends State<PrivacyDataScreen> {
     if (status.isGranted || status.isLimited) return 'Autorisée';
     if (status.isPermanentlyDenied || status.isRestricted) return 'Refusée';
     return 'Non autorisée';
-  }
-
-  Future<void> _showFutureConnection(String title, String text) async {
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: _background,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
-      ),
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 18, 24, 32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 46,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: _soft.withValues(alpha: 0.25),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 22),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontFamily: 'PlayfairDisplay',
-                  fontSize: 28,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(text, style: const TextStyle(color: _soft, height: 1.45)),
-              const SizedBox(height: 22),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('J’ai compris'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   Future<void> _changeAutomaticTravelSetting(bool enabled) async {
@@ -228,6 +197,174 @@ class _PrivacyDataScreenState extends State<PrivacyDataScreen> {
         ),
       );
 
+  Future<void> _exportAccountData() async {
+    if (_exportingData || _deletingData) return;
+    setState(() => _exportingData = true);
+    try {
+      final file = await _accountDataLifecycle.prepareExport();
+      if (!mounted) return;
+      await _exportPresenter.present(file);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Ton export est prêt.')),
+        );
+      }
+    } on AccountDataLifecycleException catch (error) {
+      if (mounted) _showAccountDataError(error);
+    } on Object {
+      if (mounted) _showAccountDataError();
+    } finally {
+      if (mounted) setState(() => _exportingData = false);
+    }
+  }
+
+  void _showAccountDataError([AccountDataLifecycleException? error]) {
+    final message = error?.code == 'export_too_large'
+        ? 'Ton export est trop volumineux pour être préparé ici.'
+        : 'Je n’ai pas pu terminer cette demande. Réessaie dans un instant.';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  void _showExportInProgressMessage() {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Je prépare déjà ton export. La fenêtre de partage va s’ouvrir.',
+          ),
+        ),
+      );
+  }
+
+  Future<void> _confirmAccountDataDeletion() async {
+    if (_exportingData || _deletingData) return;
+    var confirmed = false;
+    final shouldDelete = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: _background,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+      ),
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) => SafeArea(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(
+              24,
+              18,
+              24,
+              24 + MediaQuery.viewInsetsOf(sheetContext).bottom,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 46,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: _soft.withValues(alpha: 0.25),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 22),
+                const Text(
+                  'Supprimer mes données',
+                  style: TextStyle(
+                    fontFamily: 'PlayfairDisplay',
+                    fontSize: 28,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                const Text(
+                  'Cette action efface définitivement ton profil, ton '
+                  'agenda, tes tâches, tes courses, ta mémoire, tes routines '
+                  'et tes conversations. Ton compte de connexion reste '
+                  'disponible.',
+                  style: TextStyle(color: _soft, height: 1.5),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'Écris SUPPRIMER pour confirmer.',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  textCapitalization: TextCapitalization.characters,
+                  autocorrect: false,
+                  decoration: const InputDecoration(
+                    hintText: 'SUPPRIMER',
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.all(Radius.circular(18)),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                  onChanged: (value) {
+                    final next = value.trim() == 'SUPPRIMER';
+                    if (next != confirmed) {
+                      setSheetState(() => confirmed = next);
+                    }
+                  },
+                ),
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(backgroundColor: _accent),
+                    onPressed: confirmed
+                        ? () => Navigator.pop(sheetContext, true)
+                        : null,
+                    child: const Text('Supprimer définitivement'),
+                  ),
+                ),
+                Center(
+                  child: TextButton(
+                    onPressed: () => Navigator.pop(sheetContext, false),
+                    child: const Text('Garder mes données'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    if (shouldDelete == true && mounted) await _deleteAccountData();
+  }
+
+  Future<void> _deleteAccountData() async {
+    setState(() => _deletingData = true);
+    try {
+      await _accountDataLifecycle.deleteAllData();
+      if (widget.onAccountDataDeleted != null) {
+        await widget.onAccountDataDeleted!.call();
+      } else {
+        await AuthService.signOut();
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Tes données Zelia ont été supprimées.')),
+        );
+        Navigator.of(context).maybePop();
+      }
+    } on AccountDataLifecycleException catch (error) {
+      if (mounted) _showAccountDataError(error);
+    } on Object {
+      if (mounted) _showAccountDataError();
+    } finally {
+      if (mounted) setState(() => _deletingData = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -310,11 +447,23 @@ class _PrivacyDataScreenState extends State<PrivacyDataScreen> {
                   'Exporter mes données',
                   style: TextStyle(fontWeight: FontWeight.w600),
                 ),
-                trailing: const Icon(Icons.chevron_right, color: _soft),
-                onTap: () => _showFutureConnection(
-                  'Exporter mes données',
-                  'L’espace est prêt. L’export complet sera activé lorsque toutes les données de Zelia seront raccordées au même compte.',
-                ),
+                subtitle: _exportingData
+                    ? const Text(
+                        'Préparation en cours…',
+                        style: TextStyle(color: _soft, fontSize: 13),
+                      )
+                    : null,
+                trailing: _exportingData
+                    ? const SizedBox.square(
+                        dimension: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.chevron_right, color: _soft),
+                onTap: _deletingData
+                    ? null
+                    : _exportingData
+                        ? _showExportInProgressMessage
+                        : _exportAccountData,
               ),
               const Divider(height: 1),
               ListTile(
@@ -328,11 +477,17 @@ class _PrivacyDataScreenState extends State<PrivacyDataScreen> {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                trailing: const Icon(Icons.chevron_right, color: _soft),
-                onTap: () => _showFutureConnection(
-                  'Supprimer mes données',
-                  'Aucune donnée ne sera supprimée tant que la suppression complète et sécurisée de tous les espaces de Zelia ne sera pas raccordée.',
-                ),
+                trailing: _deletingData
+                    ? const SizedBox.square(
+                        dimension: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.chevron_right, color: _soft),
+                onTap: _deletingData
+                    ? null
+                    : _exportingData
+                        ? _showExportInProgressMessage
+                        : _confirmAccountDataDeletion,
               ),
             ],
           ),

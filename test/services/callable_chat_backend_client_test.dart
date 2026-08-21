@@ -358,8 +358,14 @@ void main() {
     );
     expect(
       'httpsCallable'.allMatches(productionSources),
-      hasLength(2),
+      hasLength(3),
     );
+    expect(productionSources, contains('chatWithZeliaCallable'));
+    expect(
+      productionSources,
+      contains('analyzeStructuredScheduleDocumentCallable'),
+    );
+    expect(productionSources, contains('manageAccountDataCallable'));
   });
 }
 

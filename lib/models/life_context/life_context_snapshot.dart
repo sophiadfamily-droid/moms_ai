@@ -6,7 +6,7 @@ import 'schedule_context.dart';
 import 'life_context_domains.dart';
 
 final class LifeContextSnapshot {
-  static const int currentSchemaVersion = 5;
+  static const int currentSchemaVersion = 7;
 
   final int schemaVersion;
   final DateTime generatedAt;
@@ -31,6 +31,8 @@ final class LifeContextSnapshot {
   final TaskDomainSection? taskDomain;
   final RoutineDomainSection? routineDomain;
   final MemoryDomainSection? memoryDomain;
+  final SettingsContextSection? settingsDomain;
+  final ShoppingDomainSection? shoppingDomain;
 
   LifeContextSnapshot({
     this.schemaVersion = currentSchemaVersion,
@@ -56,6 +58,8 @@ final class LifeContextSnapshot {
     this.taskDomain,
     this.routineDomain,
     MemoryDomainSection? memoryDomain,
+    this.settingsDomain,
+    ShoppingDomainSection? shoppingDomain,
   })  : memory = memory ?? MemoryContext.empty,
         memoryDomain = memoryDomain ??
             (accountScopeId == null
@@ -74,6 +78,21 @@ final class LifeContextSnapshot {
                     policyGeneralMode: 'askEveryTime',
                     policyHealthMode: 'disabled',
                     policyConfigured: false,
+                  )),
+        shoppingDomain = shoppingDomain ??
+            (accountScopeId == null
+                ? null
+                : ShoppingDomainSection(
+                    metadata: LifeContextSourceMetadata(
+                      domain: LifeContextDomain.shopping,
+                      source: LifeContextSourceKind.shoppingService,
+                      readAt: generatedAt,
+                      availability: LifeContextAvailability.empty,
+                      freshness: LifeContextFreshness.unknown,
+                      isLocal: false,
+                      itemCount: 0,
+                      syncStatus: 'notConfigured',
+                    ),
                   )) {
     if (schemaVersion < 1 || schemaVersion > currentSchemaVersion) {
       throw const FormatException('unsupported_life_context_version');
@@ -105,6 +124,8 @@ final class LifeContextSnapshot {
       taskDomain: taskDomain,
       routineDomain: routineDomain,
       memoryDomain: memoryDomain,
+      settingsDomain: settingsDomain,
+      shoppingDomain: shoppingDomain,
     );
   }
 
@@ -120,7 +141,9 @@ final class LifeContextSnapshot {
         eventDomain == null ||
         taskDomain == null ||
         routineDomain == null ||
-        memoryDomain == null) {
+        memoryDomain == null ||
+        settingsDomain == null ||
+        shoppingDomain == null) {
       throw const FormatException('invalid_canonical_life_context');
     }
   }
@@ -139,6 +162,8 @@ final class LifeContextSnapshot {
         'taskDomain': taskDomain?.toJson(),
         'routineDomain': routineDomain?.toJson(),
         'memoryDomain': memoryDomain?.toJson(),
+        'settingsDomain': settingsDomain?.toJson(),
+        'shoppingDomain': shoppingDomain?.toJson(),
       };
     }
     return {
@@ -165,6 +190,8 @@ final class LifeContextSnapshot {
       if (taskDomain != null) 'taskDomain': taskDomain!.toJson(),
       if (routineDomain != null) 'routineDomain': routineDomain!.toJson(),
       if (memoryDomain != null) 'memoryDomain': memoryDomain!.toJson(),
+      if (settingsDomain != null) 'settingsDomain': settingsDomain!.toJson(),
+      if (shoppingDomain != null) 'shoppingDomain': shoppingDomain!.toJson(),
     };
   }
 }

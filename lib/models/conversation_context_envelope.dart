@@ -29,7 +29,8 @@ final class ConversationTransportContract {
   static const int maximumHistoryUtf8Bytes = 8000;
   static const int maximumContextUtf8Bytes = 24000;
   static const int maximumRequestUtf8Bytes = 48000;
-  static const int maximumSections = 7;
+  // Conversation carries the seven existing read sections plus Shopping.
+  static const int maximumSections = 8;
   static const int maximumItems = 40;
   static const int maximumFactsPerItem = 12;
   static const Duration contextTimeout = Duration(seconds: 7);

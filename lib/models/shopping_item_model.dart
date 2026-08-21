@@ -6,6 +6,7 @@ class ShoppingItemModel {
 
   final String category;
   final String notes;
+  final String quantity;
   final bool isUrgent;
 
   // Premium
@@ -18,6 +19,7 @@ class ShoppingItemModel {
     required this.createdAt,
     this.category = "Autre",
     this.notes = "",
+    this.quantity = "",
     this.isUrgent = false,
     this.section = "Aujourd’hui",
   });
@@ -29,6 +31,7 @@ class ShoppingItemModel {
     DateTime? createdAt,
     String? category,
     String? notes,
+    String? quantity,
     bool? isUrgent,
     String? section,
   }) {
@@ -39,6 +42,7 @@ class ShoppingItemModel {
       createdAt: createdAt ?? this.createdAt,
       category: category ?? this.category,
       notes: notes ?? this.notes,
+      quantity: quantity ?? this.quantity,
       isUrgent: isUrgent ?? this.isUrgent,
       section: section ?? this.section,
     );
@@ -52,6 +56,7 @@ class ShoppingItemModel {
       "createdAt": createdAt.toIso8601String(),
       "category": category,
       "notes": notes,
+      "quantity": quantity,
       "isUrgent": isUrgent,
       "section": section,
     };
@@ -67,6 +72,7 @@ class ShoppingItemModel {
       createdAt: DateTime.tryParse(json["createdAt"] ?? "") ?? DateTime.now(),
       category: json["category"] ?? "Autre",
       notes: json["notes"] ?? "",
+      quantity: json["quantity"] is String ? json["quantity"] as String : "",
       isUrgent: json["isUrgent"] ?? false,
       section: json["section"] ?? "Aujourd’hui",
     );

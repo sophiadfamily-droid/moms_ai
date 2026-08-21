@@ -40,38 +40,13 @@ final class ProfilePatchEngine {
   }
 
   void _validateValue(ProfileOwnedField field, Object value) {
-    if (field == ProfileOwnedField.wantsNotifications ||
-        field == ProfileOwnedField.automaticTravelCalculationEnabled) {
-      if (value is! bool) _invalidValue();
-      return;
-    }
-    if (field == ProfileOwnedField.workDays) {
-      if (value is! List<String> ||
-          value.length > 7 ||
-          value.any((item) => item.length > 40)) {
-        _invalidValue();
-      }
-      return;
-    }
-    if (field == ProfileOwnedField.workTimeRanges) {
-      if (value is! List<TimeRangeModel> || value.length > 20) _invalidValue();
-      return;
-    }
-    if (field == ProfileOwnedField.personalActivities) {
-      if (value is! List<ActivityModel> || value.length > 50) _invalidValue();
-      return;
-    }
     if (value is! String || value.length > 4000) _invalidValue();
   }
 
   Never _invalidValue() =>
       throw const ProfilePatchException('invalid_profile_patch_value');
 
-  Object _jsonValue(Object value) => switch (value) {
-        List<TimeRangeModel>() => value.map((item) => item.toJson()).toList(),
-        List<ActivityModel>() => value.map((item) => item.toJson()).toList(),
-        _ => value,
-      };
+  Object _jsonValue(Object value) => value;
 
   void _preserveHumanOwned(UserProfile before, UserProfile after) {
     final left = before.toJson();

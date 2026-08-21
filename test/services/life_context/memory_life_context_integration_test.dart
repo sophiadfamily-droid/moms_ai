@@ -204,6 +204,21 @@ LifeContextSnapshot _snapshot(DateTime now) {
     accountScopeId: 'account-a',
     snapshotId: 'snapshot-a',
     globalState: LifeContextGlobalState.complete,
+    settingsDomain: SettingsContextSection(
+      metadata: metadata(
+        LifeContextDomain.settings,
+        LifeContextSourceKind.settingsRegistry,
+        count: 1,
+      ),
+      automaticTravelCalculationEnabled: false,
+      notificationsEnabled: false,
+      notificationSoundEnabled: false,
+      notificationVibrationEnabled: false,
+      notificationBadgeEnabled: false,
+      actionAutonomyMode: 'suggestions',
+      memoryGeneralMode: 'askEveryTime',
+      memoryHealthMode: 'disabled',
+    ),
     human: HumanContextSection(
       metadata: metadata(
         LifeContextDomain.human,
