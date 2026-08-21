@@ -56,6 +56,12 @@ abstract final class HumanProfileFactsV1 {
   static const settingsFields = <String>{
     'wantsNotifications',
     'automaticTravelCalculationEnabled',
+    'agendaSafetyMarginMinutes',
+    'showPersonalActivitiesInAgenda',
+    'showChildActivitiesInAgenda',
+    'showWorkScheduleInAgenda',
+    'showSchoolScheduleInAgenda',
+    'showRoutinesInAgenda',
     'aiTone',
     'planningStyle',
     'notificationLevel',

@@ -266,6 +266,12 @@ abstract final class ProfileFieldOwnership {
   static const settingsOwnedFields = {
     'wantsNotifications',
     'automaticTravelCalculationEnabled',
+    'agendaSafetyMarginMinutes',
+    'showPersonalActivitiesInAgenda',
+    'showChildActivitiesInAgenda',
+    'showWorkScheduleInAgenda',
+    'showSchoolScheduleInAgenda',
+    'showRoutinesInAgenda',
     'aiTone',
     'planningStyle',
     'notificationLevel',

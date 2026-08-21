@@ -28,6 +28,7 @@ import 'human_profile_screen.dart';
 import 'memory_library_screen.dart';
 import 'structured_schedule_import_review_screen.dart';
 import 'notification_settings_screen.dart';
+import 'organization_agenda_settings_screen.dart';
 import 'privacy_data_screen.dart';
 import 'help_information_screen.dart';
 
@@ -898,6 +899,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
       wantsNotifications: wantsNotifications,
       automaticTravelCalculationEnabled:
           profile.automaticTravelCalculationEnabled,
+      agendaSafetyMarginMinutes: profile.agendaSafetyMarginMinutes,
+      showPersonalActivitiesInAgenda: profile.showPersonalActivitiesInAgenda,
+      showChildActivitiesInAgenda: profile.showChildActivitiesInAgenda,
+      showWorkScheduleInAgenda: profile.showWorkScheduleInAgenda,
+      showSchoolScheduleInAgenda: profile.showSchoolScheduleInAgenda,
+      showRoutinesInAgenda: profile.showRoutinesInAgenda,
       children: children,
       age: calculateAgeFromBirthDate(
         birthDateController.text.trim(),
@@ -4973,6 +4980,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         buildDivider(),
         buildProfileRow(
+          icon: Icons.calendar_month_outlined,
+          label: "Organisation et agenda",
+          value: null,
+          iconColor: textSoft,
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => OrganizationAgendaSettingsScreen(
+                  profile: profile,
+                  onSave: (updatedProfile) async {
+                    if (!mounted) return;
+                    setState(() => profile = updatedProfile);
+                    await saveProfile(showSnack: false);
+                  },
+                ),
+              ),
+            );
+          },
+          showChevron: true,
+        ),
+        buildDivider(),
+        buildProfileRow(
           icon: Icons.auto_awesome,
           label: "Mémoire Zelia",
           value: null,
@@ -4995,19 +5024,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           onTap: () {
             Navigator.of(context).push(
               MaterialPageRoute<void>(
-                builder: (_) => PrivacyDataScreen(
-                  automaticTravelCalculationEnabled:
-                      profile.automaticTravelCalculationEnabled,
-                  onAutomaticTravelSettingChanged: (enabled) async {
-                    if (!mounted) return;
-                    setState(() {
-                      profile = profile.copyWith(
-                        automaticTravelCalculationEnabled: enabled,
-                      );
-                    });
-                    await saveProfile(showSnack: false);
-                  },
-                ),
+                builder: (_) => const PrivacyDataScreen(),
               ),
             );
           },

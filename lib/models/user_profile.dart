@@ -284,6 +284,12 @@ class UserProfile {
     "partnerName",
     "wantsNotifications",
     "automaticTravelCalculationEnabled",
+    "agendaSafetyMarginMinutes",
+    "showPersonalActivitiesInAgenda",
+    "showChildActivitiesInAgenda",
+    "showWorkScheduleInAgenda",
+    "showSchoolScheduleInAgenda",
+    "showRoutinesInAgenda",
     "children",
     "age",
     "birthDate",
@@ -349,6 +355,12 @@ class UserProfile {
   final String partnerName;
   final bool wantsNotifications;
   final bool automaticTravelCalculationEnabled;
+  final int agendaSafetyMarginMinutes;
+  final bool showPersonalActivitiesInAgenda;
+  final bool showChildActivitiesInAgenda;
+  final bool showWorkScheduleInAgenda;
+  final bool showSchoolScheduleInAgenda;
+  final bool showRoutinesInAgenda;
   final List<ChildProfile> children;
 
   final String age;
@@ -423,6 +435,12 @@ class UserProfile {
     required this.partnerName,
     required this.wantsNotifications,
     this.automaticTravelCalculationEnabled = false,
+    this.agendaSafetyMarginMinutes = 10,
+    this.showPersonalActivitiesInAgenda = true,
+    this.showChildActivitiesInAgenda = true,
+    this.showWorkScheduleInAgenda = false,
+    this.showSchoolScheduleInAgenda = false,
+    this.showRoutinesInAgenda = false,
     required this.children,
     this.age = "",
     this.birthDate = "",
@@ -489,6 +507,12 @@ class UserProfile {
     String? partnerName,
     bool? wantsNotifications,
     bool? automaticTravelCalculationEnabled,
+    int? agendaSafetyMarginMinutes,
+    bool? showPersonalActivitiesInAgenda,
+    bool? showChildActivitiesInAgenda,
+    bool? showWorkScheduleInAgenda,
+    bool? showSchoolScheduleInAgenda,
+    bool? showRoutinesInAgenda,
     List<ChildProfile>? children,
     String? age,
     String? birthDate,
@@ -555,6 +579,17 @@ class UserProfile {
       wantsNotifications: wantsNotifications ?? this.wantsNotifications,
       automaticTravelCalculationEnabled: automaticTravelCalculationEnabled ??
           this.automaticTravelCalculationEnabled,
+      agendaSafetyMarginMinutes:
+          agendaSafetyMarginMinutes ?? this.agendaSafetyMarginMinutes,
+      showPersonalActivitiesInAgenda:
+          showPersonalActivitiesInAgenda ?? this.showPersonalActivitiesInAgenda,
+      showChildActivitiesInAgenda:
+          showChildActivitiesInAgenda ?? this.showChildActivitiesInAgenda,
+      showWorkScheduleInAgenda:
+          showWorkScheduleInAgenda ?? this.showWorkScheduleInAgenda,
+      showSchoolScheduleInAgenda:
+          showSchoolScheduleInAgenda ?? this.showSchoolScheduleInAgenda,
+      showRoutinesInAgenda: showRoutinesInAgenda ?? this.showRoutinesInAgenda,
       children: children ?? this.children,
       age: age ?? this.age,
       birthDate: birthDate ?? this.birthDate,
@@ -624,6 +659,12 @@ class UserProfile {
       "partnerName": partnerName,
       "wantsNotifications": wantsNotifications,
       "automaticTravelCalculationEnabled": automaticTravelCalculationEnabled,
+      "agendaSafetyMarginMinutes": agendaSafetyMarginMinutes,
+      "showPersonalActivitiesInAgenda": showPersonalActivitiesInAgenda,
+      "showChildActivitiesInAgenda": showChildActivitiesInAgenda,
+      "showWorkScheduleInAgenda": showWorkScheduleInAgenda,
+      "showSchoolScheduleInAgenda": showSchoolScheduleInAgenda,
+      "showRoutinesInAgenda": showRoutinesInAgenda,
       "children": children.map((child) => child.toJson()).toList(),
       "age": age,
       "birthDate": birthDate,
@@ -696,6 +737,19 @@ class UserProfile {
       wantsNotifications: json["wantsNotifications"] ?? true,
       automaticTravelCalculationEnabled:
           json["automaticTravelCalculationEnabled"] == true,
+      agendaSafetyMarginMinutes: const {0, 5, 10, 15}
+              .contains(json["agendaSafetyMarginMinutes"] as int?)
+          ? json["agendaSafetyMarginMinutes"] as int
+          : 10,
+      showPersonalActivitiesInAgenda:
+          json["showPersonalActivitiesInAgenda"] as bool? ?? true,
+      showChildActivitiesInAgenda:
+          json["showChildActivitiesInAgenda"] as bool? ?? true,
+      showWorkScheduleInAgenda:
+          json["showWorkScheduleInAgenda"] as bool? ?? false,
+      showSchoolScheduleInAgenda:
+          json["showSchoolScheduleInAgenda"] as bool? ?? false,
+      showRoutinesInAgenda: json["showRoutinesInAgenda"] as bool? ?? false,
       children: (json["children"] as List? ?? [])
           .map((child) =>
               ChildProfile.fromJson(Map<String, dynamic>.from(child)))

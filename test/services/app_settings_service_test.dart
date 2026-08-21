@@ -46,6 +46,8 @@ void main() {
       profile: _profile(
         planningStyle: 'Structuré',
         automaticTravelCalculationEnabled: true,
+        agendaSafetyMarginMinutes: 15,
+        showWorkScheduleInAgenda: true,
       ),
     );
 
@@ -53,6 +55,8 @@ void main() {
     expect(saved.source, AppSettingsSource.explicitUserSetting);
     expect(saved.planningStyle, 'Structuré');
     expect(saved.automaticTravelCalculationEnabled, isTrue);
+    expect(saved.agendaSafetyMarginMinutes, 15);
+    expect(saved.showWorkScheduleInAgenda, isTrue);
   });
 
   test('compatibility view is projected from canonical settings', () {
@@ -61,6 +65,8 @@ void main() {
       profile: _profile(
         planningStyle: 'Canonique',
         automaticTravelCalculationEnabled: true,
+        agendaSafetyMarginMinutes: 5,
+        showSchoolScheduleInAgenda: true,
       ),
       changedAt: now,
     );
@@ -71,6 +77,8 @@ void main() {
 
     expect(projected.planningStyle, 'Canonique');
     expect(projected.automaticTravelCalculationEnabled, isTrue);
+    expect(projected.agendaSafetyMarginMinutes, 5);
+    expect(projected.showSchoolScheduleInAgenda, isTrue);
     expect(projected.firstName, 'Sophia');
   });
 
@@ -100,6 +108,9 @@ void main() {
 UserProfile _profile({
   required String planningStyle,
   bool automaticTravelCalculationEnabled = false,
+  int agendaSafetyMarginMinutes = 10,
+  bool showWorkScheduleInAgenda = false,
+  bool showSchoolScheduleInAgenda = false,
 }) =>
     UserProfile(
       firstName: 'Sophia',
@@ -108,6 +119,9 @@ UserProfile _profile({
       partnerName: '',
       wantsNotifications: true,
       automaticTravelCalculationEnabled: automaticTravelCalculationEnabled,
+      agendaSafetyMarginMinutes: agendaSafetyMarginMinutes,
+      showWorkScheduleInAgenda: showWorkScheduleInAgenda,
+      showSchoolScheduleInAgenda: showSchoolScheduleInAgenda,
       children: const [],
       aiTone: 'Doux',
       planningStyle: planningStyle,

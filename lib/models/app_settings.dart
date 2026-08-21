@@ -13,6 +13,12 @@ final class AppSettings {
     this.schemaVersion = currentSchemaVersion,
     required this.accountScopeId,
     required this.automaticTravelCalculationEnabled,
+    this.agendaSafetyMarginMinutes = 10,
+    this.showPersonalActivitiesInAgenda = true,
+    this.showChildActivitiesInAgenda = true,
+    this.showWorkScheduleInAgenda = false,
+    this.showSchoolScheduleInAgenda = false,
+    this.showRoutinesInAgenda = false,
     required this.aiTone,
     required this.planningStyle,
     required this.notificationLevel,
@@ -29,6 +35,12 @@ final class AppSettings {
   final int schemaVersion;
   final String accountScopeId;
   final bool automaticTravelCalculationEnabled;
+  final int agendaSafetyMarginMinutes;
+  final bool showPersonalActivitiesInAgenda;
+  final bool showChildActivitiesInAgenda;
+  final bool showWorkScheduleInAgenda;
+  final bool showSchoolScheduleInAgenda;
+  final bool showRoutinesInAgenda;
   final String aiTone;
   final String planningStyle;
   final String notificationLevel;
@@ -42,6 +54,7 @@ final class AppSettings {
   void validate() {
     if (schemaVersion != currentSchemaVersion ||
         accountScopeId.trim().isEmpty ||
+        !const {0, 5, 10, 15}.contains(agendaSafetyMarginMinutes) ||
         revision < 1 ||
         changedAt != changedAt.toUtc() ||
         [
@@ -65,6 +78,12 @@ final class AppSettings {
         accountScopeId: accountScopeId,
         automaticTravelCalculationEnabled:
             profile.automaticTravelCalculationEnabled,
+        agendaSafetyMarginMinutes: profile.agendaSafetyMarginMinutes,
+        showPersonalActivitiesInAgenda: profile.showPersonalActivitiesInAgenda,
+        showChildActivitiesInAgenda: profile.showChildActivitiesInAgenda,
+        showWorkScheduleInAgenda: profile.showWorkScheduleInAgenda,
+        showSchoolScheduleInAgenda: profile.showSchoolScheduleInAgenda,
+        showRoutinesInAgenda: profile.showRoutinesInAgenda,
         aiTone: profile.aiTone.trim(),
         planningStyle: profile.planningStyle.trim(),
         notificationLevel: profile.notificationLevel.trim(),
@@ -78,6 +97,12 @@ final class AppSettings {
 
   AppSettings copyWith({
     bool? automaticTravelCalculationEnabled,
+    int? agendaSafetyMarginMinutes,
+    bool? showPersonalActivitiesInAgenda,
+    bool? showChildActivitiesInAgenda,
+    bool? showWorkScheduleInAgenda,
+    bool? showSchoolScheduleInAgenda,
+    bool? showRoutinesInAgenda,
     String? aiTone,
     String? planningStyle,
     String? notificationLevel,
@@ -92,6 +117,17 @@ final class AppSettings {
         accountScopeId: accountScopeId,
         automaticTravelCalculationEnabled: automaticTravelCalculationEnabled ??
             this.automaticTravelCalculationEnabled,
+        agendaSafetyMarginMinutes:
+            agendaSafetyMarginMinutes ?? this.agendaSafetyMarginMinutes,
+        showPersonalActivitiesInAgenda: showPersonalActivitiesInAgenda ??
+            this.showPersonalActivitiesInAgenda,
+        showChildActivitiesInAgenda:
+            showChildActivitiesInAgenda ?? this.showChildActivitiesInAgenda,
+        showWorkScheduleInAgenda:
+            showWorkScheduleInAgenda ?? this.showWorkScheduleInAgenda,
+        showSchoolScheduleInAgenda:
+            showSchoolScheduleInAgenda ?? this.showSchoolScheduleInAgenda,
+        showRoutinesInAgenda: showRoutinesInAgenda ?? this.showRoutinesInAgenda,
         aiTone: aiTone ?? this.aiTone,
         planningStyle: planningStyle ?? this.planningStyle,
         notificationLevel: notificationLevel ?? this.notificationLevel,
@@ -105,6 +141,12 @@ final class AppSettings {
 
   UserProfile projectOnto(UserProfile profile) => profile.copyWith(
         automaticTravelCalculationEnabled: automaticTravelCalculationEnabled,
+        agendaSafetyMarginMinutes: agendaSafetyMarginMinutes,
+        showPersonalActivitiesInAgenda: showPersonalActivitiesInAgenda,
+        showChildActivitiesInAgenda: showChildActivitiesInAgenda,
+        showWorkScheduleInAgenda: showWorkScheduleInAgenda,
+        showSchoolScheduleInAgenda: showSchoolScheduleInAgenda,
+        showRoutinesInAgenda: showRoutinesInAgenda,
         aiTone: aiTone,
         planningStyle: planningStyle,
         notificationLevel: notificationLevel,
@@ -116,6 +158,13 @@ final class AppSettings {
   bool hasSameValuesAsProfile(UserProfile profile) =>
       automaticTravelCalculationEnabled ==
           profile.automaticTravelCalculationEnabled &&
+      agendaSafetyMarginMinutes == profile.agendaSafetyMarginMinutes &&
+      showPersonalActivitiesInAgenda ==
+          profile.showPersonalActivitiesInAgenda &&
+      showChildActivitiesInAgenda == profile.showChildActivitiesInAgenda &&
+      showWorkScheduleInAgenda == profile.showWorkScheduleInAgenda &&
+      showSchoolScheduleInAgenda == profile.showSchoolScheduleInAgenda &&
+      showRoutinesInAgenda == profile.showRoutinesInAgenda &&
       aiTone == profile.aiTone.trim() &&
       planningStyle == profile.planningStyle.trim() &&
       notificationLevel == profile.notificationLevel.trim() &&
@@ -127,6 +176,12 @@ final class AppSettings {
         'schemaVersion': schemaVersion,
         'accountScopeId': accountScopeId,
         'automaticTravelCalculationEnabled': automaticTravelCalculationEnabled,
+        'agendaSafetyMarginMinutes': agendaSafetyMarginMinutes,
+        'showPersonalActivitiesInAgenda': showPersonalActivitiesInAgenda,
+        'showChildActivitiesInAgenda': showChildActivitiesInAgenda,
+        'showWorkScheduleInAgenda': showWorkScheduleInAgenda,
+        'showSchoolScheduleInAgenda': showSchoolScheduleInAgenda,
+        'showRoutinesInAgenda': showRoutinesInAgenda,
         'aiTone': aiTone,
         'planningStyle': planningStyle,
         'notificationLevel': notificationLevel,
@@ -147,6 +202,17 @@ final class AppSettings {
       accountScopeId: json['accountScopeId'] as String? ?? '',
       automaticTravelCalculationEnabled:
           json['automaticTravelCalculationEnabled'] as bool? ?? false,
+      agendaSafetyMarginMinutes:
+          json['agendaSafetyMarginMinutes'] as int? ?? 10,
+      showPersonalActivitiesInAgenda:
+          json['showPersonalActivitiesInAgenda'] as bool? ?? true,
+      showChildActivitiesInAgenda:
+          json['showChildActivitiesInAgenda'] as bool? ?? true,
+      showWorkScheduleInAgenda:
+          json['showWorkScheduleInAgenda'] as bool? ?? false,
+      showSchoolScheduleInAgenda:
+          json['showSchoolScheduleInAgenda'] as bool? ?? false,
+      showRoutinesInAgenda: json['showRoutinesInAgenda'] as bool? ?? false,
       aiTone: json['aiTone'] as String? ?? '',
       planningStyle: json['planningStyle'] as String? ?? '',
       notificationLevel: json['notificationLevel'] as String? ?? '',

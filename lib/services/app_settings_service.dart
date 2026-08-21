@@ -102,6 +102,12 @@ final class AppSettingsService {
     final updated = current.copyWith(
       automaticTravelCalculationEnabled:
           profile.automaticTravelCalculationEnabled,
+      agendaSafetyMarginMinutes: profile.agendaSafetyMarginMinutes,
+      showPersonalActivitiesInAgenda: profile.showPersonalActivitiesInAgenda,
+      showChildActivitiesInAgenda: profile.showChildActivitiesInAgenda,
+      showWorkScheduleInAgenda: profile.showWorkScheduleInAgenda,
+      showSchoolScheduleInAgenda: profile.showSchoolScheduleInAgenda,
+      showRoutinesInAgenda: profile.showRoutinesInAgenda,
       aiTone: profile.aiTone.trim(),
       planningStyle: profile.planningStyle.trim(),
       notificationLevel: profile.notificationLevel.trim(),

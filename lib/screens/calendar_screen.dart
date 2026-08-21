@@ -10,6 +10,8 @@ import '../models/user_profile.dart';
 import '../services/event_service.dart';
 import '../services/event_mutation_result.dart';
 import '../services/event_mutation_service.dart';
+import '../services/automatic_travel_planning_service.dart';
+import '../services/route_travel_time_service.dart';
 import '../services/routine/routine_agenda_service.dart';
 import '../services/routine_repository.dart';
 
@@ -22,6 +24,7 @@ class CalendarScreen extends StatefulWidget {
     this.deleteEventForTest,
     this.loadSyncConflictsForTest,
     this.resolveSyncConflictForTest,
+    this.automaticTravelPlanningService,
     this.eventsVersionForTest,
     this.loadRoutinesForDayForTest,
     this.routinesVersionForTest,
@@ -56,6 +59,7 @@ class CalendarScreen extends StatefulWidget {
   final ValueNotifier<int>? routinesVersionForTest;
   final String accountScopeToken;
   final UserProfile? profile;
+  final AutomaticTravelPlanningService? automaticTravelPlanningService;
   final DateTime? initialDate;
   final String? highlightedEventId;
   final String? highlightedRoutineId;
@@ -235,7 +239,21 @@ class _CalendarScreenState extends State<CalendarScreen> {
         formatIsoDate(day) != formatIsoDate(selectedDate)) {
       return;
     }
-    setState(() => routineItems = loaded);
+    setState(() => routineItems = loaded.where(_isVisibleInAgenda).toList());
+  }
+
+  bool _isVisibleInAgenda(RoutineAgendaItem item) {
+    final profile = widget.profile;
+    if (profile == null) return true;
+    return switch (item.kind) {
+      RoutineScheduleKind.routine => profile.showRoutinesInAgenda,
+      RoutineScheduleKind.personalActivity =>
+        profile.showPersonalActivitiesInAgenda,
+      RoutineScheduleKind.work => profile.showWorkScheduleInAgenda,
+      RoutineScheduleKind.school => profile.showSchoolScheduleInAgenda,
+      RoutineScheduleKind.householdActivity =>
+        profile.showChildActivitiesInAgenda,
+    };
   }
 
   void selectDate(DateTime date) {
@@ -781,12 +799,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
     int selectedDuration =
         event?.durationMinutes == 0 ? 60 : event?.durationMinutes ?? 60;
 
-    int selectedTravelGoMinutes = event?.resolvedTravelGoMinutes ?? 0;
-    int selectedTravelBackMinutes = event?.resolvedTravelBackMinutes ?? 0;
-    int selectedMarginMinutes = event?.marginMinutes ?? 0;
-
     final titleController = TextEditingController(text: event?.title ?? '');
+    final locationController =
+        TextEditingController(text: event?.location ?? '');
     final notesController = TextEditingController(text: event?.notes ?? '');
+    var isSaving = false;
 
     Future<void> pickDate(StateSetter setModalState) async {
       final picked = await showDatePicker(
@@ -910,67 +927,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
       );
       if (picked == null || picked <= 0) return;
       setModalState(() => selectedDuration = picked);
-    }
-
-    Future<int?> pickCustomMinutes({
-      required String title,
-      required int currentValue,
-      required String zeroLabel,
-    }) async {
-      final controller = TextEditingController(
-        text: currentValue == 0 ? '' : currentValue.toString(),
-      );
-
-      return showDialog<int>(
-        context: context,
-        builder: (context) {
-          return AlertDialog(
-            backgroundColor: bg,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-            title: Text(
-              title,
-              style: TextStyle(color: textDark, fontWeight: FontWeight.w900),
-            ),
-            content: TextField(
-              controller: controller,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                labelText: 'Minutes',
-                hintText: 'Ex : 20',
-                labelStyle: TextStyle(color: textSoft),
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, 0),
-                child: Text(
-                  zeroLabel,
-                  style: TextStyle(
-                    color: textSoft,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: accent,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                ),
-                onPressed: () {
-                  final value = int.tryParse(controller.text.trim()) ?? 0;
-                  Navigator.pop(context, value < 0 ? 0 : value);
-                },
-                child: const Text('Valider'),
-              ),
-            ],
-          );
-        },
-      );
     }
 
     await showModalBottomSheet(
@@ -1161,172 +1117,23 @@ class _CalendarScreenState extends State<CalendarScreen> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 18),
-                      Text(
-                        'Trajet aller',
-                        style: TextStyle(
-                          color: textDark,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                        ),
+                      const SizedBox(height: 16),
+                      buildSheetTextField(
+                        controller: locationController,
+                        label: 'Lieu',
+                        hint: 'Nom du lieu ou adresse',
                       ),
-                      const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          ...[0, 10, 20, 30].map((minutes) {
-                            final selected = selectedTravelGoMinutes == minutes;
-                            return GestureDetector(
-                              onTap: () => setModalState(
-                                () => selectedTravelGoMinutes = minutes,
-                              ),
-                              child: buildChoiceChip(
-                                icon: minutes == 0
-                                    ? Icons.do_not_disturb_alt_outlined
-                                    : Icons.directions_car_outlined,
-                                label: minutes == 0 ? 'Aucun' : '$minutes min',
-                                selected: selected,
-                                color: accent,
-                              ),
-                            );
-                          }),
-                          GestureDetector(
-                            onTap: () async {
-                              final picked = await pickCustomMinutes(
-                                title: 'Trajet aller',
-                                currentValue: selectedTravelGoMinutes,
-                                zeroLabel: 'Aucun trajet',
-                              );
-                              if (picked == null) return;
-                              setModalState(
-                                () => selectedTravelGoMinutes = picked,
-                              );
-                            },
-                            child: buildChoiceChip(
-                              icon: Icons.add_rounded,
-                              label: ![0, 10, 20, 30]
-                                      .contains(selectedTravelGoMinutes)
-                                  ? travelLabel(selectedTravelGoMinutes)
-                                  : 'Autre trajet',
-                              selected: ![0, 10, 20, 30]
-                                  .contains(selectedTravelGoMinutes),
-                              color: accent,
-                            ),
+                      if (widget.profile?.automaticTravelCalculationEnabled ==
+                          true) ...[
+                        const SizedBox(height: 8),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          child: Text(
+                            'Zelia calculera les trajets automatiquement.',
+                            style: TextStyle(color: textSoft, fontSize: 13),
                           ),
-                        ],
-                      ),
-                      const SizedBox(height: 18),
-                      Text(
-                        'Trajet retour',
-                        style: TextStyle(
-                          color: textDark,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
                         ),
-                      ),
-                      const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          ...[0, 10, 20, 30].map((minutes) {
-                            final selected =
-                                selectedTravelBackMinutes == minutes;
-                            return GestureDetector(
-                              onTap: () => setModalState(
-                                () => selectedTravelBackMinutes = minutes,
-                              ),
-                              child: buildChoiceChip(
-                                icon: minutes == 0
-                                    ? Icons.do_not_disturb_alt_outlined
-                                    : Icons.directions_car_outlined,
-                                label: minutes == 0 ? 'Aucun' : '$minutes min',
-                                selected: selected,
-                                color: accent,
-                              ),
-                            );
-                          }),
-                          GestureDetector(
-                            onTap: () async {
-                              final picked = await pickCustomMinutes(
-                                title: 'Trajet retour',
-                                currentValue: selectedTravelBackMinutes,
-                                zeroLabel: 'Aucun trajet',
-                              );
-                              if (picked == null) return;
-                              setModalState(
-                                () => selectedTravelBackMinutes = picked,
-                              );
-                            },
-                            child: buildChoiceChip(
-                              icon: Icons.add_rounded,
-                              label: ![0, 10, 20, 30]
-                                      .contains(selectedTravelBackMinutes)
-                                  ? travelLabel(selectedTravelBackMinutes)
-                                  : 'Autre trajet',
-                              selected: ![0, 10, 20, 30]
-                                  .contains(selectedTravelBackMinutes),
-                              color: accent,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 18),
-                      Text(
-                        'Marge de sécurité',
-                        style: TextStyle(
-                          color: textDark,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          ...[0, 5, 10, 15].map((minutes) {
-                            final selected = selectedMarginMinutes == minutes;
-                            return GestureDetector(
-                              onTap: () => setModalState(
-                                () => selectedMarginMinutes = minutes,
-                              ),
-                              child: buildChoiceChip(
-                                icon: minutes == 0
-                                    ? Icons.do_not_disturb_alt_outlined
-                                    : Icons.shield_outlined,
-                                label: minutes == 0 ? 'Aucune' : '$minutes min',
-                                selected: selected,
-                                color: accent,
-                              ),
-                            );
-                          }),
-                          GestureDetector(
-                            onTap: () async {
-                              final picked = await pickCustomMinutes(
-                                title: 'Marge de sécurité',
-                                currentValue: selectedMarginMinutes,
-                                zeroLabel: 'Aucune marge',
-                              );
-                              if (picked == null) return;
-                              setModalState(
-                                () => selectedMarginMinutes = picked,
-                              );
-                            },
-                            child: buildChoiceChip(
-                              icon: Icons.add_rounded,
-                              label: ![0, 5, 10, 15]
-                                      .contains(selectedMarginMinutes)
-                                  ? travelLabel(selectedMarginMinutes)
-                                  : 'Autre marge',
-                              selected: ![0, 5, 10, 15]
-                                  .contains(selectedMarginMinutes),
-                              color: accent,
-                            ),
-                          ),
-                        ],
-                      ),
+                      ],
                       const SizedBox(height: 18),
                       Text('Catégorie',
                           style: TextStyle(
@@ -1355,7 +1162,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       buildSheetTextField(
                           controller: notesController,
                           label: 'Notes',
-                          hint: 'Détails, adresse, rappel...',
+                          hint: 'Détails ou rappel...',
                           maxLines: 3),
                       const SizedBox(height: 22),
                       Row(
@@ -1381,113 +1188,210 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                       const EdgeInsets.symmetric(vertical: 16),
                                   shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(24))),
-                              onPressed: () async {
-                                final title = titleController.text.trim();
-                                final date = formatIsoDate(selectedEventDate);
-                                final time = selectedEventTime;
-                                final endTime = endTimeFromDuration(
-                                    date: date,
-                                    time: time,
-                                    durationMinutes: selectedDuration);
-                                if (title.isEmpty) return;
+                              onPressed: isSaving
+                                  ? null
+                                  : () async {
+                                      if (isSaving) return;
+                                      setModalState(() => isSaving = true);
 
-                                final totalTravelMinutes =
-                                    selectedTravelGoMinutes +
-                                        selectedTravelBackMinutes;
+                                      final title = titleController.text.trim();
+                                      final date =
+                                          formatIsoDate(selectedEventDate);
+                                      final time = selectedEventTime;
+                                      final location =
+                                          locationController.text.trim();
+                                      final endTime = endTimeFromDuration(
+                                          date: date,
+                                          time: time,
+                                          durationMinutes: selectedDuration);
+                                      if (title.isEmpty) {
+                                        setModalState(() => isSaving = false);
+                                        return;
+                                      }
 
-                                final updatedEvent = event?.copyWith(
-                                      title: title,
-                                      date: date,
-                                      time: time,
-                                      notes: notesController.text.trim(),
-                                      category: selectedCategory,
-                                      startDateTimeIso: buildStartDateTimeIso(
-                                        date: date,
-                                        time: time,
+                                      var travelGoMinutes =
+                                          event?.resolvedTravelGoMinutes ?? 0;
+                                      var travelBackMinutes =
+                                          event?.resolvedTravelBackMinutes ?? 0;
+                                      var departureContext =
+                                          event?.departureContext ?? 'unknown';
+                                      var arrivalContext =
+                                          event?.arrivalContext ?? 'unknown';
+                                      var marginMinutes =
+                                          event?.marginMinutes ??
+                                              widget.profile
+                                                  ?.agendaSafetyMarginMinutes ??
+                                              10;
+
+                                      final profile = widget.profile;
+                                      final appointmentStart =
+                                          DateTime.tryParse(
+                                        '${date}T$time:00',
+                                      );
+                                      if (profile?.automaticTravelCalculationEnabled ==
+                                              true &&
+                                          appointmentStart != null &&
+                                          location.isNotEmpty &&
+                                          profile!.homeAddress
+                                              .trim()
+                                              .isNotEmpty) {
+                                        final estimator = widget
+                                                .automaticTravelPlanningService ??
+                                            const AutomaticTravelPlanningService(
+                                              routeGateway:
+                                                  AppleMapsRouteTravelTimeGateway(),
+                                            );
+                                        final estimate = await estimator
+                                            .estimateForFixedEvent(
+                                          appointmentStart: appointmentStart,
+                                          actionMinutes: selectedDuration,
+                                          destination: location,
+                                          homeAddress: profile.homeAddress,
+                                          events: events
+                                              .where((candidate) =>
+                                                  candidate.id != event?.id)
+                                              .toList(),
+                                        );
+                                        if (estimate != null) {
+                                          travelGoMinutes =
+                                              estimate.travelGoMinutes;
+                                          travelBackMinutes =
+                                              estimate.travelBackMinutes;
+                                          departureContext =
+                                              estimate.departureContext;
+                                          arrivalContext =
+                                              estimate.arrivalContext;
+                                        }
+                                      }
+                                      final totalTravelMinutes =
+                                          travelGoMinutes + travelBackMinutes;
+
+                                      final updatedEvent = event?.copyWith(
+                                            title: title,
+                                            date: date,
+                                            time: time,
+                                            notes: notesController.text.trim(),
+                                            category: selectedCategory,
+                                            location: location,
+                                            startDateTimeIso:
+                                                buildStartDateTimeIso(
+                                              date: date,
+                                              time: time,
+                                            ),
+                                            endTime: endTime,
+                                            endDateTimeIso: buildEndDateTimeIso(
+                                              date: date,
+                                              time: time,
+                                              durationMinutes: selectedDuration,
+                                            ),
+                                            durationMinutes: selectedDuration,
+                                            travelMinutes: totalTravelMinutes,
+                                            travelGoMinutes: travelGoMinutes,
+                                            travelBackMinutes:
+                                                travelBackMinutes,
+                                            usesSeparateTravelTimes: true,
+                                            marginMinutes: marginMinutes,
+                                            departureContext: departureContext,
+                                            arrivalContext: arrivalContext,
+                                          ) ??
+                                          EventModel(
+                                            title: title,
+                                            date: date,
+                                            time: time,
+                                            notes: notesController.text.trim(),
+                                            category: selectedCategory,
+                                            location: location,
+                                            createdAt: DateTime.now(),
+                                            startDateTimeIso:
+                                                buildStartDateTimeIso(
+                                              date: date,
+                                              time: time,
+                                            ),
+                                            endTime: endTime,
+                                            endDateTimeIso: buildEndDateTimeIso(
+                                              date: date,
+                                              time: time,
+                                              durationMinutes: selectedDuration,
+                                            ),
+                                            durationMinutes: selectedDuration,
+                                            travelMinutes: totalTravelMinutes,
+                                            travelGoMinutes: travelGoMinutes,
+                                            travelBackMinutes:
+                                                travelBackMinutes,
+                                            usesSeparateTravelTimes: true,
+                                            marginMinutes: marginMinutes,
+                                            departureContext: departureContext,
+                                            arrivalContext: arrivalContext,
+                                          );
+
+                                      final conflict =
+                                          findManualOverlapConflict(
+                                        candidate: updatedEvent,
+                                        ignoredEvent: event,
+                                      );
+
+                                      if (conflict != null) {
+                                        final shouldSave =
+                                            await confirmManualOverlap(
+                                          conflict: conflict,
+                                        );
+
+                                        if (!shouldSave) {
+                                          if (context.mounted) {
+                                            setModalState(
+                                                () => isSaving = false);
+                                          }
+                                          return;
+                                        }
+                                      }
+
+                                      if (isEdit) {
+                                        final result = await mutateEvent(
+                                          existing: event,
+                                          proposed: updatedEvent,
+                                        );
+                                        if (result.status !=
+                                                EventMutationStatus.success &&
+                                            context.mounted) {
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
+                                            const SnackBar(
+                                              content: Text(
+                                                "Cet événement vient de changer. Rouvre l’agenda puis réessaie.",
+                                              ),
+                                            ),
+                                          );
+                                          setModalState(() => isSaving = false);
+                                          return;
+                                        }
+                                      } else {
+                                        await addEvent(updatedEvent);
+                                      }
+
+                                      visibleMonth = DateTime(
+                                          selectedEventDate.year,
+                                          selectedEventDate.month,
+                                          1);
+                                      selectDate(selectedEventDate);
+                                      if (context.mounted) {
+                                        Navigator.pop(context);
+                                      }
+                                      await loadEvents();
+                                    },
+                              child: isSaving
+                                  ? const SizedBox(
+                                      width: 22,
+                                      height: 22,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2.5,
+                                        color: Colors.white,
                                       ),
-                                      endTime: endTime,
-                                      endDateTimeIso: buildEndDateTimeIso(
-                                        date: date,
-                                        time: time,
-                                        durationMinutes: selectedDuration,
-                                      ),
-                                      durationMinutes: selectedDuration,
-                                      travelMinutes: totalTravelMinutes,
-                                      travelGoMinutes: selectedTravelGoMinutes,
-                                      travelBackMinutes:
-                                          selectedTravelBackMinutes,
-                                      usesSeparateTravelTimes: true,
-                                      marginMinutes: selectedMarginMinutes,
-                                    ) ??
-                                    EventModel(
-                                      title: title,
-                                      date: date,
-                                      time: time,
-                                      notes: notesController.text.trim(),
-                                      category: selectedCategory,
-                                      createdAt: DateTime.now(),
-                                      startDateTimeIso: buildStartDateTimeIso(
-                                        date: date,
-                                        time: time,
-                                      ),
-                                      endTime: endTime,
-                                      endDateTimeIso: buildEndDateTimeIso(
-                                        date: date,
-                                        time: time,
-                                        durationMinutes: selectedDuration,
-                                      ),
-                                      durationMinutes: selectedDuration,
-                                      travelMinutes: totalTravelMinutes,
-                                      travelGoMinutes: selectedTravelGoMinutes,
-                                      travelBackMinutes:
-                                          selectedTravelBackMinutes,
-                                      usesSeparateTravelTimes: true,
-                                      marginMinutes: selectedMarginMinutes,
-                                    );
-
-                                final conflict = findManualOverlapConflict(
-                                  candidate: updatedEvent,
-                                  ignoredEvent: event,
-                                );
-
-                                if (conflict != null) {
-                                  final shouldSave = await confirmManualOverlap(
-                                    conflict: conflict,
-                                  );
-
-                                  if (!shouldSave) return;
-                                }
-
-                                if (isEdit) {
-                                  final result = await mutateEvent(
-                                    existing: event,
-                                    proposed: updatedEvent,
-                                  );
-                                  if (result.status !=
-                                          EventMutationStatus.success &&
-                                      context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text(
-                                          "Cet événement vient de changer. Rouvre l’agenda puis réessaie.",
-                                        ),
-                                      ),
-                                    );
-                                    return;
-                                  }
-                                } else {
-                                  await addEvent(updatedEvent);
-                                }
-
-                                visibleMonth = DateTime(selectedEventDate.year,
-                                    selectedEventDate.month, 1);
-                                selectDate(selectedEventDate);
-                                if (context.mounted) Navigator.pop(context);
-                                await loadEvents();
-                              },
-                              child: Text(isEdit ? 'Enregistrer' : 'Ajouter',
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.w900)),
+                                    )
+                                  : Text(
+                                      isEdit ? 'Enregistrer' : 'Ajouter',
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.w900),
+                                    ),
                             ),
                           ),
                         ],
@@ -2106,13 +2010,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final details = <String>[
       if (event.durationMinutes > 0)
         'Durée ${durationLabel(event.durationMinutes)}',
-      if (event.usesSeparateTravelTimes) ...[
-        'Aller ${travelLabel(event.travelGoMinutes)}',
-        'Retour ${travelLabel(event.travelBackMinutes)}',
-        if (event.marginMinutes > 0)
-          'Marge ${travelLabel(event.marginMinutes)}',
-      ] else if (event.travelMinutes > 0)
-        'Trajet ${travelLabel(event.travelMinutes)}',
+      if (event.location.trim().isNotEmpty) event.location.trim(),
       if (event.notes.trim().isNotEmpty &&
           !isTechnicalPlanningNote(event.notes.trim()))
         event.notes.trim(),

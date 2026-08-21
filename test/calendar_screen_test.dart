@@ -9,8 +9,11 @@ import 'package:moms_ai/models/event_sync_conflict.dart';
 import 'package:moms_ai/models/event_sync_models.dart';
 import 'package:moms_ai/models/routine/routine_agenda_item.dart';
 import 'package:moms_ai/models/routine/routine_schedule_definition.dart';
+import 'package:moms_ai/models/user_profile.dart';
 import 'package:moms_ai/screens/calendar_screen.dart';
+import 'package:moms_ai/services/automatic_travel_planning_service.dart';
 import 'package:moms_ai/services/event_mutation_result.dart';
+import 'package:moms_ai/services/route_travel_time_service.dart';
 
 String isoDate(DateTime date) {
   final year = date.year.toString();
@@ -22,12 +25,17 @@ String isoDate(DateTime date) {
 Widget buildCalendar({
   required List<EventModel> initialEvents,
   Future<void> Function(List<EventModel> events)? onUpdate,
+  Future<void> Function(EventModel event)? onAdd,
+  UserProfile? profile,
+  AutomaticTravelPlanningService? automaticTravelPlanningService,
 }) {
   return MaterialApp(
     home: CalendarScreen(
       eventsVersionForTest: ValueNotifier<int>(0),
+      profile: profile,
+      automaticTravelPlanningService: automaticTravelPlanningService,
       loadEventsForTest: () async => List<EventModel>.from(initialEvents),
-      addEventForTest: (_) async {},
+      addEventForTest: onAdd ?? (_) async {},
       mutateEventForTest: ({
         required existing,
         required proposed,
@@ -43,6 +51,15 @@ Widget buildCalendar({
       },
     ),
   );
+}
+
+final class _FixedRouteGateway implements RouteTravelTimeGateway {
+  const _FixedRouteGateway();
+
+  @override
+  Future<int?> estimateMinutes(RouteTravelTimeRequest request) async {
+    return request.origin == '12 rue de la Maison' ? 15 : 30;
+  }
 }
 
 void main() {
@@ -275,6 +292,49 @@ void main() {
       expect(find.textContaining('se chevauchent'), findsNothing);
     },
   );
+
+  testWidgets('keeps a hidden school schedule out of the visible Agenda',
+      (WidgetTester tester) async {
+    final tomorrow = DateTime.now().add(const Duration(days: 1));
+    final date = isoDate(tomorrow);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CalendarScreen(
+          accountScopeToken: 'account-a',
+          profile: UserProfile(
+            firstName: 'Sophia',
+            familyStatus: '',
+            workStatus: '',
+            partnerName: '',
+            wantsNotifications: true,
+            children: const [],
+            showSchoolScheduleInAgenda: false,
+          ),
+          initialDate: tomorrow,
+          eventsVersionForTest: ValueNotifier<int>(0),
+          routinesVersionForTest: ValueNotifier<int>(0),
+          loadEventsForTest: () async => const [],
+          loadSyncConflictsForTest: () async => const [],
+          loadRoutinesForDayForTest: (_, day) async => [
+            RoutineAgendaItem(
+              occurrenceId: 'school:$date',
+              routineId: 'school',
+              dateIso: date,
+              title: 'École Kassim',
+              startTime: '08:30',
+              endTime: '11:50',
+              protectedStart: DateTime(day.year, day.month, day.day, 8, 30),
+              protectedEnd: DateTime(day.year, day.month, day.day, 11, 50),
+              kind: RoutineScheduleKind.school,
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('École Kassim'), findsNothing);
+  });
 
   testWidgets('shows a personal activity as a light read-only Agenda item',
       (WidgetTester tester) async {
@@ -533,7 +593,7 @@ void main() {
   });
 
   testWidgets(
-    'manual event form exposes separate travel fields',
+    'manual event form asks for a place and hides technical travel fields',
     (WidgetTester tester) async {
       await tester.binding.setSurfaceSize(const Size(430, 932));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -547,15 +607,73 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Durée'), findsOneWidget);
-      expect(find.text('Trajet aller'), findsOneWidget);
-      expect(find.text('Trajet retour'), findsOneWidget);
-      expect(find.text('Marge de sécurité'), findsOneWidget);
+      expect(find.text('Lieu'), findsOneWidget);
+      expect(find.text('Trajet aller'), findsNothing);
+      expect(find.text('Trajet retour'), findsNothing);
+      expect(find.text('Marge de sécurité'), findsNothing);
       expect(find.text('Temps de trajet'), findsNothing);
     },
   );
 
   testWidgets(
-    'editing preserves outbound travel and explicit zero return',
+    'manual event creation ignores repeated taps while saving',
+    (WidgetTester tester) async {
+      await tester.binding.setSurfaceSize(const Size(430, 932));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final saveCompleter = Completer<void>();
+      var saveCount = 0;
+      EventModel? savedEvent;
+
+      await tester.pumpWidget(
+        buildCalendar(
+          initialEvents: const [],
+          profile: UserProfile(
+            firstName: 'Sophia',
+            familyStatus: '',
+            workStatus: '',
+            partnerName: '',
+            wantsNotifications: true,
+            children: const [],
+            agendaSafetyMarginMinutes: 15,
+          ),
+          onAdd: (event) {
+            saveCount++;
+            savedEvent = event;
+            return saveCompleter.future;
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.add));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Ex : RDV dentiste'),
+        'Coiffeur',
+      );
+
+      final addButton = find.text('Ajouter');
+      await tester.ensureVisible(addButton);
+      await tester.tap(addButton);
+      await tester.tap(addButton, warnIfMissed: false);
+      await tester.pump();
+
+      expect(saveCount, 1);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+      saveCompleter.complete();
+      await tester.pumpAndSettle();
+
+      expect(saveCount, 1);
+      expect(savedEvent?.marginMinutes, 15);
+      expect(find.text('Agenda'), findsOneWidget);
+      expect(find.text('Nouvel événement'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'editing calculates outbound and return travel independently',
     (WidgetTester tester) async {
       await tester.binding.setSurfaceSize(const Size(430, 932));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -570,13 +688,14 @@ void main() {
         endTime: '11:00',
         notes: '',
         category: 'Santé',
+        location: 'Cabinet médical',
         createdAt: DateTime(2026, 7, 13, 12),
         startDateTimeIso: '${date}T10:15:00',
         endDateTimeIso: '${date}T11:00:00',
         durationMinutes: 45,
         travelMinutes: 45,
         travelGoMinutes: 15,
-        travelBackMinutes: 30,
+        travelBackMinutes: 0,
         usesSeparateTravelTimes: true,
         marginMinutes: 10,
         departureContext: 'home',
@@ -588,6 +707,19 @@ void main() {
       await tester.pumpWidget(
         buildCalendar(
           initialEvents: [initialEvent],
+          profile: UserProfile(
+            firstName: 'Sophia',
+            familyStatus: '',
+            workStatus: '',
+            partnerName: '',
+            wantsNotifications: true,
+            automaticTravelCalculationEnabled: true,
+            children: const [],
+            homeAddress: '12 rue de la Maison',
+          ),
+          automaticTravelPlanningService: const AutomaticTravelPlanningService(
+            routeGateway: _FixedRouteGateway(),
+          ),
           onUpdate: (events) async {
             savedEvents = List<EventModel>.from(events);
           },
@@ -598,16 +730,9 @@ void main() {
       await tester.tap(find.text('Médecin').first);
       await tester.pumpAndSettle();
 
-      expect(find.text('Trajet aller'), findsOneWidget);
-      expect(find.text('Trajet retour'), findsOneWidget);
-      expect(find.text('Marge de sécurité'), findsOneWidget);
-
-      final noTravelChoices = find.text('Aucun');
-      expect(noTravelChoices, findsNWidgets(2));
-
-      await tester.ensureVisible(noTravelChoices.at(1));
-      await tester.tap(noTravelChoices.at(1));
-      await tester.pump();
+      expect(find.text('Lieu'), findsOneWidget);
+      expect(find.text('Trajet aller'), findsNothing);
+      expect(find.text('Trajet retour'), findsNothing);
 
       final saveButton = find.text('Enregistrer');
       await tester.ensureVisible(saveButton);
@@ -620,11 +745,12 @@ void main() {
       final saved = savedEvents!.single;
 
       expect(saved.travelGoMinutes, 15);
-      expect(saved.travelBackMinutes, 0);
+      expect(saved.travelBackMinutes, 30);
       expect(saved.marginMinutes, 10);
       expect(saved.usesSeparateTravelTimes, isTrue);
       expect(saved.departureContext, 'home');
       expect(saved.arrivalContext, 'home');
+      expect(saved.location, 'Cabinet médical');
       expect(saved.id, 'event-stable-id');
       expect(saved.eventRevision, 2);
     },
