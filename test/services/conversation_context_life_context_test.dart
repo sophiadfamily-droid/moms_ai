@@ -29,6 +29,17 @@ void main() {
     expect(request.schemaVersion, 2);
     expect(request.context!.state.name, 'complete');
     expect(request.toJson()['conversationContext'], isNotEmpty);
+    expect(
+      request.context!.sections.map((section) => section.type),
+      contains('shopping'),
+    );
+    final shopping = request.context!.sections.singleWhere(
+      (section) => section.type == 'shopping',
+    );
+    final shoppingFacts = shopping.items.single.facts;
+    expect(shoppingFacts['title'], 'Fraises');
+    expect(shoppingFacts['createdAt'], '2026-07-23T09:00:00.000Z');
+    expect(shoppingFacts['quantity'], '2 barquettes');
     expect(request.profile, isEmpty);
     expect(request.memories, isEmpty);
     expect(request.memoryReasoning, isEmpty);
@@ -608,7 +619,7 @@ LifeContextProjection _projection() => LifeContextProjection(
       generatedAt: DateTime.utc(2026, 7, 23),
       state: LifeContextProjectionState.complete,
       budgetRequested: 245,
-      budgetUsed: 2,
+      budgetUsed: 4,
       sections: [
         LifeContextProjectionSection(
           type: LifeContextProjectionSectionType.human,
@@ -637,6 +648,52 @@ LifeContextProjection _projection() => LifeContextProjection(
             ),
           ],
           budgetLimit: 55,
+          budgetUsed: 2,
+          omittedCount: 0,
+          truncated: false,
+        ),
+        LifeContextProjectionSection(
+          type: LifeContextProjectionSectionType.shopping,
+          availability: LifeContextAvailability.available,
+          freshness: LifeContextFreshness.current,
+          items: [
+            LifeContextProjectionItem(
+              id: 'shopping-1',
+              domain: LifeContextDomain.shopping,
+              type: 'shoppingItem',
+              facts: [
+                LifeContextProjectionFact(
+                  key: LifeContextProjectionFactKeys.title,
+                  value: 'Fraises',
+                  sensitivity: LifeContextSensitivityLevel.publicTechnical,
+                ),
+                LifeContextProjectionFact(
+                  key: LifeContextProjectionFactKeys.urgency,
+                  value: '1',
+                  sensitivity: LifeContextSensitivityLevel.publicTechnical,
+                ),
+                LifeContextProjectionFact(
+                  key: LifeContextProjectionFactKeys.createdAt,
+                  value: '2026-07-23T09:00:00.000Z',
+                  sensitivity: LifeContextSensitivityLevel.publicTechnical,
+                ),
+                LifeContextProjectionFact(
+                  key: LifeContextProjectionFactKeys.quantity,
+                  value: '2 barquettes',
+                  sensitivity: LifeContextSensitivityLevel.ordinaryPersonal,
+                ),
+              ],
+              confirmation: LifeContextConfirmation.confirmed,
+              freshness: LifeContextFreshness.current,
+              provenance: const LifeContextProjectionProvenance(
+                sourceDomain: LifeContextDomain.shopping,
+                sourceId: 'shopping-1',
+                sourceSnapshotId: 'snapshot-1',
+                sourceKind: LifeContextSourceKind.shoppingService,
+              ),
+            ),
+          ],
+          budgetLimit: 25,
           budgetUsed: 2,
           omittedCount: 0,
           truncated: false,

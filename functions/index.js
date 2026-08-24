@@ -26,6 +26,9 @@ const {
 const {
   createCallableAccountDataHandler,
 } = require("./services/accountDataLifecycleService");
+const {
+  loadCanonicalShoppingItems,
+} = require("./services/canonicalShoppingRepository");
 
 if (getApps().length === 0) {
   initializeApp();
@@ -43,6 +46,13 @@ exports.chatWithZeliaCallable = onCall(
     createCallableFunctionOptions(openaiApiKey, zeliaEnforceAppCheck),
     createCallableChatHandler({
       ...sharedDependencies,
+      handlerDependencies: {
+        loadShoppingItems: ({uid, limit}) => loadCanonicalShoppingItems({
+          firestore,
+          uid,
+          limit,
+        }),
+      },
       appCheckEnforcement: zeliaEnforceAppCheck,
       consumeQuota: ({uid}) => consumeChatQuota({firestore, uid}),
     }),

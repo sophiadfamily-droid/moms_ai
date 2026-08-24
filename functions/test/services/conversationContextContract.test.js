@@ -66,6 +66,54 @@ test("accepts canonical partial context and preserves unavailable section",
       );
     });
 
+test("accepts all eight brain sections including shopping", () => {
+  const value = payload();
+  const types = [
+    "human", "identity", "event", "task", "routine", "memory", "shopping",
+    "relation",
+  ];
+  value.conversationContext.state = "complete";
+  value.conversationContext.sections = types.map((type) => ({
+    type,
+    availability: "empty",
+    freshness: "current",
+    items: [],
+    budgetLimit: 25,
+    budgetUsed: 0,
+    omittedCount: 0,
+    truncated: false,
+  }));
+  value.conversationContext.sections[6] = {
+    ...value.conversationContext.sections[6],
+    availability: "available",
+    items: [{
+      type: "shoppingItem",
+      confirmation: "confirmed",
+      freshness: "current",
+      facts: {
+        status: "active",
+        title: "Fraises",
+        urgency: "1",
+        createdAt: "2026-07-23T09:00:00.000Z",
+        quantity: "2 barquettes",
+      },
+    }],
+    budgetUsed: 2,
+  };
+  value.conversationContext.budgetRequested = 330;
+  value.conversationContext.budgetUsed = 2;
+
+  const result = validateConversationRequest(value);
+  assert.equal(result.conversationContext.sections.length, 8);
+  assert.deepEqual(result.conversationContext.sections[6].items[0].facts, {
+    status: "active",
+    title: "Fraises",
+    urgency: "1",
+    createdAt: "2026-07-23T09:00:00.000Z",
+    quantity: "2 barquettes",
+  });
+});
+
 test("refuses future, absent and unknown request schemas", () => {
   assert.throws(() => validateConversationRequest(payload({schemaVersion: 3})));
   const absent = payload();

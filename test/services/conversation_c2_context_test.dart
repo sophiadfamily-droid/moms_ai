@@ -123,7 +123,188 @@ void main() {
       lessThanOrEqualTo(ConversationTransportContract.maximumRequestUtf8Bytes),
     );
   });
+
+  test('one oversized fact cannot erase the shopping section', () {
+    final envelope = ConversationContextAssembler.assemble(
+      _projectionWithOversizedHumanFactAndShopping(),
+    );
+
+    final human = envelope.sections.singleWhere(
+      (section) => section.type == 'human',
+    );
+    final shopping = envelope.sections.singleWhere(
+      (section) => section.type == 'shopping',
+    );
+    expect(
+      human.items.single.facts[LifeContextProjectionFactKeys.displayName]!
+          .length,
+      ConversationTransportContract.maximumFactCharacters,
+    );
+    expect(shopping.availability, 'available');
+    expect(
+      shopping.items.single.facts[LifeContextProjectionFactKeys.title],
+      'bas',
+    );
+    expect(
+      envelope.warningCodes,
+      contains('conversation_context_item_sanitized'),
+    );
+  });
+
+  test('one malformed transport item cannot erase valid sibling sections', () {
+    final projection = _projectionWithOversizedHumanFactAndShopping();
+    final human = projection.sections.first;
+    final envelope = ConversationContextAssembler.assemble(
+      LifeContextProjection(
+        projectionId: projection.projectionId,
+        sourceSnapshotId: projection.sourceSnapshotId,
+        accountScopeId: projection.accountScopeId,
+        purpose: projection.purpose,
+        generatedAt: projection.generatedAt,
+        state: projection.state,
+        budgetRequested: projection.budgetRequested,
+        budgetUsed: projection.budgetUsed,
+        sections: [
+          LifeContextProjectionSection(
+            type: human.type,
+            availability: human.availability,
+            freshness: human.freshness,
+            items: [
+              LifeContextProjectionItem(
+                id: 'redacted-only',
+                domain: LifeContextDomain.human,
+                type: 'personProfileFact',
+                facts: [
+                  LifeContextProjectionFact(
+                    key: LifeContextProjectionFactKeys.profileFactKey,
+                    value: 'internal-only',
+                    sensitivity: LifeContextSensitivityLevel.publicTechnical,
+                  ),
+                ],
+                confirmation: LifeContextConfirmation.confirmed,
+                freshness: LifeContextFreshness.current,
+                provenance: const LifeContextProjectionProvenance(
+                  sourceDomain: LifeContextDomain.human,
+                  sourceId: 'redacted-only',
+                  sourceSnapshotId: 'snapshot-shopping',
+                  sourceKind: LifeContextSourceKind.humanModelLocal,
+                ),
+              ),
+            ],
+            budgetLimit: human.budgetLimit,
+            budgetUsed: 2,
+            omittedCount: 0,
+            truncated: false,
+          ),
+          projection.sections.last,
+        ],
+        omittedCount: 0,
+        warningCodes: const [],
+      ),
+    );
+
+    expect(
+      envelope.sections.singleWhere((section) => section.type == 'human').items,
+      isEmpty,
+    );
+    expect(
+      envelope.sections
+          .singleWhere((section) => section.type == 'shopping')
+          .items
+          .single
+          .facts[LifeContextProjectionFactKeys.title],
+      'bas',
+    );
+    expect(envelope.state, ConversationContextState.complete);
+    expect(
+      envelope.warningCodes,
+      contains('conversation_context_item_omitted'),
+    );
+  });
 }
+
+LifeContextProjection _projectionWithOversizedHumanFactAndShopping() =>
+    LifeContextProjection(
+      projectionId: 'projection-shopping',
+      sourceSnapshotId: 'snapshot-shopping',
+      accountScopeId: 'account-test',
+      purpose: LifeContextConsumerPurpose.conversation,
+      generatedAt: DateTime.utc(2026, 8, 24),
+      state: LifeContextProjectionState.complete,
+      budgetRequested: 330,
+      budgetUsed: 9,
+      sections: [
+        LifeContextProjectionSection(
+          type: LifeContextProjectionSectionType.human,
+          availability: LifeContextAvailability.available,
+          freshness: LifeContextFreshness.current,
+          items: [
+            LifeContextProjectionItem(
+              id: 'person-long',
+              domain: LifeContextDomain.human,
+              type: 'person',
+              facts: [
+                LifeContextProjectionFact(
+                  key: LifeContextProjectionFactKeys.displayName,
+                  value: 'a' * 120,
+                  sensitivity: LifeContextSensitivityLevel.ordinaryPersonal,
+                ),
+              ],
+              confirmation: LifeContextConfirmation.confirmed,
+              freshness: LifeContextFreshness.current,
+              provenance: const LifeContextProjectionProvenance(
+                sourceDomain: LifeContextDomain.human,
+                sourceId: 'person-long',
+                sourceSnapshotId: 'snapshot-shopping',
+                sourceKind: LifeContextSourceKind.humanModelLocal,
+              ),
+            ),
+          ],
+          budgetLimit: 55,
+          budgetUsed: 2,
+          omittedCount: 0,
+          truncated: false,
+        ),
+        LifeContextProjectionSection(
+          type: LifeContextProjectionSectionType.shopping,
+          availability: LifeContextAvailability.available,
+          freshness: LifeContextFreshness.current,
+          items: [
+            LifeContextProjectionItem(
+              id: 'shopping-bas',
+              domain: LifeContextDomain.shopping,
+              type: 'shoppingItem',
+              facts: [
+                LifeContextProjectionFact(
+                  key: LifeContextProjectionFactKeys.status,
+                  value: 'active',
+                  sensitivity: LifeContextSensitivityLevel.publicTechnical,
+                ),
+                LifeContextProjectionFact(
+                  key: LifeContextProjectionFactKeys.title,
+                  value: 'bas',
+                  sensitivity: LifeContextSensitivityLevel.ordinaryPersonal,
+                ),
+              ],
+              confirmation: LifeContextConfirmation.confirmed,
+              freshness: LifeContextFreshness.current,
+              provenance: const LifeContextProjectionProvenance(
+                sourceDomain: LifeContextDomain.shopping,
+                sourceId: 'shopping-bas',
+                sourceSnapshotId: 'snapshot-shopping',
+                sourceKind: LifeContextSourceKind.shoppingService,
+              ),
+            ),
+          ],
+          budgetLimit: 25,
+          budgetUsed: 3,
+          omittedCount: 0,
+          truncated: false,
+        ),
+      ],
+      omittedCount: 0,
+      warningCodes: const [],
+    );
 
 LifeContextProjection _projection({
   LifeContextProjectionState state = LifeContextProjectionState.complete,

@@ -137,6 +137,22 @@ void main() {
   group('ShoppingService creation identity', () {
     setUp(() {
       SharedPreferences.setMockInitialValues({});
+      ShoppingService.resetRuntimeCacheForTesting();
+    });
+
+    test('loading the visible list refreshes the conversation context',
+        () async {
+      await ShoppingService.saveItems([buildItem(title: 'Bas')]);
+      ShoppingService.resetRuntimeCacheForTesting();
+      final previousVersion = ShoppingService.shoppingContextVersion.value;
+
+      final items = await ShoppingService.getItemsForLifeContext();
+
+      expect(items.map((item) => item.title), ['Bas']);
+      expect(
+        ShoppingService.shoppingContextVersion.value,
+        previousVersion + 1,
+      );
     });
 
     test('generates exactly one ID at the persistence boundary', () async {

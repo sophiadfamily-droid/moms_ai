@@ -106,6 +106,98 @@ void main() {
       expect(result.isValid, isTrue);
     });
 
+    test('accepts a shopping fact carried by the shared brain context', () {
+      final envelope = ConversationContextEnvelope(
+        projectionVersion: 3,
+        purpose: ConversationTransportContract.purposeId,
+        generatedAt: DateTime.utc(2026, 7, 23),
+        state: ConversationContextState.complete,
+        sections: [
+          ConversationContextSection(
+            type: 'shopping',
+            availability: 'available',
+            freshness: 'current',
+            items: [
+              ConversationContextItem(
+                type: 'shoppingItem',
+                confirmation: 'confirmed',
+                freshness: 'current',
+                facts: {'title': 'Fraises', 'urgency': 'urgent'},
+              ),
+            ],
+            budgetLimit: 25,
+            budgetUsed: 2,
+            omittedCount: 0,
+            truncated: false,
+          ),
+        ],
+        budgetRequested: 330,
+        budgetUsed: 2,
+        omittedCount: 0,
+        truncatedSections: const [],
+        warningCodes: const [],
+      );
+      final result = policy.validate(
+        contract: contract(
+          sources: const [
+            ConversationGroundingSourceType.lifeContextShopping,
+          ],
+          references: const [
+            ConversationGroundingReference(
+              sourceType: ConversationGroundingSourceType.lifeContextShopping,
+              section: 'shopping',
+              factKey: 'urgency',
+              freshness: 'current',
+              confirmation: 'confirmed',
+              projectionVersion: 3,
+            ),
+          ],
+          claims: [
+            ConversationPersonalClaim(
+              claimId: 'shopping-claim-1',
+              category: ConversationPersonalClaimCategory.shoppingFact,
+              sourceReferenceIndexes: const [0],
+              certainty: ConversationEpistemicState.grounded,
+            ),
+          ],
+        ),
+        envelope: envelope,
+        actions: const [],
+      );
+
+      expect(result.isValid, isTrue);
+    });
+
+    test('accepts shopping facts verified by the authenticated server', () {
+      final result = policy.validate(
+        contract: contract(
+          sources: const [
+            ConversationGroundingSourceType.serverVerifiedShopping,
+          ],
+          references: const [
+            ConversationGroundingReference(
+              sourceType:
+                  ConversationGroundingSourceType.serverVerifiedShopping,
+              freshness: 'current',
+              confirmation: 'confirmed',
+              projectionVersion: 3,
+            ),
+          ],
+          claims: [
+            ConversationPersonalClaim(
+              claimId: 'shopping-server-1',
+              category: ConversationPersonalClaimCategory.shoppingFact,
+              sourceReferenceIndexes: const [0],
+              certainty: ConversationEpistemicState.grounded,
+            ),
+          ],
+        ),
+        envelope: availableEnvelope(),
+        actions: const [],
+      );
+      expect(result.isValid, isTrue);
+    });
+
     test('refuses a missing source and general knowledge personal claim', () {
       final missing = policy.validate(
         contract: contract(

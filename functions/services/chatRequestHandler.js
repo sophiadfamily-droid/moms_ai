@@ -22,6 +22,11 @@ const {buildEventClarification} = require("./eventClarificationDraft");
 const {
   canonicalProfileFactAnswer,
 } = require("./canonicalProfileFactAnswer");
+const {
+  canonicalShoppingContextUnavailableAnswer,
+  canonicalShoppingFactAnswer,
+  requestedShoppingView,
+} = require("./canonicalShoppingFactAnswer");
 const {validateConversationRequest} =
   require("./conversationContextContract");
 const {validateConversationResponse} =
@@ -169,6 +174,35 @@ async function handleChatRequest(
       actions: validated.actions,
       memories: validated.memories,
       epistemic: validated.epistemic,
+    };
+  }
+
+  const shoppingFactAnswer = canonicalShoppingFactAnswer(source, {
+    sourceType: "lifeContextShopping",
+  });
+  const shoppingView = requestedShoppingView(message);
+  if (shoppingFactAnswer !== null) {
+    const validated = validateConversationResponse(
+        shoppingFactAnswer,
+        source,
+    );
+    return {
+      reply: validated.visibleText,
+      actions: validated.actions,
+      memories: validated.memories,
+      epistemic: validated.epistemic,
+    };
+  }
+  if (shoppingView !== null) {
+    const unavailable = validateConversationResponse(
+        canonicalShoppingContextUnavailableAnswer(source),
+        source,
+    );
+    return {
+      reply: unavailable.visibleText,
+      actions: unavailable.actions,
+      memories: unavailable.memories,
+      epistemic: unavailable.epistemic,
     };
   }
 

@@ -38,7 +38,9 @@ enum ConversationGroundingSourceType {
   lifeContextTask,
   lifeContextRoutine,
   lifeContextMemory,
+  lifeContextShopping,
   lifeContextRelation,
+  serverVerifiedShopping,
   confirmedClarification,
   confirmedActionResult,
   generalKnowledge,
@@ -50,6 +52,7 @@ enum ConversationPersonalClaimCategory {
   taskFact,
   routineFact,
   memoryFact,
+  shoppingFact,
   relationshipFact,
   actionResultFact,
 }
@@ -161,6 +164,7 @@ final class ConversationGroundingReference {
         sourceType == ConversationGroundingSourceType.validatedHistoryMessage ||
         sourceType == ConversationGroundingSourceType.confirmedClarification ||
         sourceType == ConversationGroundingSourceType.confirmedActionResult ||
+        sourceType == ConversationGroundingSourceType.serverVerifiedShopping ||
         sourceType == ConversationGroundingSourceType.generalKnowledge) {
       return section == null && factKey == null;
     }

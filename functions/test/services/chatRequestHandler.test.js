@@ -294,6 +294,171 @@ test("uses a 45 second total OpenAI deadline", () => {
   assert.equal(OPENAI_TIMEOUT_MS, 45000);
 });
 
+test("answers shopping directly from the shared brain", async () => {
+  const value = request("Qu’est-ce qu’il me reste à acheter ?");
+  value.conversationContext.sections = [{
+    type: "shopping",
+    availability: "available",
+    freshness: "current",
+    items: [{
+      type: "shoppingItem",
+      confirmation: "confirmed",
+      freshness: "current",
+      facts: {
+        status: "active",
+        title: "Fraises",
+        urgency: "1",
+        createdAt: "2026-08-24T08:00:00.000Z",
+        quantity: "2 barquettes",
+      },
+    }],
+    budgetLimit: 25,
+    budgetUsed: 5,
+    omittedCount: 0,
+    truncated: false,
+  }];
+  value.conversationContext.budgetUsed = 5;
+  let generations = 0;
+
+  const result = await handleChatRequest(value, {uid: "test-uid"}, {
+    generateResponse: async () => {
+      generations++;
+      return response("unexpected");
+    },
+  });
+
+  assert.equal(generations, 0);
+  assert.equal(result.reply,
+      "Il te reste à acheter : Fraises (2 barquettes).");
+  assert.equal(result.epistemic.personalClaims[0].category, "shoppingFact");
+});
+
+test(
+    "current phone shopping cannot be replaced by stale server products",
+    async () => {
+      const value = request("Qu’est-ce qu’il me reste à acheter ?");
+      value.conversationContext.sections = [{
+        type: "shopping",
+        availability: "available",
+        freshness: "current",
+        items: [{
+          type: "shoppingItem",
+          confirmation: "confirmed",
+          freshness: "current",
+          facts: {
+            status: "active",
+            title: "Bas",
+            urgency: "0",
+            createdAt: "2026-08-20T08:00:00.000Z",
+            quantity: "1",
+          },
+        }],
+        budgetLimit: 25,
+        budgetUsed: 5,
+        omittedCount: 0,
+        truncated: false,
+      }];
+      value.conversationContext.budgetUsed = 5;
+
+      let serverLoads = 0;
+      const result = await handleChatRequest(value, {uid: "verified-user"}, {
+        loadShoppingItems: async () => {
+          serverLoads++;
+          return [{
+            title: "Kiwis supprimés",
+            quantity: "2",
+            isUrgent: false,
+            createdAt: "2026-08-24T08:00:00.000Z",
+          }];
+        },
+        generateResponse: async () => response("unexpected"),
+      });
+
+      assert.equal(serverLoads, 0);
+      assert.equal(result.reply, "Il te reste à acheter : Bas (1).");
+      assert.equal(result.reply.includes("Kiwis"), false);
+      assert.equal(
+          result.epistemic.groundingReferences[0].sourceType,
+          "lifeContextShopping",
+      );
+    },
+);
+
+test("never loads stale account shopping when phone context is unavailable",
+    async () => {
+      const value = request("Qu’est-ce qu’il me reste à acheter ?");
+      value.conversationContext.sections = [{
+        type: "shopping",
+        availability: "unavailable",
+        freshness: "unknown",
+        items: [],
+        budgetLimit: 25,
+        budgetUsed: 0,
+        omittedCount: 0,
+        truncated: false,
+      }];
+      let generations = 0;
+      const loads = [];
+      const result = await handleChatRequest(value, {uid: "verified-user"}, {
+        loadShoppingItems: async (options) => {
+          loads.push(options);
+          return [{
+            title: "Kiwis",
+            quantity: "3",
+            isUrgent: true,
+            createdAt: "2026-08-24T08:00:00.000Z",
+          }];
+        },
+        generateResponse: async () => {
+          generations++;
+          return response("unexpected");
+        },
+      });
+      assert.deepEqual(loads, []);
+      assert.equal(generations, 0);
+      assert.equal(result.reply,
+          "Je n’arrive pas à lire ta liste actuelle. " +
+          "Ouvre la liste de courses, puis réessaie.");
+      assert.equal(result.epistemic.responseKind, "contextUnavailable");
+      assert.equal(result.reply.includes("Kiwis"), false);
+    });
+
+test("answers an empty account list without using the model", async () => {
+  const value = request("Que dois-je encore acheter ?");
+  value.conversationContext.sections = [{
+    type: "shopping",
+    availability: "empty",
+    freshness: "current",
+    items: [],
+    budgetLimit: 25,
+    budgetUsed: 0,
+    omittedCount: 0,
+    truncated: false,
+  }];
+  let generations = 0;
+  const result = await handleChatRequest(value, {uid: "verified-user"}, {
+    loadShoppingItems: async () => [],
+    generateResponse: async () => {
+      generations++;
+      return response("unexpected");
+    },
+  });
+  assert.equal(generations, 0);
+  assert.equal(result.reply, "Ta liste de courses est vide pour le moment.");
+});
+
+test("does not load shopping for an unrelated question", async () => {
+  let loads = 0;
+  await handleChatRequest(request("Comment vas-tu ?"), {uid: "test-uid"}, {
+    loadShoppingItems: async () => {
+      loads++;
+      return [];
+    },
+    generateResponse: async () => response("Je vais bien."),
+  });
+  assert.equal(loads, 0);
+});
+
 // eslint-disable-next-line max-len
 test("answers a confirmed marriage date directly from canonical Human", async () => {
   const value = request("Quelle est ma date de mariage");

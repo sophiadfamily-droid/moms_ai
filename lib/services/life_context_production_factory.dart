@@ -50,7 +50,7 @@ abstract final class LifeContextProductionFactory {
     SettingsContextVersion.changes.addListener(
       () => production.invalidateSection(LifeContextDomain.settings),
     );
-    ShoppingService.shoppingVersion.addListener(
+    ShoppingService.shoppingContextVersion.addListener(
       () => production.invalidateSection(LifeContextDomain.shopping),
     );
     return production;
@@ -144,7 +144,7 @@ abstract final class LifeContextProductionFactory {
             if (AuthService.currentUserId != scope) {
               throw StateError('shopping_account_mismatch');
             }
-            return ShoppingService.getItems();
+            return ShoppingService.getItemsForLifeContext();
           },
         ),
       ],

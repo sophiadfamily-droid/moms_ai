@@ -73,6 +73,40 @@ void main() {
     }
   });
 
+  test('an unavailable domain is retried on the next request', () async {
+    var scope = scopeA;
+    final availability = <LifeContextDomain, LifeContextAvailability>{
+      LifeContextDomain.shopping: LifeContextAvailability.unavailable,
+    };
+    final fixture = _Fixture(
+      scope: () => scope,
+      now: now,
+      availability: availability,
+    );
+    final production = fixture.production(clock: () => now);
+
+    final unavailable = await production.refreshIfNeeded();
+    expect(
+      unavailable.shoppingDomain!.metadata.availability,
+      LifeContextAvailability.unavailable,
+    );
+    final initialReads = Map<LifeContextDomain, int>.of(fixture.reads);
+    availability[LifeContextDomain.shopping] = LifeContextAvailability.empty;
+
+    final recovered = await production.refreshIfNeeded();
+
+    expect(
+      recovered.shoppingDomain!.metadata.availability,
+      LifeContextAvailability.empty,
+    );
+    for (final domain in LifeContextDomain.values) {
+      expect(
+        fixture.reads[domain],
+        initialReads[domain]! + (domain == LifeContextDomain.shopping ? 1 : 0),
+      );
+    }
+  });
+
   test('concurrent consumers serialize one source refresh', () async {
     var scope = scopeA;
     final gate = Completer<void>();
@@ -266,7 +300,8 @@ final class _Fixture {
                 await gate!.future;
               }
             },
-            availability: availability[domain] ?? LifeContextAvailability.empty,
+            availability: () =>
+                availability[domain] ?? LifeContextAvailability.empty,
             truncated: truncatedDomains.contains(domain),
           ),
       ],
@@ -298,7 +333,7 @@ final class _Adapter implements LifeContextDomainAdapter {
   @override
   final LifeContextDomain domain;
   final Future<void> Function() onRead;
-  final LifeContextAvailability availability;
+  final LifeContextAvailability Function() availability;
   final bool truncated;
 
   @override
@@ -306,6 +341,7 @@ final class _Adapter implements LifeContextDomainAdapter {
     LifeContextAdapterRequest request,
   ) async {
     await onRead();
+    final currentAvailability = availability();
     final metadata = LifeContextSourceMetadata(
       domain: domain,
       source: switch (domain) {
@@ -319,8 +355,8 @@ final class _Adapter implements LifeContextDomainAdapter {
         LifeContextDomain.shopping => LifeContextSourceKind.shoppingService,
       },
       readAt: request.readAt,
-      availability: availability,
-      freshness: availability == LifeContextAvailability.availableStale
+      availability: currentAvailability,
+      freshness: currentAvailability == LifeContextAvailability.availableStale
           ? LifeContextFreshness.stale
           : LifeContextFreshness.current,
       isLocal: true,

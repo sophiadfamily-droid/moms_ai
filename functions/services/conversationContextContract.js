@@ -12,7 +12,7 @@ const MAX_HISTORY_MESSAGE_CHARACTERS = 1000;
 const MAX_HISTORY_BYTES = 8000;
 const MAX_CONTEXT_BYTES = 24000;
 const MAX_REQUEST_BYTES = 48000;
-const MAX_SECTIONS = 7;
+const MAX_SECTIONS = 8;
 const MAX_ITEMS = 40;
 const MAX_FACTS = 12;
 const MAX_FACT_TEXT = 80;
@@ -42,7 +42,8 @@ const SECTION_KEYS = new Set([
 const ITEM_KEYS = new Set(["type", "confirmation", "freshness", "facts"]);
 const HISTORY_KEYS = new Set(["role", "text"]);
 const SECTION_TYPES = new Set([
-  "human", "identity", "event", "task", "routine", "memory", "relation",
+  "human", "identity", "event", "task", "routine", "memory", "shopping",
+  "relation",
 ]);
 const STATES = new Set([
   "complete", "partial", "stale", "unavailable", "timeout",
@@ -66,6 +67,7 @@ const FACT_KEYS = new Set([
   "travelMinutes", "routineKind", "subjectNodeId", "title", "category",
   "sourceNodeId", "targetNodeId",
   "actionRequired", "importance", "urgency", "flexibility",
+  "createdAt", "quantity",
   "relationshipStatus", "marriageDate", "engagementDate",
   "familyStatus", "workStatus",
 ]);

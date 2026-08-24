@@ -15,13 +15,15 @@ const EPISTEMIC_KEYS = new Set([
 const SOURCE_TYPES = new Set([
   "currentUserMessage", "validatedHistoryMessage", "lifeContextHuman",
   "lifeContextIdentity", "lifeContextEvent", "lifeContextTask",
-  "lifeContextRoutine", "lifeContextMemory", "lifeContextRelation",
-  "confirmedClarification", "confirmedActionResult", "generalKnowledge",
+  "lifeContextRoutine", "lifeContextMemory", "lifeContextShopping",
+  "lifeContextRelation",
+  "serverVerifiedShopping", "confirmedClarification",
+  "confirmedActionResult", "generalKnowledge",
 ]);
 const PERSONAL_SOURCES = new Set([
   "lifeContextHuman", "lifeContextIdentity", "lifeContextEvent",
   "lifeContextTask", "lifeContextRoutine", "lifeContextMemory",
-  "lifeContextRelation",
+  "lifeContextShopping", "lifeContextRelation",
 ]);
 const NON_ACTION_KINDS = new Set([
   "clarificationRequired", "cannotDetermine", "contextUnavailable",
@@ -47,7 +49,7 @@ const CLAIM_KEYS = new Set([
 ]);
 const CLAIM_CATEGORIES = new Set([
   "humanFact", "eventFact", "taskFact", "routineFact", "memoryFact",
-  "relationshipFact", "actionResultFact",
+  "shoppingFact", "relationshipFact", "actionResultFact",
 ]);
 const MISSING_KEYS = new Set([
   "schemaVersion", "code", "domain", "field", "isRequired", "canClarify",

@@ -33,6 +33,7 @@ final class ConversationTransportContract {
   static const int maximumSections = 8;
   static const int maximumItems = 40;
   static const int maximumFactsPerItem = 12;
+  static const int maximumFactCharacters = 80;
   static const Duration contextTimeout = Duration(seconds: 7);
 
   const ConversationTransportContract();
@@ -59,7 +60,12 @@ final class ConversationContextItem {
         !LifeContextProjectionFactKeys.all.containsAll(this.facts.keys) ||
         this.facts.isEmpty ||
         this.facts.length > ConversationTransportContract.maximumFactsPerItem ||
-        this.facts.values.any((value) => value.isEmpty || value.length > 80)) {
+        this.facts.values.any(
+              (value) =>
+                  value.isEmpty ||
+                  value.length >
+                      ConversationTransportContract.maximumFactCharacters,
+            )) {
       throw const FormatException('invalid_conversation_context_item');
     }
   }

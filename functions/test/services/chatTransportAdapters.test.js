@@ -261,6 +261,23 @@ test("binds quota and orchestration exclusively to verified UID", async () => {
   }]);
 });
 
+test("passes repositories only through trusted dependencies", async () => {
+  const loadShoppingItems = async () => [];
+  const dependencies = [];
+  const handler = createHandler({
+    handlerDependencies: {loadShoppingItems},
+    handleChatRequest: async (_, __, trusted) => {
+      dependencies.push(trusted);
+      return response;
+    },
+  });
+
+  await handler(secureRequest());
+  assert.equal(dependencies.length, 1);
+  assert.equal(dependencies[0].loadShoppingItems, loadShoppingItems);
+  assert.equal(dependencies[0].apiKey, "test-key");
+});
+
 test("maps quota exhaustion to a stable safe error", async () => {
   const handler = createHandler({
     consumeQuota: async () => {

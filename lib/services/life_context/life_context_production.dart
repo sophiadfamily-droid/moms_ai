@@ -97,6 +97,13 @@ final class LifeContextProduction {
     final current = _snapshot;
     if (current != null) {
       for (final metadata in _metadata(current).values) {
+        if ({
+          LifeContextAvailability.unavailable,
+          LifeContextAvailability.corrupted,
+          LifeContextAvailability.accountMismatch,
+        }.contains(metadata.availability)) {
+          _invalidatedDomains.add(metadata.domain);
+        }
         if (LifeContextFreshnessPolicy.requiresRefresh(metadata, now)) {
           _invalidatedDomains.add(metadata.domain);
         }

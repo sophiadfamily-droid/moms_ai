@@ -83,21 +83,8 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
     return items.where((item) => !item.isBought).toList();
   }
 
-  List<ShoppingItemModel> get boughtItems {
-    return items.where((item) => item.isBought).toList();
-  }
-
   List<ShoppingItemModel> get urgentItems {
     return items.where((item) => !item.isBought && item.isUrgent).toList();
-  }
-
-  int boughtCount() {
-    return items.where((item) => item.isBought).length;
-  }
-
-  double progress() {
-    if (items.isEmpty) return 0;
-    return boughtCount() / items.length;
   }
 
   int indexOfItem(ShoppingItemModel item) {
@@ -120,11 +107,16 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
       }
       items[index] = item.copyWith(isBought: willBeBought);
     });
-    await ShoppingService.updateItems(items);
     if (!willBeBought) return;
     await Future<void>.delayed(const Duration(milliseconds: 750));
-    if (!mounted) return;
-    setState(() => _recentlyCompletedItemKeys.remove(itemKey));
+    final completedIndex = items.indexWhere(
+      (current) => _itemVisualKey(current) == itemKey && current.isBought,
+    );
+    if (completedIndex == -1) return;
+    items.removeAt(completedIndex);
+    _recentlyCompletedItemKeys.remove(itemKey);
+    await ShoppingService.updateItems(items);
+    if (mounted) setState(() {});
   }
 
   String _itemVisualKey(ShoppingItemModel item) {
@@ -146,13 +138,8 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
     await saveCurrentItems();
   }
 
-  Future<void> clearBought() async {
-    items.removeWhere((item) => item.isBought);
-    await saveCurrentItems();
-  }
-
   Future<void> clearToBuy() async {
-    items.removeWhere((item) => !item.isBought);
+    items.clear();
     await saveCurrentItems();
   }
 
@@ -623,9 +610,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
   }
 
   Widget buildDashboardSummary() {
-    final total = items.length;
     final toBuy = toBuyItems.length;
-    final bought = boughtItems.length;
     final urgent = urgentItems.length;
 
     return Container(
@@ -663,7 +648,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  total == 0
+                  toBuy == 0
                       ? "Liste vide pour le moment"
                       : "$toBuy produit(s) à acheter",
                   style: TextStyle(
@@ -673,21 +658,13 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  "$bought acheté(s) • $urgent urgent(s)",
+                  urgent == 0
+                      ? "Aucun produit urgent"
+                      : "$urgent produit(s) urgent(s)",
                   style: TextStyle(
                       color: textSoft,
                       fontSize: 13,
                       fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 10),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
-                  child: LinearProgressIndicator(
-                    value: progress().clamp(0, 1),
-                    minHeight: 8,
-                    backgroundColor: accent.withValues(alpha: 0.10),
-                    color: accent,
-                  ),
                 ),
               ],
             ),
@@ -700,7 +677,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
   Widget buildSmartShoppingCard() {
     final supportMessage = const ContextualSupportCardService().forShopping(
       pendingCount: toBuyItems.length,
-      boughtCount: boughtItems.length,
+      boughtCount: 0,
       urgentCount: urgentItems.length,
       urgentItemTitle: urgentItems.isEmpty ? null : urgentItems.first.title,
       now: DateTime.now(),
@@ -785,10 +762,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
     );
   }
 
-  Widget buildShoppingSection(
-    List<ShoppingItemModel> sectionItems, {
-    required bool boughtSection,
-  }) {
+  Widget buildShoppingSection(List<ShoppingItemModel> sectionItems) {
     return Container(
       margin: const EdgeInsets.fromLTRB(24, 0, 24, 10),
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
@@ -836,7 +810,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
               ],
             );
           }),
-          buildDeleteSectionRow(boughtSection: boughtSection),
+          buildDeleteSectionRow(),
         ],
       ),
     );
@@ -1032,14 +1006,10 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
     );
   }
 
-  Widget buildDeleteSectionRow({required bool boughtSection}) {
+  Widget buildDeleteSectionRow() {
     return GestureDetector(
       onTap: () async {
-        if (boughtSection) {
-          await clearBought();
-        } else {
-          await clearToBuy();
-        }
+        await clearToBuy();
       },
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 17),
@@ -1122,7 +1092,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             buildSectionTitle(entry.key),
-            buildShoppingSection(entry.value, boughtSection: false),
+            buildShoppingSection(entry.value),
           ],
         );
       }).toList(),

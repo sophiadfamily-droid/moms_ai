@@ -264,7 +264,8 @@ const groundingReferenceSchema = Object.freeze({
       enum: [
         "currentUserMessage", "validatedHistoryMessage", "lifeContextHuman",
         "lifeContextIdentity", "lifeContextEvent", "lifeContextTask",
-        "lifeContextRoutine", "lifeContextMemory", "lifeContextRelation",
+        "lifeContextRoutine", "lifeContextMemory", "lifeContextShopping",
+        "lifeContextRelation", "serverVerifiedShopping",
         "confirmedClarification", "confirmedActionResult", "generalKnowledge",
       ],
     },
@@ -296,7 +297,7 @@ const personalClaimSchema = Object.freeze({
       type: "string",
       enum: [
         "humanFact", "eventFact", "taskFact", "routineFact", "memoryFact",
-        "relationshipFact", "actionResultFact",
+        "shoppingFact", "relationshipFact", "actionResultFact",
       ],
     },
     sourceReferenceIndexes: {

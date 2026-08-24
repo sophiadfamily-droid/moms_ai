@@ -72,7 +72,8 @@ void main() {
     expect(section.activeItems, isEmpty);
   });
 
-  test('missing stable identity is reported as corrupted', () async {
+  test('legacy item without identity remains available to the conversation',
+      () async {
     final section = await ShoppingLifeContextAdapter(
       load: (_) async => [
         ShoppingItemModel(
@@ -83,7 +84,10 @@ void main() {
       ],
     ).load(request);
 
-    expect(section.metadata.availability, LifeContextAvailability.corrupted);
-    expect(section.metadata.errorCode, 'invalid_shopping_domain');
+    expect(section.metadata.availability, LifeContextAvailability.available);
+    expect(section.metadata.errorCode, isNull);
+    expect(section.activeItems, hasLength(1));
+    expect(section.activeItems.single.title, 'Lait');
+    expect(section.activeItems.single.id, startsWith('legacy-shopping-'));
   });
 }

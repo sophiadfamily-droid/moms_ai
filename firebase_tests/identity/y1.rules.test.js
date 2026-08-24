@@ -79,6 +79,10 @@ try {
   const guest = environment.unauthenticatedContext().firestore();
   const task = doc(owner, 'users/account-a/tasks/task-a');
   const shopping = doc(owner, 'users/account-a/shopping_items/item-a');
+  const legacyShopping = doc(
+      owner,
+      'users/account-a/shopping_items/legacy-item',
+  );
   const profileRef = doc(owner, 'users/account-a/private/profile');
 
   await succeeds(setDoc(task, entity('task-a')));
@@ -138,6 +142,33 @@ try {
     updatedAt: serverTimestamp(),
     lastMutationId: 'shopping-resurrect',
   }));
+
+  await environment.withSecurityRulesDisabled(async (context) => {
+    await setDoc(
+        doc(context.firestore(),
+            'users/account-a/shopping_items/legacy-item'),
+        {
+          title: 'Ancien produit',
+          isBought: false,
+          createdAt: new Date('2026-07-23T10:00:00.000Z'),
+          updatedAt: new Date('2026-07-23T10:00:00.000Z'),
+        },
+    );
+  });
+  await succeeds(setDoc(legacyShopping, entity('legacy-item', {
+    revision: 2,
+    lastMutationId: 'legacy-shopping-remove',
+    isTombstone: true,
+    clearGeneration: 0,
+    createdAt: new Date('2026-07-23T10:00:00.000Z'),
+  })));
+  await fails(setDoc(legacyShopping, entity('legacy-item', {
+    revision: 3,
+    lastMutationId: 'legacy-shopping-rewrite',
+    isTombstone: false,
+    clearGeneration: 0,
+    createdAt: new Date('2026-07-23T10:00:00.000Z'),
+  })));
 
   await succeeds(setDoc(profileRef, profile()));
   await fails(setDoc(

@@ -1418,27 +1418,33 @@ final class ShoppingLifeContextAdapter implements LifeContextDomainAdapter {
   ) async {
     try {
       final source = await _load(request.accountScopeId);
-      final active = source.where((item) => !item.isBought).map((item) {
-        final id = item.id?.trim();
-        if (id == null || id.isEmpty) {
-          throw const FormatException('shopping_item_missing_stable_id');
-        }
-        return ShoppingContextItem(
+      final active = <ShoppingContextItem>[];
+      var legacyIndex = 0;
+      for (final item in source.where((item) => !item.isBought)) {
+        final title = item.title.trim();
+        if (title.isEmpty) continue;
+        final stableId = item.id?.trim();
+        final id = stableId != null && stableId.isNotEmpty
+            ? stableId
+            : 'legacy-shopping-'
+                '${item.createdAt.toUtc().microsecondsSinceEpoch}-'
+                '${legacyIndex++}';
+        active.add(ShoppingContextItem(
           id: id,
-          title: item.title.trim(),
+          title: title,
           isUrgent: item.isUrgent,
           createdAt: item.createdAt.toUtc().toIso8601String(),
           quantity: _optional(item.quantity),
           notes: _optional(item.notes),
-        );
-      }).toList()
-        ..sort((first, second) {
-          if (first.isUrgent != second.isUrgent) {
-            return first.isUrgent ? -1 : 1;
-          }
-          final created = first.createdAt.compareTo(second.createdAt);
-          return created != 0 ? created : first.id.compareTo(second.id);
-        });
+        ));
+      }
+      active.sort((first, second) {
+        if (first.isUrgent != second.isUrgent) {
+          return first.isUrgent ? -1 : 1;
+        }
+        final created = first.createdAt.compareTo(second.createdAt);
+        return created != 0 ? created : first.id.compareTo(second.id);
+      });
       final truncated = active.length > LifeContextSourceBudgets.shoppingItems;
       final items = active
           .take(LifeContextSourceBudgets.shoppingItems)

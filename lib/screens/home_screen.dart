@@ -10,12 +10,14 @@ import '../models/agenda_focus.dart';
 import '../models/shopping_item_model.dart';
 import '../models/task_model.dart';
 import '../models/user_profile.dart';
-import '../services/ai_priority_service.dart';
 import '../services/auth_service.dart';
+import '../services/daily_summary_view_service.dart';
+import '../services/dashboard_anticipation_service.dart';
 import '../services/event_service.dart';
 import '../services/shopping_service.dart';
 import '../services/task_service.dart';
 import '../services/notification_service.dart';
+import '../services/priority/proactive_priority_production.dart';
 import 'daily_summary_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -23,6 +25,7 @@ class HomeScreen extends StatefulWidget {
   final ValueChanged<int>? onNavigate;
   final ValueChanged<AgendaFocus>? onOpenAgenda;
   final ValueChanged<String>? onOpenTask;
+  final DashboardAnticipationService? dashboardAnticipationService;
 
   const HomeScreen({
     super.key,
@@ -30,6 +33,7 @@ class HomeScreen extends StatefulWidget {
     this.onNavigate,
     this.onOpenAgenda,
     this.onOpenTask,
+    this.dashboardAnticipationService,
   });
 
   @override
@@ -59,6 +63,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   bool loading = true;
   bool hasAttention = false;
+  DashboardAnticipation? dashboardAnticipation;
   int _dashboardLoadGeneration = 0;
 
   final Color bg = const Color(0xFFF8EFEA);
@@ -105,10 +110,11 @@ class _HomeScreenState extends State<HomeScreen>
     final prefs = await SharedPreferences.getInstance();
     final loadedPhotos = prefs.getStringList(scopedFamilyPhotosKey) ?? [];
     var loadedAttention = false;
+    DailySummaryViewData? loadedSummary;
     try {
-      final summary = await NotificationService.loadDailySummary();
-      loadedAttention = summary != null &&
-          summary.categoryCounts.values.any((count) => count > 0);
+      loadedSummary = await NotificationService.loadDailySummary();
+      loadedAttention = loadedSummary != null &&
+          loadedSummary.categoryCounts.values.any((count) => count > 0);
     } on Object {
       // The dashboard remains usable when notification context is unavailable.
     }
@@ -124,16 +130,31 @@ class _HomeScreenState extends State<HomeScreen>
       return aValue.compareTo(bValue);
     });
 
+    final scope = AuthService.currentUserId?.trim() ?? '';
+    final anticipationService = widget.dashboardAnticipationService ??
+        DashboardAnticipationService(
+          loadProjection: () =>
+              ProactivePriorityProduction.loadProjection(scope),
+        );
+    final loadedAnticipation = await anticipationService.evaluate(
+      accountScopeId: scope,
+      events: loadedEvents,
+      tasks: loadedTasks,
+      shoppingItems: loadedShopping,
+      dailySummary: loadedSummary,
+    );
+
     if (!mounted || generation != _dashboardLoadGeneration) {
       return;
     }
 
     setState(() {
       events = loadedEvents;
-      tasks = AiPriorityService.sortTasks(loadedTasks);
+      tasks = loadedTasks;
       shoppingItems = loadedShopping;
       familyPhotoPaths = loadedPhotos;
       hasAttention = loadedAttention;
+      dashboardAnticipation = loadedAnticipation;
       loading = false;
     });
   }
@@ -263,72 +284,8 @@ class _HomeScreenState extends State<HomeScreen>
     return tasks.where((task) => !task.isDone).length;
   }
 
-  int importantTasksCount() {
-    return tasks.where((task) {
-      return !task.isDone &&
-          (task.isImportant ||
-              task.priority == "Haute" ||
-              AiPriorityService.calculatePriority(task) >= 70);
-    }).length;
-  }
-
   int shoppingToBuyCount() {
     return shoppingItems.where((item) => !item.isBought).length;
-  }
-
-  int importantThingsCount() {
-    final count = todayEvents().length +
-        importantTasksCount() +
-        (shoppingToBuyCount() > 0 ? 1 : 0);
-
-    if (count == 0) {
-      return openTasksCount() > 0 ? 1 : 0;
-    }
-
-    return count;
-  }
-
-  TaskModel? topPriorityTask() {
-    final openTasks = tasks.where((task) => !task.isDone).toList();
-
-    if (openTasks.isEmpty) {
-      return null;
-    }
-
-    final sorted = AiPriorityService.sortTasks(openTasks);
-
-    return sorted.first;
-  }
-
-  String topPriorityReason(TaskModel task) {
-    final dueDate = task.dueDate.trim().toLowerCase();
-    final title = task.title.toLowerCase();
-    final notes = task.notes.toLowerCase();
-    final text = "$title $notes $dueDate";
-
-    if (dueDate.isNotEmpty) {
-      return "Échéance à surveiller";
-    }
-
-    if (task.isImportant || task.priority == "Haute") {
-      return "Impact important";
-    }
-
-    if (task.planning == "Aujourd’hui") {
-      return "À faire aujourd’hui";
-    }
-
-    if (text.contains("urgent") ||
-        text.contains("demain") ||
-        text.contains("payer") ||
-        text.contains("appeler") ||
-        text.contains("banque") ||
-        text.contains("edf") ||
-        text.contains("facture")) {
-      return "À traiter rapidement";
-    }
-
-    return "Priorité recommandée";
   }
 
   String greeting() {
@@ -359,6 +316,83 @@ class _HomeScreenState extends State<HomeScreen>
     if (widget.onNavigate != null) {
       widget.onNavigate!(index);
     }
+  }
+
+  void openDashboardAnticipation() {
+    final anticipation = dashboardAnticipation;
+    if (anticipation == null) {
+      navigateToTab(1);
+      return;
+    }
+    switch (anticipation.destination) {
+      case DashboardAnticipationDestination.agenda:
+        final focus = anticipation.agendaFocus;
+        if (focus != null && widget.onOpenAgenda != null) {
+          widget.onOpenAgenda!(focus);
+        } else {
+          navigateToTab(2);
+        }
+        return;
+      case DashboardAnticipationDestination.task:
+        final taskId = anticipation.sourceId;
+        if (taskId != null && widget.onOpenTask != null) {
+          widget.onOpenTask!(taskId);
+        } else {
+          navigateToTab(3);
+        }
+        return;
+      case DashboardAnticipationDestination.shopping:
+        navigateToTab(4);
+        return;
+      case DashboardAnticipationDestination.attentionCenter:
+        _openDailySummary();
+        return;
+      case DashboardAnticipationDestination.none:
+      case DashboardAnticipationDestination.chat:
+        navigateToTab(1);
+        return;
+    }
+  }
+
+  String dashboardAnticipationActionLabel() =>
+      switch (dashboardAnticipation?.destination) {
+        DashboardAnticipationDestination.agenda => 'Voir dans l’Agenda',
+        DashboardAnticipationDestination.task => 'Voir la tâche',
+        DashboardAnticipationDestination.shopping => 'Voir les courses',
+        DashboardAnticipationDestination.attentionCenter => 'Voir les détails',
+        DashboardAnticipationDestination.none ||
+        DashboardAnticipationDestination.chat ||
+        null =>
+          '✨ Parler avec Zelia',
+      };
+
+  void _openDailySummary() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => DailySummaryScreen(
+          onOpenAgenda: (focus) {
+            Navigator.of(context).pop();
+            if (widget.onOpenAgenda != null) {
+              widget.onOpenAgenda!(focus);
+            } else {
+              navigateToTab(2);
+            }
+          },
+          onOpenTasks: () {
+            Navigator.of(context).pop();
+            navigateToTab(3);
+          },
+          onOpenTask: (taskId) {
+            Navigator.of(context).pop();
+            if (widget.onOpenTask != null) {
+              widget.onOpenTask!(taskId);
+            } else {
+              navigateToTab(3);
+            }
+          },
+        ),
+      ),
+    );
   }
 
   String eventDelayLabel(EventModel event) {
@@ -416,34 +450,7 @@ class _HomeScreenState extends State<HomeScreen>
           buildRoundIcon(
             icon: Icons.notifications_none_rounded,
             hasDot: hasAttention,
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => DailySummaryScreen(
-                    onOpenAgenda: (focus) {
-                      Navigator.of(context).pop();
-                      if (widget.onOpenAgenda != null) {
-                        widget.onOpenAgenda!(focus);
-                      } else {
-                        navigateToTab(2);
-                      }
-                    },
-                    onOpenTasks: () {
-                      Navigator.of(context).pop();
-                      navigateToTab(3);
-                    },
-                    onOpenTask: (taskId) {
-                      Navigator.of(context).pop();
-                      if (widget.onOpenTask != null) {
-                        widget.onOpenTask!(taskId);
-                      } else {
-                        navigateToTab(3);
-                      }
-                    },
-                  ),
-                ),
-              );
-            },
+            onTap: _openDailySummary,
           ),
           const SizedBox(width: 12),
           buildRoundIcon(
@@ -635,7 +642,10 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget buildAssistantCard() {
-    final count = importantThingsCount();
+    final anticipation = dashboardAnticipation;
+    final title = anticipation?.title ?? 'Je prépare ta journée';
+    final message = anticipation?.message ??
+        'Je rassemble ce qui peut vraiment t’aider aujourd’hui.';
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 24),
@@ -679,62 +689,42 @@ class _HomeScreenState extends State<HomeScreen>
               ),
               const SizedBox(width: 17),
               Expanded(
-                child: RichText(
-                  text: TextSpan(
-                    style: TextStyle(
-                      color: textDark,
-                      fontSize: 24,
-                      height: 1.25,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: -0.5,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      key: const Key('dashboard-anticipation-title'),
+                      style: TextStyle(
+                        color: textDark,
+                        fontSize: 21,
+                        height: 1.2,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.4,
+                      ),
                     ),
-                    children: [
-                      if (count == 0)
-                        const TextSpan(
-                          text: "Rien d’important à prévoir aujourd’hui.",
-                        )
-                      else ...[
-                        const TextSpan(text: "Tu as "),
-                        TextSpan(
-                          text: "$count",
-                          style: TextStyle(
-                            color: accent,
-                          ),
-                        ),
-                        TextSpan(
-                          text: count <= 1
-                              ? " chose importante aujourd’hui."
-                              : " choses importantes aujourd’hui.",
-                        ),
-                      ],
-                    ],
-                  ),
+                    const SizedBox(height: 7),
+                    Text(
+                      message,
+                      key: const Key('dashboard-anticipation-message'),
+                      style: TextStyle(
+                        color: textSoft,
+                        height: 1.35,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Padding(
-              padding: const EdgeInsets.only(left: 91),
-              child: Text(
-                "Besoin que je t’aide à l’organiser ?",
-                style: TextStyle(
-                  color: textSoft,
-                  height: 1.35,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ),
           const SizedBox(height: 22),
           buildZeliaButton(
-            title: "✨ Parler avec Zelia",
+            title: dashboardAnticipationActionLabel(),
             icon: Icons.auto_awesome,
             filled: true,
-            onTap: () => navigateToTab(1),
+            onTap: openDashboardAnticipation,
           ),
         ],
       ),
@@ -977,82 +967,6 @@ class _HomeScreenState extends State<HomeScreen>
     return "☀️";
   }
 
-  String smartDaySummary() {
-    final eventCount = todayEvents().length;
-    final taskCount = openTasksCount();
-    final shoppingCount = shoppingToBuyCount();
-
-    if (eventCount == 0 && taskCount == 0 && shoppingCount == 0) {
-      return "Journée légère, parfaite pour respirer.";
-    }
-
-    if (eventCount >= 3) {
-      return "Journée chargée, Zelia peut t’aider à prioriser.";
-    }
-
-    if (taskCount >= 5) {
-      return "Plusieurs tâches t’attendent, avance étape par étape.";
-    }
-
-    if (shoppingCount > 0) {
-      return "Quelques courses à prévoir, sans pression.";
-    }
-
-    return "Tout est sous contrôle aujourd’hui.";
-  }
-
-  String nextPriorityLabel() {
-    final topTask = topPriorityTask();
-
-    if (topTask != null) {
-      return topTask.title;
-    }
-
-    final upcoming = upcomingEvents();
-
-    if (upcoming.isNotEmpty) {
-      final event = upcoming.first;
-      final time = event.time.isEmpty ? "" : "${event.time} • ";
-
-      return "$time${event.title}";
-    }
-
-    if (shoppingToBuyCount() > 0) {
-      return "Compléter la liste de courses";
-    }
-
-    return "Profiter d’un moment calme";
-  }
-
-  String dailyQuote() {
-    final quotes = [
-      "Un pas après l’autre, tu avances.",
-      "Aujourd’hui, tu fais déjà beaucoup.",
-      "Doucement, mais sûrement.",
-      "Chaque petite victoire compte.",
-      "Tu peux avancer sans te presser.",
-      "Une chose à la fois.",
-      "Tu gères mieux que tu ne crois.",
-      "Respire, tu avances.",
-      "Le plus important, c’est de commencer.",
-      "Ta journée peut rester simple.",
-      "Petit pas, grand progrès.",
-      "Tu n’as pas besoin de tout faire d’un coup.",
-      "Priorise, respire, avance.",
-      "Aujourd’hui compte aussi.",
-      "Tu construis ton équilibre.",
-      "Un moment après l’autre.",
-      "Reste douce avec toi-même.",
-      "Tu es sur la bonne voie.",
-      "Chaque action compte.",
-      "Simplement, efficacement.",
-    ];
-
-    final index = DateTime.now().day % quotes.length;
-
-    return quotes[index];
-  }
-
   Widget buildTodaySection() {
     final now = DateTime.now();
     final taskTotal = openTasksCount();
@@ -1130,19 +1044,6 @@ class _HomeScreenState extends State<HomeScreen>
               ),
             ],
           ),
-          const SizedBox(height: 6),
-          Text(
-            smartDaySummary(),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: textSoft,
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 14),
-          buildPriorityPill(),
           const SizedBox(height: 16),
           LayoutBuilder(
             builder: (context, constraints) {
@@ -1197,72 +1098,7 @@ class _HomeScreenState extends State<HomeScreen>
               );
             },
           ),
-          const SizedBox(height: 18),
-          Row(
-            children: [
-              Icon(
-                Icons.auto_awesome,
-                color: accent,
-                size: 18,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  dailyQuote(),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: textSoft,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          ),
         ],
-      ),
-    );
-  }
-
-  Widget buildPriorityPill() {
-    return GestureDetector(
-      onTap: () => navigateToTab(3),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(
-          horizontal: 15,
-          vertical: 13,
-        ),
-        decoration: BoxDecoration(
-          color: accent.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(
-            color: accent.withValues(alpha: 0.08),
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              Icons.bolt_rounded,
-              color: accent,
-              size: 20,
-            ),
-            const SizedBox(width: 9),
-            Expanded(
-              child: Text(
-                nextPriorityLabel(),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: textDark,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

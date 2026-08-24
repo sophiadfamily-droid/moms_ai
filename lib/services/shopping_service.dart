@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -51,10 +52,17 @@ class ShoppingService {
   );
 
   static final ValueNotifier<int> shoppingVersion = ValueNotifier<int>(0);
+  static final ValueNotifier<int> shoppingContextVersion =
+      ValueNotifier<int>(0);
   static final ShoppingRevisionSyncService _sync = ShoppingRevisionSyncService(
     cloud: const FirestoreRevisionedShoppingRepository(),
     currentAccountScope: () => AuthService.currentUserId,
   );
+  static final Set<String> _repairedRemovalScopes = <String>{};
+  static final Map<String, List<ShoppingItemModel>> _activeItemsByScope =
+      <String, List<ShoppingItemModel>>{};
+  static final Map<String, String> _activeItemSignaturesByScope =
+      <String, String>{};
 
   static void notifyUpdate() {
     shoppingVersion.value++;
@@ -65,6 +73,8 @@ class ShoppingService {
   ) async {
     final prefs = await SharedPreferences.getInstance();
     final scope = _currentAccountScope();
+    final activeItems = _canonicalLocalActiveItems(items);
+    _rememberActiveItems(scope, activeItems);
 
     final encoded = items
         .map(
@@ -72,12 +82,12 @@ class ShoppingService {
         )
         .toList();
 
-    if (scope == null) {
-      await prefs.setStringList(
-        shoppingKey,
-        encoded,
-      );
-    }
+    await prefs.setStringList(
+      scope == null ? shoppingKey : _shoppingCacheKey(scope),
+      scope == null
+          ? encoded
+          : activeItems.map((item) => jsonEncode(item.toJson())).toList(),
+    );
 
     try {
       if (scope != null) await _reconcileRevisioned(scope, items);
@@ -106,7 +116,9 @@ class ShoppingService {
     final prefs = await SharedPreferences.getInstance();
     final scope = _currentAccountScope();
 
-    final data = scope == null ? prefs.getStringList(shoppingKey) : null;
+    final data = prefs.getStringList(
+      scope == null ? shoppingKey : _shoppingCacheKey(scope),
+    );
 
     final localItems = data == null
         ? <ShoppingItemModel>[]
@@ -118,18 +130,32 @@ class ShoppingService {
             )
             .toList();
 
-    try {
-      final cloudValues = scope == null
-          ? const <RevisionedShoppingItem>[]
-          : await _sync.bootstrap(scope);
-      final cloudItems = cloudValues
-          .where((value) => !value.isTombstone)
-          .map((value) => value.item)
-          .toList();
-
-      if (scope != null) {
-        return cloudItems;
+    if (scope == null) {
+      final activeItems = _canonicalLocalActiveItems(localItems);
+      if (activeItems.length != localItems.length) {
+        await prefs.setStringList(
+          shoppingKey,
+          activeItems.map((item) => jsonEncode(item.toJson())).toList(),
+        );
       }
+      _rememberActiveItems(scope, activeItems);
+      return activeItems;
+    }
+
+    try {
+      if (_repairedRemovalScopes.add(scope)) {
+        unawaited(_repairRemoteRemovalsInBackground(scope));
+      }
+      final cloudValues = await _sync.bootstrap(scope);
+      final activeItems = _canonicalCloudActiveItems(cloudValues);
+      _rememberActiveItems(scope, activeItems);
+      await _writeScopedCache(prefs, scope, activeItems);
+      final storedActiveCount =
+          cloudValues.where((value) => !value.isTombstone).length;
+      if (storedActiveCount != activeItems.length) {
+        await _reconcileRevisioned(scope, activeItems);
+      }
+      return activeItems;
     } catch (error) {
       final descriptor = AppErrorClassifier.classify(
         error,
@@ -148,7 +174,187 @@ class ShoppingService {
       );
     }
 
-    return localItems;
+    return _cachedActiveItems(scope) ?? localItems;
+  }
+
+  /// Returns the list the user is currently seeing without waiting for a
+  /// second cloud synchronization. Conversation context has a short deadline;
+  /// this cache prevents it from falling back to an older remote snapshot.
+  static Future<List<ShoppingItemModel>> getItemsForLifeContext() async {
+    final scope = _currentAccountScope();
+    final cached = _cachedActiveItems(scope);
+    if (cached != null) return cached;
+    if (scope != null) {
+      final prefs = await SharedPreferences.getInstance();
+      final local = _readScopedCache(prefs, scope);
+      if (local != null) {
+        _rememberActiveItems(scope, local);
+        return local;
+      }
+    }
+    return getItems();
+  }
+
+  static String _cacheKey(String? scope) => scope ?? '@local';
+
+  static String _shoppingCacheKey(String scope) =>
+      '$shoppingKey.current.$scope';
+
+  static List<ShoppingItemModel>? _readScopedCache(
+    SharedPreferences prefs,
+    String scope,
+  ) {
+    final encoded = prefs.getStringList(_shoppingCacheKey(scope));
+    if (encoded == null) return null;
+    try {
+      return _canonicalLocalActiveItems(
+        encoded
+            .map(
+              (item) => ShoppingItemModel.fromJson(jsonDecode(item)),
+            )
+            .toList(),
+      );
+    } on Object {
+      return null;
+    }
+  }
+
+  static Future<void> _writeScopedCache(
+    SharedPreferences prefs,
+    String scope,
+    List<ShoppingItemModel> items,
+  ) {
+    return prefs.setStringList(
+      _shoppingCacheKey(scope),
+      items.map((item) => jsonEncode(item.toJson())).toList(),
+    );
+  }
+
+  static List<ShoppingItemModel>? _cachedActiveItems(String? scope) {
+    final cached = _activeItemsByScope[_cacheKey(scope)];
+    return cached == null ? null : List<ShoppingItemModel>.of(cached);
+  }
+
+  static void _rememberActiveItems(
+    String? scope,
+    List<ShoppingItemModel> items,
+  ) {
+    final key = _cacheKey(scope);
+    final activeItems = _canonicalLocalActiveItems(items);
+    final signatureParts =
+        activeItems.map((item) => jsonEncode(item.toJson())).toList()..sort();
+    final signature = jsonEncode(signatureParts);
+    _activeItemsByScope[key] = List<ShoppingItemModel>.of(activeItems);
+    if (_activeItemSignaturesByScope[key] == signature) return;
+    _activeItemSignaturesByScope[key] = signature;
+    shoppingContextVersion.value++;
+  }
+
+  @visibleForTesting
+  static void resetRuntimeCacheForTesting() {
+    _activeItemsByScope.clear();
+    _activeItemSignaturesByScope.clear();
+  }
+
+  static Future<void> _repairRemoteRemovalsInBackground(String scope) async {
+    try {
+      await _sync.retryExhaustedRemovals(scope);
+      await _sync.repairRemoteRemovals(scope);
+    } on Object catch (error) {
+      final descriptor = AppErrorClassifier.classify(
+        error,
+        boundary: AppErrorBoundaryKind.synchronization,
+      );
+      AppDiagnostics.record(
+        component: 'shopping_storage',
+        domain: 'shopping',
+        operation: 'repair',
+        step: 'remote_removals',
+        code: descriptor.code,
+        severity: descriptor.severity,
+        retryStrategy: descriptor.retryStrategy,
+        correlationId: descriptor.correlationId,
+        sourceExceptionType: AppErrorClassifier.safeExceptionType(error),
+      );
+    }
+  }
+
+  static List<ShoppingItemModel> _canonicalLocalActiveItems(
+    List<ShoppingItemModel> values,
+  ) {
+    final latestByTitle = <String, ShoppingItemModel>{};
+    for (final item in values) {
+      final key = _normalizedTitle(item.title);
+      if (key.isEmpty) continue;
+      final current = latestByTitle[key];
+      if (current == null || item.createdAt.isAfter(current.createdAt)) {
+        latestByTitle[key] = item;
+      }
+    }
+    return latestByTitle.values.where((item) => !item.isBought).toList();
+  }
+
+  static List<ShoppingItemModel> _canonicalCloudActiveItems(
+    List<RevisionedShoppingItem> values,
+  ) {
+    final latestByTitle = <String, RevisionedShoppingItem>{};
+    for (final value in values) {
+      final key = _normalizedTitle(value.item.title);
+      if (key.isEmpty) continue;
+      final current = latestByTitle[key];
+      if (current == null || _isNewerShoppingRevision(value, current)) {
+        latestByTitle[key] = value;
+      }
+    }
+    return latestByTitle.values
+        .where((value) => !value.isTombstone && !value.item.isBought)
+        .map((value) => value.item)
+        .toList();
+  }
+
+  static bool _isNewerShoppingRevision(
+    RevisionedShoppingItem candidate,
+    RevisionedShoppingItem current,
+  ) {
+    final timestampComparison =
+        candidate.updatedAt.compareTo(current.updatedAt);
+    if (timestampComparison != 0) return timestampComparison > 0;
+    final revisionComparison = candidate.revision.compareTo(current.revision);
+    if (revisionComparison != 0) return revisionComparison > 0;
+    return candidate.entityId.compareTo(current.entityId) > 0;
+  }
+
+  static String _normalizedTitle(String value) {
+    const replacements = <String, String>{
+      'à': 'a',
+      'â': 'a',
+      'ä': 'a',
+      'á': 'a',
+      'ç': 'c',
+      'é': 'e',
+      'è': 'e',
+      'ê': 'e',
+      'ë': 'e',
+      'î': 'i',
+      'ï': 'i',
+      'í': 'i',
+      'ô': 'o',
+      'ö': 'o',
+      'ó': 'o',
+      'ù': 'u',
+      'û': 'u',
+      'ü': 'u',
+      'ú': 'u',
+      'ÿ': 'y',
+    };
+    var normalized = value.trim().toLowerCase();
+    replacements.forEach((source, target) {
+      normalized = normalized.replaceAll(source, target);
+    });
+    return normalized
+        .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
+        .trim()
+        .replaceAll(RegExp(r'\s+'), ' ');
   }
 
   static Future<ShoppingPersistenceResult> addItem(
@@ -174,6 +380,8 @@ class ShoppingService {
         final matches = current.where((value) => value.entityId == entityId);
         if (matches.isNotEmpty) {
           final existing = matches.single;
+          _rememberActiveItems(scope, _canonicalCloudActiveItems(current));
+          notifyUpdate();
           return ShoppingPersistenceResult(
             status: existing.syncStatus == RevisionedSyncStatus.synced
                 ? ShoppingPersistenceStatus.durable
@@ -202,7 +410,7 @@ class ShoppingService {
           mutation,
           () => _sync.apply(scope, mutation),
         );
-        return switch (result.status) {
+        final persistenceResult = switch (result.status) {
           RevisionedCloudWriteStatus.success ||
           RevisionedCloudWriteStatus.idempotent =>
             ShoppingPersistenceResult(
@@ -229,6 +437,12 @@ class ShoppingService {
               'shopping_mutation_not_found',
             ),
         };
+        _rememberActiveItems(scope, [
+          ..._canonicalCloudActiveItems(current),
+          identified,
+        ]);
+        notifyUpdate();
+        return persistenceResult;
       } on ShoppingPersistenceException catch (error) {
         _recordCreateFailure(error);
         rethrow;

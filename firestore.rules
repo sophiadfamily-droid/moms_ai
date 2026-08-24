@@ -354,6 +354,21 @@ service cloud.firestore {
         && next.updatedAt == request.time;
     }
 
+    // Older shopping documents predate the revision protocol. Allow their
+    // owner to convert them once to the current, bounded representation so a
+    // local removal can become a durable tombstone instead of reappearing in
+    // Zelia's server-side shopping context.
+    function isValidLegacyShoppingMigration(userId, entityId) {
+      let next = request.resource.data;
+      let previous = resource.data;
+      return !previous.keys().hasAny(['revision'])
+        && previous.keys().hasAll(['createdAt'])
+        && hasValidRevisionedEntity(userId, entityId)
+        && next.revision == 2
+        && next.createdAt == previous.createdAt
+        && next.updatedAt == request.time;
+    }
+
     function hasValidRevisionedProfile(userId) {
       let data = request.resource.data;
       return data.keys().hasOnly([
@@ -1073,7 +1088,8 @@ service cloud.firestore {
         allow create: if isOwner(userId)
           && isValidRevisionedCreate(userId, itemId);
         allow update: if isOwner(userId)
-          && isValidRevisionedUpdate(userId, itemId);
+          && (isValidRevisionedUpdate(userId, itemId)
+            || isValidLegacyShoppingMigration(userId, itemId));
         allow delete: if false;
       }
 

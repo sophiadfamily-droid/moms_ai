@@ -143,6 +143,23 @@ class DefaultConversationContextProvider
         );
       }
       envelope = ConversationContextAssembler.assemble(projection);
+      final shoppingSection = envelope.sections
+          .where((section) => section.type == 'shopping')
+          .firstOrNull;
+      AppDiagnostics.record(
+        component: 'conversation_context',
+        domain: 'life_context',
+        operation: 'assemble',
+        step: 'envelope_ready',
+        code: AppErrorCode.lifecycleEvent,
+        severity: AppErrorSeverity.info,
+        technicalStatus: envelope.state.name,
+        metadata: {
+          'status': shoppingSection?.availability ?? 'missing',
+          'count': shoppingSection?.items.length ?? 0,
+          'state': envelope.sections.length,
+        },
+      );
     } on TimeoutException {
       envelope = ConversationContextEnvelope.unavailable(
         state: ConversationContextState.timeout,
@@ -168,7 +185,16 @@ class DefaultConversationContextProvider
         generatedAt: now,
         warningCode: error.code,
       );
-    } on FormatException {
+    } on FormatException catch (error) {
+      AppDiagnostics.record(
+        component: 'conversation_context',
+        domain: 'life_context',
+        operation: 'assemble',
+        step: 'envelope_rejected',
+        code: AppErrorCode.contractFailure,
+        technicalStatus: error.message.toString(),
+        sourceExceptionType: error.runtimeType.toString(),
+      );
       envelope = ConversationContextEnvelope.unavailable(
         state: ConversationContextState.invalidProjection,
         generatedAt: now,

@@ -463,6 +463,128 @@ final class ShoppingRevisionSyncService {
     }
   }
 
+  /// Gives an exhausted removal one fresh attempt after an app update or a
+  /// rules repair. The mutation id stays stable, so a write whose response was
+  /// lost remains idempotent. This is deliberately limited to tombstones: an
+  /// old product may stay deleted, but no stale add/update can be replayed.
+  Future<void> retryExhaustedRemovals(String scope) async {
+    if (!_scopeIsCurrent(scope)) return;
+    final journal = await _journal.load(
+      accountScopeId: scope,
+      domain: RevisionedSyncDomain.shopping,
+    );
+    final exhausted = journal.mutations.whereType<ShoppingMutation>().where(
+          (mutation) =>
+              mutation.attempt >= RevisionedJournalState.maxAttempts &&
+              (mutation.type == ShoppingMutationType.removeItem ||
+                  mutation.type == ShoppingMutationType.clearList),
+        );
+    for (final mutation in exhausted.toList(growable: false)) {
+      if (!_scopeIsCurrent(scope)) return;
+      final refreshed = ShoppingMutation(
+        mutationId: mutation.mutationId,
+        targetId: mutation.targetId,
+        expectedRevision: mutation.expectedRevision,
+        createdAt: mutation.createdAt,
+        attempt: 0,
+        nextRetryAt: null,
+        state: RevisionedMutationState.queued,
+        actionReference: mutation.actionReference,
+        type: mutation.type,
+        item: mutation.item,
+        clearGeneration: mutation.clearGeneration,
+      );
+      final latest = await _journal.load(
+        accountScopeId: scope,
+        domain: RevisionedSyncDomain.shopping,
+      );
+      await _journal.replace(
+        latest.copyWith(
+          mutations: latest.mutations
+              .map((item) =>
+                  item.mutationId == mutation.mutationId ? refreshed : item)
+              .toList(),
+        ),
+      );
+      await retry(scope, refreshed.mutationId);
+    }
+  }
+
+  /// Repairs removals that are already reflected on this device but whose
+  /// tombstone never reached Firestore. Only an exact local tombstone for the
+  /// same entity and the immediately following revision is allowed to repair
+  /// a remote active item. A newer remote edit is therefore never erased.
+  Future<int> repairRemoteRemovals(String scope) async {
+    if (!_scopeIsCurrent(scope)) return 0;
+    try {
+      final local = await _local.loadShopping(scope);
+      final remote = await _cloud.load(limit: 200).timeout(_cloudTimeout);
+      if (!_scopeIsCurrent(scope)) return 0;
+
+      final localById = {for (final value in local) value.entityId: value};
+      final repaired = <RevisionedShoppingItem>[];
+      for (final remoteValue in remote) {
+        if (remoteValue.isTombstone) continue;
+        final localValue = localById[remoteValue.entityId];
+        if (localValue == null ||
+            !localValue.isTombstone ||
+            localValue.revision != remoteValue.revision + 1 ||
+            localValue.updatedAt.isBefore(remoteValue.updatedAt)) {
+          continue;
+        }
+        final mutation = ShoppingMutation(
+          mutationId: localValue.lastMutationId,
+          targetId: remoteValue.entityId,
+          expectedRevision: remoteValue.revision,
+          createdAt: localValue.updatedAt,
+          attempt: 0,
+          nextRetryAt: null,
+          state: RevisionedMutationState.queued,
+          type: ShoppingMutationType.removeItem,
+          item: remoteValue.item,
+          clearGeneration: localValue.clearGeneration,
+        );
+        final result = await _cloud.update(mutation, scope).timeout(
+              _cloudTimeout,
+            );
+        if (result.status == RevisionedCloudWriteStatus.success ||
+            result.status == RevisionedCloudWriteStatus.idempotent) {
+          if (result.value != null) repaired.add(result.value!);
+        }
+      }
+      if (repaired.isEmpty || !_scopeIsCurrent(scope)) return 0;
+
+      final repairedIds = repaired.map((value) => value.entityId).toSet();
+      final latestLocal = await _local.loadShopping(scope);
+      await _local.saveShopping(scope, [
+        ...latestLocal.where((value) => !repairedIds.contains(value.entityId)),
+        ...repaired,
+      ]);
+      final journal = await _journal.load(
+        accountScopeId: scope,
+        domain: RevisionedSyncDomain.shopping,
+      );
+      await _journal.replace(
+        journal.copyWith(
+          mutations: journal.mutations.where((mutation) {
+            return mutation is! ShoppingMutation ||
+                !repairedIds.contains(mutation.targetId) ||
+                mutation.type != ShoppingMutationType.removeItem &&
+                    mutation.type != ShoppingMutationType.clearList;
+          }).toList(),
+          receipts: repaired.fold<List<String>>(
+            journal.receipts,
+            (receipts, value) =>
+                _boundedReceipts(receipts, value.lastMutationId),
+          ),
+        ),
+      );
+      return repaired.length;
+    } on Object {
+      return 0;
+    }
+  }
+
   Future<RevisionedSyncResult<RevisionedShoppingItem>> apply(
     String scope,
     ShoppingMutation mutation,

@@ -65,7 +65,7 @@ void main() {
     );
     expect(
       shopping,
-      contains('scope == null ? prefs.getStringList(shoppingKey) : null'),
+      contains('scope == null ? shoppingKey : _shoppingCacheKey(scope)'),
     );
     expect(tasks, contains('await _sync.bootstrap(scope)'));
     expect(shopping, contains('await _sync.bootstrap(scope)'));

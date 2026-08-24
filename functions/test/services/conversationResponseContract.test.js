@@ -174,6 +174,51 @@ test("accepts a personal claim grounded in the sent envelope", () => {
   assert.equal(validateConversationResponse(value, request()), value);
 });
 
+test("accepts a shopping claim grounded in the sent envelope", () => {
+  const shoppingRequest = request({
+    sections: [{
+      type: "shopping",
+      availability: "available",
+      freshness: "current",
+      items: [{
+        type: "shoppingItem",
+        confirmation: "confirmed",
+        freshness: "current",
+        facts: {title: "Fraises", urgency: "urgent"},
+      }],
+      budgetLimit: 25,
+      budgetUsed: 2,
+      omittedCount: 0,
+      truncated: false,
+    }],
+    budgetRequested: 330,
+    budgetUsed: 2,
+  });
+  const value = response({
+    usedSourceTypes: ["lifeContextShopping"],
+    groundingReferences: [{
+      schemaVersion: 1,
+      sourceType: "lifeContextShopping",
+      section: "shopping",
+      factKey: "urgency",
+      freshness: "current",
+      confirmation: "confirmed",
+      projectionVersion: 3,
+    }],
+    personalClaims: [{
+      claimId: "shopping-claim-1",
+      category: "shoppingFact",
+      sourceReferenceIndexes: [0],
+      certainty: "grounded",
+    }],
+  });
+
+  assert.equal(
+      validateConversationResponse(value, shoppingRequest),
+      value,
+  );
+});
+
 test("rejects absent, unknown and general-only personal sources", () => {
   const absent = response({
     groundingReferences: [{

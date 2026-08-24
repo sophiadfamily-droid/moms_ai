@@ -200,6 +200,45 @@ void main() {
 
     await tester.pump(const Duration(milliseconds: 750));
     expect(find.text('Kiwis'), findsNothing);
+    expect(await _storedItems(), isEmpty);
+  });
+
+  testWidgets('legacy bought products are removed and never counted',
+      (tester) async {
+    final activeItems = List.generate(
+      2,
+      (index) => ShoppingItemModel(
+        id: 'active-$index',
+        title: 'Produit actif $index',
+        isBought: false,
+        createdAt: DateTime(2026, 8, 20, 10, index),
+      ),
+    );
+    final boughtItems = List.generate(
+      14,
+      (index) => ShoppingItemModel(
+        id: 'bought-$index',
+        title: 'Ancien produit $index',
+        isBought: true,
+        createdAt: DateTime(2026, 8, 19, 10, index),
+      ),
+    );
+    SharedPreferences.setMockInitialValues({
+      ShoppingService.shoppingKey: [
+        ...activeItems.map((item) => jsonEncode(item.toJson())),
+        ...boughtItems.map((item) => jsonEncode(item.toJson())),
+      ],
+    });
+
+    await tester.pumpWidget(
+      const MaterialApp(home: ShoppingScreen()),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('2 produit(s) à acheter'), findsOneWidget);
+    expect(find.textContaining('acheté(s)'), findsNothing);
+    expect(find.byType(LinearProgressIndicator), findsNothing);
+    expect(await _storedItems(), hasLength(2));
   });
 }
 

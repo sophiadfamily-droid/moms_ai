@@ -168,6 +168,132 @@ void main() {
       expect(stale.status, RevisionedCloudWriteStatus.revisionConflict);
     });
 
+    test('an exhausted shopping removal receives one safe recovery attempt',
+        () async {
+      final cloud = _ShoppingCloud();
+      var retryNow = instant;
+      final service = ShoppingRevisionSyncService(
+        cloud: cloud,
+        now: () => retryNow,
+      );
+      final add = _shoppingMutation(
+        mutationId: 'add-before-repair',
+        expectedRevision: 0,
+        type: ShoppingMutationType.addItem,
+        instant: instant,
+      );
+      await service.apply(scope, add);
+      cloud.unavailable = true;
+      final remove = _shoppingMutation(
+        mutationId: 'remove-before-repair',
+        expectedRevision: 1,
+        type: ShoppingMutationType.removeItem,
+        instant: instant,
+      );
+      await service.apply(scope, remove);
+      for (var attempt = 0;
+          attempt < RevisionedJournalState.maxAttempts;
+          attempt++) {
+        retryNow = retryNow.add(const Duration(days: 1));
+        await service.retry(scope, remove.mutationId);
+      }
+
+      cloud.unavailable = false;
+      await service.retryExhaustedRemovals(scope);
+
+      expect(cloud.values.single.isTombstone, isTrue);
+      expect(
+        (await const RevisionedOfflineJournal().load(
+          accountScopeId: scope,
+          domain: RevisionedSyncDomain.shopping,
+        ))
+            .mutations,
+        isEmpty,
+      );
+    });
+
+    test('repairs a locally deleted product that stayed active remotely',
+        () async {
+      final cloud = _ShoppingCloud();
+      final service = ShoppingRevisionSyncService(
+        cloud: cloud,
+        now: () => instant,
+      );
+      final add = _shoppingMutation(
+        mutationId: 'add-before-offline-removal',
+        expectedRevision: 0,
+        type: ShoppingMutationType.addItem,
+        instant: instant,
+      );
+      await service.apply(scope, add);
+      cloud.unavailable = true;
+      await service.apply(
+        scope,
+        _shoppingMutation(
+          mutationId: 'offline-removal',
+          expectedRevision: 1,
+          type: ShoppingMutationType.removeItem,
+          instant: instant.add(const Duration(minutes: 1)),
+        ),
+      );
+      expect(cloud.values.single.isTombstone, isFalse);
+
+      cloud.unavailable = false;
+      final repaired = await service.repairRemoteRemovals(scope);
+
+      expect(repaired, 1);
+      expect(cloud.values.single.isTombstone, isTrue);
+      expect(
+        (await const RevisionedOfflineJournal().load(
+          accountScopeId: scope,
+          domain: RevisionedSyncDomain.shopping,
+        ))
+            .mutations,
+        isEmpty,
+      );
+    });
+
+    test('repair never erases a newer remote product edit', () async {
+      final cloud = _ShoppingCloud();
+      final service = ShoppingRevisionSyncService(
+        cloud: cloud,
+        now: () => instant,
+      );
+      final add = _shoppingMutation(
+        mutationId: 'add-before-newer-edit',
+        expectedRevision: 0,
+        type: ShoppingMutationType.addItem,
+        instant: instant,
+      );
+      await service.apply(scope, add);
+      cloud.unavailable = true;
+      await service.apply(
+        scope,
+        _shoppingMutation(
+          mutationId: 'offline-removal-before-newer-edit',
+          expectedRevision: 1,
+          type: ShoppingMutationType.removeItem,
+          instant: instant.add(const Duration(minutes: 1)),
+        ),
+      );
+      cloud.unavailable = false;
+      await cloud.update(
+        _shoppingMutation(
+          mutationId: 'newer-remote-edit',
+          expectedRevision: 1,
+          type: ShoppingMutationType.updateItem,
+          instant: instant.add(const Duration(minutes: 2)),
+        ),
+        scope,
+      );
+
+      final repaired = await service.repairRemoteRemovals(scope);
+
+      expect(repaired, 0);
+      expect(cloud.values.single.isTombstone, isFalse);
+      expect(cloud.values.single.revision, 2);
+    });
+
     test('Profile rejects HumanModel-owned fields', () {
       expect(
         () => ProfileMutation(
@@ -648,6 +774,7 @@ final class _TaskCloud implements RevisionedTaskCloudRepository {
 
 final class _ShoppingCloud implements RevisionedShoppingCloudRepository {
   final values = <RevisionedShoppingItem>[];
+  bool unavailable = false;
 
   @override
   Future<List<RevisionedShoppingItem>> load({int limit = 100}) async =>
@@ -689,6 +816,7 @@ final class _ShoppingCloud implements RevisionedShoppingCloudRepository {
     ShoppingMutation mutation,
     String accountScopeId,
   ) async {
+    if (unavailable) throw StateError('offline');
     final index =
         values.indexWhere((value) => value.entityId == mutation.targetId);
     if (index < 0) {
