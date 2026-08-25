@@ -5,7 +5,9 @@ import '../models/user_profile.dart';
 import '../models/agenda_focus.dart';
 import '../models/agenda_conflict_help.dart';
 import '../models/priority/proactive_priority_models.dart';
+import '../models/conversation_session_models.dart';
 import '../services/conversation_session_controller.dart';
+import '../services/dashboard_anticipation_service.dart';
 import '../services/agenda_conflict_suggestion_service.dart';
 import '../services/identity/identity_production_services.dart';
 import '../services/priority/proactive_interaction_registry.dart';
@@ -16,6 +18,40 @@ import 'calendar_screen.dart';
 import 'tasks_screen.dart';
 import 'shopping_screen.dart';
 import 'profile_screen.dart';
+
+List<ConversationQuickReply> buildDashboardAnticipationQuickReplies(
+  DashboardAnticipation anticipation,
+) {
+  final anticipationContext = anticipation.preparedChatMessage ??
+      '${anticipation.title}. ${anticipation.message}';
+
+  return [
+    ConversationQuickReply(
+      id: 'dashboard-now',
+      label: 'Maintenant',
+      discussionOnly: true,
+      submission: 'Je veux maintenant réfléchir avec toi à cette '
+          'anticipation : $anticipationContext Réponds uniquement avec une '
+          'aide concrète : propose les prochaines étapes utiles ou pose une '
+          'seule question vraiment nécessaire. C’est une discussion '
+          'préparatoire : aucune action dans l’application n’est demandée à '
+          'ce stade.',
+    ),
+    ConversationQuickReply(
+      id: 'dashboard-later',
+      label: 'Plus tard',
+      submission: 'Je choisis « Plus tard » pour cette anticipation : '
+          '$anticipationContext Garde précisément cette suggestion pour '
+          'plus tard.',
+    ),
+    ConversationQuickReply(
+      id: 'dashboard-not-useful',
+      label: 'Pas utile',
+      submission: 'Je choisis « Pas utile » pour cette anticipation : '
+          '$anticipationContext Ne me repropose pas cette suggestion.',
+    ),
+  ];
+}
 
 class MainNavigation extends StatefulWidget {
   final UserProfile profile;
@@ -111,6 +147,18 @@ class _MainNavigationState extends State<MainNavigation> {
     });
   }
 
+  void openDashboardThought(DashboardAnticipation anticipation) {
+    final anticipationContext = anticipation.preparedChatMessage ??
+        '${anticipation.title}. ${anticipation.message}';
+    _conversationSessionController!.addInitialAssistantMessageWithQuickReplies(
+      anticipationContext,
+      buildDashboardAnticipationQuickReplies(anticipation),
+    );
+    setState(() {
+      currentIndex = 1;
+    });
+  }
+
   Future<void> openConflictHelp(AgendaConflictHelp help) async {
     if (_isFindingConflictSolution) return;
     _isFindingConflictSolution = true;
@@ -168,6 +216,7 @@ class _MainNavigationState extends State<MainNavigation> {
             onNavigate: changeTab,
             onOpenAgenda: openAgenda,
             onOpenTask: openTask,
+            onOpenDashboardAnticipation: openDashboardThought,
           ),
           ChatScreen(
             profile: currentProfile,

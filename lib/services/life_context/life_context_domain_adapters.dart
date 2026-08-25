@@ -547,7 +547,7 @@ final class EventLifeContextAdapter implements LifeContextDomainAdapter {
   final EventContextSyncLoader? _loadSyncStatuses;
 
   static const Duration _operationalPastWindow = Duration(days: 7);
-  static const Duration _operationalFutureWindow = Duration(days: 60);
+  static const Duration _operationalFutureWindow = Duration(days: 90);
 
   @override
   LifeContextDomain get domain => LifeContextDomain.event;

@@ -132,6 +132,8 @@ async function handleChatRequest(
   const events = source.events || [];
   const conversationContext = source.conversationContext;
   const conversationHistory = source.conversationHistory;
+  const isGuidedDiscussion =
+    source.conversationMode === "guidedDiscussion";
 
   const now = dependencies.now || (() => new Date());
   const logger = dependencies.logger || console;
@@ -166,7 +168,8 @@ async function handleChatRequest(
   const planningComplexity = detectPlanningComplexity(message);
   const taskCreation = extractTaskCreation(message, now());
 
-  const profileFactAnswer = canonicalProfileFactAnswer(source);
+  const profileFactAnswer = isGuidedDiscussion ?
+    null : canonicalProfileFactAnswer(source);
   if (profileFactAnswer !== null) {
     const validated = validateConversationResponse(profileFactAnswer, source);
     return {
@@ -177,10 +180,12 @@ async function handleChatRequest(
     };
   }
 
-  const shoppingFactAnswer = canonicalShoppingFactAnswer(source, {
-    sourceType: "lifeContextShopping",
-  });
-  const shoppingView = requestedShoppingView(message);
+  const shoppingFactAnswer = isGuidedDiscussion ? null :
+    canonicalShoppingFactAnswer(source, {
+      sourceType: "lifeContextShopping",
+    });
+  const shoppingView = isGuidedDiscussion ? null :
+    requestedShoppingView(message);
   if (shoppingFactAnswer !== null) {
     const validated = validateConversationResponse(
         shoppingFactAnswer,
@@ -206,7 +211,8 @@ async function handleChatRequest(
     };
   }
 
-  if (detectedIntent.understandingLevel === "ambiguous") {
+  if (!isGuidedDiscussion &&
+      detectedIntent.understandingLevel === "ambiguous") {
     const ambiguityType = detectedIntent.ambiguityType || "multiple_meanings";
     const questionText = ambiguityType === "negation_scope" ?
       "Je veux être sûre de respecter la négation. Que souhaites-tu faire ?" :
@@ -273,7 +279,7 @@ async function handleChatRequest(
     };
   }
 
-  if (detectedIntent.primaryIntent === "task" &&
+  if (!isGuidedDiscussion && detectedIntent.primaryIntent === "task" &&
       taskCreation.isCreation && taskCreation.title.length === 0) {
     const clarificationResponse = validateConversationResponse({
       visibleText: "Quelle tâche veux-tu créer ?",
@@ -334,7 +340,7 @@ async function handleChatRequest(
     };
   }
 
-  if (detectedIntent.primaryIntent === "event") {
+  if (!isGuidedDiscussion && detectedIntent.primaryIntent === "event") {
     const eventClarification = buildEventClarification({
       message,
       now: now(),
@@ -368,6 +374,7 @@ ${systemPrompt({
     conversationHistory,
     detectedIntent,
     autonomyMode: source.autonomyMode,
+    conversationMode: source.conversationMode,
   })}
 
 ${buildBrainContext()}

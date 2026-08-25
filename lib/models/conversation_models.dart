@@ -28,6 +28,7 @@ class ConversationInput {
   final int sessionGeneration;
   final String? logicalRequestId;
   final String? correlationId;
+  final bool discussionOnly;
 
   const ConversationInput({
     required this.message,
@@ -35,6 +36,7 @@ class ConversationInput {
     this.sessionGeneration = 0,
     this.logicalRequestId,
     this.correlationId,
+    this.discussionOnly = false,
   });
 }
 

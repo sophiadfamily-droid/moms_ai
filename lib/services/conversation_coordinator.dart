@@ -1,4 +1,5 @@
 import '../models/conversation_models.dart';
+import '../models/chat_backend_request.dart';
 import '../models/conversation_reference_resolution.dart';
 import '../models/conversation_epistemic_models.dart';
 import '../models/action_autonomy_policy.dart';
@@ -247,8 +248,23 @@ class ConversationCoordinator {
     _eventIdentityDrafts.clear();
     _eventParticipantMutationDrafts.clear();
     recurringResponsibilityConversationService?.invalidate();
+    routineConversationService?.invalidate();
     _observedAccountScopeId = null;
     _isSending = false;
+    _isResolvingPendingAction = false;
+  }
+
+  Future<void> abandonPendingConversation() async {
+    _confirmationCoordinator.invalidateSession(_sessionGeneration + 1);
+    _state = _state.copyWith(
+      phase: ConversationPhase.idle,
+      clearPendingAction: true,
+    );
+    _identityActionBindings.clear();
+    _eventIdentityDrafts.clear();
+    _eventParticipantMutationDrafts.clear();
+    recurringResponsibilityConversationService?.invalidate();
+    await routineConversationService?.abandonPending();
     _isResolvingPendingAction = false;
   }
 
@@ -2584,6 +2600,9 @@ class ConversationCoordinator {
     required ConversationActionExecutor executeAction,
   }) async {
     _sessionGeneration = input.sessionGeneration;
+    if (input.discussionOnly) {
+      return _sendDiscussionOnly(input);
+    }
     final eventMutationResolution = await resolvePendingEventMutation(
       answer: input.message,
     );
@@ -2708,49 +2727,61 @@ class ConversationCoordinator {
               ? builtRequest
               : builtRequest.withAutonomyPolicy(autonomyPolicy))
           .withSessionGeneration(input.sessionGeneration);
+      final scopedRequest = input.discussionOnly
+          ? policyRequest.withAutonomyMode(ActionAutonomyMode.paused)
+          : policyRequest;
       final request = input.correlationId == null
-          ? policyRequest
-          : policyRequest.withCorrelationId(input.correlationId!);
+          ? scopedRequest
+          : scopedRequest.withCorrelationId(input.correlationId!);
       final memoryContext = contextProvider is MemoryConversationContextProvider
           ? contextProvider as MemoryConversationContextProvider
           : null;
-      final userProposal = await memoryContext?.proposeUserMemory(
-        input.message,
-        logicalRequestId: input.logicalRequestId,
-      );
-      if (userProposal != null && _state.pendingAction == null) {
-        setPendingMemoryConfirmation(
-          userProposal,
-          createdAt: DateTime.now(),
+      if (!input.discussionOnly) {
+        final userProposal = await memoryContext?.proposeUserMemory(
+          input.message,
+          logicalRequestId: input.logicalRequestId,
         );
-        return ConversationOutcome(
-          reply: memoryCopy.proposal(userProposal),
-          request: request,
-        );
-      }
-      final memoryAttemptStatus =
-          contextProvider is MemoryConversationAttemptStatusProvider
-              ? contextProvider as MemoryConversationAttemptStatusProvider
-              : null;
-      if (memoryAttemptStatus?.lastMemoryProposalWasActivated == true) {
-        return ConversationOutcome(
-          reply: memoryCopy.confirmed,
-          request: request,
-        );
-      }
-      if (memoryContext != null &&
-          (MemoryPipelineService.hasExplicitMemoryRequest(input.message) ||
-              (memoryAttemptStatus?.lastMemoryProposalWasAttempted == true &&
-                  memoryAttemptStatus
-                          ?.lastMemoryProposalWasPersistedOrPending !=
-                      true))) {
-        return ConversationOutcome(
-          reply: 'Je n’ai pas pu ajouter cette information à ma mémoire. '
-              'Tu peux réessayer dans un instant.',
-          request: request,
-        );
+        if (userProposal != null && _state.pendingAction == null) {
+          setPendingMemoryConfirmation(
+            userProposal,
+            createdAt: DateTime.now(),
+          );
+          return ConversationOutcome(
+            reply: memoryCopy.proposal(userProposal),
+            request: request,
+          );
+        }
+        final memoryAttemptStatus =
+            contextProvider is MemoryConversationAttemptStatusProvider
+                ? contextProvider as MemoryConversationAttemptStatusProvider
+                : null;
+        if (memoryAttemptStatus?.lastMemoryProposalWasActivated == true) {
+          return ConversationOutcome(
+            reply: memoryCopy.confirmed,
+            request: request,
+          );
+        }
+        if (memoryContext != null &&
+            (MemoryPipelineService.hasExplicitMemoryRequest(input.message) ||
+                (memoryAttemptStatus?.lastMemoryProposalWasAttempted == true &&
+                    memoryAttemptStatus
+                            ?.lastMemoryProposalWasPersistedOrPending !=
+                        true))) {
+          return ConversationOutcome(
+            reply: 'Je n’ai pas pu ajouter cette information à ma mémoire. '
+                'Tu peux réessayer dans un instant.',
+            request: request,
+          );
+        }
       }
       final response = await backend.send(request);
+      if (input.discussionOnly) {
+        return ConversationOutcome(
+          reply: response.reply,
+          request: request,
+          responseKind: ConversationResponseKind.answer,
+        );
+      }
       final epistemic = response.epistemic;
       if (epistemic != null) {
         final envelope = request.context;
@@ -2938,6 +2969,47 @@ class ConversationCoordinator {
         responseKind: epistemic?.responseKind,
         epistemicClarification: epistemic?.clarification,
         referenceResolution: referenceResolution,
+      );
+    } finally {
+      _isSending = false;
+      _state = _state.copyWith(
+        phase: _state.pendingAction == null
+            ? ConversationPhase.idle
+            : ConversationPhase.awaitingActionConfirmation,
+      );
+    }
+  }
+
+  Future<ConversationOutcome?> _sendDiscussionOnly(
+    ConversationInput input,
+  ) async {
+    if (_isSending) return null;
+    _isSending = true;
+    _state = _state.copyWith(
+      phase: ConversationPhase.sending,
+      currentInstruction: input.message,
+    );
+    try {
+      final builtRequest = await contextProvider.buildRequest(
+        message: input.message,
+        profile: input.profile,
+      );
+      final autonomyPolicy = await _loadAutonomyPolicy?.call();
+      if (autonomyPolicy != null) _lastAutonomyPolicy = autonomyPolicy;
+      final policyRequest = (autonomyPolicy == null
+              ? builtRequest
+              : builtRequest.withAutonomyPolicy(autonomyPolicy))
+          .withSessionGeneration(input.sessionGeneration)
+          .withAutonomyMode(ActionAutonomyMode.paused)
+          .withConversationMode(ChatConversationMode.guidedDiscussion);
+      final request = input.correlationId == null
+          ? policyRequest
+          : policyRequest.withCorrelationId(input.correlationId!);
+      final response = await backend.send(request);
+      return ConversationOutcome(
+        reply: response.reply,
+        request: request,
+        responseKind: ConversationResponseKind.answer,
       );
     } finally {
       _isSending = false;

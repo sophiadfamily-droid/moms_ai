@@ -14,17 +14,24 @@ import '../services/auth_service.dart';
 import '../services/daily_summary_view_service.dart';
 import '../services/dashboard_anticipation_service.dart';
 import '../services/event_service.dart';
+import '../services/mental_load_anticipation_production.dart';
 import '../services/shopping_service.dart';
 import '../services/task_service.dart';
 import '../services/notification_service.dart';
-import '../services/priority/proactive_priority_production.dart';
 import 'daily_summary_screen.dart';
+
+@visibleForTesting
+bool isDashboardAnticipationLinkEnabled(
+  DashboardAnticipation? anticipation,
+) =>
+    anticipation != null;
 
 class HomeScreen extends StatefulWidget {
   final UserProfile profile;
   final ValueChanged<int>? onNavigate;
   final ValueChanged<AgendaFocus>? onOpenAgenda;
   final ValueChanged<String>? onOpenTask;
+  final ValueChanged<DashboardAnticipation>? onOpenDashboardAnticipation;
   final DashboardAnticipationService? dashboardAnticipationService;
 
   const HomeScreen({
@@ -33,6 +40,7 @@ class HomeScreen extends StatefulWidget {
     this.onNavigate,
     this.onOpenAgenda,
     this.onOpenTask,
+    this.onOpenDashboardAnticipation,
     this.dashboardAnticipationService,
   });
 
@@ -133,14 +141,11 @@ class _HomeScreenState extends State<HomeScreen>
     final scope = AuthService.currentUserId?.trim() ?? '';
     final anticipationService = widget.dashboardAnticipationService ??
         DashboardAnticipationService(
-          loadProjection: () =>
-              ProactivePriorityProduction.loadProjection(scope),
+          loadMentalLoadAnticipations: () =>
+              MentalLoadAnticipationProduction.load(scope),
         );
     final loadedAnticipation = await anticipationService.evaluate(
       accountScopeId: scope,
-      events: loadedEvents,
-      tasks: loadedTasks,
-      shoppingItems: loadedShopping,
       dailySummary: loadedSummary,
     );
 
@@ -349,22 +354,14 @@ class _HomeScreenState extends State<HomeScreen>
         return;
       case DashboardAnticipationDestination.none:
       case DashboardAnticipationDestination.chat:
-        navigateToTab(1);
+        if (widget.onOpenDashboardAnticipation != null) {
+          widget.onOpenDashboardAnticipation!(anticipation);
+        } else {
+          navigateToTab(1);
+        }
         return;
     }
   }
-
-  String dashboardAnticipationActionLabel() =>
-      switch (dashboardAnticipation?.destination) {
-        DashboardAnticipationDestination.agenda => 'Voir dans l’Agenda',
-        DashboardAnticipationDestination.task => 'Voir la tâche',
-        DashboardAnticipationDestination.shopping => 'Voir les courses',
-        DashboardAnticipationDestination.attentionCenter => 'Voir les détails',
-        DashboardAnticipationDestination.none ||
-        DashboardAnticipationDestination.chat ||
-        null =>
-          '✨ Parler avec Zelia',
-      };
 
   void _openDailySummary() {
     Navigator.of(context).push(
@@ -666,65 +663,77 @@ class _HomeScreenState extends State<HomeScreen>
       ),
       child: Column(
         children: [
-          Row(
-            children: [
-              Container(
-                width: 74,
-                height: 74,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: RadialGradient(
-                    colors: [
-                      accent.withValues(alpha: 0.34),
-                      accent.withValues(alpha: 0.08),
-                      Colors.white.withValues(alpha: 0.01),
+          InkWell(
+            key: const Key('dashboard-anticipation-link'),
+            onTap: isDashboardAnticipationLinkEnabled(anticipation)
+                ? openDashboardAnticipation
+                : null,
+            borderRadius: BorderRadius.circular(24),
+            child: Row(
+              children: [
+                Container(
+                  width: 74,
+                  height: 74,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: [
+                        accent.withValues(alpha: 0.34),
+                        accent.withValues(alpha: 0.08),
+                        Colors.white.withValues(alpha: 0.01),
+                      ],
+                    ),
+                  ),
+                  child: Icon(
+                    Icons.auto_awesome,
+                    color: accent,
+                    size: 34,
+                  ),
+                ),
+                const SizedBox(width: 17),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        key: const Key('dashboard-anticipation-title'),
+                        style: TextStyle(
+                          color: textDark,
+                          fontSize: 21,
+                          height: 1.2,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: -0.4,
+                        ),
+                      ),
+                      const SizedBox(height: 7),
+                      Text(
+                        message,
+                        key: const Key('dashboard-anticipation-message'),
+                        style: TextStyle(
+                          color: textSoft,
+                          height: 1.35,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                     ],
                   ),
                 ),
-                child: Icon(
-                  Icons.auto_awesome,
-                  color: accent,
-                  size: 34,
-                ),
-              ),
-              const SizedBox(width: 17),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      key: const Key('dashboard-anticipation-title'),
-                      style: TextStyle(
-                        color: textDark,
-                        fontSize: 21,
-                        height: 1.2,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -0.4,
-                      ),
-                    ),
-                    const SizedBox(height: 7),
-                    Text(
-                      message,
-                      key: const Key('dashboard-anticipation-message'),
-                      style: TextStyle(
-                        color: textSoft,
-                        height: 1.35,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+                if (anticipation != null)
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: textSoft,
+                  ),
+              ],
+            ),
           ),
           const SizedBox(height: 22),
           buildZeliaButton(
-            title: dashboardAnticipationActionLabel(),
+            title: '✨ Parler avec Zelia',
             icon: Icons.auto_awesome,
             filled: true,
-            onTap: openDashboardAnticipation,
+            onTap: () => navigateToTab(1),
           ),
         ],
       ),

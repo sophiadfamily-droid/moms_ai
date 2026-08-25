@@ -2,15 +2,89 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:moms_ai/models/chat_backend_request.dart';
 import 'package:moms_ai/models/chat_backend_response.dart';
+import 'package:moms_ai/models/conversation_session_models.dart';
 import 'package:moms_ai/models/user_profile.dart';
 import 'package:moms_ai/models/voice_recognition.dart';
 import 'package:moms_ai/screens/chat_screen.dart';
 import 'package:moms_ai/services/chat_backend_client.dart';
 import 'package:moms_ai/services/conversation_context_service.dart';
+import 'package:moms_ai/services/conversation_session_controller.dart';
 import 'package:moms_ai/services/voice_recognition_coordinator.dart';
 import 'package:moms_ai/services/voice_service.dart';
 
 void main() {
+  testWidgets('anticipation choices are compact buttons and disappear on tap',
+      (tester) async {
+    final backend = _WidgetBackend();
+    final controller = ConversationSessionController.production(
+      profile: _profile(),
+      backendClient: backend,
+      contextProvider: _WidgetContextProvider(),
+      messageStore: _WidgetMessageStore(),
+    );
+    controller.addInitialAssistantMessageWithQuickReplies(
+      'Je peux t’aider à anticiper ce qu’il faut.',
+      [
+        ConversationQuickReply(
+          id: 'now',
+          label: 'Maintenant',
+          submission: 'Occupons-nous-en maintenant.',
+        ),
+        ConversationQuickReply(
+          id: 'later',
+          label: 'Plus tard',
+          submission: 'Garde la préparation du voyage pour plus tard.',
+        ),
+        ConversationQuickReply(
+          id: 'not-useful',
+          label: 'Pas utile',
+          submission: 'Cette suggestion ne m’est pas utile.',
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ChatScreen(
+          profile: _profile(),
+          sessionController: controller,
+        ),
+      ),
+    );
+
+    expect(find.text('Maintenant'), findsOneWidget);
+    expect(find.text('Plus tard'), findsOneWidget);
+    expect(find.text('Pas utile'), findsOneWidget);
+    final nowChip = tester.widget<ActionChip>(
+      find.byKey(const Key('conversation-quick-reply-now')),
+    );
+    expect(nowChip.backgroundColor, const Color(0xFFFBEAE6));
+    expect(nowChip.side?.color, const Color(0xFFD9A092));
+    expect(nowChip.labelStyle?.color, const Color(0xFF6A3F36));
+
+    await tester.tap(
+      find.byKey(const Key('conversation-quick-reply-later')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('conversation-quick-reply-now')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('conversation-quick-reply-later')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('conversation-quick-reply-not-useful')),
+      findsNothing,
+    );
+    expect(find.text('Plus tard'), findsOneWidget);
+    expect(backend.requests.single.message,
+        'Garde la préparation du voyage pour plus tard.');
+    controller.dispose();
+  });
+
   testWidgets('ChatScreen keeps the visible user and assistant message order',
       (tester) async {
     final backend = _WidgetBackend();
@@ -368,6 +442,15 @@ class _WidgetBackend implements ChatBackendClient {
       memories: [],
     );
   }
+}
+
+class _WidgetMessageStore implements ConversationMessageStore {
+  @override
+  Future<void> save({
+    required String sessionId,
+    required ConversationMessageRole role,
+    required String text,
+  }) async {}
 }
 
 class _FailingWidgetBackend implements ChatBackendClient {

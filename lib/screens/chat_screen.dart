@@ -169,8 +169,24 @@ class _ChatScreenState extends State<ChatScreen> {
                 controller: _scrollController,
                 padding: const EdgeInsets.all(18),
                 itemCount: state.messages.length,
-                itemBuilder: (context, index) =>
-                    _MessageBubble(message: state.messages[index]),
+                itemBuilder: (context, index) {
+                  final message = state.messages[index];
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _MessageBubble(message: message),
+                      if (state.quickReplyMessageId == message.id &&
+                          state.quickReplies.isNotEmpty)
+                        _QuickReplyChoices(
+                          replies: state.quickReplies,
+                          enabled: !state.isBusy,
+                          onSelected: (replyId) => _sessionController.dispatch(
+                            SelectConversationQuickReply(replyId),
+                          ),
+                        ),
+                    ],
+                  );
+                },
               ),
             ),
             if (state.isBusy)
@@ -268,4 +284,44 @@ class _MessageBubble extends StatelessWidget {
       ),
     );
   }
+}
+
+class _QuickReplyChoices extends StatelessWidget {
+  const _QuickReplyChoices({
+    required this.replies,
+    required this.enabled,
+    required this.onSelected,
+  });
+
+  final List<ConversationQuickReply> replies;
+  final bool enabled;
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(left: 4, bottom: 16),
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final reply in replies)
+              ActionChip(
+                key: Key('conversation-quick-reply-${reply.id}'),
+                label: Text(reply.label),
+                onPressed: enabled ? () => onSelected(reply.id) : null,
+                backgroundColor: const Color(0xFFFBEAE6),
+                disabledColor: const Color(0xFFFBEAE6),
+                surfaceTintColor: Colors.transparent,
+                side: const BorderSide(color: Color(0xFFD9A092)),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                labelStyle: const TextStyle(
+                  color: Color(0xFF6A3F36),
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+                shape: const StadiumBorder(),
+              ),
+          ],
+        ),
+      );
 }

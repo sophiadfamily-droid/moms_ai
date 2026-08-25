@@ -498,6 +498,32 @@ et des anticipations reliant plusieurs aspects de la vie. Son contexte est une
 sélection pertinente de la projection commune et non une copie brute de toutes
 les données personnelles.
 
+La carte d'anticipation du Dashboard est la pensée transversale principale de
+Zélia. Elle consulte la projection commune avant de choisir une seule pensée et
+peut relier profil, personnes, responsabilités, Agenda, Tâches, Courses,
+habitudes et mémoire. Elle ne se limite donc ni aux conflits ni aux éléments
+déjà marqués urgents. Elle couvre notamment les préparatifs d'événements, la
+famille et l'école, les échéances administratives et professionnelles, les
+voyages, le foyer, les achats liés à une situation et les transitions de vie.
+
+Son horizon normal est de trente jours. Il peut atteindre quatre-vingt-dix
+jours pour une échéance qui demande raisonnablement une préparation longue,
+comme un voyage, un anniversaire important, une rentrée, un déménagement ou
+une transition de vie. Une préparation déduite reste toujours une proposition :
+elle ne crée ni Tâche, ni achat, ni Event sans demande ou accord.
+
+Appuyer sur la carte ouvre la conversation avec le contexte de cette pensée
+déjà préparé. Zélia propose alors trois suites simples et humaines : s'en
+occuper maintenant, y revenir plus tard ou indiquer que la suggestion n'est pas
+utile. Ces réponses servent à éviter les répétitions et ne sont jamais
+interprétées comme l'autorisation d'une action différente.
+
+Quand aucune anticipation réellement utile n'est prouvée, la carte reste
+présente avec une phrase courte, rassurante et personnalisée à partir de faits
+vérifiés. Elle ne prétend jamais que tout va bien si une partie indispensable
+du contexte est indisponible, et ne répète pas une formule générique identique
+à chaque ouverture.
+
 ### 15.3 Agenda, lieux et visibilité
 
 Le formulaire Event grand public contient seulement : titre, date, heure,

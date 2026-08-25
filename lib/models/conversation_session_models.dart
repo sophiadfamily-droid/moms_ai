@@ -58,6 +58,34 @@ final class ConversationVisibleMessage {
   final String? pendingReferenceId;
 }
 
+final class ConversationQuickReply {
+  ConversationQuickReply({
+    required String id,
+    required String label,
+    required String submission,
+    String? visibleText,
+    this.discussionOnly = false,
+  })  : id = id.trim(),
+        label = label.trim(),
+        submission = submission.trim(),
+        visibleText = (visibleText ?? label).trim() {
+    if (this.id.isEmpty ||
+        this.label.isEmpty ||
+        this.submission.isEmpty ||
+        this.submission.length > ConversationVisibleMessage.maximumLength ||
+        this.visibleText.isEmpty ||
+        this.visibleText.length > ConversationVisibleMessage.maximumLength) {
+      throw const FormatException('invalid_conversation_quick_reply');
+    }
+  }
+
+  final String id;
+  final String label;
+  final String submission;
+  final String visibleText;
+  final bool discussionOnly;
+}
+
 final class ConversationUiEffect {
   ConversationUiEffect({
     required this.id,
@@ -92,13 +120,19 @@ final class ConversationSessionState {
     this.retryAvailable = false,
     this.errorMessage,
     this.hasPendingAction = false,
+    List<ConversationQuickReply> quickReplies = const [],
+    this.quickReplyMessageId,
   })  : messages = UnmodifiableListView(messages),
-        effects = UnmodifiableListView(effects) {
+        effects = UnmodifiableListView(effects),
+        quickReplies = UnmodifiableListView(quickReplies) {
     if (schemaVersion != currentSchemaVersion ||
         sessionId.trim().isEmpty ||
         sessionGeneration < 0 ||
         currentRequestId != null && currentRequestId!.trim().isEmpty ||
-        errorMessage != null && errorMessage!.trim().isEmpty) {
+        errorMessage != null && errorMessage!.trim().isEmpty ||
+        quickReplies.isEmpty != (quickReplyMessageId == null) ||
+        quickReplies.map((reply) => reply.id).toSet().length !=
+            quickReplies.length) {
       throw const FormatException('invalid_conversation_session_state');
     }
   }
@@ -113,6 +147,8 @@ final class ConversationSessionState {
   final bool retryAvailable;
   final String? errorMessage;
   final bool hasPendingAction;
+  final List<ConversationQuickReply> quickReplies;
+  final String? quickReplyMessageId;
 
   bool get isBusy => const {
         ConversationSessionPhase.loadingContext,
@@ -132,6 +168,9 @@ final class ConversationSessionState {
     String? errorMessage,
     bool clearError = false,
     bool? hasPendingAction,
+    List<ConversationQuickReply>? quickReplies,
+    String? quickReplyMessageId,
+    bool clearQuickReplies = false,
   }) =>
       ConversationSessionState(
         sessionId: sessionId,
@@ -145,6 +184,11 @@ final class ConversationSessionState {
         retryAvailable: retryAvailable ?? this.retryAvailable,
         errorMessage: clearError ? null : errorMessage ?? this.errorMessage,
         hasPendingAction: hasPendingAction ?? this.hasPendingAction,
+        quickReplies:
+            clearQuickReplies ? const [] : quickReplies ?? this.quickReplies,
+        quickReplyMessageId: clearQuickReplies
+            ? null
+            : quickReplyMessageId ?? this.quickReplyMessageId,
       );
 }
 
@@ -165,6 +209,16 @@ final class SubmitConversationText extends ConversationUiIntent {
 
 final class RetryConversationRequest extends ConversationUiIntent {
   const RetryConversationRequest();
+}
+
+final class SelectConversationQuickReply extends ConversationUiIntent {
+  SelectConversationQuickReply(String replyId) : replyId = replyId.trim() {
+    if (this.replyId.isEmpty) {
+      throw const FormatException('invalid_conversation_quick_reply_id');
+    }
+  }
+
+  final String replyId;
 }
 
 final class AnswerConversationClarification extends ConversationUiIntent {

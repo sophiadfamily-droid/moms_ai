@@ -9,6 +9,7 @@ import 'package:moms_ai/models/conversation_context_envelope.dart';
 import 'package:moms_ai/models/conversation_epistemic_models.dart';
 import 'package:moms_ai/models/conversation_models.dart';
 import 'package:moms_ai/models/event_model.dart';
+import 'package:moms_ai/models/routine_model.dart';
 import 'package:moms_ai/models/shopping_item_model.dart';
 import 'package:moms_ai/models/smart_planning_continuation.dart';
 import 'package:moms_ai/models/task_model.dart';
@@ -24,6 +25,8 @@ import 'package:moms_ai/services/event_service.dart';
 import 'package:moms_ai/services/shopping_service.dart';
 import 'package:moms_ai/services/planner_engine_service.dart';
 import 'package:moms_ai/services/planning_proposal_engine.dart';
+import 'package:moms_ai/services/routine_conversation_service.dart';
+import 'package:moms_ai/services/routine_repository.dart';
 import 'package:moms_ai/services/selected_slot_revalidation_service.dart';
 import 'package:moms_ai/services/smart_planning_continuation_coordinator.dart';
 import 'package:moms_ai/services/smart_planning_service.dart';
@@ -134,8 +137,126 @@ void main() {
         'events',
         'autonomyPolicyVersion',
         'autonomyMode',
+        'conversationMode',
         'allowedStructuredResponseKinds',
       });
+      expect(coordinator.state.phase, ConversationPhase.idle);
+    });
+
+    test('discussion-only response cannot execute or prepare an action',
+        () async {
+      final backend = _FakeBackend(
+        response: const ChatBackendResponse(
+          reply: 'Commençons par choisir ce qui compte le plus.',
+          actions: [
+            {'type': 'task', 'title': 'Modifier une tâche'},
+          ],
+          memories: [],
+        ),
+      );
+      final coordinator = ConversationCoordinator(
+        backend: backend,
+        contextProvider: _FakeContextProvider(_request()),
+      );
+      var executions = 0;
+
+      final outcome = await coordinator.send(
+        input: ConversationInput(
+          message: 'Aide-moi à réfléchir à cette anticipation.',
+          profile: _profile(),
+          discussionOnly: true,
+        ),
+        executeAction: (_) async {
+          executions++;
+          return const ConversationActionOutcome();
+        },
+      );
+
+      expect(outcome?.reply, 'Commençons par choisir ce qui compte le plus.');
+      expect(outcome?.responseKind, ConversationResponseKind.answer);
+      expect(executions, 0);
+      expect(coordinator.state.pendingAction, isNull);
+      expect(backend.requests.single.autonomyMode, ActionAutonomyMode.paused);
+      expect(
+        backend.requests.single.conversationMode,
+        ChatConversationMode.guidedDiscussion,
+      );
+      expect(
+        backend.requests.single.toJson()['allowedStructuredResponseKinds'],
+        isNot(contains('actionProposal')),
+      );
+    });
+
+    test('discussion-only response bypasses an older pending routine',
+        () async {
+      final repository = _RoutineRepository();
+      final routineService = RoutineConversationService(
+        repository: repository,
+        currentAccountScopeId: () => 'account-1',
+        clock: () => DateTime.utc(2026, 8, 25, 10),
+      );
+      await routineService.process(
+        'Tous les vendredis de 18 h à 19 h, je vais à la danse.',
+        logicalRequestId: 'old-dance-request',
+      );
+      expect(routineService.hasPending, isTrue);
+      final backend = _FakeBackend(
+        response: const ChatBackendResponse(
+          reply: 'Je peux t’aider à trouver un restaurant pour Willy.',
+          actions: [],
+          memories: [],
+        ),
+      );
+      final coordinator = ConversationCoordinator(
+        backend: backend,
+        contextProvider: _FakeContextProvider(_request()),
+        routineConversationService: routineService,
+      );
+
+      final outcome = await coordinator.send(
+        input: ConversationInput(
+          message: 'resto',
+          profile: _profile(),
+          discussionOnly: true,
+        ),
+        executeAction: (_) async => const ConversationActionOutcome(),
+      );
+
+      expect(
+        outcome?.reply,
+        'Je peux t’aider à trouver un restaurant pour Willy.',
+      );
+      expect(backend.requests, hasLength(1));
+      expect(backend.requests.single.autonomyMode, ActionAutonomyMode.paused);
+      expect(
+        backend.requests.single.conversationMode,
+        ChatConversationMode.guidedDiscussion,
+      );
+      expect(routineService.hasPending, isTrue);
+    });
+
+    test('abandoning a discussion cancels the older routine draft', () async {
+      final repository = _RoutineRepository();
+      final routineService = RoutineConversationService(
+        repository: repository,
+        currentAccountScopeId: () => 'account-1',
+        clock: () => DateTime.utc(2026, 8, 25, 10),
+      );
+      await routineService.process(
+        'Tous les vendredis de 18 h à 19 h, je vais à la danse.',
+        logicalRequestId: 'old-dance-request',
+      );
+      final coordinator = ConversationCoordinator(
+        backend: _FakeBackend(),
+        contextProvider: _FakeContextProvider(_request()),
+        routineConversationService: routineService,
+      );
+
+      await coordinator.abandonPendingConversation();
+
+      expect(routineService.hasPending, isFalse);
+      expect(repository.proposals.single.state, RoutineProposalState.cancelled);
+      expect(coordinator.state.pendingAction, isNull);
       expect(coordinator.state.phase, ConversationPhase.idle);
     });
 
@@ -2229,6 +2350,70 @@ class _FakeContextProvider implements ConversationContextProvider {
   Future<void> saveResponseMemory(dynamic memory) async {
     savedMemories.add(memory);
   }
+}
+
+final class _RoutineRepository implements RoutineRepository {
+  final List<RoutineProposal> proposals = [];
+
+  @override
+  Future<RoutineProposal?> createOrVerifyProposal(
+    RoutineProposal proposal,
+  ) async {
+    final existing = proposals
+        .where((item) => item.proposalId == proposal.proposalId)
+        .firstOrNull;
+    if (existing != null) return existing;
+    proposals.add(proposal);
+    return proposal;
+  }
+
+  @override
+  Future<RoutineProposal?> findActiveProposal(String accountScopeId) async =>
+      proposals
+          .where((item) =>
+              item.accountScopeId == accountScopeId && !item.isTerminal)
+          .firstOrNull;
+
+  @override
+  Future<RoutineProposal?> findLatestProposal(String accountScopeId) async =>
+      proposals
+          .where((item) => item.accountScopeId == accountScopeId)
+          .firstOrNull;
+
+  @override
+  Future<RoutineProposal?> findProposal({
+    required String accountScopeId,
+    required String proposalId,
+  }) async =>
+      proposals
+          .where((item) =>
+              item.accountScopeId == accountScopeId &&
+              item.proposalId == proposalId)
+          .firstOrNull;
+
+  @override
+  Future<RoutineProposal?> updateProposal(RoutineProposal proposal) async {
+    final index = proposals.indexWhere(
+      (item) => item.proposalId == proposal.proposalId,
+    );
+    if (index < 0) return null;
+    proposals[index] = proposal;
+    return proposal;
+  }
+
+  @override
+  Future<RoutineCommitResult> commitProposal(
+    RoutineProposal proposal,
+    DateTime committedAt,
+  ) async =>
+      const RoutineCommitResult(RoutineCommitCode.conflict);
+
+  @override
+  Future<RoutineModel?> createOrVerify(RoutineModel routine) async => routine;
+
+  @override
+  Future<List<RoutineModel>> listForAccount(String accountScopeId) async =>
+      const [];
 }
 
 final class _SlotSearchGateway implements SmartPlanningContinuationGateway {

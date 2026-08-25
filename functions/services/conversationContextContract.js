@@ -22,9 +22,11 @@ const REQUEST_KEYS = new Set([
   "conversationContext",
   "conversationHistory",
   "profile", "profileContext", "memories", "memoryReasoning", "events",
-  "autonomyPolicyVersion", "autonomyMode", "allowedStructuredResponseKinds",
+  "autonomyPolicyVersion", "autonomyMode", "conversationMode",
+  "allowedStructuredResponseKinds",
 ]);
 const AUTONOMY_MODES = new Set(["normal", "suggestions", "paused"]);
+const CONVERSATION_MODES = new Set(["standard", "guidedDiscussion"]);
 const STRUCTURED_RESPONSE_KINDS = new Set([
   "answer", "answerWithCaveat", "clarificationRequired",
   "confirmationRequired", "actionProposal", "cannotDetermine",
@@ -288,6 +290,8 @@ function validateConversationRequest(payload) {
       !emptyArray(payload.events) ||
       payload.autonomyPolicyVersion !== 1 ||
       !AUTONOMY_MODES.has(payload.autonomyMode) ||
+      payload.conversationMode !== undefined &&
+        !CONVERSATION_MODES.has(payload.conversationMode) ||
       !Array.isArray(payload.allowedStructuredResponseKinds) ||
       payload.allowedStructuredResponseKinds.length === 0 ||
       payload.allowedStructuredResponseKinds.some((kind) =>
@@ -311,6 +315,7 @@ function validateConversationRequest(payload) {
     events: [],
     autonomyPolicyVersion: 1,
     autonomyMode: payload.autonomyMode,
+    conversationMode: payload.conversationMode || "standard",
     allowedStructuredResponseKinds:
       [...payload.allowedStructuredResponseKinds],
   };

@@ -3,6 +3,11 @@ import 'dart:convert';
 import 'action_autonomy_policy.dart';
 import 'conversation_context_envelope.dart';
 
+enum ChatConversationMode {
+  standard,
+  guidedDiscussion,
+}
+
 final class ChatBackendRequest {
   static const int currentSchemaVersion = 2;
 
@@ -20,6 +25,7 @@ final class ChatBackendRequest {
     this.events = const [],
     this.autonomyPolicyVersion = ActionAutonomyPolicy.currentSchemaVersion,
     this.autonomyMode = ActionAutonomyMode.suggestions,
+    this.conversationMode = ChatConversationMode.standard,
   });
 
   factory ChatBackendRequest.withUnavailableContext({
@@ -52,6 +58,7 @@ final class ChatBackendRequest {
   final List<Map<String, dynamic>> events;
   final int autonomyPolicyVersion;
   final ActionAutonomyMode autonomyMode;
+  final ChatConversationMode conversationMode;
 
   Map<String, dynamic> toJson() {
     final envelope = context;
@@ -85,6 +92,7 @@ final class ChatBackendRequest {
       'events': const <Map<String, dynamic>>[],
       'autonomyPolicyVersion': autonomyPolicyVersion,
       'autonomyMode': autonomyMode.name,
+      'conversationMode': conversationMode.name,
       'allowedStructuredResponseKinds': switch (autonomyMode) {
         ActionAutonomyMode.normal => const [
             'answer',
@@ -140,6 +148,7 @@ final class ChatBackendRequest {
         history: history,
         autonomyPolicyVersion: autonomyPolicyVersion,
         autonomyMode: autonomyMode,
+        conversationMode: conversationMode,
       );
 
   ChatBackendRequest withAutonomyPolicy(ActionAutonomyPolicy policy) {
@@ -153,8 +162,35 @@ final class ChatBackendRequest {
       history: history,
       autonomyPolicyVersion: policy.schemaVersion,
       autonomyMode: policy.mode,
+      conversationMode: conversationMode,
     );
   }
+
+  ChatBackendRequest withAutonomyMode(ActionAutonomyMode mode) =>
+      ChatBackendRequest(
+        schemaVersion: schemaVersion,
+        message: message,
+        correlationId: correlationId,
+        sessionGeneration: sessionGeneration,
+        context: context,
+        history: history,
+        autonomyPolicyVersion: autonomyPolicyVersion,
+        autonomyMode: mode,
+        conversationMode: conversationMode,
+      );
+
+  ChatBackendRequest withConversationMode(ChatConversationMode mode) =>
+      ChatBackendRequest(
+        schemaVersion: schemaVersion,
+        message: message,
+        correlationId: correlationId,
+        sessionGeneration: sessionGeneration,
+        context: context,
+        history: history,
+        autonomyPolicyVersion: autonomyPolicyVersion,
+        autonomyMode: autonomyMode,
+        conversationMode: mode,
+      );
 
   ChatBackendRequest withCorrelationId(String value) => ChatBackendRequest(
         schemaVersion: schemaVersion,
@@ -165,5 +201,6 @@ final class ChatBackendRequest {
         history: history,
         autonomyPolicyVersion: autonomyPolicyVersion,
         autonomyMode: autonomyMode,
+        conversationMode: conversationMode,
       );
 }

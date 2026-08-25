@@ -83,6 +83,7 @@ void main() {
       'events',
       'autonomyPolicyVersion',
       'autonomyMode',
+      'conversationMode',
       'allowedStructuredResponseKinds',
     });
   });

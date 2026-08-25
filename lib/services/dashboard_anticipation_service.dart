@@ -1,15 +1,9 @@
 import '../models/agenda_focus.dart';
-import '../models/event_model.dart';
 import '../models/life_context/life_context_projection.dart';
-import '../models/priority/priority_models.dart';
-import '../models/priority/priority_suggestion_models.dart';
-import '../models/proactive_notification_policy.dart';
-import '../models/shopping_item_model.dart';
-import '../models/task_model.dart';
 import 'daily_summary_view_service.dart';
-import 'priority/priority_candidate_adapter.dart';
-import 'priority/priority_engine.dart';
-import 'priority/priority_suggestion_builder.dart';
+import 'dashboard_anticipation_engine.dart';
+import 'life_context_production_factory.dart';
+import 'mental_load_anticipation_suggestion_service.dart';
 
 enum DashboardAnticipationDestination {
   none,
@@ -27,6 +21,7 @@ final class DashboardAnticipation {
     required this.destination,
     this.sourceId,
     this.agendaFocus,
+    this.preparedChatMessage,
   });
 
   final String title;
@@ -34,32 +29,34 @@ final class DashboardAnticipation {
   final DashboardAnticipationDestination destination;
   final String? sourceId;
   final AgendaFocus? agendaFocus;
+  final String? preparedChatMessage;
 }
 
-typedef DashboardPriorityProjectionLoader = Future<LifeContextProjection>
-    Function();
+typedef DashboardMentalLoadLoader
+    = Future<List<MentalLoadAnticipationSuggestion>> Function();
+typedef DashboardLifeContextLoader = Future<LifeContextProjection> Function();
 
-/// Read-only home projection of Zelia's existing canonical engines.
+/// Read-only home projection of Zelia's proven cross-domain anticipations.
 ///
-/// This service does not create a second priority formula. Confirmed attention
-/// comes from the daily-summary detection registry and all remaining ranking
-/// comes from the shared Priority engine. Raw domain objects are used only to
-/// resolve human-readable labels and navigation targets.
+/// This service does not create a second priority formula. Confirmed conflicts
+/// come from the daily-summary detection registry and preparation thoughts come
+/// from the existing mental-load engine. A standalone Task, Event or Shopping
+/// item stays on its own screen instead of taking over the home suggestion.
 final class DashboardAnticipationService {
   const DashboardAnticipationService({
-    required DashboardPriorityProjectionLoader loadProjection,
-    DateTime Function()? clock,
-  })  : _loadProjection = loadProjection,
-        _clock = clock;
+    required DashboardMentalLoadLoader loadMentalLoadAnticipations,
+    DashboardLifeContextLoader? loadLifeContext,
+    DashboardAnticipationEngine engine = const DashboardAnticipationEngine(),
+  })  : _loadMentalLoadAnticipations = loadMentalLoadAnticipations,
+        _loadLifeContext = loadLifeContext,
+        _engine = engine;
 
-  final DashboardPriorityProjectionLoader _loadProjection;
-  final DateTime Function()? _clock;
+  final DashboardMentalLoadLoader _loadMentalLoadAnticipations;
+  final DashboardLifeContextLoader? _loadLifeContext;
+  final DashboardAnticipationEngine _engine;
 
   Future<DashboardAnticipation> evaluate({
     required String accountScopeId,
-    required List<EventModel> events,
-    required List<TaskModel> tasks,
-    required List<ShoppingItemModel> shoppingItems,
     DailySummaryViewData? dailySummary,
   }) async {
     final conflict = dailySummary?.conflicts.firstOrNull;
@@ -79,29 +76,49 @@ final class DashboardAnticipationService {
       );
     }
 
-    final taskAttention = _strongestTaskAttention(dailySummary?.tasks ?? []);
-    if (taskAttention != null) {
-      return DashboardAnticipation(
-        title: 'À ne pas oublier',
-        message: '« ${taskAttention.taskTitle} » demande ton attention.',
-        destination: DashboardAnticipationDestination.task,
-        sourceId: taskAttention.taskId,
-      );
+    try {
+      final anticipations = await _loadMentalLoadAnticipations();
+      final anticipation = anticipations
+          .where(
+            (item) =>
+                accountScopeId.trim().isNotEmpty &&
+                item.anticipation.accountScopeId == accountScopeId.trim(),
+          )
+          .firstOrNull;
+      if (anticipation != null) {
+        final presentation = anticipation.presentation;
+        return DashboardAnticipation(
+          title: presentation.title,
+          message: presentation.message,
+          destination: DashboardAnticipationDestination.task,
+          sourceId: anticipation.anticipation.preparationSourceId,
+        );
+      }
+    } on Object {
+      // The home remains useful when cross-domain context is unavailable.
     }
 
     try {
-      final projection = await _loadProjection();
-      if (accountScopeId.trim().isNotEmpty &&
-          projection.accountScopeId == accountScopeId.trim()) {
-        final anticipation = _fromPriority(
-          projection: projection,
-          events: events,
-          tasks: tasks,
+      final loader = _loadLifeContext ??
+          () async {
+            final production = await LifeContextProductionFactory.production();
+            return production.getCurrentProjection(
+              LifeContextConsumerPurpose.dashboardAnticipation,
+            );
+          };
+      final projection = await loader();
+      if (projection.accountScopeId == accountScopeId.trim()) {
+        final insight = _engine.evaluate(projection);
+        return DashboardAnticipation(
+          title: insight.title,
+          message: insight.message,
+          destination: DashboardAnticipationDestination.chat,
+          sourceId: insight.sourceId,
+          preparedChatMessage: insight.preparedChatMessage,
         );
-        if (anticipation != null) return anticipation;
       }
     } on Object {
-      // The home remains useful when the shared context is temporarily absent.
+      // A partial/offline profile must not make the Dashboard unusable.
     }
 
     return const DashboardAnticipation(
@@ -109,136 +126,5 @@ final class DashboardAnticipationService {
       message: 'Rien ne presse pour le moment.',
       destination: DashboardAnticipationDestination.chat,
     );
-  }
-
-  TaskAttentionViewData? _strongestTaskAttention(
-    List<TaskAttentionViewData> tasks,
-  ) {
-    if (tasks.isEmpty) return null;
-    final ordered = [...tasks]..sort((left, right) {
-        final category = _attentionWeight(right.category)
-            .compareTo(_attentionWeight(left.category));
-        if (category != 0) return category;
-        final leftDate = left.targetDate;
-        final rightDate = right.targetDate;
-        if (leftDate == null && rightDate == null) {
-          return left.taskId.compareTo(right.taskId);
-        }
-        if (leftDate == null) return 1;
-        if (rightDate == null) return -1;
-        return leftDate.compareTo(rightDate);
-      });
-    return ordered.first;
-  }
-
-  int _attentionWeight(ProactiveAlertCategory category) => switch (category) {
-        ProactiveAlertCategory.objectivelyDelayed => 3,
-        ProactiveAlertCategory.deadlinePassed => 2,
-        ProactiveAlertCategory.deadlineApproaching => 1,
-        _ => 0,
-      };
-
-  DashboardAnticipation? _fromPriority({
-    required LifeContextProjection projection,
-    required List<EventModel> events,
-    required List<TaskModel> tasks,
-  }) {
-    final now = (_clock ?? DateTime.now)().toUtc();
-    final candidates = const PriorityCandidateAdapter().fromProjection(
-      projection,
-      evaluatedAt: now,
-    );
-    final ranking = PriorityEngine().rank(
-      candidates,
-      evaluatedAt: now,
-      expectedAccountScopeId: projection.accountScopeId,
-    );
-    final result = const PrioritySuggestionBuilder().build(
-      ranking: ranking,
-      accountScopeId: projection.accountScopeId,
-      referenceDate: now,
-      limit: PrioritySuggestionLimits.proactiveEvaluation,
-    );
-    if (result.suggestions.isEmpty) return null;
-    final suggestion = result.suggestions.first;
-    final ranked = ranking.items
-        .where(
-          (item) => item.candidate.id == suggestion.primaryCandidateId,
-        )
-        .firstOrNull;
-    if (ranked == null) return null;
-    final candidate = ranked.candidate;
-    final sourceId = candidate.sourceId;
-
-    if (candidate.sourceDomain == PrioritySourceDomain.task) {
-      final task = tasks.where((item) => item.id == sourceId).firstOrNull;
-      if (task == null || task.title.trim().isEmpty) return null;
-      return DashboardAnticipation(
-        title: _taskTitle(suggestion),
-        message: _taskMessage(suggestion, task.title.trim()),
-        destination: DashboardAnticipationDestination.task,
-        sourceId: sourceId,
-      );
-    }
-
-    if (candidate.sourceDomain == PrioritySourceDomain.event) {
-      final event = events.where((item) => item.id == sourceId).firstOrNull;
-      if (event == null || event.title.trim().isEmpty) return null;
-      return DashboardAnticipation(
-        title: 'À venir',
-        message: '« ${event.title.trim()} » approche. '
-            'Pense à vérifier que tout est prêt.',
-        destination: DashboardAnticipationDestination.agenda,
-        sourceId: sourceId,
-        agendaFocus: AgendaFocus(
-          date: DateTime.tryParse(event.startDateTimeIso),
-          eventId: event.id,
-          eventTitle: event.title,
-        ),
-      );
-    }
-    return null;
-  }
-
-  String _taskTitle(PrioritySuggestion suggestion) {
-    if (suggestion.reasonCodes.contains(
-      PrioritySuggestionReason.missingDeadlineBlocksAssessment,
-    )) {
-      return 'Pour ne pas l’oublier';
-    }
-    if (suggestion.reasonCodes.contains(
-      PrioritySuggestionReason.missingDurationBlocksAssessment,
-    )) {
-      return 'Un détail à préciser';
-    }
-    if (suggestion.reasonCodes.contains(PrioritySuggestionReason.overdue) ||
-        suggestion.reasonCodes.contains(
-          PrioritySuggestionReason.staleOpenTask,
-        )) {
-      return 'Toujours à faire ?';
-    }
-    return 'À garder en tête';
-  }
-
-  String _taskMessage(PrioritySuggestion suggestion, String label) {
-    if (suggestion.reasonCodes.contains(
-      PrioritySuggestionReason.missingDeadlineBlocksAssessment,
-    )) {
-      return 'Tu dois faire « $label » avant quand ?';
-    }
-    if (suggestion.reasonCodes.contains(
-      PrioritySuggestionReason.missingDurationBlocksAssessment,
-    )) {
-      return 'Combien de temps faut-il prévoir pour « $label » ?';
-    }
-    if (suggestion.reasonCodes.contains(PrioritySuggestionReason.overdue)) {
-      return '« $label » a une ancienne date. C’est toujours à faire ?';
-    }
-    if (suggestion.reasonCodes.contains(
-      PrioritySuggestionReason.staleOpenTask,
-    )) {
-      return '« $label » est dans ta liste depuis un moment.';
-    }
-    return 'Pense à « $label » dans les prochains jours.';
   }
 }

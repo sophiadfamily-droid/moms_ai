@@ -243,8 +243,7 @@ final class LifeContextProjectionEngine {
   ) {
     final section = snapshot.human!;
     final result = <LifeContextProjectionItem>[];
-    final includeConversationPeople =
-        contract.purpose == LifeContextConsumerPurpose.conversation;
+    final includeConversationPeople = _isConversationSurface(contract);
     final includePlanningPrimary =
         contract.purpose == LifeContextConsumerPurpose.planning;
     if (includeConversationPeople || includePlanningPrimary) {
@@ -451,7 +450,7 @@ final class LifeContextProjectionEngine {
     LifeContextSnapshot snapshot,
     LifeContextConsumerContract contract,
   ) {
-    if (contract.purpose != LifeContextConsumerPurpose.conversation) {
+    if (!_isConversationSurface(contract)) {
       return const [];
     }
     final section = snapshot.identityDomain!;
@@ -552,8 +551,7 @@ final class LifeContextProjectionEngine {
           '${event.revision}',
           LifeContextSensitivityLevel.publicTechnical,
         ),
-        if (contract.purpose == LifeContextConsumerPurpose.conversation &&
-            contract.maxTextLength > 0)
+        if (_isConversationSurface(contract) && contract.maxTextLength > 0)
           _fact(
             LifeContextProjectionFactKeys.title,
             event.title,
@@ -584,7 +582,7 @@ final class LifeContextProjectionEngine {
     LifeContextSnapshot snapshot,
     LifeContextConsumerContract contract,
   ) {
-    if (contract.purpose != LifeContextConsumerPurpose.conversation &&
+    if (!_isConversationSurface(contract) &&
         contract.purpose != LifeContextConsumerPurpose.proactivePriority) {
       return const [];
     }
@@ -735,8 +733,7 @@ final class LifeContextProjectionEngine {
             '${routine.weekOfMonth}',
             LifeContextSensitivityLevel.publicTechnical,
           ),
-        if (contract.purpose == LifeContextConsumerPurpose.conversation &&
-            routine.label != null)
+        if (_isConversationSurface(contract) && routine.label != null)
           _fact(
             LifeContextProjectionFactKeys.title,
             routine.label!,
@@ -765,7 +762,7 @@ final class LifeContextProjectionEngine {
     LifeContextSnapshot snapshot,
     LifeContextConsumerContract contract,
   ) {
-    if (contract.purpose != LifeContextConsumerPurpose.conversation &&
+    if (!_isConversationSurface(contract) &&
         contract.purpose != LifeContextConsumerPurpose.proactivePriority) {
       return const [];
     }
@@ -914,7 +911,7 @@ final class LifeContextProjectionEngine {
     LifeContextSnapshot snapshot,
     LifeContextConsumerContract contract,
   ) {
-    if (contract.purpose != LifeContextConsumerPurpose.conversation) {
+    if (!_isConversationSurface(contract)) {
       return const [];
     }
     final section = snapshot.memoryDomain!;
@@ -973,8 +970,7 @@ final class LifeContextProjectionEngine {
     final engagementDate = _normalizedDate(record.engagementDate);
     final facts = <LifeContextProjectionFact>[
       _fact(LifeContextProjectionFactKeys.kind, record.kind, sensitivity),
-      if (record.label != null &&
-          contract.purpose == LifeContextConsumerPurpose.conversation)
+      if (record.label != null && _isConversationSurface(contract))
         _fact(
           LifeContextProjectionFactKeys.title,
           record.label!,
@@ -1084,24 +1080,21 @@ final class LifeContextProjectionEngine {
           '${record.blocksResponsiblePerson}',
           LifeContextSensitivityLevel.publicTechnical,
         ),
-      if (contract.purpose == LifeContextConsumerPurpose.conversation &&
-          record.relationshipStatus != null)
+      if (_isConversationSurface(contract) && record.relationshipStatus != null)
         _fact(
           LifeContextProjectionFactKeys.relationshipStatus,
           record.relationshipStatus!,
           LifeContextSensitivityLevel.privatePersonal,
           contract: contract,
         ),
-      if (contract.purpose == LifeContextConsumerPurpose.conversation &&
-          marriageDate != null)
+      if (_isConversationSurface(contract) && marriageDate != null)
         _fact(
           LifeContextProjectionFactKeys.marriageDate,
           marriageDate,
           LifeContextSensitivityLevel.privatePersonal,
           contract: contract,
         ),
-      if (contract.purpose == LifeContextConsumerPurpose.conversation &&
-          engagementDate != null)
+      if (_isConversationSurface(contract) && engagementDate != null)
         _fact(
           LifeContextProjectionFactKeys.engagementDate,
           engagementDate,
@@ -1274,6 +1267,10 @@ final class LifeContextProjectionEngine {
       _ => null,
     };
   }
+
+  bool _isConversationSurface(LifeContextConsumerContract contract) =>
+      contract.purpose == LifeContextConsumerPurpose.conversation ||
+      contract.purpose == LifeContextConsumerPurpose.dashboardAnticipation;
 }
 
 String? _normalizedDate(String? value) {

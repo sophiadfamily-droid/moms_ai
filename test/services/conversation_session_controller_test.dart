@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:moms_ai/models/action_autonomy_policy.dart';
 import 'package:moms_ai/models/chat_backend_request.dart';
 import 'package:moms_ai/models/chat_backend_response.dart';
 import 'package:moms_ai/models/conversation_models.dart';
@@ -55,6 +56,158 @@ void main() {
       );
       expect(harness.store.values, hasLength(2));
       expect(harness.controller.state.phase, ConversationSessionPhase.ready);
+      harness.dispose();
+    });
+
+    test('quick reply is submitted once and choices disappear', () async {
+      final harness = _Harness();
+      harness.controller.addInitialAssistantMessageWithQuickReplies(
+        'Tu préfères qu’on s’en occupe maintenant ou plus tard ?',
+        [
+          ConversationQuickReply(
+            id: 'now',
+            label: 'Maintenant',
+            submission: 'Occupons-nous-en maintenant.',
+          ),
+          ConversationQuickReply(
+            id: 'later',
+            label: 'Plus tard',
+            submission: 'Garde la préparation du voyage pour plus tard.',
+          ),
+        ],
+      );
+
+      final promptId = harness.controller.state.messages.single.id;
+      expect(harness.controller.state.quickReplyMessageId, promptId);
+      expect(harness.controller.state.quickReplies, hasLength(2));
+
+      await harness.controller.dispatch(SelectConversationQuickReply('later'));
+
+      expect(harness.controller.state.quickReplies, isEmpty);
+      expect(harness.controller.state.quickReplyMessageId, isNull);
+      expect(
+        harness.controller.state.messages
+            .where((message) => message.role == ConversationMessageRole.user)
+            .map((message) => message.text),
+        ['Plus tard'],
+      );
+      expect(harness.backend.calls, 1);
+      expect(harness.context.messages,
+          ['Garde la préparation du voyage pour plus tard.']);
+      harness.dispose();
+    });
+
+    test('discussion quick reply bypasses local mutations', () async {
+      var localResolverCalls = 0;
+      final harness = _Harness(
+        resolveLocalRequest: (_, __) async {
+          localResolverCalls++;
+          return const ConversationOutcome(reply: 'Modification locale');
+        },
+      );
+      harness.controller.addInitialAssistantMessageWithQuickReplies(
+        'Une anticipation précise',
+        [
+          ConversationQuickReply(
+            id: 'now',
+            label: 'Maintenant',
+            submission: 'Une anticipation précise. Aide-moi à y réfléchir.',
+            discussionOnly: true,
+          ),
+        ],
+      );
+
+      await harness.controller.dispatch(SelectConversationQuickReply('now'));
+
+      expect(localResolverCalls, 0);
+      expect(harness.backend.calls, 1);
+      expect(harness.backend.requests.single.autonomyMode,
+          ActionAutonomyMode.paused);
+      expect(harness.backend.requests.single.conversationMode,
+          ChatConversationMode.guidedDiscussion);
+      expect(
+        harness.controller.state.messages
+            .where((message) => message.role == ConversationMessageRole.user)
+            .single
+            .text,
+        'Maintenant',
+      );
+
+      await harness.controller.submitText('resto');
+
+      expect(localResolverCalls, 0);
+      expect(harness.backend.calls, 2);
+      expect(harness.backend.requests.last.autonomyMode,
+          ActionAutonomyMode.paused);
+      expect(harness.backend.requests.last.conversationMode,
+          ChatConversationMode.guidedDiscussion);
+      expect(harness.backend.requests.last.message,
+          contains('Une anticipation précise'));
+      expect(harness.backend.requests.last.message, contains('resto'));
+      expect(harness.backend.requests.last.message, contains('Réponse'));
+
+      await harness.controller.submitText('aide à trouver');
+
+      expect(localResolverCalls, 0);
+      expect(harness.backend.calls, 3);
+      expect(harness.backend.requests.last.autonomyMode,
+          ActionAutonomyMode.paused);
+      expect(harness.backend.requests.last.conversationMode,
+          ChatConversationMode.guidedDiscussion);
+      expect(harness.backend.requests.last.message, contains('resto'));
+      expect(harness.backend.requests.last.message, contains('aide à trouver'));
+      harness.dispose();
+    });
+
+    test('an explicit action leaves the bounded dashboard discussion',
+        () async {
+      var localResolverCalls = 0;
+      final harness = _Harness(
+        resolveLocalRequest: (_, __) async {
+          localResolverCalls++;
+          return const ConversationOutcome(reply: 'Modification locale');
+        },
+      );
+      harness.controller.addInitialAssistantMessageWithQuickReplies(
+        'Préparons l’anniversaire de Willy.',
+        [
+          ConversationQuickReply(
+            id: 'now',
+            label: 'Maintenant',
+            submission: 'Aide-moi à préparer l’anniversaire de Willy.',
+            discussionOnly: true,
+          ),
+        ],
+      );
+
+      await harness.controller.dispatch(SelectConversationQuickReply('now'));
+      await harness.controller.submitText('Ajoute appeler le restaurant');
+
+      expect(localResolverCalls, 1);
+      expect(harness.backend.calls, 1);
+      expect(
+          harness.controller.state.messages.last.text, 'Modification locale');
+      harness.dispose();
+    });
+
+    test('a free response removes quick replies from the previous subject',
+        () async {
+      final harness = _Harness();
+      harness.controller.addInitialAssistantMessageWithQuickReplies(
+        'Une suggestion',
+        [
+          ConversationQuickReply(
+            id: 'later',
+            label: 'Plus tard',
+            submission: 'Plus tard.',
+          ),
+        ],
+      );
+
+      await harness.controller.submitText('Je veux parler d’autre chose.');
+
+      expect(harness.controller.state.quickReplies, isEmpty);
+      expect(harness.controller.state.quickReplyMessageId, isNull);
       harness.dispose();
     });
 
@@ -1066,10 +1219,12 @@ final class _Backend implements ChatBackendClient {
   final Object? error;
   int calls = 0;
   final List<String?> correlationIds = [];
+  final List<ChatBackendRequest> requests = [];
 
   @override
   Future<ChatBackendResponse> send(ChatBackendRequest request) async {
     calls++;
+    requests.add(request);
     correlationIds.add(request.correlationId);
     if (error != null) throw error!;
     return pending ?? Future.value(_response());
@@ -1091,6 +1246,7 @@ final class _JsonCallableBackend implements ChatBackendClient {
 
 final class _Context implements ConversationContextProvider {
   int calls = 0;
+  final List<String> messages = [];
 
   @override
   Future<ChatBackendRequest> buildRequest({
@@ -1098,6 +1254,7 @@ final class _Context implements ConversationContextProvider {
     required UserProfile profile,
   }) async {
     calls++;
+    messages.add(message);
     return ChatBackendRequest(
       message: message,
       context: ConversationContextEnvelope(

@@ -162,6 +162,22 @@ test("validates the closed autonomy mode and blocks executable kinds in pause",
       assert.equal(paused.autonomyMode, "paused");
     });
 
+test("validates and defaults the closed conversation mode", () => {
+  assert.equal(
+      validateConversationRequest(payload()).conversationMode,
+      "standard",
+  );
+  assert.equal(
+      validateConversationRequest(payload({
+        conversationMode: "guidedDiscussion",
+      })).conversationMode,
+      "guidedDiscussion",
+  );
+  assert.throws(() => validateConversationRequest(payload({
+    conversationMode: "unknown",
+  })));
+});
+
 test("refuses oversized current messages including UTF-8", () => {
   assert.throws(() => validateConversationRequest(
       payload({message: "a".repeat(4001)})));

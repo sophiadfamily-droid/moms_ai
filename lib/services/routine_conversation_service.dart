@@ -90,6 +90,29 @@ final class RoutineConversationService {
       _pendingOccurrenceChange != null ||
       _pendingOccurrenceDraft != null;
 
+  void invalidate() {
+    _pending = null;
+    _pendingOccurrenceChange = null;
+    _pendingOccurrenceDraft = null;
+  }
+
+  Future<void> abandonPending() async {
+    final pending = _pending;
+    invalidate();
+    if (pending == null || pending.isTerminal) return;
+    try {
+      await _repository.updateProposal(
+        pending.copyWith(
+          state: RoutineProposalState.cancelled,
+          updatedAt: _clock().toUtc(),
+        ),
+      );
+    } catch (_) {
+      // Changing the discussion must remain possible even if the old draft
+      // cannot be marked as cancelled remotely right now.
+    }
+  }
+
   Future<bool> restoreActive({bool includeCommitted = false}) async {
     if (_pending != null) return true;
     try {

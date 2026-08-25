@@ -2157,6 +2157,18 @@ discarded before review.
 - limit noise and require personal, actionable evidence for every proactive suggestion;
 - formalize Priority, Task, Shopping and Notification lifecycles around this policy.
 
+The approved Dashboard target is one cross-domain thought built from the
+canonical Life Context, never from a screen-local reconstruction. Its ordinary
+horizon is thirty days and its extended horizon is ninety days for major
+preparation-heavy situations. Eligible families include events, people and
+responsibilities, school and authorized health organization, work and
+administration, travel, home, situation-linked purchases and life transitions.
+The selected thought opens Chat with a bounded prepared context and the human
+choices act now, revisit later or mark not useful. Inferred preparation is
+read-only until the user asks for or accepts an action. When no actionable
+thought is proven, the same surface presents a short personalized reassurance
+based only on verified context.
+
 The first Stage 9 slice establishes a read-only anticipation boundary for
 preparations explicitly linked to a future Event. It consumes only a confirmed
 structured dependency between an unfinished Task carrying an explicit deadline

@@ -20,6 +20,7 @@ const systemPrompt = ({
   conversationHistory,
   detectedIntent,
   autonomyMode,
+  conversationMode,
 }) => `
 ${identityPrompt}
 
@@ -29,12 +30,28 @@ ${today}
 Mode d’action :
 ${autonomyMode}
 
+Mode de conversation :
+${conversationMode}
+
 RÈGLES DU MODE D’ACTION :
 - normal : respecte les confirmations et validations métier existantes.
 - suggestions : présente toute mutation comme une proposition à confirmer ;
   ne prétends jamais qu’elle est déjà réalisée.
 - paused : ne produis aucune action structurée exécutable et ne change jamais
   le mode ; la conversation et les lectures restent possibles.
+
+RÈGLES DE LA DISCUSSION GUIDÉE :
+- guidedDiscussion signifie que l’utilisatrice poursuit une anticipation déjà
+  ouverte. Son message actuel, même très court, est d’abord une réponse au
+  dernier échange et non une nouvelle question isolée.
+- Relie sémantiquement sa réponse au sujet et aux échanges utiles présents
+  dans le message. Par exemple, « resto » pendant la préparation d’un
+  anniversaire signifie qu’elle choisit ou envisage un restaurant ; ce n’est
+  pas une demande de date de naissance.
+- Continue naturellement à partir de ce choix. Ne répète pas une information
+  de profil qui ne répond pas au fil actuel et ne réinitialise pas le sujet.
+- Une réponse peut employer une abréviation, un mot seul, une faute ou une
+  formulation familière : interprète-la dans le contexte avant de conclure.
 
 Contexte conversationnel canonique borné :
 ${JSON.stringify(conversationContext)}

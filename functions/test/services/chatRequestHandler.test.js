@@ -570,6 +570,42 @@ test("answers confirmed personal and family profile facts", async () => {
   }
 });
 
+test("keeps a short reply inside its guided discussion", async () => {
+  const value = personalProfileRequest(
+      "Contexte de la discussion choisie par l’utilisatrice : " +
+      "L’anniversaire de Willy est le 22 octobre. Première étape utile : " +
+      "quel type d’anniversaire Willy aimerait-il ?\n" +
+      "Nouveau message de l’utilisatrice : resto",
+  );
+  value.autonomyMode = "paused";
+  value.conversationMode = "guidedDiscussion";
+  value.allowedStructuredResponseKinds = [
+    "answer", "answerWithCaveat", "clarificationRequired",
+    "cannotDetermine", "contextUnavailable", "unsupportedRequest",
+    "safeFailure",
+  ];
+  let generations = 0;
+
+  const result = await handleChatRequest(value, {uid: "test-uid"}, {
+    generateResponse: async ({systemContent}) => {
+      generations++;
+      assert.match(systemContent, /guidedDiscussion/);
+      return response(
+          "D’accord, partons sur un restaurant. " +
+          "Tu veux que je t’aide à en trouver un ?",
+      );
+    },
+  });
+
+  assert.equal(generations, 1);
+  assert.equal(
+      result.reply,
+      "D’accord, partons sur un restaurant. " +
+      "Tu veux que je t’aide à en trouver un ?",
+  );
+  assert.doesNotMatch(result.reply, /22 octobre 1991/);
+});
+
 test("does not treat a personal statement as a profile question", async () => {
   let generations = 0;
   const value = personalProfileRequest("Je m’appelle Sophia");

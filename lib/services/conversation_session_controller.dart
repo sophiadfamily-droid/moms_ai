@@ -383,6 +383,8 @@ final class ConversationSessionController extends ChangeNotifier {
   int _requestSequence = 0;
   int _retryCount = 0;
   String? _lastSubmittedText;
+  bool _lastSubmittedDiscussionOnly = false;
+  String? _lastSubmittedVisibleText;
   String? _lastLogicalRequestId;
   String? _lastCorrelationId;
   String? get activeLogicalRequestId => _lastLogicalRequestId;
@@ -391,9 +393,14 @@ final class ConversationSessionController extends ChangeNotifier {
   bool _referenceHistoryLoaded = false;
   String? _deferredRequestAfterResponsibilityClarification;
   final List<String> _deferredCompoundRequests = [];
+  String? _activeDiscussionSubject;
+  String _activeDiscussionTranscript = '';
+  int _activeDiscussionTurns = 0;
 
   Future<void> dispatch(ConversationUiIntent intent) => switch (intent) {
         SubmitConversationText(:final text) => submitText(text),
+        SelectConversationQuickReply(:final replyId) =>
+          selectQuickReply(replyId),
         RetryConversationRequest() => retryLastRequest(),
         AnswerConversationClarification(:final answer) => submitText(answer),
         ConfirmPendingConversationAction() => submitText('oui'),
@@ -415,6 +422,53 @@ final class ConversationSessionController extends ChangeNotifier {
       return;
     }
     _appendMessage(ConversationMessageRole.assistant, value);
+  }
+
+  void addInitialAssistantMessageWithQuickReplies(
+    String? text,
+    List<ConversationQuickReply> replies,
+  ) {
+    final value = text?.trim() ?? '';
+    if (_disposed || value.isEmpty || replies.isEmpty) return;
+    final existing = _state.messages.where(
+      (message) =>
+          message.role == ConversationMessageRole.assistant &&
+          message.text == value,
+    );
+    final messageId = existing.isEmpty
+        ? _appendMessage(ConversationMessageRole.assistant, value)
+        : existing.last.id;
+    if (messageId == null) return;
+    _setState(
+      _state.copyWith(
+        quickReplies: replies,
+        quickReplyMessageId: messageId,
+      ),
+    );
+  }
+
+  Future<void> selectQuickReply(String replyId) async {
+    if (_disposed || _state.isBusy) return;
+    ConversationQuickReply? selected;
+    for (final reply in _state.quickReplies) {
+      if (reply.id == replyId) {
+        selected = reply;
+        break;
+      }
+    }
+    if (selected == null) return;
+    _clearQuickReplies();
+    if (selected.discussionOnly) {
+      await _coordinator.abandonPendingConversation();
+      _activeDiscussionSubject = selected.submission;
+      _activeDiscussionTranscript = '';
+      _activeDiscussionTurns = 0;
+    }
+    await _submitText(
+      selected.submission,
+      visibleText: selected.visibleText,
+      discussionOnly: selected.discussionOnly,
+    );
   }
 
   void beginProactiveTaskDuration({
@@ -472,37 +526,63 @@ final class ConversationSessionController extends ChangeNotifier {
     if (pending) _emit(ConversationUiEffectType.showConfirmation);
   }
 
-  Future<void> submitText(String rawText) async {
+  Future<void> submitText(String rawText) =>
+      _submitText(rawText, visibleText: rawText);
+
+  Future<void> _submitText(
+    String rawText, {
+    required String visibleText,
+    bool discussionOnly = false,
+  }) async {
     final text = rawText.trim();
-    if (_disposed || text.isEmpty || _state.isBusy) return;
+    final visible = visibleText.trim();
+    if (_disposed || text.isEmpty || visible.isEmpty || _state.isBusy) return;
+    _clearQuickReplies();
+    final explicitAction = _isExplicitActionRequest(text);
+    if (!discussionOnly && explicitAction) {
+      _clearActiveDiscussion();
+    }
+    final continuesActiveDiscussion =
+        !discussionOnly && _activeDiscussionSubject != null && !explicitAction;
+    final effectiveDiscussionOnly = discussionOnly || continuesActiveDiscussion;
     final continuesLogicalRequest =
         _state.phase == ConversationSessionPhase.awaitingClarification ||
             _state.phase == ConversationSessionPhase.awaitingConfirmation ||
             _coordinator.state.pendingAction != null ||
             _applicationPendingPhase?.call() != null;
-    final compound = _deferredCompoundRequests.isEmpty
-        ? _compoundRequestService.split(
-            text,
-            referenceDate: _clock(),
-            allowContextualLeadingPart: continuesLogicalRequest,
-          )
-        : null;
-    final requestText = compound?.parts.first ?? text;
+    final compound =
+        !effectiveDiscussionOnly && _deferredCompoundRequests.isEmpty
+            ? _compoundRequestService.split(
+                text,
+                referenceDate: _clock(),
+                allowContextualLeadingPart: continuesLogicalRequest,
+              )
+            : null;
+    final requestText = continuesActiveDiscussion
+        ? _buildActiveDiscussionRequest(text)
+        : compound?.parts.first ?? text;
     if (compound != null) {
       _deferredCompoundRequests.addAll(compound.parts.skip(1));
     }
     _lastSubmittedText = requestText;
+    _lastSubmittedDiscussionOnly = effectiveDiscussionOnly;
+    _lastSubmittedVisibleText = visible;
     _lastCorrelationId = AppDiagnostics.createCorrelationId();
     _retryCount = 0;
     final submittedMessageId =
-        _appendMessage(ConversationMessageRole.user, text);
+        _appendMessage(ConversationMessageRole.user, visible);
     if (!continuesLogicalRequest || _lastLogicalRequestId == null) {
       _lastLogicalRequestId = submittedMessageId;
       _clarificationLedger = ConversationClarificationLedger(
         sessionGeneration: _state.sessionGeneration,
       );
     }
-    await _runRequest(requestText, addUserMessage: false);
+    await _runRequest(
+      requestText,
+      addUserMessage: false,
+      discussionOnly: effectiveDiscussionOnly,
+      discussionTurnText: visible,
+    );
   }
 
   Future<void> retryLastRequest() async {
@@ -515,12 +595,19 @@ final class ConversationSessionController extends ChangeNotifier {
       return;
     }
     _retryCount++;
-    await _runRequest(text, addUserMessage: false);
+    await _runRequest(
+      text,
+      addUserMessage: false,
+      discussionOnly: _lastSubmittedDiscussionOnly,
+      discussionTurnText: _lastSubmittedVisibleText,
+    );
   }
 
   Future<void> _runRequest(
     String text, {
     required bool addUserMessage,
+    bool discussionOnly = false,
+    String? discussionTurnText,
   }) async {
     if (addUserMessage) _appendMessage(ConversationMessageRole.user, text);
     final generation = _state.sessionGeneration;
@@ -535,12 +622,14 @@ final class ConversationSessionController extends ChangeNotifier {
     );
     try {
       await _loadReferenceHistory();
-      final pendingOutcome = _proactiveEventMoveAwaitingConfirmation
-          ? null
-          : await _resolvePending?.call(text, generation);
+      final pendingOutcome =
+          discussionOnly || _proactiveEventMoveAwaitingConfirmation
+              ? null
+              : await _resolvePending?.call(text, generation);
       final hasPendingRecurringResponsibility =
           _coordinator.hasPendingRecurringResponsibility;
-      final contextualResponsibility = pendingOutcome == null &&
+      final contextualResponsibility = !discussionOnly &&
+              pendingOutcome == null &&
               !_proactiveEventMoveAwaitingConfirmation &&
               !hasPendingRecurringResponsibility &&
               _deferredRequestAfterResponsibilityClarification == null
@@ -558,7 +647,8 @@ final class ConversationSessionController extends ChangeNotifier {
               reply: contextualResponsibility.message,
               responseKind: ConversationResponseKind.confirmationRequired,
             );
-      final localOutcome = pendingOutcome == null &&
+      final localOutcome = !discussionOnly &&
+              pendingOutcome == null &&
               contextualOutcome == null &&
               !hasPendingRecurringResponsibility &&
               !_proactiveEventMoveAwaitingConfirmation
@@ -577,6 +667,7 @@ final class ConversationSessionController extends ChangeNotifier {
               sessionGeneration: generation,
               logicalRequestId: _lastLogicalRequestId,
               correlationId: _lastCorrelationId,
+              discussionOnly: discussionOnly,
             ),
             executeAction: (action) => _executeAction(action, text, generation),
           );
@@ -631,6 +722,12 @@ final class ConversationSessionController extends ChangeNotifier {
         );
       }
       _appendMessage(ConversationMessageRole.assistant, visibleReply);
+      if (discussionOnly && _activeDiscussionSubject != null) {
+        _recordActiveDiscussionTurn(
+          userText: discussionTurnText ?? text,
+          assistantText: visibleReply,
+        );
+      }
       if (!_isCurrent(requestId, generation)) return;
       final applicationPhase = _applicationPendingPhase?.call();
       final epistemicPhase =
@@ -737,6 +834,7 @@ final class ConversationSessionController extends ChangeNotifier {
     if (_disposed || !_state.isBusy) return;
     _deferredRequestAfterResponsibilityClarification = null;
     _deferredCompoundRequests.clear();
+    _clearActiveDiscussion();
     _coordinator.invalidateSession();
     _setState(
       _state.copyWith(
@@ -772,6 +870,8 @@ final class ConversationSessionController extends ChangeNotifier {
       ),
     );
     _lastSubmittedText = null;
+    _lastSubmittedDiscussionOnly = false;
+    _lastSubmittedVisibleText = null;
     _lastLogicalRequestId = null;
     _lastCorrelationId = null;
     _retryCount = 0;
@@ -787,6 +887,7 @@ final class ConversationSessionController extends ChangeNotifier {
     _referenceHistoryLoaded = false;
     _deferredRequestAfterResponsibilityClarification = null;
     _deferredCompoundRequests.clear();
+    _clearActiveDiscussion();
   }
 
   Future<void> _runNextCompoundRequestIfReady() async {
@@ -807,6 +908,81 @@ final class ConversationSessionController extends ChangeNotifier {
       sessionGeneration: _state.sessionGeneration,
     );
     await _runRequest(next, addUserMessage: false);
+  }
+
+  String _buildActiveDiscussionRequest(String currentMessage) {
+    final subject = _truncateDiscussionPart(
+      _activeDiscussionSubject ?? '',
+      maximumCharacters: 1100,
+    );
+    final transcript = _truncateDiscussionPart(
+      _activeDiscussionTranscript,
+      maximumCharacters: 800,
+      keepEnd: true,
+    );
+    final current = _truncateDiscussionPart(
+      currentMessage,
+      maximumCharacters: 1800,
+    );
+    return <String>[
+      'Contexte de la discussion choisie par l’utilisatrice : $subject',
+      if (transcript.isNotEmpty) 'Échanges utiles : $transcript',
+      'Nouveau message de l’utilisatrice : $current',
+      'Continue naturellement sur ce même sujet. Ne repose pas une question '
+          'dont la réponse figure déjà dans ce contexte. Si le nouveau message '
+          'change clairement de sujet, réponds simplement au nouveau sujet. '
+          'Ne crée, ne modifie et ne supprime rien dans cette discussion.',
+    ].join('\n');
+  }
+
+  void _recordActiveDiscussionTurn({
+    required String userText,
+    required String assistantText,
+  }) {
+    final addition = '\nUtilisatrice : ${userText.trim()}'
+        '\nZelia : ${assistantText.trim()}';
+    _activeDiscussionTranscript = _truncateDiscussionPart(
+      '$_activeDiscussionTranscript$addition',
+      maximumCharacters: 2400,
+      keepEnd: true,
+    );
+    _activeDiscussionTurns++;
+    if (_activeDiscussionTurns > 6) _activeDiscussionTurns = 6;
+  }
+
+  void _clearActiveDiscussion() {
+    _activeDiscussionSubject = null;
+    _activeDiscussionTranscript = '';
+    _activeDiscussionTurns = 0;
+  }
+
+  bool _isExplicitActionRequest(String value) {
+    final normalized = value
+        .toLowerCase()
+        .replaceAll('é', 'e')
+        .replaceAll('è', 'e')
+        .replaceAll('ê', 'e')
+        .replaceAll('à', 'a')
+        .replaceAll('ù', 'u')
+        .replaceAll('î', 'i')
+        .replaceAll('ô', 'o');
+    return RegExp(
+      r'\b(ajoute|ajouter|cree|creer|reserve|reserver|note|noter|planifie|'
+      r'planifier|supprime|supprimer|modifie|modifier|deplace|deplacer|'
+      r'annule|annuler|enregistre|enregistrer)\b',
+    ).hasMatch(normalized);
+  }
+
+  String _truncateDiscussionPart(
+    String value, {
+    required int maximumCharacters,
+    bool keepEnd = false,
+  }) {
+    final trimmed = value.trim();
+    if (trimmed.length <= maximumCharacters) return trimmed;
+    return keepEnd
+        ? trimmed.substring(trimmed.length - maximumCharacters)
+        : trimmed.substring(0, maximumCharacters);
   }
 
   Future<void> _loadReferenceHistory() async {
@@ -895,6 +1071,11 @@ final class ConversationSessionController extends ChangeNotifier {
         .ignore();
     _emit(ConversationUiEffectType.scrollToLatest);
     return message.id;
+  }
+
+  void _clearQuickReplies() {
+    if (_state.quickReplies.isEmpty) return;
+    _setState(_state.copyWith(clearQuickReplies: true));
   }
 
   void _emit(ConversationUiEffectType type, {String? message}) {
@@ -1015,6 +1196,7 @@ final class ConversationSessionController extends ChangeNotifier {
     final interactionOwnerId = _interactionOwnerId;
     _deferredRequestAfterResponsibilityClarification = null;
     _deferredCompoundRequests.clear();
+    _clearActiveDiscussion();
     _coordinator.invalidateSession();
     _disposed = true;
     _state = _state.copyWith(
