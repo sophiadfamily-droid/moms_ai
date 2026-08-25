@@ -2603,19 +2603,20 @@ class ConversationCoordinator {
     if (input.discussionOnly) {
       return _sendDiscussionOnly(input);
     }
-    final eventMutationResolution = await resolvePendingEventMutation(
-      answer: input.message,
-    );
+    final eventMutationResolution = input.contextualFollowUp
+        ? null
+        : await resolvePendingEventMutation(answer: input.message);
     if (eventMutationResolution != null) {
       return ConversationOutcome(
         reply: eventMutationResolution.message,
         referenceResolution: eventMutationResolution.referenceResolution,
       );
     }
-    final recurringResponsibilityResult =
-        await recurringResponsibilityConversationService?.process(
-      input.message,
-    );
+    final recurringResponsibilityResult = input.contextualFollowUp
+        ? null
+        : await recurringResponsibilityConversationService?.process(
+            input.message,
+          );
     if (recurringResponsibilityResult != null &&
         recurringResponsibilityResult.type !=
             RecurringResponsibilityConversationResultType.notResponsibility) {
@@ -2632,11 +2633,13 @@ class ConversationCoordinator {
             : ConversationResponseKind.actionResult,
       );
     }
-    final routineResult = await routineConversationService?.process(
-      input.message,
-      logicalRequestId:
-          input.logicalRequestId ?? _actionDraftIdGenerator.generate(),
-    );
+    final routineResult = input.contextualFollowUp
+        ? null
+        : await routineConversationService?.process(
+            input.message,
+            logicalRequestId:
+                input.logicalRequestId ?? _actionDraftIdGenerator.generate(),
+          );
     if (routineResult != null &&
         routineResult.type != RoutineConversationResultType.notRoutine) {
       _state = _state.copyWith(
@@ -2646,9 +2649,9 @@ class ConversationCoordinator {
       );
       return ConversationOutcome(reply: routineResult.message);
     }
-    final creationResolution = await resolvePendingIdentityCreation(
-      answer: input.message,
-    );
+    final creationResolution = input.contextualFollowUp
+        ? null
+        : await resolvePendingIdentityCreation(answer: input.message);
     if (creationResolution != null) {
       return ConversationOutcome(
         reply: creationResolution.message,
@@ -2657,9 +2660,9 @@ class ConversationCoordinator {
             creationResolution.identityActionBindingResult,
       );
     }
-    final identityResolution = await resolvePendingIdentityClarification(
-      answer: input.message,
-    );
+    final identityResolution = input.contextualFollowUp
+        ? null
+        : await resolvePendingIdentityClarification(answer: input.message);
     if (identityResolution != null) {
       return ConversationOutcome(
         reply: identityResolution.message,
@@ -2669,7 +2672,7 @@ class ConversationCoordinator {
             identityResolution.identityActionBindingResult,
       );
     }
-    if (_state.pendingAction == null) {
+    if (!input.contextualFollowUp && _state.pendingAction == null) {
       final shoppingClassification =
           shoppingIntentDetector.classify(input.message);
       if (shoppingClassification.kind ==
@@ -2691,7 +2694,8 @@ class ConversationCoordinator {
         );
       }
     }
-    if (priorityConsultationIntentDetector.matches(input.message)) {
+    if (!input.contextualFollowUp &&
+        priorityConsultationIntentDetector.matches(input.message)) {
       final consultation = await priorityConsultationService?.respond();
       if (consultation != null) {
         return ConversationOutcome(
@@ -2700,7 +2704,8 @@ class ConversationCoordinator {
         );
       }
     }
-    if (mentalLoadConsultationIntentDetector.matches(input.message)) {
+    if (!input.contextualFollowUp &&
+        mentalLoadConsultationIntentDetector.matches(input.message)) {
       final consultation = await mentalLoadConsultationService?.respond();
       if (consultation != null) {
         return ConversationOutcome(
@@ -2726,7 +2731,13 @@ class ConversationCoordinator {
       final policyRequest = (autonomyPolicy == null
               ? builtRequest
               : builtRequest.withAutonomyPolicy(autonomyPolicy))
-          .withSessionGeneration(input.sessionGeneration);
+          .withSessionGeneration(input.sessionGeneration)
+          .withHistory(input.conversationHistory)
+          .withConversationMode(
+            input.contextualFollowUp
+                ? ChatConversationMode.contextualFollowUp
+                : ChatConversationMode.standard,
+          );
       final scopedRequest = input.discussionOnly
           ? policyRequest.withAutonomyMode(ActionAutonomyMode.paused)
           : policyRequest;
@@ -2736,7 +2747,7 @@ class ConversationCoordinator {
       final memoryContext = contextProvider is MemoryConversationContextProvider
           ? contextProvider as MemoryConversationContextProvider
           : null;
-      if (!input.discussionOnly) {
+      if (!input.discussionOnly && !input.contextualFollowUp) {
         final userProposal = await memoryContext?.proposeUserMemory(
           input.message,
           logicalRequestId: input.logicalRequestId,
@@ -3000,6 +3011,7 @@ class ConversationCoordinator {
               ? builtRequest
               : builtRequest.withAutonomyPolicy(autonomyPolicy))
           .withSessionGeneration(input.sessionGeneration)
+          .withHistory(input.conversationHistory)
           .withAutonomyMode(ActionAutonomyMode.paused)
           .withConversationMode(ChatConversationMode.guidedDiscussion);
       final request = input.correlationId == null

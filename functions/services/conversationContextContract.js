@@ -26,7 +26,9 @@ const REQUEST_KEYS = new Set([
   "allowedStructuredResponseKinds",
 ]);
 const AUTONOMY_MODES = new Set(["normal", "suggestions", "paused"]);
-const CONVERSATION_MODES = new Set(["standard", "guidedDiscussion"]);
+const CONVERSATION_MODES = new Set([
+  "standard", "contextualFollowUp", "guidedDiscussion",
+]);
 const STRUCTURED_RESPONSE_KINDS = new Set([
   "answer", "answerWithCaveat", "clarificationRequired",
   "confirmationRequired", "actionProposal", "cannotDetermine",

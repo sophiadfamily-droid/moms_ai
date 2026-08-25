@@ -187,6 +187,45 @@ void main() {
       );
     });
 
+    test('contextual follow-up preserves history without pausing actions',
+        () async {
+      final backend = _FakeBackend(
+        response: const ChatBackendResponse(
+          reply: 'D’accord, partons sur un restaurant.',
+          actions: [],
+          memories: [],
+        ),
+      );
+      final coordinator = ConversationCoordinator(
+        backend: backend,
+        contextProvider: _FakeContextProvider(_request()),
+      );
+
+      final outcome = await coordinator.send(
+        input: ConversationInput(
+          message: 'resto',
+          profile: _profile(),
+          contextualFollowUp: true,
+          conversationHistory: [
+            ConversationHistoryMessage(
+              role: 'assistant',
+              text: 'Quel type de sortie aimerais-tu ?',
+            ),
+          ],
+        ),
+        executeAction: (_) async => const ConversationActionOutcome(),
+      );
+
+      expect(outcome?.reply, 'D’accord, partons sur un restaurant.');
+      expect(
+        backend.requests.single.conversationMode,
+        ChatConversationMode.contextualFollowUp,
+      );
+      expect(backend.requests.single.autonomyMode,
+          isNot(ActionAutonomyMode.paused));
+      expect(backend.requests.single.history, hasLength(1));
+    });
+
     test('discussion-only response bypasses an older pending routine',
         () async {
       final repository = _RoutineRepository();

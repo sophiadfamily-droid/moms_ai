@@ -134,6 +134,10 @@ async function handleChatRequest(
   const conversationHistory = source.conversationHistory;
   const isGuidedDiscussion =
     source.conversationMode === "guidedDiscussion";
+  const isContextualFollowUp =
+    source.conversationMode === "contextualFollowUp";
+  const prioritizesConversation =
+    isGuidedDiscussion || isContextualFollowUp;
 
   const now = dependencies.now || (() => new Date());
   const logger = dependencies.logger || console;
@@ -168,7 +172,7 @@ async function handleChatRequest(
   const planningComplexity = detectPlanningComplexity(message);
   const taskCreation = extractTaskCreation(message, now());
 
-  const profileFactAnswer = isGuidedDiscussion ?
+  const profileFactAnswer = prioritizesConversation ?
     null : canonicalProfileFactAnswer(source);
   if (profileFactAnswer !== null) {
     const validated = validateConversationResponse(profileFactAnswer, source);
@@ -180,11 +184,11 @@ async function handleChatRequest(
     };
   }
 
-  const shoppingFactAnswer = isGuidedDiscussion ? null :
+  const shoppingFactAnswer = prioritizesConversation ? null :
     canonicalShoppingFactAnswer(source, {
       sourceType: "lifeContextShopping",
     });
-  const shoppingView = isGuidedDiscussion ? null :
+  const shoppingView = prioritizesConversation ? null :
     requestedShoppingView(message);
   if (shoppingFactAnswer !== null) {
     const validated = validateConversationResponse(
@@ -211,7 +215,7 @@ async function handleChatRequest(
     };
   }
 
-  if (!isGuidedDiscussion &&
+  if (!prioritizesConversation &&
       detectedIntent.understandingLevel === "ambiguous") {
     const ambiguityType = detectedIntent.ambiguityType || "multiple_meanings";
     const questionText = ambiguityType === "negation_scope" ?
@@ -340,7 +344,7 @@ async function handleChatRequest(
     };
   }
 
-  if (!isGuidedDiscussion && detectedIntent.primaryIntent === "event") {
+  if (!prioritizesConversation && detectedIntent.primaryIntent === "event") {
     const eventClarification = buildEventClarification({
       message,
       now: now(),

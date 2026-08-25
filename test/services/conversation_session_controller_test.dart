@@ -211,6 +211,99 @@ void main() {
       harness.dispose();
     });
 
+    test('a short answer to the latest question keeps bounded context',
+        () async {
+      final harness = _Harness();
+      harness.controller.addInitialAssistantMessage(
+        'Quel type de sortie aimerais-tu pour Willy ?',
+      );
+
+      await harness.controller.submitText('resto');
+
+      final request = harness.backend.requests.single;
+      expect(
+        request.conversationMode,
+        ChatConversationMode.contextualFollowUp,
+      );
+      expect(request.autonomyMode, isNot(ActionAutonomyMode.paused));
+      expect(request.history, hasLength(1));
+      expect(request.history.single.role, 'assistant');
+      expect(
+        request.history.single.text,
+        'Quel type de sortie aimerais-tu pour Willy ?',
+      );
+      expect(request.message, 'resto');
+      harness.dispose();
+    });
+
+    test('bounded context remains serializable with long emoji messages',
+        () async {
+      final harness = _Harness();
+      for (var index = 0; index < 8; index++) {
+        harness.controller.addInitialAssistantMessage(
+          'Contexte $index ${'💕' * 1000}${index == 7 ? '?' : '.'}',
+        );
+      }
+
+      await harness.controller.submitText('resto');
+
+      final request = harness.backend.requests.single;
+      expect(request.history, isNotEmpty);
+      expect(request.history.length, lessThanOrEqualTo(8));
+      expect(
+        utf8
+            .encode(
+              jsonEncode(
+                request.history.map((item) => item.toJson()).toList(),
+              ),
+            )
+            .length,
+        lessThanOrEqualTo(
+          ConversationTransportContract.maximumHistoryUtf8Bytes,
+        ),
+      );
+      expect(() => request.toJson(), returnsNormally);
+      harness.dispose();
+    });
+
+    test('an explicit new action after a question keeps normal routing',
+        () async {
+      var localResolverCalls = 0;
+      final harness = _Harness(
+        resolveLocalRequest: (_, __) async {
+          localResolverCalls++;
+          return const ConversationOutcome(reply: 'Action locale');
+        },
+      );
+      harness.controller.addInitialAssistantMessage(
+        'Que veux-tu préparer ?',
+      );
+
+      await harness.controller.submitText('Ajoute du lait aux courses');
+
+      expect(localResolverCalls, 1);
+      expect(harness.backend.calls, 0);
+      expect(harness.controller.state.messages.last.text, 'Action locale');
+      harness.dispose();
+    });
+
+    test('a standalone question after another question stays standard',
+        () async {
+      final harness = _Harness();
+      harness.controller.addInitialAssistantMessage(
+        'Que veux-tu préparer ?',
+      );
+
+      await harness.controller.submitText('Quelle est ma date de mariage ?');
+
+      expect(
+        harness.backend.requests.single.conversationMode,
+        ChatConversationMode.standard,
+      );
+      expect(harness.backend.requests.single.history, hasLength(1));
+      harness.dispose();
+    });
+
     test('runs two independent requests in order from one visible message',
         () async {
       final handled = <String>[];

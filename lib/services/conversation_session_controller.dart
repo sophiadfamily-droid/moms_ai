@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -5,6 +7,7 @@ import '../models/conversation_models.dart';
 import '../models/action_autonomy_policy.dart';
 import '../models/action_confirmation.dart';
 import '../models/conversation_epistemic_models.dart';
+import '../models/conversation_context_envelope.dart';
 import '../models/conversation_session_models.dart';
 import '../models/agenda_conflict_move_suggestion.dart';
 import '../models/smart_planning_continuation.dart';
@@ -384,6 +387,8 @@ final class ConversationSessionController extends ChangeNotifier {
   int _retryCount = 0;
   String? _lastSubmittedText;
   bool _lastSubmittedDiscussionOnly = false;
+  bool _lastSubmittedContextualFollowUp = false;
+  List<ConversationHistoryMessage> _lastSubmittedHistory = const [];
   String? _lastSubmittedVisibleText;
   String? _lastLogicalRequestId;
   String? _lastCorrelationId;
@@ -550,6 +555,12 @@ final class ConversationSessionController extends ChangeNotifier {
             _state.phase == ConversationSessionPhase.awaitingConfirmation ||
             _coordinator.state.pendingAction != null ||
             _applicationPendingPhase?.call() != null;
+    final contextualFollowUp = _shouldUseContextualFollowUp(
+      text,
+      discussionOnly: effectiveDiscussionOnly,
+      continuesLogicalRequest: continuesLogicalRequest,
+    );
+    final conversationHistory = _buildConversationHistory();
     final compound =
         !effectiveDiscussionOnly && _deferredCompoundRequests.isEmpty
             ? _compoundRequestService.split(
@@ -566,6 +577,8 @@ final class ConversationSessionController extends ChangeNotifier {
     }
     _lastSubmittedText = requestText;
     _lastSubmittedDiscussionOnly = effectiveDiscussionOnly;
+    _lastSubmittedContextualFollowUp = contextualFollowUp;
+    _lastSubmittedHistory = conversationHistory;
     _lastSubmittedVisibleText = visible;
     _lastCorrelationId = AppDiagnostics.createCorrelationId();
     _retryCount = 0;
@@ -581,6 +594,8 @@ final class ConversationSessionController extends ChangeNotifier {
       requestText,
       addUserMessage: false,
       discussionOnly: effectiveDiscussionOnly,
+      contextualFollowUp: contextualFollowUp,
+      conversationHistory: conversationHistory,
       discussionTurnText: visible,
     );
   }
@@ -599,6 +614,8 @@ final class ConversationSessionController extends ChangeNotifier {
       text,
       addUserMessage: false,
       discussionOnly: _lastSubmittedDiscussionOnly,
+      contextualFollowUp: _lastSubmittedContextualFollowUp,
+      conversationHistory: _lastSubmittedHistory,
       discussionTurnText: _lastSubmittedVisibleText,
     );
   }
@@ -607,6 +624,8 @@ final class ConversationSessionController extends ChangeNotifier {
     String text, {
     required bool addUserMessage,
     bool discussionOnly = false,
+    bool contextualFollowUp = false,
+    List<ConversationHistoryMessage> conversationHistory = const [],
     String? discussionTurnText,
   }) async {
     if (addUserMessage) _appendMessage(ConversationMessageRole.user, text);
@@ -622,13 +641,14 @@ final class ConversationSessionController extends ChangeNotifier {
     );
     try {
       await _loadReferenceHistory();
+      final conversationalFollowUp = discussionOnly || contextualFollowUp;
       final pendingOutcome =
-          discussionOnly || _proactiveEventMoveAwaitingConfirmation
+          conversationalFollowUp || _proactiveEventMoveAwaitingConfirmation
               ? null
               : await _resolvePending?.call(text, generation);
       final hasPendingRecurringResponsibility =
           _coordinator.hasPendingRecurringResponsibility;
-      final contextualResponsibility = !discussionOnly &&
+      final contextualResponsibility = !conversationalFollowUp &&
               pendingOutcome == null &&
               !_proactiveEventMoveAwaitingConfirmation &&
               !hasPendingRecurringResponsibility &&
@@ -647,7 +667,7 @@ final class ConversationSessionController extends ChangeNotifier {
               reply: contextualResponsibility.message,
               responseKind: ConversationResponseKind.confirmationRequired,
             );
-      final localOutcome = !discussionOnly &&
+      final localOutcome = !conversationalFollowUp &&
               pendingOutcome == null &&
               contextualOutcome == null &&
               !hasPendingRecurringResponsibility &&
@@ -668,6 +688,8 @@ final class ConversationSessionController extends ChangeNotifier {
               logicalRequestId: _lastLogicalRequestId,
               correlationId: _lastCorrelationId,
               discussionOnly: discussionOnly,
+              contextualFollowUp: contextualFollowUp,
+              conversationHistory: conversationHistory,
             ),
             executeAction: (action) => _executeAction(action, text, generation),
           );
@@ -871,6 +893,8 @@ final class ConversationSessionController extends ChangeNotifier {
     );
     _lastSubmittedText = null;
     _lastSubmittedDiscussionOnly = false;
+    _lastSubmittedContextualFollowUp = false;
+    _lastSubmittedHistory = const [];
     _lastSubmittedVisibleText = null;
     _lastLogicalRequestId = null;
     _lastCorrelationId = null;
@@ -901,13 +925,89 @@ final class ConversationSessionController extends ChangeNotifier {
     }
     final next = _deferredCompoundRequests.removeAt(0);
     _lastSubmittedText = next;
+    _lastSubmittedDiscussionOnly = false;
+    _lastSubmittedContextualFollowUp = false;
+    _lastSubmittedHistory = _buildConversationHistory();
     _lastLogicalRequestId = _idGenerator();
     _lastCorrelationId = AppDiagnostics.createCorrelationId();
     _retryCount = 0;
     _clarificationLedger = ConversationClarificationLedger(
       sessionGeneration: _state.sessionGeneration,
     );
-    await _runRequest(next, addUserMessage: false);
+    await _runRequest(
+      next,
+      addUserMessage: false,
+      conversationHistory: _lastSubmittedHistory,
+    );
+  }
+
+  bool _shouldUseContextualFollowUp(
+    String value, {
+    required bool discussionOnly,
+    required bool continuesLogicalRequest,
+  }) {
+    if (discussionOnly ||
+        continuesLogicalRequest ||
+        _coordinator.state.pendingAction != null ||
+        _applicationPendingPhase?.call() != null ||
+        _isExplicitActionRequest(value)) {
+      return false;
+    }
+    final assistant = _state.messages.reversed
+        .where((message) => message.role == ConversationMessageRole.assistant)
+        .firstOrNull;
+    if (assistant == null || !assistant.text.trim().endsWith('?')) return false;
+    final trimmed = value.trim();
+    if (trimmed.endsWith('?') || _looksLikeStandaloneQuestion(trimmed)) {
+      return false;
+    }
+    return trimmed.split(RegExp(r'\s+')).length <= 12;
+  }
+
+  bool _looksLikeStandaloneQuestion(String value) {
+    final normalized =
+        value.toLowerCase().replaceAll(RegExp(r"[’']"), ' ').trim();
+    return RegExp(
+      r'^(qui|que|quoi|quand|ou|où|comment|pourquoi|combien|quel|quelle|'
+      r'quels|quelles|est ce que)\b',
+    ).hasMatch(normalized);
+  }
+
+  List<ConversationHistoryMessage> _buildConversationHistory() {
+    final history = <ConversationHistoryMessage>[];
+    for (final message in _state.messages.reversed) {
+      if (history.length >=
+          ConversationTransportContract.maximumHistoryMessages) {
+        break;
+      }
+      final entry = ConversationHistoryMessage(
+        role:
+            message.role == ConversationMessageRole.user ? 'user' : 'assistant',
+        text: _truncateHistoryMessage(message.text),
+      );
+      final candidate = <ConversationHistoryMessage>[entry, ...history];
+      final encodedBytes = utf8
+          .encode(
+            jsonEncode(
+              candidate.map((item) => item.toJson()).toList(growable: false),
+            ),
+          )
+          .length;
+      if (encodedBytes <=
+          ConversationTransportContract.maximumHistoryUtf8Bytes) {
+        history.insert(0, entry);
+      }
+    }
+    return List.unmodifiable(history);
+  }
+
+  String _truncateHistoryMessage(String value) {
+    final limit = ConversationTransportContract.maximumHistoryMessageCharacters;
+    if (value.length <= limit) return value;
+    var start = value.length - limit;
+    final codeUnit = value.codeUnitAt(start);
+    if (codeUnit >= 0xDC00 && codeUnit <= 0xDFFF) start++;
+    return value.substring(start);
   }
 
   String _buildActiveDiscussionRequest(String currentMessage) {

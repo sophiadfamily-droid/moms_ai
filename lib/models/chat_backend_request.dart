@@ -5,6 +5,7 @@ import 'conversation_context_envelope.dart';
 
 enum ChatConversationMode {
   standard,
+  contextualFollowUp,
   guidedDiscussion,
 }
 
@@ -190,6 +191,19 @@ final class ChatBackendRequest {
         autonomyPolicyVersion: autonomyPolicyVersion,
         autonomyMode: autonomyMode,
         conversationMode: mode,
+      );
+
+  ChatBackendRequest withHistory(List<ConversationHistoryMessage> value) =>
+      ChatBackendRequest(
+        schemaVersion: schemaVersion,
+        message: message,
+        correlationId: correlationId,
+        sessionGeneration: sessionGeneration,
+        context: context,
+        history: List.unmodifiable(value),
+        autonomyPolicyVersion: autonomyPolicyVersion,
+        autonomyMode: autonomyMode,
+        conversationMode: conversationMode,
       );
 
   ChatBackendRequest withCorrelationId(String value) => ChatBackendRequest(

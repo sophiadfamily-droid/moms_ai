@@ -606,6 +606,28 @@ test("keeps a short reply inside its guided discussion", async () => {
   assert.doesNotMatch(result.reply, /22 octobre 1991/);
 });
 
+test("keeps a short ordinary reply in its bounded conversation", async () => {
+  const value = personalProfileRequest("resto");
+  value.conversationMode = "contextualFollowUp";
+  value.conversationHistory = [
+    {role: "assistant", text: "Quel type de sortie aimerais-tu pour Willy ?"},
+  ];
+  let generations = 0;
+
+  const result = await handleChatRequest(value, {uid: "test-uid"}, {
+    generateResponse: async ({systemContent}) => {
+      generations++;
+      assert.match(systemContent, /contextualFollowUp/);
+      assert.match(systemContent, /Quel type de sortie aimerais-tu/);
+      return response("D’accord, partons sur un restaurant.");
+    },
+  });
+
+  assert.equal(generations, 1);
+  assert.equal(result.reply, "D’accord, partons sur un restaurant.");
+  assert.doesNotMatch(result.reply, /22 octobre 1991/);
+});
+
 test("does not treat a personal statement as a profile question", async () => {
   let generations = 0;
   const value = personalProfileRequest("Je m’appelle Sophia");

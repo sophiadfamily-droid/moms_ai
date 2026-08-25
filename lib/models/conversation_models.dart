@@ -5,6 +5,7 @@ import '../core/identity/entity_reference.dart';
 import '../core/identity/entity_types.dart';
 import 'chat_backend_request.dart';
 import 'conversation_epistemic_models.dart';
+import 'conversation_context_envelope.dart';
 import 'conversation_reference_resolution.dart';
 import 'event_model.dart';
 import 'event_mutation_models.dart';
@@ -29,6 +30,8 @@ class ConversationInput {
   final String? logicalRequestId;
   final String? correlationId;
   final bool discussionOnly;
+  final bool contextualFollowUp;
+  final List<ConversationHistoryMessage> conversationHistory;
 
   const ConversationInput({
     required this.message,
@@ -37,6 +40,8 @@ class ConversationInput {
     this.logicalRequestId,
     this.correlationId,
     this.discussionOnly = false,
+    this.contextualFollowUp = false,
+    this.conversationHistory = const [],
   });
 }
 
