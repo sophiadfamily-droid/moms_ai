@@ -37,6 +37,30 @@ void main() {
     expect(conversation, contains('messages: const []'));
   });
 
+  test('signing in never copies the previously visible profile', () {
+    final auth = File('lib/screens/auth/auth_screen.dart').readAsStringSync();
+    final profile = File('lib/screens/profile_screen.dart').readAsStringSync();
+
+    expect(auth, isNot(contains('onAuthenticated')));
+    expect(profile, contains('child: const AuthScreen()'));
+    expect(
+      profile,
+      isNot(contains('onAuthenticated: () async')),
+    );
+  });
+
+  test('the account sheet closes before signing out', () {
+    final profile = File('lib/screens/profile_screen.dart').readAsStringSync();
+    final closeSheet = profile.indexOf('Navigator.of(sheetContext).pop();');
+    final signOut = profile.indexOf(
+      'await AuthService.signOut();',
+      closeSheet,
+    );
+
+    expect(closeSheet, greaterThanOrEqualTo(0));
+    expect(signOut, greaterThan(closeSheet));
+  });
+
   test('private compatibility caches use account-scoped keys', () {
     final profile =
         File('lib/services/storage_service.dart').readAsStringSync();
@@ -65,7 +89,9 @@ void main() {
     );
     expect(
       shopping,
-      contains('scope == null ? shoppingKey : _shoppingCacheKey(scope)'),
+      contains(
+        'scope == null ? shoppingKey : shoppingCacheKeyForAccountScope(scope)',
+      ),
     );
     expect(tasks, contains('await _sync.bootstrap(scope)'));
     expect(shopping, contains('await _sync.bootstrap(scope)'));

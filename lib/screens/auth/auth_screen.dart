@@ -4,12 +4,7 @@ import 'package:flutter/material.dart';
 import '../../services/auth_service.dart';
 
 class AuthScreen extends StatefulWidget {
-  final VoidCallback? onAuthenticated;
-
-  const AuthScreen({
-    super.key,
-    this.onAuthenticated,
-  });
+  const AuthScreen({super.key});
 
   @override
   State<AuthScreen> createState() => _AuthScreenState();
@@ -73,8 +68,6 @@ class _AuthScreenState extends State<AuthScreen> {
           password: passwordController.text,
         );
       }
-
-      widget.onAuthenticated?.call();
 
       if (mounted && Navigator.canPop(context)) {
         Navigator.pop(context);

@@ -107,16 +107,22 @@ void main() {
   });
 
   test('scoped cleaner preserves guest, global and another account', () async {
+    final clearedRuntimeScopes = <String>[];
     SharedPreferences.setMockInitialValues({
       'app_settings_v1:alice': 'alice-settings',
       'human_model_v1:alice:previous': 'alice-backup',
       'zelia_y1_task_journal_v1:alice:backup': 'alice-journal',
+      'shopping_items.current.alice': <String>['alice-shopping'],
       'app_settings_v1:bob': 'bob-settings',
+      'shopping_items.current.bob': <String>['bob-shopping'],
       'human_model_v1:guest': 'guest-model',
+      'shopping_items': <String>['guest-shopping'],
       'onboarding_done': true,
     });
 
-    await const AccountScopedLocalDataCleaner().clear('alice');
+    await AccountScopedLocalDataCleaner(
+      clearRuntimeData: (scope) async => clearedRuntimeScopes.add(scope),
+    ).clear('alice');
 
     final preferences = await SharedPreferences.getInstance();
     expect(preferences.containsKey('app_settings_v1:alice'), isFalse);
@@ -125,8 +131,31 @@ void main() {
       preferences.containsKey('zelia_y1_task_journal_v1:alice:backup'),
       isFalse,
     );
+    expect(
+      preferences.containsKey('shopping_items.current.alice'),
+      isFalse,
+    );
+    expect(clearedRuntimeScopes, ['alice']);
     expect(preferences.getString('app_settings_v1:bob'), 'bob-settings');
+    expect(
+      preferences.getStringList('shopping_items.current.bob'),
+      ['bob-shopping'],
+    );
     expect(preferences.getString('human_model_v1:guest'), 'guest-model');
+    expect(preferences.getStringList('shopping_items'), ['guest-shopping']);
     expect(preferences.getBool('onboarding_done'), isTrue);
+  });
+
+  test('scoped cleaner rejects empty and guest account scopes', () async {
+    const cleaner = AccountScopedLocalDataCleaner();
+
+    await expectLater(
+      cleaner.clear(''),
+      throwsA(isA<AccountDataLifecycleException>()),
+    );
+    await expectLater(
+      cleaner.clear('guest'),
+      throwsA(isA<AccountDataLifecycleException>()),
+    );
   });
 }

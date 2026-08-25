@@ -600,23 +600,25 @@ void main() {
       expect(files, isNot(contains('FlutterLocalNotificationsPlugin')));
     });
 
-    test(
-        'production uses canonical Event conflicts and bounded lifecycle hooks',
-        () {
+    test('production uses one Life Context generation and bounded hooks', () {
       final production =
           File('lib/services/proactive_detection_production.dart')
               .readAsStringSync();
-      final events = File('lib/services/event_service.dart').readAsStringSync();
+      final conflicts = File(
+        'lib/services/life_context/event_life_context_conflict_engine.dart',
+      ).readAsStringSync();
       final main = File('lib/main.dart').readAsStringSync();
       final notifications =
           File('lib/services/notification_service.dart').readAsStringSync();
       expect(
         production,
-        contains('EventService.getProtectedConflictsForDetection'),
+        contains('EventLifeContextConflictEngine'),
       );
+      expect(production, contains('snapshot: snapshot'));
+      expect(production, isNot(contains('EventService.')));
       expect(production, contains('RoutineOccurrenceService.production'));
       expect(production, contains('RoutineEventConflictEngine'));
-      expect(events, contains('eventsProtectedOverlap'));
+      expect(conflicts, contains('eventSection.events'));
       expect(main, contains('authenticatedBootstrap'));
       expect(main, contains('DetectionEvaluationTrigger.foreground'));
       expect(notifications, contains('routinesVersion.addListener'));

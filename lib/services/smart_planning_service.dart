@@ -5,7 +5,6 @@ import 'natural_date_service.dart';
 import 'planning_score_service.dart';
 import 'planning_window_service.dart';
 import 'recurrence_date_match_service.dart';
-import 'task_service.dart';
 
 class SmartPlanningProposal {
   final bool canPropose;
@@ -802,12 +801,11 @@ class SmartPlanningService {
     }).join("\n");
   }
 
-  static Future<List<TaskModel>> getRelatedOutsideTasks({
+  static List<TaskModel> getRelatedOutsideTasksFromTasks({
     required TaskModel mainTask,
     required String originalMessage,
-  }) async {
-    final allTasks = await TaskService.getTasks();
-
+    required List<TaskModel> allTasks,
+  }) {
     final mainType = detectTaskType(originalMessage, mainTask);
 
     if (!isOutsideTypeGroup(mainType)) {

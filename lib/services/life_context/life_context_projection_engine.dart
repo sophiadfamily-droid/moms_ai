@@ -11,6 +11,14 @@ import '../human/human_profile_facts_service.dart';
 /// This pure projection reads one LC.1 snapshot and, when needed, its matching
 /// LC.2 graph. It never loads, writes, persists, logs, or calls a model API.
 final class LifeContextProjectionEngine {
+  static const _planningProfileFactKeys = <String>{
+    'homeAddress',
+    'workAddress',
+    'transportInfo',
+    'childcareInfo',
+    'importantPlaces',
+  };
+
   LifeContextProjectionEngine({
     EntityIdGenerator projectionIdGenerator = const UuidV7EntityIdGenerator(),
   }) : _projectionIdGenerator = projectionIdGenerator;
@@ -328,6 +336,11 @@ final class LifeContextProjectionEngine {
           contract,
         );
         for (final profileFact in person.profileFacts) {
+          if (includePlanningPrimary &&
+              !includeConversationPeople &&
+              !_planningProfileFactKeys.contains(profileFact.key)) {
+            continue;
+          }
           final sensitivity = _humanProfileFactSensitivity(profileFact.key);
           if (sensitivity == null) continue;
           _addAllowed(
@@ -583,7 +596,8 @@ final class LifeContextProjectionEngine {
     LifeContextConsumerContract contract,
   ) {
     if (!_isConversationSurface(contract) &&
-        contract.purpose != LifeContextConsumerPurpose.proactivePriority) {
+        contract.purpose != LifeContextConsumerPurpose.proactivePriority &&
+        contract.purpose != LifeContextConsumerPurpose.planning) {
       return const [];
     }
     final section = snapshot.taskDomain!;
@@ -600,6 +614,19 @@ final class LifeContextProjectionEngine {
           _fact(
             LifeContextProjectionFactKeys.dueDate,
             task.dueDate!,
+            LifeContextSensitivityLevel.publicTechnical,
+          ),
+        if (contract.purpose == LifeContextConsumerPurpose.planning &&
+            task.durationMinutes != null)
+          _fact(
+            LifeContextProjectionFactKeys.durationMinutes,
+            '${task.durationMinutes}',
+            LifeContextSensitivityLevel.publicTechnical,
+          ),
+        if (contract.purpose == LifeContextConsumerPurpose.planning)
+          _fact(
+            LifeContextProjectionFactKeys.syncStatus,
+            task.syncStatus,
             LifeContextSensitivityLevel.publicTechnical,
           ),
         if (task.importance != null)

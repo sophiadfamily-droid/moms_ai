@@ -275,6 +275,7 @@ final class ProductionSmartPlanningContinuationGateway
     ];
     return _CanonicalPlanningInput(
       generation: production.projectionGeneration,
+      tasks: context.tasks.map((task) => task.toTaskModel()).toList(),
       events: windowStart == null || windowDays == null
           ? events
           : _eventsIntersectingWindow(events, windowStart, windowDays),
@@ -301,11 +302,14 @@ final class ProductionSmartPlanningContinuationGateway
   Future<List<TaskModel>> relatedTasks(
     TaskModel task,
     String originalMessage,
-  ) =>
-      SmartPlanningService.getRelatedOutsideTasks(
-        mainTask: task,
-        originalMessage: originalMessage,
-      );
+  ) async {
+    final input = await _planningInput();
+    return SmartPlanningService.getRelatedOutsideTasksFromTasks(
+      mainTask: task,
+      originalMessage: originalMessage,
+      allTasks: input.tasks,
+    );
+  }
 
   @override
   Future<PlanningProposalEngineResult> findOptions({
@@ -491,11 +495,13 @@ final class ProductionSmartPlanningContinuationGateway
 final class _CanonicalPlanningInput {
   const _CanonicalPlanningInput({
     required this.generation,
+    required this.tasks,
     required this.events,
     required this.reasoning,
   });
 
   final int generation;
+  final List<TaskModel> tasks;
   final List<EventModel> events;
   final List<Map<String, dynamic>> reasoning;
 }

@@ -3,6 +3,7 @@ import 'dart:collection';
 import '../../models/chat_backend_request.dart';
 import '../../models/event_model.dart';
 import '../../models/life_context/life_context_projection.dart';
+import '../../models/task_model.dart';
 import '../conversation_context_assembler.dart';
 
 /// Transitional adapter only. It never loads domains and never serializes the
@@ -180,6 +181,45 @@ final class PlanningProjectionRoutine {
         if (anchorDateIso != null) 'anchorDateIso': anchorDateIso,
         if (weekOfMonth != null) 'weekOfMonth': weekOfMonth,
       };
+}
+
+final class PlanningProjectionTask {
+  const PlanningProjectionTask({
+    required this.id,
+    required this.title,
+    required this.isCompleted,
+    required this.syncStatus,
+    this.dueDate,
+    this.durationMinutes,
+    this.importance,
+    this.urgency,
+    this.category,
+    this.createdAt,
+  });
+
+  final String id;
+  final String title;
+  final bool isCompleted;
+  final String syncStatus;
+  final String? dueDate;
+  final int? durationMinutes;
+  final double? importance;
+  final double? urgency;
+  final String? category;
+  final String? createdAt;
+
+  TaskModel toTaskModel() => TaskModel(
+        id: id,
+        title: title,
+        category: category?.trim().isNotEmpty == true ? category! : 'Perso',
+        isDone: isCompleted,
+        createdAt: DateTime.tryParse(createdAt ?? '') ??
+            DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+        isImportant: (importance ?? 0) > 0 || (urgency ?? 0) > 0,
+        dueDate: dueDate ?? '',
+        durationMinutes: durationMinutes,
+        priority: (urgency ?? 0) > 0 ? 'Haute' : 'Normale',
+      );
 }
 
 /// A confirmed, time-bounded effect of one person's responsibility on the
@@ -382,6 +422,7 @@ String _time(DateTime value) => '${value.hour.toString().padLeft(2, '0')}:'
 final class PlanningProjectionContext {
   PlanningProjectionContext({
     required List<PlanningProjectionEvent> events,
+    List<PlanningProjectionTask> tasks = const [],
     required List<PlanningProjectionRoutine> routines,
     required List<LifeContextProjectionItem> temporalResponsibilities,
     required List<String> warningCodes,
@@ -390,6 +431,7 @@ final class PlanningProjectionContext {
         const [],
     this.primaryPersonNodeId,
   })  : events = UnmodifiableListView(events),
+        tasks = UnmodifiableListView(tasks),
         routines = UnmodifiableListView(routines),
         temporalResponsibilities =
             UnmodifiableListView(temporalResponsibilities),
@@ -399,6 +441,7 @@ final class PlanningProjectionContext {
         warningCodes = UnmodifiableListView(warningCodes);
 
   final List<PlanningProjectionEvent> events;
+  final List<PlanningProjectionTask> tasks;
   final List<PlanningProjectionRoutine> routines;
   final List<LifeContextProjectionItem> temporalResponsibilities;
   final List<PlanningProjectionConsequence> planningConsequences;
@@ -420,6 +463,7 @@ abstract final class LifeContextPlanningProjectionAdapter {
       );
     }
     final events = <PlanningProjectionEvent>[];
+    final tasks = <PlanningProjectionTask>[];
     final routines = <PlanningProjectionRoutine>[];
     final responsibilities = <LifeContextProjectionItem>[];
     final consequences = <PlanningProjectionConsequence>[];
@@ -452,6 +496,32 @@ abstract final class LifeContextPlanningProjectionAdapter {
               location: facts[LifeContextProjectionFactKeys.location],
               locationEntityId:
                   facts[LifeContextProjectionFactKeys.locationEntityId],
+            ),
+          );
+        }
+      } else if (section.type == LifeContextProjectionSectionType.task) {
+        for (final item in section.items) {
+          final facts = _facts(item);
+          tasks.add(
+            PlanningProjectionTask(
+              id: item.id,
+              title: facts[LifeContextProjectionFactKeys.title] ?? '',
+              isCompleted:
+                  facts[LifeContextProjectionFactKeys.status] == 'completed',
+              syncStatus:
+                  facts[LifeContextProjectionFactKeys.syncStatus] ?? 'unknown',
+              dueDate: facts[LifeContextProjectionFactKeys.dueDate],
+              durationMinutes: int.tryParse(
+                facts[LifeContextProjectionFactKeys.durationMinutes] ?? '',
+              ),
+              importance: double.tryParse(
+                facts[LifeContextProjectionFactKeys.importance] ?? '',
+              ),
+              urgency: double.tryParse(
+                facts[LifeContextProjectionFactKeys.urgency] ?? '',
+              ),
+              category: facts[LifeContextProjectionFactKeys.category],
+              createdAt: facts[LifeContextProjectionFactKeys.createdAt],
             ),
           );
         }
@@ -564,6 +634,7 @@ abstract final class LifeContextPlanningProjectionAdapter {
     }
     return PlanningProjectionContext(
       events: events,
+      tasks: tasks,
       routines: routines,
       temporalResponsibilities: responsibilities,
       planningConsequences: consequences,

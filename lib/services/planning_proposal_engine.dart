@@ -64,27 +64,6 @@ class PlanningProposalEngineResult {
 }
 
 class PlanningProposalEngine {
-  static Future<PlanningProposalEngineResult> findBestOptions({
-    required DateTime startDate,
-    required int totalMinutes,
-    required List<Map<String, dynamic>> reasoning,
-    int searchDays = 21,
-    int maxOptions = 3,
-    String location = '',
-  }) async {
-    final events = await EventService.getEvents();
-
-    return findBestOptionsFromEvents(
-      startDate: startDate,
-      totalMinutes: totalMinutes,
-      events: events,
-      reasoning: reasoning,
-      searchDays: searchDays,
-      maxOptions: maxOptions,
-      location: location,
-    );
-  }
-
   static PlanningProposalEngineResult findBestOptionsFromEvents({
     required DateTime startDate,
     required int totalMinutes,

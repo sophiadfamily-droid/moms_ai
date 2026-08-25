@@ -5079,13 +5079,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         builder: (_) {
           return SizedBox(
             height: MediaQuery.of(context).size.height * 0.82,
-            child: AuthScreen(
-              onAuthenticated: () async {
-                await saveProfile(showSnack: false);
-                if (!mounted) return;
-                setState(() {});
-              },
-            ),
+            child: const AuthScreen(),
           );
         },
       );
@@ -5101,7 +5095,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(34)),
       ),
-      builder: (_) {
+      builder: (sheetContext) {
         return SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(24, 24, 24, 34),
@@ -5131,10 +5125,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   width: double.infinity,
                   child: ElevatedButton(
                     onPressed: () async {
+                      Navigator.of(sheetContext).pop();
                       await AuthService.signOut();
-                      if (!mounted) return;
-                      Navigator.pop(context);
-                      setState(() {});
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: accent,

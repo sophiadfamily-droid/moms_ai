@@ -601,16 +601,34 @@ void main() {
       expect(facts, isNot(contains(LifeContextProjectionFactKeys.title)));
     });
 
-    test('exclut Task, noms, notes, priorité et recommandation', () {
-      final projection =
-          _build(_snapshot(now), LifeContextConsumerPurpose.planning);
+    test('inclut les Tasks actives utiles sans exposer les notes', () {
+      final projection = _build(
+        _snapshot(
+          now,
+          structuredTaskPriority: true,
+          taskDurationMinutes: 45,
+        ),
+        LifeContextConsumerPurpose.planning,
+      );
       expect(
         projection.sections.map((section) => section.type),
-        isNot(contains(LifeContextProjectionSectionType.task)),
+        contains(LifeContextProjectionSectionType.task),
       );
+      final task = _section(
+        projection,
+        LifeContextProjectionSectionType.task,
+      ).items.single;
+      final taskFacts = {
+        for (final fact in task.facts) fact.key: fact.value,
+      };
+      expect(taskFacts[LifeContextProjectionFactKeys.title], 'Task active');
+      expect(taskFacts[LifeContextProjectionFactKeys.durationMinutes], '45');
+      expect(taskFacts[LifeContextProjectionFactKeys.syncStatus], 'synced');
+      expect(taskFacts[LifeContextProjectionFactKeys.urgency], '0.9');
       final output = projection.toJson().toString();
       expect(output, isNot(contains('Personne principale')));
       expect(output, isNot(contains('Event visible')));
+      expect(output, isNot(contains('notes')));
       expect(output, isNot(contains('priority')));
       expect(output, isNot(contains('recommendation')));
     });
@@ -622,6 +640,9 @@ void main() {
           LifeContextPlanningProjectionAdapter.toPlanningContext(projection);
       expect(context.events, hasLength(1));
       expect(context.events.single.travelGoMinutes, 10);
+      expect(context.tasks, hasLength(1));
+      expect(context.tasks.single.title, 'Task active');
+      expect(context.tasks.single.toTaskModel().id, 'task:task:task-active');
       expect(context.routines, hasLength(1));
       expect(context.primaryPersonNodeId, 'human:person:person-main');
       expect(
@@ -907,6 +928,7 @@ LifeContextSnapshot _snapshot(
   bool blocksResponsiblePerson = false,
   String? eventLocation,
   bool structuredTaskPriority = false,
+  int? taskDurationMinutes,
   List<ShoppingContextItem> shoppingItems = const [],
 }) {
   final events = <EventContextItem>[
@@ -1199,7 +1221,7 @@ LifeContextSnapshot _snapshot(
                       : 'Task $index',
                   isCompleted: !allTasksActive && index == 1,
                   dueDate: !allTasksActive && index == 1 ? null : '2026-07-25',
-                  durationMinutes: null,
+                  durationMinutes: taskDurationMinutes,
                   syncStatus: 'synced',
                   importance: structuredTaskPriority ? 1 : null,
                   urgency: structuredTaskPriority ? .9 : null,

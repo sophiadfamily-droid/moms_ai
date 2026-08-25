@@ -270,20 +270,23 @@ final class LifeContextConsumerContract {
           allowedSections: const {
             LifeContextProjectionSectionType.human,
             LifeContextProjectionSectionType.event,
+            LifeContextProjectionSectionType.task,
             LifeContextProjectionSectionType.routine,
             LifeContextProjectionSectionType.relation,
           },
           allowedSensitivities: const {
             LifeContextSensitivityLevel.publicTechnical,
+            LifeContextSensitivityLevel.ordinaryPersonal,
             LifeContextSensitivityLevel.privatePersonal,
           },
           // Planning is an internal, closed projection. It must be able to
           // carry every bounded Event and Routine source item: silently
           // omitting one would make a busy period look available.
-          globalBudget: 5500,
+          globalBudget: 6500,
           sectionBudgets: const {
             LifeContextProjectionSectionType.human: 800,
             LifeContextProjectionSectionType.event: 2000,
+            LifeContextProjectionSectionType.task: 900,
             LifeContextProjectionSectionType.routine: 2600,
             LifeContextProjectionSectionType.relation: 50,
           },
@@ -300,8 +303,8 @@ final class LifeContextConsumerContract {
           },
           maxRelationDepth: 1,
           maxRelations: 8,
-          maxItems: 420,
-          maxTextLength: 0,
+          maxItems: 520,
+          maxTextLength: 120,
           truncationPolicy: LifeContextTruncationPolicy.omitWholeItem,
         ),
       LifeContextConsumerPurpose.internalTechnical =>

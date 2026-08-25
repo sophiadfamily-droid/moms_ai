@@ -2,8 +2,8 @@ import '../models/proactive_detection.dart';
 import '../models/life_context/life_context_domains.dart';
 import '../models/life_context/life_context_snapshot.dart';
 import 'package:timezone/timezone.dart' as tz;
-import 'event_service.dart';
 import 'app_diagnostics.dart';
+import 'life_context/event_life_context_conflict_engine.dart';
 import 'life_context/life_context_relation_engine.dart';
 import 'life_context_production_factory.dart';
 import 'proactive_detection_engine.dart';
@@ -19,6 +19,12 @@ typedef ConfirmedRoutineConflicts = Future<List<StructuredConflictObservation>>
   required String timezoneId,
 });
 
+typedef ConfirmedEventConflicts = Future<List<StructuredConflictObservation>>
+    Function({
+  required String accountScopeId,
+  required LifeContextSnapshot snapshot,
+});
+
 /// Production read boundary. Canonical planning conflict observations are
 /// supplied only when the Planning boundary can prove them; absence is not
 /// treated as proof that no conflict exists.
@@ -30,9 +36,7 @@ final class ProductionProactiveDetectionInputProvider
     this.currentTimezoneId = _utcTimezone,
   });
 
-  final Future<List<StructuredConflictObservation>> Function(
-    String accountScopeId,
-  ) confirmedConflicts;
+  final ConfirmedEventConflicts confirmedConflicts;
   final ConfirmedRoutineConflicts confirmedRoutineConflicts;
   final Future<String> Function() currentTimezoneId;
 
@@ -75,7 +79,10 @@ final class ProductionProactiveDetectionInputProvider
     var routineConflictSourceAvailable = true;
     List<StructuredConflictObservation> eventConflicts;
     try {
-      eventConflicts = await confirmedConflicts(accountScopeId);
+      eventConflicts = await confirmedConflicts(
+        accountScopeId: accountScopeId,
+        snapshot: snapshot,
+      );
     } on Object {
       conflictSourceAvailable = false;
       eventConflicts = const [];
@@ -141,50 +148,18 @@ final class ProductionProactiveDetectionInputProvider
   }
 
   static Future<List<StructuredConflictObservation>>
-      _confirmedPlanningConflicts(
-    String accountScopeId,
-  ) async {
-    final references =
-        await EventService.getProtectedConflictsForDetection(accountScopeId);
-    return references
-        .map(
-          (item) => StructuredConflictObservation(
-            conflictId:
-                '${item.firstEventId}:${item.secondEventId}:protected-v1',
-            firstSourceId: item.firstEventId,
-            secondSourceId: item.secondEventId,
-            firstRevision: item.firstRevision,
-            secondRevision: item.secondRevision,
-            confirmedByCanonicalEngine: true,
-            evidence: [
-              DetectionEvidence(
-                sourceType: DetectionEvidenceSource.confirmedConflictResult,
-                domain: LifeContextDomain.event,
-                sourceId: item.firstEventId,
-                revision: item.firstRevision,
-                freshness: LifeContextFreshness.current,
-                availability: LifeContextAvailability.available,
-                certainty: DetectionEvidenceLevel.confirmedStructured,
-                intervalStart: item.protectedStart,
-                intervalEnd: item.protectedEnd,
-                confirmed: true,
-              ),
-              DetectionEvidence(
-                sourceType: DetectionEvidenceSource.confirmedConflictResult,
-                domain: LifeContextDomain.event,
-                sourceId: item.secondEventId,
-                revision: item.secondRevision,
-                freshness: LifeContextFreshness.current,
-                availability: LifeContextAvailability.available,
-                certainty: DetectionEvidenceLevel.confirmedStructured,
-                intervalStart: item.protectedStart,
-                intervalEnd: item.protectedEnd,
-                confirmed: true,
-              ),
-            ],
-          ),
-        )
-        .toList(growable: false);
+      _confirmedPlanningConflicts({
+    required String accountScopeId,
+    required LifeContextSnapshot snapshot,
+  }) async {
+    snapshot.validateCanonical();
+    if (snapshot.accountScopeId != accountScopeId) {
+      throw const FormatException('event_conflict_account_mismatch');
+    }
+    return const EventLifeContextConflictEngine().evaluate(
+      eventSection: snapshot.eventDomain!,
+      observedAt: snapshot.generatedAt,
+    );
   }
 
   static Future<String> _utcTimezone() async => 'Etc/UTC';

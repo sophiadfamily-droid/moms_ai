@@ -422,6 +422,21 @@ l'Agenda séparément a été fermé. Une lecture directe reste autorisée pour
 enregistrer l'Event final ou modifier la durée de la Task choisie, car il s'agit
 alors d'une mutation du domaine propriétaire et non d'une nouvelle décision.
 
+Le regroupement des tâches liées à une même sortie utilise lui aussi la section
+Tâches bornée de cette photographie de planning. Il ne relit plus la liste des
+tâches séparément. L'ancien point d'entrée du moteur de créneaux qui pouvait
+recharger directement l'Agenda a été supprimé. Ainsi, événements, routines,
+responsabilités et tâches utiles à une proposition viennent de la même génération
+du contexte de vie. Le domaine Tâches reste optionnel : son indisponibilité ne
+doit pas empêcher une recherche de rendez-vous qui dépend seulement de l'Agenda
+et des contraintes connues.
+
+Le centre d'alertes utilise maintenant cette même photographie pour prouver les
+chevauchements entre rendez-vous. Il ne recharge plus l'Agenda après la création
+du contexte de vie. Les conflits Événement/Événement, Événement/Routine et les
+signaux liés aux tâches reposent donc sur une génération cohérente, avec les
+mêmes révisions, états de disponibilité et bornes de lecture.
+
 ### Étape G — nettoyer et vérifier les droits
 
 - Retirer `AppDataService` après preuve de non-usage et migration éventuelle.
@@ -451,6 +466,20 @@ déduit du jeton authentifié. Une suppression exige la saisie explicite de
 confirmation du succès serveur ; les données invitées, globales ou appartenant
 à un autre compte restent intactes. Les tests utilisent uniquement des doubles
 et ne suppriment aucune donnée réelle.
+
+Le nettoyage couvre aussi le cache borné de la liste de courses actuelle, dont
+la clé historique utilise un séparateur différent des autres domaines. Sa copie
+temporaire en mémoire est retirée pour le seul compte supprimé. Les courses
+invitées et les caches d'un autre compte ne sont jamais touchés.
+
+Le passage entre comptes est maintenant fermé au niveau du profil. Se connecter
+à un compte existant recharge les données qui appartiennent à ce compte sans
+enregistrer le profil visible avant la connexion. La fenêtre du compte est
+également fermée avant la déconnexion : aucune adresse ni information de
+l'ancien compte ne reste affichée pendant que l'application recharge l'espace
+invité ou le compte suivant. La création d'un compte depuis une session anonyme
+conserve naturellement le même identifiant Firebase ; elle ne nécessite donc
+aucune copie supplémentaire du profil.
 
 ## 9. Interdictions pendant la migration
 

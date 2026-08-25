@@ -4,6 +4,7 @@ import 'package:moms_ai/models/event_model.dart';
 import 'package:moms_ai/models/life_context/life_context_domains.dart';
 import 'package:moms_ai/models/life_context/life_context_projection.dart';
 import 'package:moms_ai/models/smart_planning_continuation.dart';
+import 'package:moms_ai/models/task_model.dart';
 import 'package:moms_ai/models/user_profile.dart';
 import 'package:moms_ai/services/life_context/life_context_adapter.dart';
 import 'package:moms_ai/services/life_context/life_context_engine.dart';
@@ -209,6 +210,59 @@ void main() {
 
     expect(planning.hasOptions, isTrue);
     expect(planning.options, isNotEmpty);
+  });
+
+  test('Smart Planning groups Tasks from the canonical Planning projection',
+      () async {
+    final production = _production(
+      now: now,
+      tasks: const [
+        TaskContextItem(
+          id: 'task-main',
+          title: 'Acheter du lait',
+          isCompleted: false,
+          dueDate: null,
+          durationMinutes: 15,
+          syncStatus: 'synced',
+          importance: 1,
+          urgency: 1,
+          category: 'Courses',
+          createdAt: '2026-07-28T08:00:00.000Z',
+        ),
+        TaskContextItem(
+          id: 'task-related',
+          title: 'Passer à la pharmacie',
+          isCompleted: false,
+          dueDate: null,
+          durationMinutes: 20,
+          syncStatus: 'synced',
+          category: 'Courses',
+          createdAt: '2026-07-28T08:05:00.000Z',
+        ),
+      ],
+    );
+    final gateway = ProductionSmartPlanningContinuationGateway(
+      _profile(),
+      loadLifeContext: () async => production,
+    );
+    final mainTask = TaskModel(
+      id: 'task-main',
+      title: 'Acheter du lait',
+      category: 'Courses',
+      isDone: false,
+      createdAt: now,
+      durationMinutes: 15,
+    );
+
+    final related = await gateway.relatedTasks(
+      mainTask,
+      'Je dois acheter du lait et passer à la pharmacie',
+    );
+
+    expect(
+      related.map((task) => task.id),
+      containsAll(['task-main', 'task:task:task-related']),
+    );
   });
 
   test(
@@ -540,6 +594,7 @@ LifeContextProduction _production({
   void Function()? onRead,
   HumanContextSection? human,
   List<EventContextItem> events = const [],
+  List<TaskContextItem> tasks = const [],
   List<RoutineContextItem> routines = const [],
   List<MemoryContextItem> memories = const [],
   LifeContextAvailability eventAvailability = LifeContextAvailability.available,
@@ -561,6 +616,7 @@ LifeContextProduction _production({
           taskAvailability: taskAvailability,
           memoryAvailability: memoryAvailability,
           events: events,
+          tasks: tasks,
           routines: routines,
           memories: memories,
           human: human,
@@ -589,6 +645,7 @@ final class _SectionAdapter implements LifeContextDomainAdapter {
     required this.taskAvailability,
     required this.memoryAvailability,
     required this.events,
+    required this.tasks,
     required this.routines,
     required this.memories,
     required this.human,
@@ -603,6 +660,7 @@ final class _SectionAdapter implements LifeContextDomainAdapter {
   final LifeContextAvailability taskAvailability;
   final LifeContextAvailability memoryAvailability;
   final List<EventContextItem> events;
+  final List<TaskContextItem> tasks;
   final List<RoutineContextItem> routines;
   final List<MemoryContextItem> memories;
   final HumanContextSection? human;
@@ -636,6 +694,7 @@ final class _SectionAdapter implements LifeContextDomainAdapter {
       availability,
       count: switch (domain) {
         LifeContextDomain.event => events.length,
+        LifeContextDomain.task => tasks.length,
         LifeContextDomain.routine => routines.length,
         LifeContextDomain.memory => memories.length,
         LifeContextDomain.human => human?.metadata.itemCount ?? 0,
@@ -648,7 +707,8 @@ final class _SectionAdapter implements LifeContextDomainAdapter {
       LifeContextDomain.identity => IdentityDomainSection(metadata: metadata),
       LifeContextDomain.event =>
         EventDomainSection(metadata: metadata, events: events),
-      LifeContextDomain.task => TaskDomainSection(metadata: metadata),
+      LifeContextDomain.task =>
+        TaskDomainSection(metadata: metadata, tasks: tasks),
       LifeContextDomain.routine =>
         RoutineDomainSection(metadata: metadata, routines: routines),
       LifeContextDomain.memory => MemoryDomainSection(

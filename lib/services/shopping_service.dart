@@ -83,7 +83,7 @@ class ShoppingService {
         .toList();
 
     await prefs.setStringList(
-      scope == null ? shoppingKey : _shoppingCacheKey(scope),
+      scope == null ? shoppingKey : shoppingCacheKeyForAccountScope(scope),
       scope == null
           ? encoded
           : activeItems.map((item) => jsonEncode(item.toJson())).toList(),
@@ -117,7 +117,7 @@ class ShoppingService {
     final scope = _currentAccountScope();
 
     final data = prefs.getStringList(
-      scope == null ? shoppingKey : _shoppingCacheKey(scope),
+      scope == null ? shoppingKey : shoppingCacheKeyForAccountScope(scope),
     );
 
     final localItems = data == null
@@ -197,14 +197,14 @@ class ShoppingService {
 
   static String _cacheKey(String? scope) => scope ?? '@local';
 
-  static String _shoppingCacheKey(String scope) =>
+  static String shoppingCacheKeyForAccountScope(String scope) =>
       '$shoppingKey.current.$scope';
 
   static List<ShoppingItemModel>? _readScopedCache(
     SharedPreferences prefs,
     String scope,
   ) {
-    final encoded = prefs.getStringList(_shoppingCacheKey(scope));
+    final encoded = prefs.getStringList(shoppingCacheKeyForAccountScope(scope));
     if (encoded == null) return null;
     try {
       return _canonicalLocalActiveItems(
@@ -225,7 +225,7 @@ class ShoppingService {
     List<ShoppingItemModel> items,
   ) {
     return prefs.setStringList(
-      _shoppingCacheKey(scope),
+      shoppingCacheKeyForAccountScope(scope),
       items.map((item) => jsonEncode(item.toJson())).toList(),
     );
   }
@@ -254,6 +254,17 @@ class ShoppingService {
   static void resetRuntimeCacheForTesting() {
     _activeItemsByScope.clear();
     _activeItemSignaturesByScope.clear();
+  }
+
+  /// Removes only the transient state owned by one authenticated account.
+  /// Guest data and caches belonging to other accounts remain untouched.
+  static void clearAccountRuntimeCache(String accountScopeId) {
+    final scope = accountScopeId.trim();
+    if (scope.isEmpty || scope == '@local') return;
+    final hadItems = _activeItemsByScope.remove(scope) != null;
+    final hadSignature = _activeItemSignaturesByScope.remove(scope) != null;
+    _repairedRemovalScopes.remove(scope);
+    if (hadItems || hadSignature) shoppingContextVersion.value++;
   }
 
   static Future<void> _repairRemoteRemovalsInBackground(String scope) async {

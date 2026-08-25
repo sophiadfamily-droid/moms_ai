@@ -1,5 +1,4 @@
 import '../models/event_model.dart';
-import 'event_service.dart';
 import 'planning_proposal_engine.dart';
 import 'smart_planning_service.dart';
 
@@ -34,17 +33,12 @@ class SelectedSlotRevalidationService {
     required DateTime protectedStart,
     required int totalMinutes,
     required List<Map<String, dynamic>> reasoning,
+    required SelectedSlotConflictChecker conflictChecker,
+    required SelectedSlotAlternativeFinder alternativeFinder,
     int searchDays = 21,
     int maxOptions = 3,
-    SelectedSlotConflictChecker? conflictChecker,
-    SelectedSlotAlternativeFinder? alternativeFinder,
   }) async {
-    final safeConflictChecker =
-        conflictChecker ?? EventService.getOverlapConflict;
-    final safeAlternativeFinder =
-        alternativeFinder ?? PlanningProposalEngine.findBestOptions;
-
-    final conflictEvent = await safeConflictChecker(candidate: candidate);
+    final conflictEvent = await conflictChecker(candidate: candidate);
 
     final reasoningConflict = SmartPlanningService.overlapsBlockedReasoning(
       start: protectedStart,
@@ -76,7 +70,7 @@ class SelectedSlotRevalidationService {
       );
     }
 
-    final alternatives = await safeAlternativeFinder(
+    final alternatives = await alternativeFinder(
       startDate: protectedStart,
       totalMinutes: totalMinutes,
       reasoning: reasoning,

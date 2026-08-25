@@ -8,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'auth_service.dart';
+import 'shopping_service.dart';
 
 typedef AccountDataCallableInvoker = Future<dynamic> Function(
   Map<String, dynamic> data,
@@ -68,10 +69,15 @@ final class SharePlusAccountDataExportPresenter
   }
 }
 
-/// Removes only preferences whose colon-delimited scope is the deleted UID.
-/// Global settings and data belonging to another account remain untouched.
+/// Removes only preferences owned by the deleted UID, including registered
+/// historical key formats. Global settings and data belonging to another
+/// account remain untouched.
 final class AccountScopedLocalDataCleaner {
-  const AccountScopedLocalDataCleaner();
+  const AccountScopedLocalDataCleaner({
+    AccountLocalDataCleaner? clearRuntimeData,
+  }) : _clearRuntimeData = clearRuntimeData;
+
+  final AccountLocalDataCleaner? _clearRuntimeData;
 
   Future<void> clear(String accountScopeId) async {
     final scope = accountScopeId.trim();
@@ -80,11 +86,17 @@ final class AccountScopedLocalDataCleaner {
     }
     final preferences = await SharedPreferences.getInstance();
     final scopedKeys = preferences.getKeys().where((key) {
-      return key.split(':').contains(scope);
+      return key.split(':').contains(scope) ||
+          key == ShoppingService.shoppingCacheKeyForAccountScope(scope);
     }).toList(growable: false);
     for (final key in scopedKeys) {
       await preferences.remove(key);
     }
+    await (_clearRuntimeData ?? _clearShoppingRuntimeData)(scope);
+  }
+
+  static Future<void> _clearShoppingRuntimeData(String accountScopeId) async {
+    ShoppingService.clearAccountRuntimeCache(accountScopeId);
   }
 }
 
