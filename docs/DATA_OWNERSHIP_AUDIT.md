@@ -516,3 +516,9 @@ Les raccordements de lecture Réglages et Courses sont désormais engagés. La
 phase suivante peut réduire progressivement le profil historique, sans
 changement visible pour l'utilisatrice et sans faire du contexte de vie une
 nouvelle source de vérité.
+
+Le statut du couple et ses dates sont désormais possédés uniquement par la
+relation canonique dans `HumanModel`. La projection de compatibilité les remet
+à disposition des anciens écrans sans les recopier sur la personne. Cette même
+projection retire les personnes devenues historiques afin qu'un profil supprimé
+ne puisse pas réapparaître dans la famille affichée.

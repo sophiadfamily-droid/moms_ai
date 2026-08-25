@@ -197,6 +197,12 @@ void main() {
       partner.customFields['usefulNotes'],
       'Peut récupérer les enfants le mardi.',
     );
+    expect(partner.customFields, isNot(contains('relationshipStatus')));
+    expect(partner.customFields, isNot(contains('engagementDate')));
+    expect(
+      state.model.relationships.single.structuredNotes,
+      containsPair('relationshipStatus', 'Fiancée'),
+    );
   });
 
   for (final size in _sizes) {

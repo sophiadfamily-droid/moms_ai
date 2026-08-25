@@ -146,16 +146,22 @@ class _HumanProfileScreenState extends State<HumanProfileScreen> {
       text: person.customFields['usefulNotes']?.toString() ?? '',
     );
     final engagementDate = TextEditingController(
-      text: person.customFields['engagementDate']?.toString() ?? '',
+      text: relationship?.structuredNotes['engagementDate']?.toString() ??
+          person.customFields['engagementDate']?.toString() ??
+          '',
     );
     final marriageDate = TextEditingController(
-      text: person.customFields['marriageDate']?.toString() ?? '',
+      text: relationship?.structuredNotes['marriageDate']?.toString() ??
+          person.customFields['marriageDate']?.toString() ??
+          '',
     );
     var photoPath = person.customFields['photoPath']?.toString() ?? '';
     final isPartner = relationship?.type == HumanRelationshipTypes.partner ||
         relationship?.type == HumanRelationshipTypes.spouse;
     final storedStatus =
-        person.customFields['relationshipStatus']?.toString() ?? '';
+        relationship?.structuredNotes['relationshipStatus']?.toString() ??
+            person.customFields['relationshipStatus']?.toString() ??
+            '';
     final relationshipStatus = ValueNotifier<String>(
       storedStatus.isNotEmpty
           ? storedStatus
@@ -305,35 +311,57 @@ class _HumanProfileScreenState extends State<HumanProfileScreen> {
     if (action == 'save') {
       final parsedBirth = _parseFrenchDate(birth.text.trim());
       await _commit((model) {
+        final personFields = Map<String, Object?>.from(person.customFields)
+          ..remove('relationshipStatus')
+          ..remove('engagementDate')
+          ..remove('marriageDate')
+          ..['workSchedule'] = workSchedule.text.trim()
+          ..['usefulNotes'] = usefulNotes.text.trim()
+          ..['photoPath'] = photoPath;
+        if (parsedBirth == null) {
+          personFields.remove('birthDate');
+        } else {
+          personFields['birthDate'] = parsedBirth.toUtc().toIso8601String();
+        }
         final updated = person.copyWith(
           displayName: name.text.trim(),
           clearDisplayName: name.text.trim().isEmpty,
           evidence: _confirmed,
-          customFields: {
-            ...person.customFields,
-            if (parsedBirth != null)
-              'birthDate': parsedBirth.toUtc().toIso8601String(),
-            'workSchedule': workSchedule.text.trim(),
-            'usefulNotes': usefulNotes.text.trim(),
-            'photoPath': photoPath,
-            if (isPartner) 'relationshipStatus': relationshipStatus.value,
-            if (isPartner && relationshipStatus.value == 'Fiancée')
-              'engagementDate': engagementDate.text.trim(),
-            if (isPartner && relationshipStatus.value == 'Mariée')
-              'marriageDate': marriageDate.text.trim(),
-          }..removeWhere(
-              (key, _) =>
-                  (key == 'birthDate' && parsedBirth == null) ||
-                  (key == 'engagementDate' &&
-                      relationshipStatus.value != 'Fiancée') ||
-                  (key == 'marriageDate' &&
-                      relationshipStatus.value != 'Mariée'),
-            ),
+          customFields: personFields,
         );
+        final relationshipNotes = <String, Object?>{
+          ...?relationship?.structuredNotes,
+        }
+          ..remove('relationshipStatus')
+          ..remove('engagementDate')
+          ..remove('marriageDate');
+        if (isPartner) {
+          relationshipNotes['relationshipStatus'] = relationshipStatus.value;
+          if (relationshipStatus.value == 'Fiancée' &&
+              engagementDate.text.trim().isNotEmpty) {
+            relationshipNotes['engagementDate'] = engagementDate.text.trim();
+          }
+          if (relationshipStatus.value == 'Mariée' &&
+              marriageDate.text.trim().isNotEmpty) {
+            relationshipNotes['marriageDate'] = marriageDate.text.trim();
+          }
+        }
         return model.copyWith(
           persons: model.persons
               .map((item) => item.id == person.id ? updated : item)
               .toList(),
+          relationships: relationship == null
+              ? model.relationships
+              : model.relationships
+                  .map(
+                    (item) => item.id == relationship.id
+                        ? item.copyWith(
+                            evidence: _confirmed,
+                            structuredNotes: relationshipNotes,
+                          )
+                        : item,
+                  )
+                  .toList(),
         );
       });
     } else if (action == 'delete') {

@@ -26,8 +26,9 @@ final class HumanModelUserProfileProjectionService {
     final projectedChildren = <ChildProfile>[];
     for (final child in restored.children) {
       final person = model.personById(child.humanPersonId);
+      if (person?.status == HumanPersonStatus.historical) continue;
       projectedChildren.add(
-        person == null || person.status != HumanPersonStatus.active
+        person == null
             ? child
             : child.copyWith(
                 firstName: person.displayName ?? child.firstName,
@@ -49,16 +50,20 @@ final class HumanModelUserProfileProjectionService {
     var partnerName = restored.partnerName;
     var partnerBirthDate = restored.partnerBirthDate;
     final partnerId = restored.partnerHumanPersonId.trim();
+    HumanRelationship? partnerRelationship;
     if (partnerId.isNotEmpty && childrenById[partnerId] == null) {
-      final matchingRelations = model.relationships.where(
-        (relation) =>
-            relation.status == HumanRecordStatus.active &&
-            relation.sourcePersonId == model.primaryPersonId &&
-            relation.targetPersonId == partnerId &&
-            (relation.type == HumanRelationshipTypes.partner ||
-                relation.type == HumanRelationshipTypes.spouse),
-      );
+      final matchingRelations = model.relationships
+          .where(
+            (relation) =>
+                relation.status == HumanRecordStatus.active &&
+                relation.sourcePersonId == model.primaryPersonId &&
+                relation.targetPersonId == partnerId &&
+                (relation.type == HumanRelationshipTypes.partner ||
+                    relation.type == HumanRelationshipTypes.spouse),
+          )
+          .toList(growable: false);
       if (matchingRelations.length == 1) {
+        partnerRelationship = matchingRelations.single;
         final person = model.personById(partnerId);
         if (person?.status == HumanPersonStatus.active &&
             person?.displayName?.trim().isNotEmpty == true) {
@@ -69,6 +74,10 @@ final class HumanModelUserProfileProjectionService {
     }
 
     final partner = partnerId.isEmpty ? null : model.personById(partnerId);
+    final partnerWasRemoved = partnerId.isNotEmpty &&
+        partner != null &&
+        (partner.status == HumanPersonStatus.historical ||
+            partnerRelationship == null);
 
     final projected = restored.copyWith(
       firstName: primary?.displayName?.trim().isNotEmpty == true
@@ -77,6 +86,9 @@ final class HumanModelUserProfileProjectionService {
       birthDate: primary == null
           ? restored.birthDate
           : (_birthDate(primary) ?? restored.birthDate),
+      familyStatus:
+          _textField(primary, 'familyStatus') ?? restored.familyStatus,
+      workStatus: _textField(primary, 'workStatus') ?? restored.workStatus,
       profilePhotoPath:
           _fact(primary, 'profilePhotoPath') ?? restored.profilePhotoPath,
       city: _fact(primary, 'city') ?? restored.city,
@@ -98,13 +110,30 @@ final class HumanModelUserProfileProjectionService {
           restored.emergencyContactName,
       emergencyContactPhone: _fact(primary, 'emergencyContactPhone') ??
           restored.emergencyContactPhone,
-      partnerName: partnerName,
-      partnerBirthDate: partnerBirthDate,
-      partnerPhotoPath:
-          _fact(partner, 'photoPath') ?? restored.partnerPhotoPath,
-      partnerNotes: _fact(partner, 'usefulNotes') ?? restored.partnerNotes,
-      partnerWorkSchedule:
-          _fact(partner, 'workSchedule') ?? restored.partnerWorkSchedule,
+      partnerHumanPersonId: partnerWasRemoved ? '' : partnerId,
+      partnerName: partnerWasRemoved ? '' : partnerName,
+      partnerBirthDate: partnerWasRemoved ? '' : partnerBirthDate,
+      partnerPhotoPath: partnerWasRemoved
+          ? ''
+          : (_fact(partner, 'photoPath') ?? restored.partnerPhotoPath),
+      partnerNotes: partnerWasRemoved
+          ? ''
+          : (_fact(partner, 'usefulNotes') ?? restored.partnerNotes),
+      partnerWorkSchedule: partnerWasRemoved
+          ? ''
+          : (_fact(partner, 'workSchedule') ?? restored.partnerWorkSchedule),
+      relationshipStatus: partnerWasRemoved
+          ? ''
+          : (_relationshipFact(partnerRelationship, 'relationshipStatus') ??
+              restored.relationshipStatus),
+      marriageDate: partnerWasRemoved
+          ? ''
+          : (_relationshipFact(partnerRelationship, 'marriageDate') ??
+              restored.marriageDate),
+      engagementDate: partnerWasRemoved
+          ? ''
+          : (_relationshipFact(partnerRelationship, 'engagementDate') ??
+              restored.engagementDate),
       children: projectedChildren,
     );
     return StructuredScheduleProfileService.projectOntoCompatibilityProfile(
@@ -121,4 +150,17 @@ final class HumanModelUserProfileProjectionService {
 
   String? _fact(HumanPerson? person, String field) =>
       person == null ? null : HumanProfileFactsV1.text(person, field);
+
+  String? _textField(HumanPerson? person, String field) {
+    final value = person?.customFields[field];
+    return value is String && value.trim().isNotEmpty ? value.trim() : null;
+  }
+
+  String? _relationshipFact(
+    HumanRelationship? relationship,
+    String field,
+  ) {
+    final value = relationship?.structuredNotes[field];
+    return value is String && value.trim().isNotEmpty ? value.trim() : null;
+  }
 }

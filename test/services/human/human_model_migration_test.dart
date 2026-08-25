@@ -273,11 +273,61 @@ void main() {
       );
       expect(restored.firstName, 'Personne Test');
       expect(restored.birthDate, '01/02/1990');
+      expect(restored.familyStatus, 'Je vis en couple');
+      expect(restored.workStatus, 'Je suis salariée');
       expect(restored.partnerName, 'Alex');
       expect(restored.partnerBirthDate, '03/04/1991');
+      expect(restored.relationshipStatus, 'Mariée');
+      expect(restored.marriageDate, '12/08/2020');
       expect(restored.children.single.firstName, 'Sam');
       expect(restored.children.single.birthDate, '05/06/2018');
       expect(restored.children.single.humanPersonId, 'person-sam');
+    });
+
+    test('la projection retire les personnes rendues historiques', () {
+      final profile =
+          _profile(partnerName: 'Alex', children: [_child('Sam')]).copyWith(
+        humanPersonId: 'person-main',
+        partnerHumanPersonId: 'person-alex',
+        partnerBirthDate: '03/04/1991',
+        relationshipStatus: 'Mariée',
+        children: [
+          _child('Sam').copyWith(humanPersonId: 'person-sam'),
+        ],
+      );
+      final migrated = const LegacyUserProfileHumanAdapter().migrate(
+        profile: profile,
+        legacyProfile: profile.toJson(),
+        accountScopeId: 'account-a',
+        idGenerator: FakeEntityIdGenerator(['relation-alex', 'relation-sam']),
+      );
+      final historical = migrated.copyWith(
+        persons: migrated.persons
+            .map(
+              (person) => person.id == 'person-main'
+                  ? person
+                  : person.copyWith(status: HumanPersonStatus.historical),
+            )
+            .toList(),
+        relationships: migrated.relationships
+            .map(
+              (relation) => relation.copyWith(
+                status: HumanRecordStatus.historical,
+              ),
+            )
+            .toList(),
+      );
+
+      final restored = const HumanModelUserProfileProjectionService().project(
+        model: historical,
+        legacy: profile,
+      );
+
+      expect(restored.partnerHumanPersonId, isEmpty);
+      expect(restored.partnerName, isEmpty);
+      expect(restored.partnerBirthDate, isEmpty);
+      expect(restored.relationshipStatus, isEmpty);
+      expect(restored.children, isEmpty);
     });
 
     test('récupère les détails du couple déjà présents dans un ancien profil',
